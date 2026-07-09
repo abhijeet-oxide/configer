@@ -19,21 +19,14 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
+import CrSteps, { StateTag } from "./CrSteps";
 
 // ChangeRequestsView is the workflow home: every draft, in-review, published
 // and rejected change request, with its parameter-level diff and the actions
 // that drive the git-native lifecycle. Everything here can equally be done on
 // GitHub directly — Configer reflects external merges/closes on refresh.
 
-const stateMeta: Record<ChangeState, { color: string; label: string }> = {
-  draft: { color: "default", label: "Draft" },
-  under_review: { color: "processing", label: "Under Review" },
-  approved: { color: "cyan", label: "Approved" },
-  published: { color: "success", label: "Published" },
-  rejected: { color: "error", label: "Rejected" },
-};
-
-function ItemsTable({ items }: { items: ChangeItem[] | null }) {
+export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
   if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
   return (
     <Table<ChangeItem>
@@ -104,7 +97,14 @@ export default function ChangeRequestsView() {
         dataSource={q.data}
         pagination={false}
         locale={{ emptyText: <Empty description="No change requests yet — edit some cells in the Config Editor to start a draft." /> }}
-        expandable={{ expandedRowRender: (cr) => <ItemsTable items={cr.items} /> }}
+        expandable={{
+          expandedRowRender: (cr) => (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <CrSteps state={cr.state} />
+              <ItemsTable items={cr.items} />
+            </div>
+          ),
+        }}
         columns={[
           { title: "#", dataIndex: "id", width: 56, render: (id) => <b>#{id}</b> },
           {
@@ -123,7 +123,7 @@ export default function ChangeRequestsView() {
             title: "State",
             dataIndex: "state",
             width: 130,
-            render: (s: ChangeState) => <Tag color={stateMeta[s].color}>{stateMeta[s].label}</Tag>,
+            render: (s: ChangeState) => <StateTag state={s} />,
           },
           {
             title: "Changes",

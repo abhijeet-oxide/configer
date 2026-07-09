@@ -13,6 +13,8 @@ import DetailsPanel from "./components/DetailsPanel";
 import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
+import ApprovalsView from "./components/ApprovalsView";
+import DashboardView from "./components/DashboardView";
 
 const { Header, Sider, Content } = Layout;
 
@@ -110,7 +112,19 @@ export default function App() {
     const grid = gridQ.data;
 
     if (section === "plugins") return <PluginsView />;
-    if (section === "changes" || section === "drafts" || section === "approvals")
+    if (section === "home")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <DashboardView grid={grid} />
+        </div>
+      );
+    if (section === "approvals")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <ApprovalsView />
+        </div>
+      );
+    if (section === "changes" || section === "drafts")
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <ChangeRequestsView />
@@ -147,7 +161,7 @@ export default function App() {
       </Sider>
       <Layout style={{ minWidth: 0 }}>
         <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
-          <TopBar project={gridQ.data?.project} />
+          <TopBar project={gridQ.data?.project} instances={gridQ.data?.instances} />
         </Header>
         <Menu
           mode="horizontal"

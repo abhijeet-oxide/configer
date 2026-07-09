@@ -15,17 +15,35 @@ import {
   Segmented,
   App as AntApp,
 } from "antd";
-import { FilterOutlined, SettingOutlined, LockOutlined, CloseCircleFilled, PlusOutlined } from "@ant-design/icons";
+import {
+  FilterOutlined,
+  SettingOutlined,
+  LockOutlined,
+  CloseCircleFilled,
+  CheckCircleFilled,
+  PlusOutlined,
+  QuestionCircleOutlined,
+} from "@ant-design/icons";
 import AddParameterModal from "./AddParameterModal";
 import type { ColumnsType } from "antd/es/table";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Cell, type Grid, type Instance, type Parameter, type PresetRule, type Row } from "../api";
-import { effectiveRules, validateString, type Rules } from "../rules";
+import {
+  api,
+  type Cell,
+  type ChangeItem,
+  type Grid,
+  type Instance,
+  type Parameter,
+  type PresetRule,
+  type Row,
+} from "../api";
+import { effectiveRules, validateString, fmtValue, type Rules } from "../rules";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
-// Short abbreviations for the scope source badge on each cell.
+// Short abbreviations for the scope source badge on each cell, with plain
+// explanations surfaced on hover (and in the Legend).
 const scopeAbbrev: Record<string, string> = {
   default: "def",
   global: "glb",
@@ -33,6 +51,15 @@ const scopeAbbrev: Record<string, string> = {
   site: "site",
   zone: "zone",
   instance: "inst",
+};
+
+const scopeExplain: Record<string, string> = {
+  default: "Built-in default value — applies unless something more specific is set",
+  global: "Set once for ALL instances",
+  environment: "Set for every instance in this environment",
+  site: "Set for every instance at this site",
+  zone: "Set for every instance in this zone",
+  instance: "Set specifically on this instance",
 };
 
 const envColor: Record<string, string> = {
@@ -43,7 +70,11 @@ const envColor: Record<string, string> = {
 
 function SourceBadge({ cell }: { cell: Cell }) {
   if (!cell.set || cell.source === "instance") return null;
-  return <span className="source-badge">{scopeAbbrev[cell.source]}</span>;
+  return (
+    <Tooltip title={scopeExplain[cell.source]}>
+      <span className="source-badge">{scopeAbbrev[cell.source]}</span>
+    </Tooltip>
+  );
 }
 
 function ListChips({ items }: { items: unknown[] }) {
@@ -65,11 +96,23 @@ function ListChips({ items }: { items: unknown[] }) {
   );
 }
 
-function CellView({ cell }: { cell: Cell }) {
+function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem }) {
   if (cell.state === "na") return <span className="cell-na">n/a</span>;
+
+  // Pending edits: hovering shows exactly what will change.
+  const pendingTip = pendingItem
+    ? `${fmtValue(pendingItem.old)}  →  ${
+        pendingItem.action === "exclude"
+          ? "removed from this instance"
+          : pendingItem.action === "reset"
+            ? "back to inherited"
+            : fmtValue(pendingItem.new)
+      }   (pending — not yet sent for review)`
+    : undefined;
+
   if (cell.excluded) {
     return (
-      <Tooltip title="Excluded on this instance — nothing is rendered in its generated files">
+      <Tooltip title={pendingTip ?? "Excluded on this instance — nothing is rendered in its generated files"}>
         <span className={"cell-excluded" + (cell.pending ? " cell-pending" : "")}>∅ excluded</span>
       </Tooltip>
     );
@@ -98,7 +141,8 @@ function CellView({ cell }: { cell: Cell }) {
       <SourceBadge cell={cell} />
     </span>
   );
-  return !cell.valid && cell.message ? <Tooltip title={cell.message}>{inner}</Tooltip> : inner;
+  const tip = pendingTip ?? (!cell.valid ? cell.message : undefined);
+  return tip ? <Tooltip title={tip}>{inner}</Tooltip> : inner;
 }
 
 // --- Typed inline editors -------------------------------------------------
@@ -167,6 +211,7 @@ function StringEditor({
 }) {
   const [val, setVal] = useState(String(initial ?? ""));
   const err = validateString(val, rules);
+  const changed = val !== String(initial ?? "");
   return (
     <Tooltip open={!!err} title={err} color="#cf1322">
       <Input
@@ -175,6 +220,13 @@ function StringEditor({
         className="mono"
         value={val}
         status={err ? "error" : undefined}
+        suffix={
+          changed && !err ? (
+            <CheckCircleFilled style={{ color: "#52c41a" }} />
+          ) : (
+            <span />
+          )
+        }
         maxLength={rules.maxLength}
         onChange={(e) => setVal(e.target.value)}
         onPressEnter={(e) => {
@@ -278,24 +330,28 @@ function EditableCell({
   instance,
   allInstances,
   presets,
+  pendingItem,
   editing,
   onStartEdit,
   onCancel,
   onCommit,
   onAction,
   onCopyTo,
+  onUndo,
 }: {
   cell: Cell | undefined;
   param: Parameter;
   instance: string;
   allInstances: string[];
   presets?: PresetRule[];
+  pendingItem?: ChangeItem;
   editing: boolean;
   onStartEdit: () => void;
   onCancel: () => void;
   onCommit: (v: unknown) => void;
   onAction: (action: "reset" | "exclude") => void;
   onCopyTo: (target: string) => void;
+  onUndo: () => void;
 }) {
   if (!cell) return <span style={{ opacity: 0.3 }}>—</span>;
   const rules = effectiveRules(param, presets);
@@ -323,6 +379,7 @@ function EditableCell({
 
   // Right-click menu: structural actions beyond plain value edits.
   const menuItems = [
+    ...(cell.pending ? [{ key: "undo", label: "Undo pending change" }] : []),
     ...(cell.editable ? [{ key: "edit", label: "Edit value" }] : []),
     ...(cell.editable && cell.source === "instance" && !cell.excluded
       ? [{ key: "reset", label: "Reset to inherited (remove override)" }]
@@ -351,10 +408,10 @@ function EditableCell({
     ) : (
       <div
         style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined }}
-        title={cell.editable ? "Double-click to edit · right-click for actions" : undefined}
+        title={cell.editable && !cell.pending ? "Double-click to edit · right-click for actions" : undefined}
         onDoubleClick={cell.editable ? onStartEdit : undefined}
       >
-        <CellView cell={cell} />
+        <CellView cell={cell} pendingItem={pendingItem} />
       </div>
     );
 
@@ -365,7 +422,8 @@ function EditableCell({
       menu={{
         items: menuItems,
         onClick: ({ key }) => {
-          if (key === "edit") onStartEdit();
+          if (key === "undo") onUndo();
+          else if (key === "edit") onStartEdit();
           else if (key === "reset") onAction("reset");
           else if (key === "exclude") onAction("exclude");
           else if (key.startsWith("copy:")) onCopyTo(key.slice(5));
@@ -422,9 +480,28 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const presetsQ = useQuery({ queryKey: ["presets"], queryFn: api.presets });
+  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   // key: `${paramId}|${instance}` of the cell currently in edit mode
   const [editing, setEditing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+
+  // pending draft items indexed by cell, for hover before→after and undo
+  const pendingMap = useMemo(() => {
+    const m = new Map<string, ChangeItem>();
+    for (const it of draftQ.data?.draft?.items ?? []) {
+      m.set(`${it.paramId}|${it.instance}`, it);
+    }
+    return m;
+  }, [draftQ.data]);
+
+  const revert = useMutation({
+    mutationFn: (p: { paramId: string; instance: string }) => api.revertValue(p.paramId, p.instance),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+    },
+  });
   // body: the area the virtualized table body may occupy (auto-fits height/width)
   const { ref: bodyRef, width: bodyW, height: bodyH } = useElementSize<HTMLDivElement>();
 
@@ -516,6 +593,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             instance={inst.name}
             allInstances={instanceNames}
             presets={presetsQ.data}
+            pendingItem={pendingMap.get(key)}
             editing={editing === key}
             onStartEdit={() => setEditing(key)}
             onCancel={() => setEditing(null)}
@@ -529,14 +607,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             onCopyTo={(target) =>
               save.mutate({ instance: target, paramId: r.param.id, value: r.cells[inst.name]?.value })
             }
+            onUndo={() => revert.mutate({ paramId: r.param.id, instance: inst.name })}
           />
         );
       },
     }));
     return [...base, ...instCols];
-    // save.mutate/setEditing are stable; the rest drive genuine re-renders.
+    // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, editing, presetsQ.data, prefs.showTypeCol, prefs.showDescCol, instW]);
+  }, [grid.instances, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showDescCol, instW]);
 
   const scrollX = PARAM_W + TYPE_W + DESC_W + grid.instances.length * instW;
   const headerH = prefs.density === "compact" ? 55 : 63;
@@ -560,6 +639,30 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         )}
         <div style={{ flex: 1 }} />
         <Space size={4}>
+          <Popover
+            trigger="click"
+            placement="bottomRight"
+            title="What do the marks mean?"
+            content={
+              <div style={{ display: "flex", flexDirection: "column", gap: 7, width: 300, fontSize: 12 }}>
+                <span><span className="cell-pending mono">10.0.0.1</span> — your pending change (hover it to see before → after)</span>
+                <span><span className="cell-new mono">1.2</span> — newly introduced in this software version</span>
+                <span><span className="cell-deprecated mono">off</span> — deprecated; no longer editable</span>
+                <span><span className="cell-invalid mono">99999</span> — value breaks a rule (hover for why)</span>
+                <span><span className="cell-excluded">∅ excluded</span> — removed from this instance's files entirely</span>
+                <span><span className="cell-na">n/a</span> — doesn't exist in this software version yet</span>
+                <span>
+                  <span className="source-badge">glb</span> where a value comes from:{" "}
+                  glb = all instances · env = environment · zone/site = that area · def = built-in default
+                </span>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  Everything you edit is saved to Git and only goes live after approval.
+                </Typography.Text>
+              </div>
+            }
+          >
+            <Button size="small" type="text" icon={<QuestionCircleOutlined />}>Legend</Button>
+          </Popover>
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add Parameter
           </Button>

@@ -10,6 +10,9 @@ import {
   Modal,
   Form,
   Tag,
+  Table,
+  Alert,
+  Typography,
   App as AntApp,
   type InputRef,
 } from "antd";
@@ -23,17 +26,27 @@ import {
   BgColorsOutlined,
   SyncOutlined,
   CloudServerOutlined,
+  ArrowRightOutlined,
+  DeleteOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, type ChangeItem, type Instance } from "../api";
+import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { brands, type BrandKey } from "../theme";
 
+// afterValue renders the post-change value with action awareness.
+function afterValue(it: ChangeItem & { action?: string }) {
+  if (it.action === "exclude") return "∅ removed from this instance";
+  if (it.action === "reset") return "(back to inherited value)";
+  return fmtValue(it.new);
+}
+
 // Application header: breadcrumb context, git-liveness indicator, the global
 // parameter search (⌘K), theme controls, and the Create Change Request flow.
-export default function TopBar({ project }: { project?: string }) {
-  const { mode, setMode, brand, setBrand, search, setSearch, setSection } = useUI();
+export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
+  const { mode, setMode, brand, setBrand, search, setSearch, setSection, selectParam } = useUI();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const searchRef = useRef<InputRef>(null);
@@ -42,7 +55,18 @@ export default function TopBar({ project }: { project?: string }) {
 
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
-  const pending = draftQ.data?.draft?.items?.length ?? 0;
+  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const items = draftQ.data?.draft?.items ?? [];
+  const pending = items.length;
+  const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
+  const prodTouched = items.some(
+    (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
+  );
+
+  const revert = useMutation({
+    mutationFn: (it: ChangeItem) => api.revertValue(it.paramId, it.instance),
+    onSuccess: () => qc.invalidateQueries(),
+  });
 
   const submit = useMutation({
     mutationFn: (v: { title: string; description?: string }) =>
@@ -139,9 +163,11 @@ export default function TopBar({ project }: { project?: string }) {
           <Button size="small" type="text" icon={<BgColorsOutlined />} />
         </Dropdown>
         <Tooltip title="Help"><Button size="small" type="text" icon={<QuestionCircleOutlined />} /></Tooltip>
-        <Badge count={pending} size="small">
-          <Button size="small" type="text" icon={<BellOutlined />} />
-        </Badge>
+        <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
+          <Badge count={awaiting} size="small">
+            <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
+          </Badge>
+        </Tooltip>
         <Badge count={pending} size="small" offset={[-4, 0]}>
           <Button
             size="small"
@@ -157,13 +183,78 @@ export default function TopBar({ project }: { project?: string }) {
       </Space>
 
       <Modal
-        title={`Create change request (${pending} pending change${pending === 1 ? "" : "s"})`}
+        title={`Review your changes (${pending})`}
         open={crOpen}
         onCancel={() => setCrOpen(false)}
         onOk={() => form.submit()}
-        okText="Submit for review"
+        okText="Send for review"
+        okButtonProps={{ disabled: pending === 0 }}
         confirmLoading={submit.isPending}
+        width={760}
       >
+        {prodTouched && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginBottom: 10 }}
+            message="This change touches PRODUCTION instances"
+            description="It will only go live after an approver publishes it."
+          />
+        )}
+        <Table<ChangeItem>
+          size="small"
+          rowKey={(it) => `${it.paramId}|${it.instance}`}
+          dataSource={items}
+          pagination={false}
+          style={{ marginBottom: 14 }}
+          columns={[
+            {
+              title: "Setting",
+              dataIndex: "paramId",
+              render: (v: string) => (
+                <Typography.Link
+                  onClick={() => {
+                    // jump straight to the cell in the editor
+                    selectParam(v);
+                    setSection("config");
+                    setCrOpen(false);
+                  }}
+                >
+                  <span className="mono">{v}</span>
+                </Typography.Link>
+              ),
+            },
+            { title: "Instance", dataIndex: "instance", width: 120, render: (v) => <Tag>{v}</Tag> },
+            {
+              title: "Before",
+              dataIndex: "old",
+              render: (v) => <span className="mono" style={{ opacity: 0.6 }}>{fmtValue(v)}</span>,
+            },
+            { title: "", width: 30, render: () => <ArrowRightOutlined style={{ opacity: 0.45 }} /> },
+            {
+              title: "After",
+              render: (_v, it) => (
+                <span className="mono" style={{ color: "#389e0d" }}>{afterValue(it)}</span>
+              ),
+            },
+            {
+              title: "",
+              width: 46,
+              render: (_v, it) => (
+                <Tooltip title="Undo this change">
+                  <Button
+                    size="small"
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={revert.isPending}
+                    onClick={() => revert.mutate(it)}
+                  />
+                </Tooltip>
+              ),
+            },
+          ]}
+        />
         <Form
           form={form}
           layout="vertical"
@@ -172,22 +263,22 @@ export default function TopBar({ project }: { project?: string }) {
         >
           <Form.Item
             name="title"
-            label="Title"
-            rules={[{ required: true, message: "Give the change request a title" }]}
+            label="What is this change about?"
+            rules={[{ required: true, message: "Give the change a short title" }]}
           >
             <Input placeholder="e.g. Update staging DNS servers" maxLength={100} />
           </Form.Item>
-          <Form.Item name="description" label="Description">
+          <Form.Item name="description" label="Why is it needed? (optional)">
             <Input.TextArea
-              rows={3}
-              placeholder="Why is this change needed? (appears in the commit and pull request)"
+              rows={2}
+              placeholder="Shown to the approver, and kept in the Git history"
             />
           </Form.Item>
         </Form>
-        <span style={{ fontSize: 12, opacity: 0.65 }}>
-          Submitting creates branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>, commits the
-          overlay + regenerated artifacts, pushes, and opens a pull request when a provider is configured.
-        </span>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          On Git this saves your edits to branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>
+          {" "}and opens a review — nothing goes live until an approver publishes it.
+        </Typography.Text>
       </Modal>
     </div>
   );

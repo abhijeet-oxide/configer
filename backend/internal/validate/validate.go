@@ -84,7 +84,8 @@ func Value(param model.Parameter, v any) Result {
 	}
 	s := fmt.Sprintf("%v", v)
 
-	// Layer 2: the referenced preset rule, if any.
+	// Layer 2: the referenced preset rule, if any. Failures speak in the
+	// preset's human name with an example, never in regex.
 	if val.Preset != "" {
 		if p, found := PresetByID(val.Preset); found {
 			rules := model.Validation{
@@ -92,7 +93,11 @@ func Value(param model.Parameter, v any) Result {
 				MinLength: p.MinLength, MaxLength: p.MaxLength,
 			}
 			if r := applyRules(rules, s); !r.Valid {
-				return invalid(p.Name + ": " + r.Message)
+				msg := p.Name + ": " + r.Message
+				if p.Example != "" {
+					msg += " — example: " + p.Example
+				}
+				return invalid(msg)
 			}
 		}
 	}
@@ -214,7 +219,7 @@ func applyRules(val model.Validation, s string) Result {
 			return invalid("invalid validation pattern")
 		}
 		if !re.MatchString(s) {
-			return invalid("does not match pattern " + val.Pattern)
+			return invalid("doesn't match the required format")
 		}
 	}
 

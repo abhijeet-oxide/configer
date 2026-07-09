@@ -1,5 +1,6 @@
-import { Menu, Typography } from "antd";
+import { Menu, Typography, Badge } from "antd";
 import {
+  HomeOutlined,
   TableOutlined,
   DiffOutlined,
   PullRequestOutlined,
@@ -14,33 +15,50 @@ import {
   SettingOutlined,
 } from "@ant-design/icons";
 import type { MenuProps } from "antd";
+import { useQuery } from "@tanstack/react-query";
+import { api } from "../api";
 import { useUI } from "../store";
 
 // The far-left navigation rail. Grouped to echo the reference layout
 // (Configuration / Observability / Settings).
-const items: MenuProps["items"] = [
-  { type: "group", label: "CONFIGURATION", children: [
-    { key: "config", icon: <TableOutlined />, label: "Config Editor" },
-    { key: "compare", icon: <DiffOutlined />, label: "Compare" },
-    { key: "changes", icon: <PullRequestOutlined />, label: "Change Requests" },
-    { key: "history", icon: <FileTextOutlined />, label: "History" },
-    { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
-    { key: "schemas", icon: <SafetyCertificateOutlined />, label: "Schemas" },
-    { key: "plugins", icon: <ApiOutlined />, label: "Plugins" },
-    { key: "deployments", icon: <RocketOutlined />, label: "Deployments" },
-  ]},
-  { type: "group", label: "OBSERVABILITY", children: [
-    { key: "drift", icon: <AlertOutlined />, label: "Drift Detection" },
-    { key: "audit", icon: <AuditOutlined />, label: "Audit Logs" },
-  ]},
-  { type: "group", label: "SETTINGS", children: [
-    { key: "users", icon: <TeamOutlined />, label: "Users & Teams" },
-    { key: "settings", icon: <SettingOutlined />, label: "System Settings" },
-  ]},
-];
+function buildItems(approvalsCount: number): MenuProps["items"] {
+  return [
+    { key: "home", icon: <HomeOutlined />, label: "Home" },
+    { type: "group", label: "CONFIGURATION", children: [
+      { key: "config", icon: <TableOutlined />, label: "Config Editor" },
+      { key: "compare", icon: <DiffOutlined />, label: "Compare" },
+      { key: "changes", icon: <PullRequestOutlined />, label: "Change Requests" },
+      {
+        key: "approvals",
+        icon: <CheckCircleOutlined />,
+        label: (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Approvals
+            <Badge count={approvalsCount} size="small" />
+          </span>
+        ),
+      },
+      { key: "history", icon: <FileTextOutlined />, label: "History" },
+      { key: "schemas", icon: <SafetyCertificateOutlined />, label: "Schemas" },
+      { key: "plugins", icon: <ApiOutlined />, label: "Plugins" },
+      { key: "deployments", icon: <RocketOutlined />, label: "Deployments" },
+    ]},
+    { type: "group", label: "OBSERVABILITY", children: [
+      { key: "drift", icon: <AlertOutlined />, label: "Drift Detection" },
+      { key: "audit", icon: <AuditOutlined />, label: "Audit Logs" },
+    ]},
+    { type: "group", label: "SETTINGS", children: [
+      { key: "users", icon: <TeamOutlined />, label: "Users & Teams" },
+      { key: "settings", icon: <SettingOutlined />, label: "System Settings" },
+    ]},
+  ];
+}
 
 export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
   const { section, setSection } = useUI();
+  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
+  const items = buildItems(approvalsCount);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div

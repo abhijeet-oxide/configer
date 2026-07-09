@@ -41,6 +41,8 @@ export interface PresetRule {
   id: string;
   name: string;
   description: string;
+  /** a valid sample value, shown in editors and error messages */
+  example?: string;
   pattern?: string;
   min?: number;
   max?: number;
@@ -90,6 +92,7 @@ export type ChangeState = "draft" | "under_review" | "approved" | "published" | 
 export interface ChangeItem {
   paramId: string;
   instance: string;
+  action?: CellAction;
   old: unknown;
   new: unknown;
   updatedAt: string;

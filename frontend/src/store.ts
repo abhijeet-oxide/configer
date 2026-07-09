@@ -60,7 +60,7 @@ interface UIState {
 export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
-  section: "config",
+  section: "home",
   categoryKey: null,
   selectedParamId: null,
   compareLeft: null,

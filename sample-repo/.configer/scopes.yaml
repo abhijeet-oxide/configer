@@ -1,0 +1,18 @@
+# Non-instance overlay levels. The "global" block applies to every instance
+# unless a more specific scope (environment/site/zone) or the instance overlay
+# overrides it. These produce the "global" source badge in the grid.
+global:
+  net-service-port: 8080
+  net-dns-primary: 8.8.8.8
+  net-dns-secondary: 1.1.1.1
+  net-domain: example.com
+  net-http-enabled: false
+  net-https-enabled: true
+  net-https-port: 8443
+  net-tls-min-version: "1.2"
+  net-legacy-mode: "off"
+
+environment:
+  staging:
+    # staging overrides the cluster domain for everything in that environment
+    net-domain: staging.example.com

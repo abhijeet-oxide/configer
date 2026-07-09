@@ -1,0 +1,37 @@
+# Self-hosted Configer stack: Go backend + SPA (nginx) + Postgres (metadata
+# cache, wired in a later phase). The backend serves the grid from a mounted
+# Git working tree; Git remains the single source of truth.
+services:
+  backend:
+    build:
+      context: ../backend
+    environment:
+      CONFIGER_ADDR: ":8080"
+      CONFIGER_REPO: "/repo"
+    volumes:
+      - ../sample-repo:/repo:ro
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build:
+      context: ../frontend
+    depends_on:
+      - backend
+    ports:
+      - "8088:80"
+
+  # Metadata / grid-cache database (used from Phase 1 onward per the design).
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: configer
+      POSTGRES_PASSWORD: configer
+      POSTGRES_DB: configer
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+volumes:
+  pgdata:

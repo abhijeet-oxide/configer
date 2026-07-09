@@ -1,0 +1,26 @@
+# Base configuration (source of truth for structure). Instance overlays are
+# applied on top of this to produce generated/<instance>/values.yaml.
+network:
+  service:
+    ip: 10.0.0.1        # Service IP address
+    port: 8080          # Service port
+  admin:
+    ip: 10.0.0.2        # Admin interface IP
+    port: 8443          # Admin interface port
+  vip:
+    enabled: true       # Enable Virtual IP
+    ip: 10.0.0.100      # Virtual IP address
+    netmask: 255.255.255.0
+    gateway: 10.0.0.1
+  dns:
+    primary: 8.8.8.8
+    secondary: 1.1.1.1
+  ntp:
+    servers:            # list parameter: instances may carry 1..N entries
+      - 10.0.0.123
+  domain: example.com
+  http:
+    enabled: false
+  https:
+    enabled: true
+    port: 8443

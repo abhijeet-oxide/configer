@@ -1,0 +1,205 @@
+apiVersion: configer.io/v1
+kind: ParameterCatalog
+metadata:
+  project: telco-platform
+parameters:
+  - id: net-service-ip
+    name: network.service.ip
+    displayName: Service IP address
+    description: Primary service IP address the workload binds to.
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    secret: false
+    source: { file: base/values.yaml, path: $.network.service.ip, format: yaml }
+    validation:
+      required: true
+      pattern: '^(\d{1,3}\.){3}\d{1,3}$'
+    default: 10.0.0.1
+    versionIntroduced: v1.0.0
+
+  - id: net-service-port
+    name: network.service.port
+    displayName: Service port
+    description: TCP port the service listens on.
+    category: Networking/IP Configuration
+    type: integer
+    scope: global
+    source: { file: base/values.yaml, path: $.network.service.port, format: yaml }
+    validation: { required: true, min: 1, max: 65535 }
+    default: 8080
+    versionIntroduced: v1.0.0
+
+  - id: net-admin-ip
+    name: network.admin.ip
+    displayName: Admin interface IP
+    description: IP address of the administrative interface.
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.admin.ip, format: yaml }
+    validation: { pattern: '^(\d{1,3}\.){3}\d{1,3}$' }
+    versionIntroduced: v1.0.0
+
+  - id: net-admin-port
+    name: network.admin.port
+    displayName: Admin interface port
+    category: Networking/IP Configuration
+    type: integer
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.admin.port, format: yaml }
+    validation: { preset: port }   # predefined rule from the library (1..65535)
+    default: 8443
+    versionIntroduced: v1.0.0
+
+  - id: net-vip-enabled
+    name: network.vip.enabled
+    displayName: Enable Virtual IP
+    category: Networking/IP Configuration
+    type: boolean
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.vip.enabled, format: yaml }
+    default: true
+    versionIntroduced: v1.0.0
+
+  - id: net-vip-ip
+    name: network.vip.ip
+    displayName: Virtual IP address
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.vip.ip, format: yaml }
+    dependsOn: [net-vip-enabled]
+    versionIntroduced: v1.0.0
+
+  - id: net-vip-netmask
+    name: network.vip.netmask
+    displayName: VIP netmask
+    category: Networking/IP Configuration
+    type: string
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.vip.netmask, format: yaml }
+    default: 255.255.255.0
+    versionIntroduced: v1.0.0
+
+  - id: net-vip-gateway
+    name: network.vip.gateway
+    displayName: VIP gateway
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.vip.gateway, format: yaml }
+    versionIntroduced: v1.0.0
+
+  - id: net-dns-primary
+    name: network.dns.primary
+    displayName: Primary DNS server
+    category: Networking/DNS
+    type: ipv4
+    scope: global
+    source: { file: base/values.yaml, path: $.network.dns.primary, format: yaml }
+    default: 8.8.8.8
+    versionIntroduced: v1.0.0
+
+  - id: net-dns-secondary
+    name: network.dns.secondary
+    displayName: Secondary DNS server
+    category: Networking/DNS
+    type: ipv4
+    scope: global
+    source: { file: base/values.yaml, path: $.network.dns.secondary, format: yaml }
+    default: 1.1.1.1
+    versionIntroduced: v1.0.0
+
+  - id: net-ntp-servers
+    name: network.ntp.servers
+    displayName: NTP servers
+    description: Time sources; one line is rendered per entry, so lab can carry 1 and production 10.
+    category: Networking/DNS
+    type: list
+    itemType: ipv4
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.ntp.servers, format: yaml }
+    validation: { minItems: 1 }
+    default: ["10.0.0.123"]
+    versionIntroduced: v1.0.0
+
+  - id: net-syslog-collectors
+    name: network.syslog.collectors
+    displayName: Syslog collectors
+    description: One <collector> XML element is rendered per entry; excluded instances render none.
+    category: Networking/DNS
+    type: list
+    itemType: ipv4
+    scope: instance
+    source: { file: base/network.xml, path: /network/syslog/collector, format: xml }
+    versionIntroduced: v1.0.0
+
+  - id: net-domain
+    name: network.domain
+    displayName: Cluster domain
+    category: Networking/DNS
+    type: string
+    scope: global
+    source: { file: base/values.yaml, path: $.network.domain, format: yaml }
+    validation: { preset: fqdn }   # predefined FQDN rule (pattern + max 253 chars)
+    default: example.com
+    versionIntroduced: v1.0.0
+
+  - id: net-http-enabled
+    name: network.http.enabled
+    displayName: Enable HTTP
+    category: Networking/TLS-SSL
+    type: boolean
+    scope: global
+    source: { file: base/values.yaml, path: $.network.http.enabled, format: yaml }
+    default: false
+    versionIntroduced: v1.0.0
+
+  - id: net-https-enabled
+    name: network.https.enabled
+    displayName: Enable HTTPS
+    category: Networking/TLS-SSL
+    type: boolean
+    scope: global
+    source: { file: base/values.yaml, path: $.network.https.enabled, format: yaml }
+    default: true
+    versionIntroduced: v1.0.0
+
+  - id: net-https-port
+    name: network.https.port
+    displayName: HTTPS port
+    category: Networking/TLS-SSL
+    type: integer
+    scope: global
+    source: { file: base/values.yaml, path: $.network.https.port, format: yaml }
+    validation: { min: 1, max: 65535 }
+    default: 8443
+    versionIntroduced: v1.0.0
+
+  # --- Version lifecycle demonstrators ---
+  - id: net-tls-min-version
+    name: network.tls.minVersion
+    displayName: Minimum TLS version
+    description: Newly introduced in v24.3.1; not applicable to older instances.
+    category: Networking/TLS-SSL
+    type: enum
+    scope: global
+    secret: false
+    source: { file: base/network.xml, path: /network/tls/@minVersion, format: xml }
+    validation: { enum: ["1.2", "1.3"] }
+    default: "1.2"
+    versionIntroduced: v24.3.1
+
+  - id: net-legacy-mode
+    name: network.legacy.mode
+    displayName: Legacy mode (deprecated)
+    description: Deprecated at v24.3.0; shown disabled for newer instances.
+    category: Advanced
+    type: enum
+    scope: global
+    source: { file: base/network.xml, path: /network/legacy/@mode, format: xml }
+    validation: { enum: ["on", "off"] }
+    default: "off"
+    versionIntroduced: v1.0.0
+    versionDeprecated: v24.3.0

@@ -1,0 +1,88 @@
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+}
+
+/* Grid cell affordances for lifecycle state. */
+.cell-na {
+  opacity: 0.35;
+  font-style: italic;
+}
+.cell-deprecated {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.cell-new {
+  background: rgba(82, 196, 26, 0.14);
+}
+.cell-invalid {
+  background: rgba(255, 77, 79, 0.14);
+  color: #cf1322;
+}
+/* Value staged in the draft change request, not yet committed to Git. */
+.cell-pending {
+  border-bottom: 2px dashed #fa8c16;
+  padding-bottom: 1px;
+}
+/* Instance-level tombstone: parameter renders nothing in generated files. */
+.cell-excluded {
+  opacity: 0.45;
+  font-style: italic;
+}
+
+.source-badge {
+  font-size: 10px;
+  padding: 0 4px;
+  border-radius: 4px;
+  margin-left: 6px;
+  opacity: 0.75;
+  border: 1px solid currentColor;
+  vertical-align: middle;
+}
+
+.mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px;
+}
+
+.nav-rail .ant-menu-item {
+  height: 34px;
+  line-height: 34px;
+  margin: 2px 6px !important;
+  width: auto;
+}
+
+/* Resizable panel handles: slim, discoverable on hover/drag. */
+.rrp-handle {
+  position: relative;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.rrp-handle-v {
+  width: 5px;
+  margin: 0 -1px;
+  cursor: col-resize;
+}
+.rrp-handle-h {
+  height: 5px;
+  margin: -1px 0;
+  cursor: row-resize;
+}
+.rrp-handle:hover,
+.rrp-handle[data-resize-handle-state="hover"],
+.rrp-handle[data-resize-handle-state="drag"] {
+  background: rgba(47, 107, 255, 0.35);
+}
+
+/* Let the virtual grid breathe: hide double borders inside panels. */
+.ant-table-wrapper .ant-table {
+  border-radius: 0;
+}

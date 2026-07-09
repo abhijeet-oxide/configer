@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example XML source to demonstrate the XML ingest parser (XPath extraction). -->
+<network>
+  <tls minVersion="1.2">
+    <cipherSuite>ECDHE-RSA-AES128-GCM-SHA256</cipherSuite>
+  </tls>
+  <syslog>
+    <!-- repeated element: rendered once per list entry, per instance -->
+    <collector>10.0.0.9</collector>
+  </syslog>
+  <legacy mode="off"/>
+</network>

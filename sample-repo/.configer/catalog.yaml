@@ -48,7 +48,7 @@ parameters:
     type: integer
     scope: instance
     source: { file: base/values.yaml, path: $.network.admin.port, format: yaml }
-    validation: { min: 1, max: 65535 }
+    validation: { preset: port }   # predefined rule from the library (1..65535)
     default: 8443
     versionIntroduced: v1.0.0
 
@@ -118,6 +118,7 @@ parameters:
     type: string
     scope: global
     source: { file: base/values.yaml, path: $.network.domain, format: yaml }
+    validation: { preset: fqdn }   # predefined FQDN rule (pattern + max 253 chars)
     default: example.com
     versionIntroduced: v1.0.0
 

@@ -49,3 +49,30 @@ body {
   margin: 2px 6px !important;
   width: auto;
 }
+
+/* Resizable panel handles: slim, discoverable on hover/drag. */
+.rrp-handle {
+  position: relative;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.rrp-handle-v {
+  width: 5px;
+  margin: 0 -1px;
+  cursor: col-resize;
+}
+.rrp-handle-h {
+  height: 5px;
+  margin: -1px 0;
+  cursor: row-resize;
+}
+.rrp-handle:hover,
+.rrp-handle[data-resize-handle-state="hover"],
+.rrp-handle[data-resize-handle-state="drag"] {
+  background: rgba(47, 107, 255, 0.35);
+}
+
+/* Let the virtual grid breathe: hide double borders inside panels. */
+.ant-table-wrapper .ant-table {
+  border-radius: 0;
+}

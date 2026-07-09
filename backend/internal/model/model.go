@@ -85,14 +85,18 @@ type Source struct {
 	Format string `yaml:"format" json:"format"` // yaml | json | xml
 }
 
-// Validation holds the rules derived from imported schemas or entered by the
-// user. Empty fields are ignored.
+// Validation holds the rules derived from imported schemas, chosen from the
+// predefined rule library (Preset), or entered by the user. Empty fields are
+// ignored. Explicit fields apply on top of the referenced preset.
 type Validation struct {
 	Required  bool     `yaml:"required,omitempty" json:"required,omitempty"`
 	Pattern   string   `yaml:"pattern,omitempty" json:"pattern,omitempty"`
 	Enum      []string `yaml:"enum,omitempty" json:"enum,omitempty"`
 	Min       *float64 `yaml:"min,omitempty" json:"min,omitempty"`
 	Max       *float64 `yaml:"max,omitempty" json:"max,omitempty"`
+	MinLength *int     `yaml:"minLength,omitempty" json:"minLength,omitempty"`
+	MaxLength *int     `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
+	Preset    string   `yaml:"preset,omitempty" json:"preset,omitempty"` // id of a predefined rule
 	SchemaRef string   `yaml:"schemaRef,omitempty" json:"schemaRef,omitempty"`
 }
 

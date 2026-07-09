@@ -1,11 +1,18 @@
-// Package validate applies a parameter's validation rules to a value and
-// reports whether it is valid, with a human-readable message when not.
+// Package validate applies a parameter's data type and validation rules to a
+// value and reports whether it is valid, with a human-readable message when
+// not. Rules come from three layers: the parameter's declared type (integer,
+// boolean, ipv4, ...), an optional predefined preset rule, and explicit rules
+// (pattern, enum, min/max, minLength/maxLength).
 package validate
 
 import (
 	"fmt"
+	"math"
+	"net"
 	"regexp"
 	"strconv"
+	"strings"
+	"sync"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 )
@@ -16,32 +23,145 @@ type Result struct {
 	Message string `json:"message,omitempty"`
 }
 
-var patternCache = map[string]*regexp.Regexp{}
+func ok() Result                 { return Result{Valid: true} }
+func invalid(msg string) Result  { return Result{Valid: false, Message: msg} }
 
-// Value validates v against param's rules. A nil value is valid unless the
-// parameter is required.
+var patternCache sync.Map // pattern string -> *regexp.Regexp
+
+func compiled(pattern string) (*regexp.Regexp, error) {
+	if v, hit := patternCache.Load(pattern); hit {
+		return v.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	patternCache.Store(pattern, re)
+	return re, nil
+}
+
+// Value validates v against param's type and rules. A nil/empty value is valid
+// unless the parameter is required.
 func Value(param model.Parameter, v any) Result {
 	val := param.Validation
-	if v == nil {
+	if v == nil || v == "" {
 		if val.Required {
-			return Result{Valid: false, Message: "value is required"}
+			return invalid("value is required")
 		}
-		return Result{Valid: true}
+		return ok()
+	}
+
+	// Layer 1: the declared data type must hold.
+	if r := checkType(param.Type, v); !r.Valid {
+		return r
 	}
 	s := fmt.Sprintf("%v", v)
 
-	if val.Pattern != "" {
-		re, ok := patternCache[val.Pattern]
-		if !ok {
-			var err error
-			re, err = regexp.Compile(val.Pattern)
-			if err != nil {
-				return Result{Valid: false, Message: "invalid validation pattern"}
+	// Layer 2: the referenced preset rule, if any.
+	if val.Preset != "" {
+		if p, found := PresetByID(val.Preset); found {
+			rules := model.Validation{
+				Pattern: p.Pattern, Min: p.Min, Max: p.Max,
+				MinLength: p.MinLength, MaxLength: p.MaxLength,
 			}
-			patternCache[val.Pattern] = re
+			if r := applyRules(rules, s); !r.Valid {
+				return invalid(p.Name + ": " + r.Message)
+			}
+		}
+	}
+
+	// Layer 3: explicit rules on the parameter.
+	return applyRules(val, s)
+}
+
+// Coerce converts a raw (typically JSON-decoded) value into the canonical Go
+// type for the parameter's declared type, or returns an error if it cannot
+// represent that type. Used by the write path before validation.
+func Coerce(t model.ParamType, v any) (any, error) {
+	switch t {
+	case model.TypeInteger:
+		switch n := v.(type) {
+		case int:
+			return int64(n), nil
+		case int64:
+			return n, nil
+		case float64:
+			if n != math.Trunc(n) {
+				return nil, fmt.Errorf("expected an integer")
+			}
+			return int64(n), nil
+		case string:
+			i, err := strconv.ParseInt(strings.TrimSpace(n), 10, 64)
+			if err != nil {
+				return nil, fmt.Errorf("expected an integer")
+			}
+			return i, nil
+		}
+		return nil, fmt.Errorf("expected an integer")
+	case model.TypeNumber:
+		switch n := v.(type) {
+		case float64:
+			return n, nil
+		case int:
+			return float64(n), nil
+		case int64:
+			return float64(n), nil
+		case string:
+			f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+			if err != nil {
+				return nil, fmt.Errorf("expected a number")
+			}
+			return f, nil
+		}
+		return nil, fmt.Errorf("expected a number")
+	case model.TypeBoolean:
+		switch b := v.(type) {
+		case bool:
+			return b, nil
+		case string:
+			if b == "true" {
+				return true, nil
+			}
+			if b == "false" {
+				return false, nil
+			}
+		}
+		return nil, fmt.Errorf("expected a boolean")
+	default:
+		return v, nil
+	}
+}
+
+// checkType verifies that v is representable as the declared type.
+func checkType(t model.ParamType, v any) Result {
+	switch t {
+	case model.TypeInteger, model.TypeNumber, model.TypeBoolean:
+		if _, err := Coerce(t, v); err != nil {
+			return invalid(err.Error())
+		}
+	case model.TypeIPv4:
+		s := fmt.Sprintf("%v", v)
+		ip := net.ParseIP(s)
+		if ip == nil || ip.To4() == nil {
+			return invalid("must be a valid IPv4 address")
+		}
+	case model.TypeCIDR:
+		if _, _, err := net.ParseCIDR(fmt.Sprintf("%v", v)); err != nil {
+			return invalid("must be a valid CIDR block")
+		}
+	}
+	return ok()
+}
+
+// applyRules enforces the explicit rule fields against the value's string form.
+func applyRules(val model.Validation, s string) Result {
+	if val.Pattern != "" {
+		re, err := compiled(val.Pattern)
+		if err != nil {
+			return invalid("invalid validation pattern")
 		}
 		if !re.MatchString(s) {
-			return Result{Valid: false, Message: "does not match pattern " + val.Pattern}
+			return invalid("does not match pattern " + val.Pattern)
 		}
 	}
 
@@ -54,20 +174,28 @@ func Value(param model.Parameter, v any) Result {
 			}
 		}
 		if !found {
-			return Result{Valid: false, Message: "not one of the allowed values"}
+			return invalid("not one of the allowed values")
 		}
 	}
 
 	if val.Min != nil || val.Max != nil {
 		if f, err := strconv.ParseFloat(s, 64); err == nil {
 			if val.Min != nil && f < *val.Min {
-				return Result{Valid: false, Message: fmt.Sprintf("below minimum %v", *val.Min)}
+				return invalid(fmt.Sprintf("below minimum %v", *val.Min))
 			}
 			if val.Max != nil && f > *val.Max {
-				return Result{Valid: false, Message: fmt.Sprintf("above maximum %v", *val.Max)}
+				return invalid(fmt.Sprintf("above maximum %v", *val.Max))
 			}
 		}
 	}
 
-	return Result{Valid: true}
+	n := len([]rune(s))
+	if val.MinLength != nil && n < *val.MinLength {
+		return invalid(fmt.Sprintf("shorter than %d characters", *val.MinLength))
+	}
+	if val.MaxLength != nil && n > *val.MaxLength {
+		return invalid(fmt.Sprintf("longer than %d characters", *val.MaxLength))
+	}
+
+	return ok()
 }

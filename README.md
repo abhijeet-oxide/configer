@@ -12,6 +12,7 @@ commits on branches, reviewed via pull requests, and published by merging.
 
 ![Config Editor](docs/screenshot-light.png)
 ![Dark mode + details](docs/screenshot-dark.png)
+![Validation enforcement in the cell editor](docs/screenshot-validation.png)
 
 ## Why
 
@@ -51,6 +52,35 @@ which scope supplied it.
 **Version-aware cells:** a parameter carries `versionIntroduced` /
 `versionDeprecated`; an instance carries `softwareVersion`. Cells render as
 **new**, **deprecated** (disabled), or **not-applicable** accordingly.
+
+### Typed editing & validation enforcement
+
+Every parameter declares a **data type** (`string`, `integer`, `number`,
+`boolean`, `enum`, `ipv4`, `cidr`) and **validation rules** — required, regex
+pattern, min/max, character limits (`minLength`/`maxLength`), allowed values,
+or a **predefined rule** from the built-in library (`ipv4`, `cidr`, `port`,
+`hostname`, `fqdn`, `url`, `email`, `uuid`, `semver`, `duration`).
+
+- The grid renders a **type-appropriate editor** per cell: a toggle for
+  booleans, a number input that **clamps to min/max** for integers, a dropdown
+  for enums, and a text input with live regex/length feedback for strings —
+  invalid entries cannot be committed.
+- The **rule editor** (details panel → Schema tab) lets users pick a
+  predefined rule from a dropdown or define custom rules; saved rules land in
+  `catalog.yaml` and take effect immediately.
+- The backend **re-validates every write** (type coercion + preset + explicit
+  rules) and rejects invalid values with `422`, so Git never holds bad data.
+
+### UI
+
+- **Virtualized** parameter×instance grid that auto-fits columns to the
+  available width — smooth with tens of thousands of rows, scales to large
+  monitors, responsive down to tablets (drawer-based tree and details).
+- **Resizable panels** (tree / grid / compare / details) with persisted sizes;
+  **View** menu for density, column visibility, and panel toggles.
+- **Global search (⌘K)** matches names, descriptions, categories, source
+  files/paths, and **values** across every instance.
+- Light / dark / **company-brand theming** via design-token overrides.
 
 ### Plugin architecture (everything is extensible)
 
@@ -105,11 +135,15 @@ docker compose up --build                             # frontend on :8088, backe
 | GET | `/api/render/{instance}` | Rendered `generated/` artifacts (values + transposer output). |
 | POST | `/api/scan` | Ingest scan: detect files, extract candidate parameters. |
 | GET | `/api/plugins` | Registered plugin manifests. |
+| GET | `/api/validation/presets` | The predefined validation rule library. |
+| PUT | `/api/values` | Validated write of one (parameter, instance) override into the sparse overlay (422 on invalid). |
+| PUT | `/api/parameters/{id}` | Update a parameter's data type and/or validation rules in the catalog. |
 
 ## Status
 
-This is a working vertical slice of the platform: ingest → catalog → scope
-resolution → grid → compare → render, with a themeable Ant Design UI and a
-plugin architecture. The change-request/PR pipeline, Postgres grid cache, auth
-(OIDC/SSO) + RBAC, and the AI module are specified in the plan and are the next
-phases.
+Working today: ingest → catalog → scope resolution → **editable grid with
+typed, validation-enforced editors** → compare → render, plus the predefined
+rule library, rule editor, deep search, resizable/responsive themeable UI, and
+the plugin architecture. The change-request/PR pipeline, Postgres grid cache,
+auth (OIDC/SSO) + RBAC, and the AI module are specified in the plan
+(docs/PLAN.md) and are the next phases.

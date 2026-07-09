@@ -39,28 +39,39 @@ const items: MenuProps["items"] = [
   ]},
 ];
 
-export default function NavRail() {
+export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
   const { section, setSection } = useUI();
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <div style={{ padding: "14px 16px 8px", display: "flex", gap: 10, alignItems: "center" }}>
+      <div
+        style={{
+          padding: collapsed ? "14px 0 8px" : "14px 16px 8px",
+          display: "flex",
+          gap: 10,
+          alignItems: "center",
+          justifyContent: collapsed ? "center" : "flex-start",
+        }}
+      >
         <div
           style={{
             width: 28, height: 28, borderRadius: 7, background: "var(--ant-color-primary,#2f6bff)",
             color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-            fontWeight: 700,
+            fontWeight: 700, flexShrink: 0,
           }}
         >
           C
         </div>
-        <div style={{ lineHeight: 1.1 }}>
-          <Typography.Text strong>Configer</Typography.Text>
-          <div style={{ fontSize: 10, opacity: 0.6 }}>CONFIG LIFECYCLE MGMT</div>
-        </div>
+        {!collapsed && (
+          <div style={{ lineHeight: 1.1 }}>
+            <Typography.Text strong>Configer</Typography.Text>
+            <div style={{ fontSize: 10, opacity: 0.6 }}>CONFIG LIFECYCLE MGMT</div>
+          </div>
+        )}
       </div>
       <Menu
         className="nav-rail"
         mode="inline"
+        inlineCollapsed={collapsed}
         selectedKeys={[section]}
         onClick={({ key }) => setSection(key)}
         items={items}

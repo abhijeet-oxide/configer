@@ -27,7 +27,23 @@ export interface Validation {
   enum?: string[];
   min?: number;
   max?: number;
+  minLength?: number;
+  maxLength?: number;
+  preset?: string;
   schemaRef?: string;
+}
+
+// A predefined validation rule from the backend's rule library, selectable
+// from a dropdown in the rule editor.
+export interface PresetRule {
+  id: string;
+  name: string;
+  description: string;
+  pattern?: string;
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
 }
 
 export interface Parameter {
@@ -111,6 +127,25 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let msg = `${res.status} ${res.statusText}`;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) msg = j.error;
+    } catch {
+      // non-JSON error body; keep the status text
+    }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
+
 export const api = {
   grid: () => get<Grid>("/grid"),
   compare: (left: string, right: string) =>
@@ -120,4 +155,9 @@ export const api = {
     get<{ instance: string; files: { path: string; content: string }[] }>(
       `/render/${encodeURIComponent(instance)}`,
     ),
+  presets: () => get<PresetRule[]>("/validation/presets"),
+  setValue: (p: { instance: string; paramId: string; value: unknown }) =>
+    put<{ ok: boolean; value: unknown }>("/values", p),
+  updateParameter: (id: string, patch: { type?: string; validation?: Validation }) =>
+    put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
 };

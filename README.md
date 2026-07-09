@@ -71,6 +71,31 @@ or a **predefined rule** from the built-in library (`ipv4`, `cidr`, `port`,
 - The backend **re-validates every write** (type coercion + preset + explicit
   rules) and rejects invalid values with `422`, so Git never holds bad data.
 
+### Git-native change requests
+
+Cell edits never touch Git directly — they stage into a **draft change
+request** (dashed-orange pending cells, auto-saved). Submitting the draft:
+
+1. cuts branch `configer/cr-<n>` from the target in an **isolated worktree**,
+2. writes the sparse overlays and re-renders `generated/` for the touched
+   instances,
+3. commits with the machine identity plus a `Changed-by: <user>` trailer,
+4. pushes and — when the origin is GitHub and `GITHUB_TOKEN` is set — **opens a
+   real pull request**,
+5. tracks state: `Draft → Under Review → Approved → Published / Rejected`.
+
+**Approve & Merge** in the UI performs the real merge (GitHub PR merge API, or
+a `--no-ff` git merge in pure-git mode) and pushes the target branch. PRs
+merged or closed directly on GitHub are detected and reflected back.
+
+### Always live, never a blocker
+
+A background sync loop (`CONFIGER_SYNC_SECONDS`, default 30) fetches origin and
+fast-forwards the working tree, so **commits made directly on Git appear in the
+grid automatically** — the header shows `git: live`. Everything Configer writes
+is ordinary Git (branches, commits, PRs), so anything it does can also be done
+directly on GitHub; if Configer is down, nothing is blocked.
+
 ### UI
 
 - **Virtualized** parameter×instance grid that auto-fits columns to the
@@ -136,14 +161,22 @@ docker compose up --build                             # frontend on :8088, backe
 | POST | `/api/scan` | Ingest scan: detect files, extract candidate parameters. |
 | GET | `/api/plugins` | Registered plugin manifests. |
 | GET | `/api/validation/presets` | The predefined validation rule library. |
-| PUT | `/api/values` | Validated write of one (parameter, instance) override into the sparse overlay (422 on invalid). |
-| PUT | `/api/parameters/{id}` | Update a parameter's data type and/or validation rules in the catalog. |
+| PUT | `/api/values` | Validated edit staged into the draft change request (422 on invalid). |
+| DELETE | `/api/values?paramId=&instance=` | Revert one pending draft edit. |
+| PUT | `/api/parameters/{id}` | Update a parameter's data type/validation rules (committed directly with attribution). |
+| GET | `/api/changes` · `/api/changes/draft` · `/api/changes/{id}` | Change request list / current draft / detail (syncs PR state). |
+| POST | `/api/changes/{id}/submit` | Draft → branch + commit + push + PR → Under Review. |
+| POST | `/api/changes/{id}/merge` | Approve & merge (GitHub PR merge or local git merge) → Published. |
+| POST | `/api/changes/{id}/reject` | Reject/close (draft: discard). |
+| GET | `/api/repo/status` · POST `/api/repo/sync` | Git-liveness status / force a sync now. |
 
 ## Status
 
 Working today: ingest → catalog → scope resolution → **editable grid with
-typed, validation-enforced editors** → compare → render, plus the predefined
-rule library, rule editor, deep search, resizable/responsive themeable UI, and
-the plugin architecture. The change-request/PR pipeline, Postgres grid cache,
-auth (OIDC/SSO) + RBAC, and the AI module are specified in the plan
-(docs/PLAN.md) and are the next phases.
+typed, validation-enforced editors** → **draft → change request → branch →
+commit → PR → publish** (git-native, with live sync of external commits and
+PR-state reflection), plus the predefined rule library, rule editor, deep
+search, resizable/responsive themeable UI, and the plugin architecture.
+Next phases (docs/PLAN.md): webhooks + Postgres grid cache, param-level
+conflict resolution UI, list/repeated parameters, import wizard, auth
+(OIDC/SSO) + RBAC, schema import, secrets, and the AI module.

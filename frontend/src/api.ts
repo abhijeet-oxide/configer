@@ -71,6 +71,37 @@ export interface Cell {
   valid: boolean;
   message?: string;
   editable: boolean;
+  /** staged in the current draft change request, not yet on Git */
+  pending?: boolean;
+}
+
+// --- change requests -------------------------------------------------------
+
+export type ChangeState = "draft" | "under_review" | "approved" | "published" | "rejected";
+
+export interface ChangeItem {
+  paramId: string;
+  instance: string;
+  old: unknown;
+  new: unknown;
+  updatedAt: string;
+}
+
+export interface ChangeRequest {
+  id: number;
+  title: string;
+  description?: string;
+  author: string;
+  targetBranch: string;
+  branch?: string;
+  baseSha?: string;
+  commitSha?: string;
+  state: ChangeState;
+  items: ChangeItem[] | null;
+  prNumber?: number;
+  prUrl?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Row {
@@ -113,6 +144,18 @@ export interface DiffResult {
   };
 }
 
+// Git-liveness snapshot: the managed tree vs its origin remote.
+export interface RepoStatus {
+  branch: string;
+  remote?: string;
+  ahead: number;
+  behind: number;
+  lastSync?: string;
+  syncError?: string;
+  provider?: string;
+  autoSyncMs?: number;
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -127,11 +170,11 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function put<T>(path: string, body: unknown): Promise<T> {
+async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`/api${path}`, {
-    method: "PUT",
+    method,
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: body === undefined ? "{}" : JSON.stringify(body),
   });
   if (!res.ok) {
     let msg = `${res.status} ${res.statusText}`;
@@ -146,6 +189,8 @@ async function put<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
+
 export const api = {
   grid: () => get<Grid>("/grid"),
   compare: (left: string, right: string) =>
@@ -156,8 +201,22 @@ export const api = {
       `/render/${encodeURIComponent(instance)}`,
     ),
   presets: () => get<PresetRule[]>("/validation/presets"),
-  setValue: (p: { instance: string; paramId: string; value: unknown }) =>
-    put<{ ok: boolean; value: unknown }>("/values", p),
-  updateParameter: (id: string, patch: { type?: string; validation?: Validation }) =>
+  setValue: (p: { instance: string; paramId: string; value: unknown; author?: string }) =>
+    put<{ ok: boolean; value: unknown; pending: number; changeId: number }>("/values", p),
+  revertValue: (paramId: string, instance: string) =>
+    send<{ ok: boolean }>(
+      "DELETE",
+      `/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`,
+    ),
+  updateParameter: (id: string, patch: { type?: string; validation?: Validation; author?: string }) =>
     put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
+  repoStatus: () => get<RepoStatus>("/repo/status"),
+  repoSync: () => send<RepoStatus>("POST", "/repo/sync"),
+  changes: () => get<ChangeRequest[]>("/changes"),
+  draft: () => get<{ draft: ChangeRequest | null }>("/changes/draft"),
+  change: (id: number) => get<ChangeRequest>(`/changes/${id}`),
+  submitChange: (id: number, p: { title: string; description?: string; author?: string }) =>
+    send<ChangeRequest>("POST", `/changes/${id}/submit`, p),
+  mergeChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/merge`),
+  rejectChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/reject`),
 };

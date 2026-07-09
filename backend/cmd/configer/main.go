@@ -14,7 +14,11 @@ func main() {
 	repo := getenv("CONFIGER_REPO", "../sample-repo")
 	addr := getenv("CONFIGER_ADDR", ":8080")
 
-	srv := api.New(repo)
+	srv, err := api.New(repo)
+	if err != nil {
+		log.Fatalf("init: %v", err)
+	}
+	srv.StartSyncLoop(api.SyncIntervalFromEnv())
 	httpServer := &http.Server{
 		Addr:              addr,
 		Handler:           srv.Routes(),

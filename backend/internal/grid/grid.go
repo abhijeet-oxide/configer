@@ -34,6 +34,9 @@ type Cell struct {
 	Valid    bool        `json:"valid"`
 	Message  string      `json:"message,omitempty"`
 	Editable bool        `json:"editable"`
+	// Pending marks a value staged in the current draft change request but
+	// not yet committed to Git.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // Row is a parameter and its cells across all instances (indexed by instance

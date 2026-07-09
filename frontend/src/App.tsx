@@ -12,6 +12,7 @@ import ParameterGrid from "./components/ParameterGrid";
 import DetailsPanel from "./components/DetailsPanel";
 import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
+import ChangeRequestsView from "./components/ChangeRequestsView";
 
 const { Header, Sider, Content } = Layout;
 
@@ -109,6 +110,12 @@ export default function App() {
     const grid = gridQ.data;
 
     if (section === "plugins") return <PluginsView />;
+    if (section === "changes" || section === "drafts" || section === "approvals")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <ChangeRequestsView />
+        </div>
+      );
     if (section === "compare")
       return (
         <div style={{ height: "100%", ...panelBg }}>

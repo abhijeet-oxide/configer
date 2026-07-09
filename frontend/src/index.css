@@ -27,6 +27,11 @@ body {
   background: rgba(255, 77, 79, 0.14);
   color: #cf1322;
 }
+/* Value staged in the draft change request, not yet committed to Git. */
+.cell-pending {
+  border-bottom: 2px dashed #fa8c16;
+  padding-bottom: 1px;
+}
 
 .source-badge {
   font-size: 10px;

@@ -415,3 +415,73 @@ plugins load via Go plugin descriptors / a plugin manifest per project
 - **GitHub Actions** workflows: `ci.yml` (Go build/test/lint + frontend build/typecheck on PRs) and
   `deploy.yml` (build & push backend/frontend container images, deploy). Configer's own repo and the
   managed config repos both benefit; the deploy pipeline ships the self-hosted stack.
+
+## 18. Structural divergence between instances (list & repeated parameters) — ADDED
+
+**Problem.** Instances differ not only in values but in *shape*: lab has one NTP source,
+production has ten. A pure row-per-parameter grid cannot express per-instance cardinality.
+
+**Three-tier design:**
+
+1. **List-typed parameters** — `type: list<string>` (or `list<integer>`, `list<ipv4>`, …). The
+   cell's value *is* the list; the cell editor becomes a **chips/tags editor** (add, remove,
+   reorder inline). One grid row, naturally different lengths per instance; overlays store the
+   whole list per instance. Validation gains `itemRules` (each element checked against
+   pattern/preset) plus `minItems`/`maxItems`. This covers the NTP case with zero grid
+   complexity and is the recommended default for simple value lists.
+
+2. **Indexed parameter families** — for repeated *structured* blocks (`ntp[i].ip`, `ntp[i].port`,
+   `ntp[i].keyId`), the catalog declares a **repeat group** with a path template
+   (`$.ntp.servers[*]`). The grid renders a **group header row** showing per-instance entry
+   counts ("lab: 1 · prod: 10") that expands into child rows per index; a cell whose index an
+   instance doesn't define renders as *not present* with an inline **“+ add entry”** affordance
+   that appends the sparse block only to that instance's overlay. Removing an entry tombstones it
+   in that overlay.
+
+3. **Copy affordances** — column-header menu: **“Copy values from ‹instance›…”** (whole column,
+   a category subtree, or one repeat group); cell/group context menu: **“Copy to instances…”**
+   with a checklist. Every copy stages ordinary draft items — bulk structural changes remain
+   reviewable in the change request before touching Git.
+
+**Ingest detection.** The parsers already emit `[i]` indices when flattening; the scan folds
+candidates identical up-to-index into a proposed *family* and asks the user (wizard step) whether
+to model it as a list parameter or an indexed family.
+
+## 19. Git-nativeness guarantees: liveness, conflicts, approvals, external changes — ADDED
+
+**Core principle (non-negotiable):** everything Configer produces is plain Git — ordinary
+branches (`configer/cr-N`), ordinary commits (machine committer + `Changed-by:` trailer),
+ordinary PRs. Anything Configer can do can also be done directly on GitHub; if Configer is down
+nothing is blocked, and when it returns it absorbs whatever happened while it was away.
+
+- **Liveness (SHIPPED, Phase 2b):** a backend sync loop fetches origin every N seconds (default
+  30, `CONFIGER_SYNC_SECONDS`) and fast-forwards the working tree when it is strictly behind, so
+  **external commits appear in the grid automatically**; the header shows a live indicator
+  ("git: live" / "N behind"). Phase 3 adds **GitHub push webhooks** for near-instant sync —
+  same behavior, lower latency; polling remains the fallback.
+
+- **Approvals both ways (SHIPPED, Phase 2b):** *In the UI* — Approve & Merge calls the real
+  GitHub PR merge API (indistinguishable from merging on GitHub). *On GitHub* — every CR shows
+  its PR link; reviewers may approve/merge there instead, and Configer's refresh detects
+  externally merged/closed PRs and flips the CR to Published/Rejected. Notifications can deep-link
+  to either surface; the UI never forces a redirect, it embeds the PR link.
+
+- **Merge conflicts:** every CR records `base_sha`. If the target advanced and the same overlay
+  keys changed, the merge fails cleanly and the error is surfaced on the CR. Phase 3 completes
+  the design: **parameter-level 3-way merge** (sparse overlays keyed by param ID make textual
+  conflicts rare); true conflicts render as a cell-level resolution UI (theirs / mine / edit) —
+  users never see raw git conflict markers — plus a **“Rebase & resubmit”** action that re-cuts
+  the branch from the new HEAD and replays the items.
+
+- **Files added / deleted / changed outside Configer:** each sync that lands commits triggers an
+  incremental reconcile (`git diff lastSHA..HEAD`, Phase 3):
+  - **new config-looking file** → “Unmanaged changes” inbox: *“base/new-feature.yaml appeared —
+    import 14 candidate parameters?”* (one click into the import wizard);
+  - **deleted/renamed file** → affected parameters flagged `source missing` (grid badge +
+    Validation tab); user re-points the source or retires the parameters via a catalog CR;
+  - **edited managed file** → values are re-read automatically (already live today).
+
+- **New version / folder drops:** when a vendor drops a new base version (folder, tag, or
+  branch), scanning it diffs against the current catalog and proposes introduced/deprecated
+  parameters (setting `versionIntroduced`/`versionDeprecated`) as a **catalog change request** —
+  reviewed and merged like any other change, with a “new version available” notification badge.

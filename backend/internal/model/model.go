@@ -41,6 +41,10 @@ const (
 	TypeEnum    ParamType = "enum"
 	TypeIPv4    ParamType = "ipv4"
 	TypeCIDR    ParamType = "cidr"
+	// TypeList holds an ordered collection; ItemType declares the element
+	// type. Instances may hold different lengths — this is how one instance
+	// renders 1 NTP server and another renders 10.
+	TypeList ParamType = "list"
 )
 
 // Catalog is the parameter model (.configer/catalog.yaml). It is the single
@@ -65,7 +69,9 @@ type Parameter struct {
 	Description string      `yaml:"description,omitempty" json:"description,omitempty"`
 	Category    string      `yaml:"category" json:"category"`
 	Type        ParamType   `yaml:"type" json:"type"`
-	Scope       Scope       `yaml:"scope" json:"scope"`
+	// ItemType is the element type when Type is "list".
+	ItemType ParamType `yaml:"itemType,omitempty" json:"itemType,omitempty"`
+	Scope    Scope     `yaml:"scope" json:"scope"`
 	Secret      bool        `yaml:"secret" json:"secret"`
 	Source      Source      `yaml:"source" json:"source"`
 	Validation  Validation  `yaml:"validation,omitempty" json:"validation,omitempty"`
@@ -96,6 +102,8 @@ type Validation struct {
 	Max       *float64 `yaml:"max,omitempty" json:"max,omitempty"`
 	MinLength *int     `yaml:"minLength,omitempty" json:"minLength,omitempty"`
 	MaxLength *int     `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
+	MinItems  *int     `yaml:"minItems,omitempty" json:"minItems,omitempty"`
+	MaxItems  *int     `yaml:"maxItems,omitempty" json:"maxItems,omitempty"`
 	Preset    string   `yaml:"preset,omitempty" json:"preset,omitempty"` // id of a predefined rule
 	SchemaRef string   `yaml:"schemaRef,omitempty" json:"schemaRef,omitempty"`
 }
@@ -122,11 +130,25 @@ type Instance struct {
 }
 
 // Overlay holds the sparse, per-instance value overrides keyed by parameter ID
-// (.configer/instances/<name>/overlay.yaml).
+// (.configer/instances/<name>/overlay.yaml). Exclude lists parameter IDs this
+// instance explicitly omits: even when a default/global value exists, an
+// excluded parameter renders NOTHING in this instance's generated files (the
+// key / line / element is absent entirely).
 type Overlay struct {
 	Kind     string         `yaml:"kind" json:"kind"`
 	Instance string         `yaml:"instance,omitempty" json:"instance,omitempty"`
 	Values   map[string]any `yaml:"values" json:"values"`
+	Exclude  []string       `yaml:"exclude,omitempty" json:"exclude,omitempty"`
+}
+
+// Excludes reports whether the overlay tombstones the given parameter.
+func (o Overlay) Excludes(paramID string) bool {
+	for _, id := range o.Exclude {
+		if id == paramID {
+			return true
+		}
+	}
+	return false
 }
 
 // ScopeOverlays holds the non-instance overlay levels (global/environment/

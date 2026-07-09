@@ -110,6 +110,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("PUT /api/values", s.stageValue)
 	mux.HandleFunc("DELETE /api/values", s.revertValue)
 	mux.HandleFunc("PUT /api/parameters/{id}", s.updateParameter)
+	mux.HandleFunc("POST /api/parameters", s.addParameter)
+	mux.HandleFunc("DELETE /api/parameters/{id}", s.deleteParameter)
 	mux.HandleFunc("GET /api/changes", s.listChanges)
 	mux.HandleFunc("GET /api/changes/draft", s.currentDraft)
 	mux.HandleFunc("GET /api/changes/{id}", s.getChange)
@@ -142,10 +144,31 @@ func (s *Server) loadWithDraft() (*project.Project, *change.ChangeRequest, error
 		if ov.Values == nil {
 			ov.Values = map[string]any{}
 		}
-		ov.Values[it.ParamID] = it.New
+		switch it.Act() {
+		case change.ActionReset:
+			delete(ov.Values, it.ParamID)
+			dropExcl(&ov, it.ParamID)
+		case change.ActionExclude:
+			delete(ov.Values, it.ParamID)
+			if !ov.Excludes(it.ParamID) {
+				ov.Exclude = append(ov.Exclude, it.ParamID)
+			}
+		default:
+			ov.Values[it.ParamID] = it.New
+			dropExcl(&ov, it.ParamID)
+		}
 		p.Overlays[it.Instance] = ov
 	}
 	return p, draft, nil
+}
+
+func dropExcl(ov *model.Overlay, paramID string) {
+	for i, id := range ov.Exclude {
+		if id == paramID {
+			ov.Exclude = append(ov.Exclude[:i], ov.Exclude[i+1:]...)
+			return
+		}
+	}
 }
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
@@ -274,15 +297,20 @@ func (s *Server) presets(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, validate.Presets())
 }
 
-// stageValue is the validated write path for a cell edit: the value is
-// coerced to the parameter's declared type, checked against all rules, then
-// staged into the draft change request (created lazily). Nothing touches Git
-// until the draft is submitted.
+// stageValue is the validated write path for a cell edit. Actions:
+//   - set (default): coerce to the declared type (lists per item), validate,
+//     stage the override;
+//   - reset: stage removal of the instance override (fall back to the chain);
+//   - exclude: stage a tombstone — the parameter renders NOTHING in this
+//     instance's generated files.
+//
+// Nothing touches Git until the draft is submitted.
 func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Instance string `json:"instance"`
 		ParamID  string `json:"paramId"`
 		Value    any    `json:"value"`
+		Action   string `json:"action"`
 		Author   string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -305,14 +333,21 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	coerced, err := validate.Coerce(param.Type, req.Value)
-	if err != nil {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
-		return
+	action := change.Action(req.Action)
+	if action == "" {
+		action = change.ActionSet
 	}
-	if vr := validate.Value(param, coerced); !vr.Valid {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": vr.Message})
-		return
+	var coerced any
+	if action == change.ActionSet {
+		coerced, err = validate.CoerceValue(param, req.Value)
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			return
+		}
+		if vr := validate.Value(param, coerced); !vr.Valid {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": vr.Message})
+			return
+		}
 	}
 
 	// Baseline = the currently committed effective value for this cell.
@@ -331,14 +366,18 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
-		it := change.Item{ParamID: req.ParamID, Instance: req.Instance, Old: res.Value, New: coerced, UpdatedAt: time.Now().UTC()}
+		it := change.Item{ParamID: req.ParamID, Instance: req.Instance, Action: action,
+			Old: res.Value, New: coerced, UpdatedAt: time.Now().UTC()}
 		cr.UpsertItem(it)
 		// Setting a cell back to its committed value cancels the pending edit.
-		for _, existing := range cr.Items {
-			if existing.ParamID == req.ParamID && existing.Instance == req.Instance &&
-				stringify(existing.Old) == stringify(coerced) {
-				cr.RemoveItem(req.ParamID, req.Instance)
-				break
+		if action == change.ActionSet {
+			for _, existing := range cr.Items {
+				if existing.ParamID == req.ParamID && existing.Instance == req.Instance &&
+					existing.Act() == change.ActionSet &&
+					stringify(existing.Old) == stringify(coerced) {
+					cr.RemoveItem(req.ParamID, req.Instance)
+					break
+				}
 			}
 		}
 		return nil
@@ -348,7 +387,12 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := s.Store.CurrentDraft()
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "value": coerced, "pending": len(d.Items), "changeId": d.ID})
+	pending := 0
+	changeID := draft.ID
+	if d != nil {
+		pending, changeID = len(d.Items), d.ID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "value": coerced, "pending": pending, "changeId": changeID})
 }
 
 // revertValue drops one pending edit from the draft.
@@ -417,6 +461,152 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, param)
+}
+
+// addParameter creates a new catalog parameter from the GUI (e.g. an optional
+// vendor key only some instances will carry). Committed directly with
+// attribution, like other catalog metadata operations.
+func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Param  model.Parameter `json:"param"`
+		Author string          `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	pm := req.Param
+	if pm.Name == "" || pm.Source.File == "" || pm.Source.Path == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, source.file and source.path are required"})
+		return
+	}
+	if pm.ID == "" {
+		pm.ID = slugify(pm.Name)
+	}
+	if pm.Type == "" {
+		pm.Type = model.TypeString
+	}
+	if pm.Scope == "" {
+		pm.Scope = model.ScopeInstance
+	}
+	if pm.Category == "" {
+		pm.Category = "Uncategorized"
+	}
+	if pm.Source.Format == "" {
+		pm.Source.Format = formatForFile(pm.Source.File)
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := writer.AddParameter(s.RepoPath, pm); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	s.commitCatalogChange(w, "Add parameter "+pm.Name, req.Author, pm)
+}
+
+// deleteParameter retires a parameter everywhere: catalog entry removed,
+// every overlay stripped, and all generated files re-rendered so the key /
+// element disappears from every instance's output.
+func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Author string `json:"author"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	id := r.PathValue("id")
+
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	param, found := p.ParamByID(id)
+	if !found {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "parameter not found"})
+		return
+	}
+	names := make([]string, len(p.Registry.Instances))
+	for i, inst := range p.Registry.Instances {
+		names[i] = inst.Name
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := writer.DeleteParameter(s.RepoPath, id, names); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	// Drop any pending draft items for the retired parameter.
+	if draft := s.Store.CurrentDraft(); draft != nil {
+		_, _ = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+			kept := cr.Items[:0]
+			for _, it := range cr.Items {
+				if it.ParamID != id {
+					kept = append(kept, it)
+				}
+			}
+			cr.Items = kept
+			return nil
+		})
+	}
+	s.commitCatalogChange(w, "Retire parameter "+param.Name, req.Author, map[string]any{"ok": true, "retired": id})
+}
+
+// commitCatalogChange regenerates every instance's generated/ files, commits
+// the catalog operation with attribution, pushes, and writes the response.
+func (s *Server) commitCatalogChange(w http.ResponseWriter, title, author string, response any) {
+	if author == "" {
+		author = "anonymous"
+	}
+	if p, err := s.load(); err == nil {
+		for _, inst := range p.Registry.Instances {
+			files, rerr := render.Instance(p, inst.Name, s.Registry)
+			if rerr != nil {
+				continue // a broken instance must not block the catalog op
+			}
+			for _, f := range files {
+				out := filepath.Join(s.RepoPath, "generated", inst.Name, f.Path)
+				if err := os.MkdirAll(filepath.Dir(out), 0o755); err == nil {
+					_ = os.WriteFile(out, []byte(f.Content), 0o644)
+				}
+			}
+		}
+	}
+	msg := title + "\n\nChanged-by: " + author + "\n"
+	if _, err := s.Git.CommitAll(s.RepoPath, msg); err != nil && !strings.Contains(err.Error(), "nothing to commit") {
+		writeErr(w, err)
+		return
+	} else if err == nil && s.Git.HasRemote() {
+		branch, _ := s.Git.CurrentBranch()
+		if perr := s.Git.Push(branch); perr != nil {
+			log.Printf("warn: push catalog change: %v", perr)
+		}
+	}
+	writeJSON(w, http.StatusOK, response)
+}
+
+func slugify(name string) string {
+	s := strings.ToLower(name)
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		default:
+			return '-'
+		}
+	}, s)
+	return strings.Trim(strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == '-' }), "-"), "-")
+}
+
+func formatForFile(file string) string {
+	switch {
+	case strings.HasSuffix(file, ".xml"):
+		return "xml"
+	case strings.HasSuffix(file, ".json"):
+		return "json"
+	default:
+		return "yaml"
+	}
 }
 
 // --- change request endpoints ---

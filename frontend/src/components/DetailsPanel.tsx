@@ -1,6 +1,7 @@
-import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col } from "antd";
-import { SafetyOutlined } from "@ant-design/icons";
-import type { Grid, Parameter } from "../api";
+import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, App as AntApp } from "antd";
+import { SafetyOutlined, DeleteOutlined } from "@ant-design/icons";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { api, type Grid, type Parameter } from "../api";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 
@@ -91,8 +92,20 @@ function ProjectOverview({ grid }: { grid: Grid }) {
 }
 
 export default function DetailsPanel({ grid }: { grid: Grid }) {
-  const selectedParamId = useUI((s) => s.selectedParamId);
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const { selectedParamId, selectParam } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
+
+  const retire = useMutation({
+    mutationFn: (id: string) => api.deleteParameter(id, "demo-user"),
+    onSuccess: () => {
+      message.success("Parameter retired: removed from the catalog, all overlays, and every generated file");
+      selectParam(null);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   if (!row) return <ProjectOverview grid={grid} />;
   const p = row.param;
@@ -125,6 +138,17 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
         <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
       </ARow>
       <Button block icon={<SafetyOutlined />} style={{ marginTop: 12 }}>View Parameter Schema</Button>
+      <Popconfirm
+        title={`Retire ${p.name}?`}
+        description="Removes it from the catalog and every overlay; the key/element disappears from all generated files. Committed to Git with attribution."
+        okText="Retire"
+        okButtonProps={{ danger: true }}
+        onConfirm={() => retire.mutate(p.id)}
+      >
+        <Button block danger icon={<DeleteOutlined />} style={{ marginTop: 8 }} loading={retire.isPending}>
+          Retire Parameter
+        </Button>
+      </Popconfirm>
     </div>
   );
 }

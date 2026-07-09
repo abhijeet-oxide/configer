@@ -12,6 +12,8 @@ export interface Rules {
   max?: number;
   minLength?: number;
   maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
 }
 
 export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
@@ -25,6 +27,8 @@ export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
     max: v.max ?? pre?.max,
     minLength: v.minLength ?? pre?.minLength,
     maxLength: v.maxLength ?? pre?.maxLength,
+    minItems: v.minItems,
+    maxItems: v.maxItems,
   };
 }
 

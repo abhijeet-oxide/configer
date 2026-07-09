@@ -71,6 +71,26 @@ or a **predefined rule** from the built-in library (`ipv4`, `cidr`, `port`,
 - The backend **re-validates every write** (type coercion + preset + explicit
   rules) and rejects invalid values with `422`, so Git never holds bad data.
 
+### Structural divergence: lists, absence, and per-instance cardinality
+
+Instances differ in *shape*, not just values — lab may carry 1 NTP server while
+production carries 10. Verified renderer semantics (see
+`backend/internal/render/render_test.go`):
+
+| Scenario | YAML / JSON (incl. Helm values, Flux, kpt — YAML at rest) | XML |
+|---|---|---|
+| **List parameter** (`type: list`, `itemType: ipv4`, …) | native sequence — one line per entry, length per instance | repeated sibling elements — one `<server>…</server>` per entry |
+| **Value unset / instance excluded** | key omitted entirely; empty parent maps pruned — **no line remains** | attribute/element removed; empty parent elements pruned — no husk like `<syslog/>` |
+| **Unmanaged content in the base file** | passes through untouched | passes through untouched (incl. comments) |
+| **User adds a parameter** (GUI → catalog) | appears only in instances where a value resolves | element/attr created on demand per instance |
+| **User retires a parameter** (GUI) | removed from catalog + every overlay; regenerated files drop it everywhere | same |
+
+Cell-level actions (right-click): **Edit value**, **Reset to inherited**
+(remove the override, fall back to zone/site/env/global/default), **Exclude
+from this instance** (render nothing, even if a default exists), and **Copy
+value to…** other instances. All actions stage into the draft change request —
+reviewable before anything touches Git.
+
 ### Git-native change requests
 
 Cell edits never touch Git directly — they stage into a **draft change

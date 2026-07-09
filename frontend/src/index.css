@@ -32,6 +32,11 @@ body {
   border-bottom: 2px dashed #fa8c16;
   padding-bottom: 1px;
 }
+/* Instance-level tombstone: parameter renders nothing in generated files. */
+.cell-excluded {
+  opacity: 0.45;
+  font-style: italic;
+}
 
 .source-badge {
   font-size: 10px;

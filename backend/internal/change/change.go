@@ -17,13 +17,36 @@ const (
 	StateRejected    State = "rejected"
 )
 
-// Item is one pending cell edit: a (parameter, instance) value change.
+// Action says what a pending item does to its cell when the CR is applied.
+type Action string
+
+const (
+	// ActionSet writes New as the instance's override.
+	ActionSet Action = "set"
+	// ActionReset removes the instance override (and any exclusion) so the
+	// cell falls back to the scope chain (zone/site/env/global/default).
+	ActionReset Action = "reset"
+	// ActionExclude tombstones the parameter for this instance: nothing is
+	// rendered in its generated files, even when a default exists.
+	ActionExclude Action = "exclude"
+)
+
+// Item is one pending cell edit: a (parameter, instance) change.
 type Item struct {
 	ParamID   string    `json:"paramId"`
 	Instance  string    `json:"instance"`
+	Action    Action    `json:"action,omitempty"` // empty == set
 	Old       any       `json:"old"`
 	New       any       `json:"new"`
 	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Act normalizes the item's action (legacy items default to set).
+func (it Item) Act() Action {
+	if it.Action == "" {
+		return ActionSet
+	}
+	return it.Action
 }
 
 // ChangeRequest is a reviewable unit of configuration change. While in draft

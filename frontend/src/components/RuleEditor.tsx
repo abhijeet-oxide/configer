@@ -18,7 +18,7 @@ import { api, type Parameter, type Validation } from "../api";
 // predefined rule library. Saved rules are written to catalog.yaml and
 // immediately enforced by every cell editor and by the server on write.
 
-const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr"].map(
+const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"].map(
   (t) => ({ value: t, label: t }),
 );
 
@@ -166,6 +166,27 @@ function Editor({ param }: { param: Parameter }) {
             onChange={(arr: string[]) => patch({ enum: arr.length ? arr : undefined })}
           />
         </Field>
+      )}
+
+      {type === "list" && (
+        <Space>
+          <Field label="Min entries">
+            <InputNumber
+              size="small"
+              min={0}
+              value={v.minItems}
+              onChange={(n) => patch({ minItems: n ?? undefined })}
+            />
+          </Field>
+          <Field label="Max entries">
+            <InputNumber
+              size="small"
+              min={0}
+              value={v.maxItems}
+              onChange={(n) => patch({ maxItems: n ?? undefined })}
+            />
+          </Field>
+        </Space>
       )}
 
       <Button

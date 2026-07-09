@@ -5,3 +5,7 @@ values:
   net-admin-ip: 10.50.10.11
   net-admin-port: 8443
   net-vip-enabled: false
+# sandbox sends no syslog at all: the <collector> elements are absent from its
+# generated network.xml entirely
+exclude:
+  - net-syslog-collectors

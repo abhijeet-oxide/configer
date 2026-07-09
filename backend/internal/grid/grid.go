@@ -37,6 +37,9 @@ type Cell struct {
 	// Pending marks a value staged in the current draft change request but
 	// not yet committed to Git.
 	Pending bool `json:"pending,omitempty"`
+	// Excluded marks an instance-level tombstone: nothing renders for this
+	// cell in generated files, even when a default exists.
+	Excluded bool `json:"excluded,omitempty"`
 }
 
 // Row is a parameter and its cells across all instances (indexed by instance
@@ -84,6 +87,7 @@ func Build(p *project.Project) Grid {
 				Value:    res.Value,
 				Source:   res.Source,
 				Set:      res.Set,
+				Excluded: res.Excluded,
 				State:    state,
 				Editable: state != StateNotApplicable && state != StateDeprecated,
 			}

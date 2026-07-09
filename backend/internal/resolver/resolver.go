@@ -13,6 +13,9 @@ type Resolved struct {
 	Value  any         // effective value, or nil if unset at every scope
 	Source model.Scope // scope that supplied Value
 	Set    bool        // whether any scope (including default) supplied a value
+	// Excluded means the instance explicitly omits this parameter: the
+	// renderer must emit nothing for it, regardless of defaults.
+	Excluded bool
 }
 
 // Resolver holds the overlay data needed to resolve values. Instance overlays
@@ -25,6 +28,11 @@ type Resolver struct {
 // Resolve returns the effective value of param for the given instance.
 func (r *Resolver) Resolve(param model.Parameter, inst model.Instance) Resolved {
 	res := Resolved{}
+
+	// An instance-level exclusion wins over every scope: nothing renders.
+	if ov, ok := r.Instance[inst.Name]; ok && ov.Excludes(param.ID) {
+		return Resolved{Excluded: true}
+	}
 
 	// default
 	if param.Default != nil {

@@ -29,6 +29,8 @@ export interface Validation {
   max?: number;
   minLength?: number;
   maxLength?: number;
+  minItems?: number;
+  maxItems?: number;
   preset?: string;
   schemaRef?: string;
 }
@@ -53,6 +55,8 @@ export interface Parameter {
   description?: string;
   category: string;
   type: string;
+  /** element type when type === "list" */
+  itemType?: string;
   scope: Scope;
   secret: boolean;
   source: { file: string; path: string; format: string };
@@ -73,7 +77,11 @@ export interface Cell {
   editable: boolean;
   /** staged in the current draft change request, not yet on Git */
   pending?: boolean;
+  /** instance-level tombstone: nothing renders for this cell */
+  excluded?: boolean;
 }
+
+export type CellAction = "set" | "reset" | "exclude";
 
 // --- change requests -------------------------------------------------------
 
@@ -201,8 +209,12 @@ export const api = {
       `/render/${encodeURIComponent(instance)}`,
     ),
   presets: () => get<PresetRule[]>("/validation/presets"),
-  setValue: (p: { instance: string; paramId: string; value: unknown; author?: string }) =>
+  setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>("/values", p),
+  addParameter: (param: Partial<Parameter>, author?: string) =>
+    send<Parameter>("POST", "/parameters", { param, author }),
+  deleteParameter: (id: string, author?: string) =>
+    send<{ ok: boolean }>("DELETE", `/parameters/${encodeURIComponent(id)}`, { author }),
   revertValue: (paramId: string, instance: string) =>
     send<{ ok: boolean }>(
       "DELETE",

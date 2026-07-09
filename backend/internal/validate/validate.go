@@ -51,6 +51,33 @@ func Value(param model.Parameter, v any) Result {
 		return ok()
 	}
 
+	// Lists: size rules on the collection, remaining rules per element.
+	if param.Type == model.TypeList {
+		items, isList := v.([]any)
+		if !isList {
+			return invalid("expected a list")
+		}
+		if val.MinItems != nil && len(items) < *val.MinItems {
+			return invalid(fmt.Sprintf("fewer than %d entries", *val.MinItems))
+		}
+		if val.MaxItems != nil && len(items) > *val.MaxItems {
+			return invalid(fmt.Sprintf("more than %d entries", *val.MaxItems))
+		}
+		itemParam := param
+		itemParam.Type = param.ItemType
+		if itemParam.Type == "" {
+			itemParam.Type = model.TypeString
+		}
+		itemParam.Validation.MinItems, itemParam.Validation.MaxItems = nil, nil
+		itemParam.Validation.Required = false
+		for i, it := range items {
+			if r := Value(itemParam, it); !r.Valid {
+				return invalid(fmt.Sprintf("entry %d: %s", i+1, r.Message))
+			}
+		}
+		return ok()
+	}
+
 	// Layer 1: the declared data type must hold.
 	if r := checkType(param.Type, v); !r.Valid {
 		return r
@@ -72,6 +99,32 @@ func Value(param model.Parameter, v any) Result {
 
 	// Layer 3: explicit rules on the parameter.
 	return applyRules(val, s)
+}
+
+// CoerceValue converts a raw (typically JSON-decoded) value into the
+// canonical Go type for the parameter, handling lists by coercing each
+// element to the item type. Used by the write path before validation.
+func CoerceValue(param model.Parameter, v any) (any, error) {
+	if param.Type != model.TypeList {
+		return Coerce(param.Type, v)
+	}
+	items, isList := v.([]any)
+	if !isList {
+		return nil, fmt.Errorf("expected a list")
+	}
+	itemType := param.ItemType
+	if itemType == "" {
+		itemType = model.TypeString
+	}
+	out := make([]any, len(items))
+	for i, it := range items {
+		c, err := Coerce(itemType, it)
+		if err != nil {
+			return nil, fmt.Errorf("entry %d: %w", i+1, err)
+		}
+		out[i] = c
+	}
+	return out, nil
 }
 
 // Coerce converts a raw (typically JSON-decoded) value into the canonical Go

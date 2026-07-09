@@ -100,10 +100,19 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		return nil, err
 	}
 
-	// 1) Apply sparse overlay updates.
+	// 1) Apply sparse overlay updates (set / reset-to-inherited / exclude).
 	for _, it := range cr.Items {
-		if err := writer.SetValue(wt, it.Instance, it.ParamID, it.New); err != nil {
-			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
+		var aerr error
+		switch it.Act() {
+		case change.ActionReset:
+			aerr = writer.ResetValue(wt, it.Instance, it.ParamID)
+		case change.ActionExclude:
+			aerr = writer.ExcludeValue(wt, it.Instance, it.ParamID)
+		default:
+			aerr = writer.SetValue(wt, it.Instance, it.ParamID, it.New)
+		}
+		if aerr != nil {
+			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, aerr)
 		}
 	}
 

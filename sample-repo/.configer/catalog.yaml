@@ -111,6 +111,30 @@ parameters:
     default: 1.1.1.1
     versionIntroduced: v1.0.0
 
+  - id: net-ntp-servers
+    name: network.ntp.servers
+    displayName: NTP servers
+    description: Time sources; one line is rendered per entry, so lab can carry 1 and production 10.
+    category: Networking/DNS
+    type: list
+    itemType: ipv4
+    scope: instance
+    source: { file: base/values.yaml, path: $.network.ntp.servers, format: yaml }
+    validation: { minItems: 1 }
+    default: ["10.0.0.123"]
+    versionIntroduced: v1.0.0
+
+  - id: net-syslog-collectors
+    name: network.syslog.collectors
+    displayName: Syslog collectors
+    description: One <collector> XML element is rendered per entry; excluded instances render none.
+    category: Networking/DNS
+    type: list
+    itemType: ipv4
+    scope: instance
+    source: { file: base/network.xml, path: /network/syslog/collector, format: xml }
+    versionIntroduced: v1.0.0
+
   - id: net-domain
     name: network.domain
     displayName: Cluster domain

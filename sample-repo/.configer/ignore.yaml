@@ -1,0 +1,7 @@
+# Selective-import rules. Files matching these globs are skipped during a scan,
+# and listed parameter paths/IDs never enter the catalog or the grid.
+files:
+  - "**/*.tmp"
+  - "base/secrets.enc.yaml"
+parameters:
+  - $.network.internal.debugFlag

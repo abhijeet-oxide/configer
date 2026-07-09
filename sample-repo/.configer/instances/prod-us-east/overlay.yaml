@@ -1,0 +1,10 @@
+kind: Overlay
+instance: prod-us-east
+values:
+  net-service-ip: 10.10.10.10
+  net-admin-ip: 10.10.10.11
+  net-admin-port: 8443
+  net-vip-enabled: true
+  net-vip-ip: 10.10.10.100
+  net-vip-netmask: 255.255.255.0
+  net-vip-gateway: 10.10.10.1

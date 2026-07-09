@@ -1,0 +1,7 @@
+kind: Overlay
+instance: sandbox
+values:
+  net-service-ip: 10.60.10.10
+  net-admin-ip: 10.50.10.11
+  net-admin-port: 8443
+  net-vip-enabled: false

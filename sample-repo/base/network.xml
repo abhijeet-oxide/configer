@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Example XML source to demonstrate the XML ingest parser (XPath extraction). -->
+<network>
+  <tls minVersion="1.2">
+    <cipherSuite>ECDHE-RSA-AES128-GCM-SHA256</cipherSuite>
+  </tls>
+  <legacy mode="off"/>
+</network>

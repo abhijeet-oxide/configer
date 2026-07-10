@@ -137,15 +137,17 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
    repos (8 checks) plus the full 14-check feedback regression on the hub. NEXT here: R2, the
    `RepoBackend` interface + GitHub RemoteBackend (reads via contents/trees APIs, writes via
    the Git data API, no server-side clone), then cherry-pick / promote / upgrade-to-v2 (R3).
-2. **Upstream data sources** (§20): vendored snapshots, bindings, sync-as-change-request
+2. **Design-phase parameters + interactive attach + details edit mode + rendered-files
+   explorer** (§22): being implemented immediately after R1, alongside R2.
+3. **Upstream data sources** (§20): vendored snapshots, bindings, sync-as-change-request
    (phases A/B).
-3. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
+4. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
    cleanly but there's no resolver UI; "Rebase & resubmit" also missing), see §19. Note §20/§21
    both increase conflict frequency, design together.
-4. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
-5. GitHub push webhooks (sync is polling today, works but not instant).
-6. Postgres grid cache (needed for real by the §21 workspace registry).
-7. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
+5. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
+6. GitHub push webhooks (sync is polling today, works but not instant).
+7. Postgres grid cache (needed for real by the §21 workspace registry).
+8. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
    (chat/intent-to-change-request); GitLab/Bitbucket providers; indexed parameter families
    beyond simple lists (§18 tier 2).
 
@@ -772,7 +774,64 @@ changes from configuration version 1 onto a newly delivered version 2.
   (server manages N clones instead of 1; `CONFIGER_REPO` becomes a seed). Import wizard gains
   the "Connect repository" step. Dashboard portfolio level (WorkspaceView). See §0 item 1 for
   the implementation map.
-- **R2**: `RepoBackend` interface + RemoteBackend for GitHub (reads first, then Git-data-API
-  commits); clones become an optional cache, not a requirement.
+- **R2**: `RepoBackend` interface + RemoteBackend for GitHub; clones become an optional cache,
+  not a requirement. Concrete design (refined after R1):
+  - `internal/remoterepo`: a GitHub Git-data-API client speaking refs, recursive trees, blobs,
+    create-blob/tree/commit, update-ref, the merges API and compare. No `git` binary, no
+    `.git` directory.
+  - **Reads = REST materialization**: `Materialize(dir)` performs a partial checkout via the
+    trees API (blob fetch per path, filterable) into a plain directory cache the existing
+    engine (project.Load, ingest, render, diff) reads unchanged. The sync loop uses compare
+    (`base...head`) to refresh only changed paths.
+  - **Writes = REST commits**: a change request against a remote repo copies the cache to a
+    temp dir (replacing the git worktree), applies the same writer mutations, then commits the
+    changed paths as blobs → tree (base_tree = branch head) → commit → create/update the
+    `configer/cr-N` ref: a partial commit through the API. Merge goes through the merges API
+    or the PR merge (already implemented in `provider`).
+  - The seam is a small `Backend` interface (Head, CreateBranch, CommitPaths, Merge, Refresh)
+    with `LocalBackend` wrapping today's `gitengine` and `RemoteBackend` wrapping
+    `remoterepo`; `changeset.Service` and the catalog write path call the seam. Connect gains
+    `mode: "remote"` (URL + token, nothing cloned); tests run against an httptest stub of the
+    GitHub API.
 - **R3**: cherry-pick (semantic + git-level), promote, and the "Upgrade to v2" carry-forward
   wizard on top of the diff/CR primitives.
+
+## 22. Design-phase parameters, one-button editing, interactive attach, rendered-files explorer - ADDED
+
+**The intent (user's words):** a parameter may need to exist in a *design phase*, before the
+actual configuration files have even arrived; later the user attaches the real file and path to
+complete it. The details side panel must be completely editable through one overall Edit button
+(not per-field edit affordances). Attaching must be interactive: the user should never hunt for
+a JSONPath; they pick the file, click the setting they mean, and the path is mapped for them.
+And per instance there must be a file-explorer-like view of the actual files that will be
+generated, so users can visualize the final configuration.
+
+1. **Design-phase (unattached) parameters.** A catalog parameter with an empty `source.file` is
+   in the design state; this is derived, not a new schema field, so nothing else changes. It
+   behaves like any parameter in the grid: category, scope, type, validation, default and
+   per-instance values are all editable and reviewable through change requests, so teams can
+   model and agree on configuration before the vendor drops files. It simply renders into no
+   generated file until attached. The grid and details panel show a "design" badge explaining
+   exactly that. Renderer, writers and reconcile skip empty-source parameters defensively.
+   Add-parameter and import paths accept parameters without a source.
+
+2. **Completing (attaching) a parameter, interactively.** `writer.ParamPatch` gains `Source`;
+   `PUT /api/.../parameters/{id}` accepts `{source: {file, path, format}}`. The UI never asks
+   for a path string: the **attach picker** lists the repository's config files (from the
+   existing scan), then shows the chosen file's settings (name, path, current value) as a
+   searchable list; clicking a setting maps `source.path` automatically (format inferred).
+   The same picker re-maps an already-attached parameter (e.g. after a file was renamed),
+   which finally gives the `file_renamed`/`file_deleted` findings a first-class fix. Values
+   already set during design begin rendering immediately after attach.
+
+3. **Details panel: one overall Edit mode.** The Details tab shows read-only values with a
+   single Edit button; pressing it turns every major field (display name, description,
+   category, scope, type, secret, default) into one form with Save/Cancel, saved as one
+   attributed catalog commit. Source file/path stay out of the free-text form; they change
+   only through the attach picker (interactive, validated).
+
+4. **Rendered-files explorer.** A "Rendered Files" view: pick an instance, see a file tree of
+   everything that will be written to `generated/<instance>/` (from `GET /render/{instance}`,
+   which already returns exact file contents), click a file to read it in a mono viewer with
+   copy. This is the visualization of truth: what Git will contain after publish, byte for
+   byte, including transposer-generated artifacts.

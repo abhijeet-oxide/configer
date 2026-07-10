@@ -66,9 +66,14 @@ export default function DashboardView({ grid }: { grid: Grid }) {
 
   return (
     <div style={{ padding: 20, height: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <Typography.Title level={4} style={{ margin: 0 }}>
-        {grid.project}
-      </Typography.Title>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+        <Typography.Title level={4} style={{ margin: 0 }}>
+          {grid.project}
+        </Typography.Title>
+        <Typography.Link onClick={() => setSection("workspace")} style={{ fontSize: 12 }}>
+          all configurations <RightOutlined style={{ fontSize: 10 }} />
+        </Typography.Link>
+      </div>
 
       <Row gutter={[14, 14]}>
         <Col xs={24} sm={12} xxl={6}>

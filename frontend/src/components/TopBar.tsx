@@ -36,6 +36,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type Instance } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
+import { useSwitchRepo } from "../useSwitchRepo";
 import { brands, type BrandKey } from "../theme";
 
 // afterValue renders the post-change value with action awareness.
@@ -48,8 +49,9 @@ function afterValue(it: ChangeItem & { action?: string }) {
 // Application header: breadcrumb context, git-liveness indicator, the global
 // parameter search (⌘K), theme controls, and the Create Change Request flow.
 export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, selectParam } =
+  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, selectParam, repoId } =
     useUI();
+  const switchRepo = useSwitchRepo();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const searchRef = useRef<InputRef>(null);
@@ -59,6 +61,9 @@ export default function TopBar({ project, instances }: { project?: string; insta
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
+  const repos = wsQ.data?.repos ?? [];
+  const activeRepo = repos.find((r) => r.id === repoId);
   const items = draftQ.data?.draft?.items ?? [];
   const pending = items.length;
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
@@ -106,8 +111,52 @@ export default function TopBar({ project, instances }: { project?: string; insta
     <div style={{ display: "flex", alignItems: "center", gap: 14, width: "100%" }}>
       <Breadcrumb
         items={[
-          { title: "Repositories" },
-          { title: <b>{project || "…"}</b> },
+          {
+            title: (
+              <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
+                Workspace
+              </a>
+            ),
+          },
+          {
+            title: (
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  selectedKeys: repoId ? [repoId] : [],
+                  items: [
+                    ...repos.map((r) => ({
+                      key: r.id,
+                      label: (
+                        <Space size={6}>
+                          {r.name}
+                          {r.project && r.project !== r.name && (
+                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                              {r.project}
+                            </Typography.Text>
+                          )}
+                        </Space>
+                      ),
+                    })),
+                    { type: "divider" as const },
+                    { key: "__workspace", label: "Connect or manage repositories…" },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "__workspace") {
+                      setSection("workspace");
+                    } else if (key !== repoId) {
+                      switchRepo(key);
+                    }
+                  },
+                }}
+              >
+                <a style={{ cursor: "pointer" }}>
+                  <b>{activeRepo?.name ?? project ?? "…"}</b>{" "}
+                  <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+                </a>
+              </Dropdown>
+            ),
+          },
           { title: st?.branch || "main" },
         ]}
       />

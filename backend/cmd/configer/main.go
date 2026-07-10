@@ -11,21 +11,25 @@ import (
 )
 
 func main() {
-	repo := getenv("CONFIGER_REPO", "../sample-repo")
+	// CONFIGER_DATA holds server-side operational state: the workspace
+	// registry and the clones of remotely connected repositories.
+	dataDir := getenv("CONFIGER_DATA", "./configer-data")
+	// CONFIGER_REPO seeds the workspace with one local repository when the
+	// registry is empty (the original single-repo mode keeps working).
+	seed := getenv("CONFIGER_REPO", "../sample-repo")
 	addr := getenv("CONFIGER_ADDR", ":8080")
 
-	srv, err := api.New(repo)
+	hub, err := api.NewHub(dataDir, seed, api.SyncIntervalFromEnv())
 	if err != nil {
 		log.Fatalf("init: %v", err)
 	}
-	srv.StartSyncLoop(api.SyncIntervalFromEnv())
 	httpServer := &http.Server{
 		Addr:              addr,
-		Handler:           srv.Routes(),
+		Handler:           hub.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Printf("configer backend listening on %s (repo=%s)", addr, repo)
+	log.Printf("configer backend listening on %s (%d repositories, data=%s)", addr, hub.Count(), dataDir)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("server error: %v", err)
 	}

@@ -10,6 +10,7 @@ import { useUI } from "../store";
 // glyphs (offline-safe Iconify data imports).
 function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
   return [
+    { key: "workspace", icon: <Ic icon={icons.workspace} />, label: "Workspace" },
     { key: "home", icon: <Ic icon={icons.home} />, label: "Home" },
     { type: "group", label: "CONFIGURATION", children: [
       { key: "config", icon: <Ic icon={icons.editor} />, label: "Config Editor" },

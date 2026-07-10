@@ -25,6 +25,7 @@ import ApprovalsView from "./components/ApprovalsView";
 import DashboardView from "./components/DashboardView";
 import ImportWizard from "./components/ImportWizard";
 import RepoChangesView from "./components/RepoChangesView";
+import WorkspaceView from "./components/WorkspaceView";
 import MobileParamList from "./components/MobileParamList";
 import { DashboardSkeleton, GridSkeleton, ListSkeleton } from "./components/Skeletons";
 
@@ -125,7 +126,8 @@ function OfflineReplay() {
 }
 
 export default function App() {
-  const { section, setSection, prefs, selectedParamId, selectParam, navCollapsed, setNavCollapsed } = useUI();
+  const { section, setSection, prefs, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo } =
+    useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
@@ -135,6 +137,26 @@ export default function App() {
   // lightweight heartbeat: keeps probing while unreachable so recovery is automatic
   useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 8_000, retry: false });
   const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
+  const qc = useQueryClient();
+
+  // Bind the app to a valid repository once the workspace is known: adopt the
+  // first one when none is selected (or the remembered one is gone), and step
+  // back to the workspace screen when nothing is connected at all.
+  useEffect(() => {
+    const repos = wsQ.data?.repos;
+    if (!repos) return;
+    if (repos.length === 0) {
+      if (repoId) setRepo(null);
+      setSection("workspace");
+      return;
+    }
+    if (!repoId || !repos.some((r) => r.id === repoId)) {
+      setRepo(repos[0].id);
+      qc.clear();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsQ.data, repoId]);
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
 
@@ -204,6 +226,14 @@ export default function App() {
   }
 
   function body() {
+    // The workspace (portfolio) level does not depend on any one repo's grid,
+    // so it renders even while a repository is unavailable or none exists.
+    if (section === "workspace")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <WorkspaceView />
+        </div>
+      );
     if (gridQ.isLoading) {
       // state-aware skeletons: mirror the layout the user is waiting for
       if (section === "home") return <DashboardSkeleton />;

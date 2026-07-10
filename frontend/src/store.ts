@@ -1,5 +1,11 @@
 import { create } from "zustand";
+import { setApiRepo } from "./api";
 import type { BrandKey, FontScale, Mode } from "./theme";
+
+// The active repository survives reloads; the API client is kept in sync so
+// every repo-scoped call goes to the selected configuration.
+const initialRepo = localStorage.getItem("configer.repoId");
+setApiRepo(initialRepo);
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -39,6 +45,9 @@ interface UIState {
   mode: Mode;
   brand: BrandKey;
   fontScale: FontScale;
+  /** the active repository (workspace entry id); null until the workspace
+   *  loads, then always set while any repository is connected */
+  repoId: string | null;
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
@@ -57,6 +66,7 @@ interface UIState {
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
+  setRepo: (id: string | null) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
@@ -73,6 +83,7 @@ export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
+  repoId: initialRepo,
   section: "home",
   categoryKey: null,
   selectedParamId: null,
@@ -95,6 +106,22 @@ export const useUI = create<UIState>((set) => ({
   setFontScale: (fontScale) => {
     localStorage.setItem("configer.fontScale", fontScale);
     set({ fontScale });
+  },
+  setRepo: (repoId) => {
+    if (repoId) localStorage.setItem("configer.repoId", repoId);
+    else localStorage.removeItem("configer.repoId");
+    setApiRepo(repoId);
+    // Everything below is state of ONE configuration; switching repositories
+    // must not leak a selection, comparison or pending jump across.
+    set({
+      repoId,
+      categoryKey: null,
+      selectedParamId: null,
+      compareLeft: null,
+      compareRight: null,
+      jump: null,
+      importFocus: null,
+    });
   },
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),

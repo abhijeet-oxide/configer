@@ -27,12 +27,18 @@ import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
   LockOutlined,
+  ApiOutlined,
+  GithubOutlined,
+  HddOutlined,
+  BranchesOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
+import { useSwitchRepo } from "../useSwitchRepo";
+import { ConnectForm } from "./WorkspaceView";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -119,11 +125,21 @@ function foldFile(cands: ScanCandidate[]): FoldedCand[] {
   return out;
 }
 
+// Switching repositories inside the wizard clears the query cache, which
+// remounts the wizard; this one-shot flag carries "land on the scan step"
+// across that remount.
+const STEP_HANDOFF = "configer.importStep";
+
 export default function ImportWizard({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { importFocus, setImportFocus, setSection } = useUI();
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(() =>
+    sessionStorage.getItem(STEP_HANDOFF) ? 1 : 0,
+  );
+  useEffect(() => {
+    sessionStorage.removeItem(STEP_HANDOFF);
+  }, []);
   const [scan, setScan] = useState<ScanResult | null>(null);
   const [included, setIncluded] = useState<Record<string, boolean>>({});
   const [persistIgnore, setPersistIgnore] = useState(false);
@@ -185,13 +201,15 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
     onError: (e: Error) => message.error(`Scan failed: ${e.message}`),
   });
 
-  // Jumping in from the Repository Changes inbox starts the scan immediately.
+  // Jumping in from the Repository Changes inbox starts the scan immediately
+  // (the repository is already the active one, so the connect step is skipped).
   useEffect(() => {
     if (!importFocus) return;
     focusRef.current = importFocus;
     setImportFocus(null);
     if (!autoScanStarted.current) {
       autoScanStarted.current = true;
+      setStep(1);
       doScan.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,13 +338,15 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
           size="small"
           current={step}
           items={[
+            { title: "Connect repository", icon: <ApiOutlined /> },
             { title: "Scan repository", icon: <FileSearchOutlined /> },
             { title: "Choose parameters", icon: <CheckSquareOutlined /> },
             { title: "Review & initialize", icon: <RocketOutlined /> },
           ]}
-          style={{ maxWidth: 720 }}
+          style={{ maxWidth: 860 }}
         />
-        {step === 0 && (
+        {step === 0 && <ConnectStep onNext={() => setStep(1)} />}
+        {step === 1 && (
           <ScanStep
             scan={scan}
             scanning={doScan.isPending}
@@ -337,10 +357,11 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
             setPersistIgnore={setPersistIgnore}
             counts={counts}
             eligibleNew={eligibleDrafts.length}
-            onNext={() => setStep(1)}
+            onBack={() => setStep(0)}
+            onNext={() => setStep(2)}
           />
         )}
-        {step === 1 && (
+        {step === 2 && (
           <ChooseStep
             drafts={eligibleDrafts}
             selectedKeys={selectedKeys}
@@ -350,22 +371,104 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
             categories={existingCategories}
             filter={filter}
             setFilter={setFilter}
-            onBack={() => setStep(0)}
-            onNext={() => setStep(2)}
+            onBack={() => setStep(1)}
+            onNext={() => setStep(3)}
             chosenCount={chosen.length}
           />
         )}
-        {step === 2 && (
+        {step === 3 && (
           <ReviewStep
             chosen={chosen}
             ignoredFiles={ignoredFiles}
             branch={statusQ.data?.branch}
             importing={doImport.isPending}
-            onBack={() => setStep(1)}
+            onBack={() => setStep(2)}
             onImport={() => doImport.mutate()}
           />
         )}
       </Space>
+    </div>
+  );
+}
+
+// ---- step 0: connect / choose the repository ----------------------------------
+
+function ConnectStep({ onNext }: { onNext: () => void }) {
+  const { repoId } = useUI();
+  const switchRepo = useSwitchRepo();
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 15_000 });
+  const repos = wsQ.data?.repos ?? [];
+  const [choice, setChoice] = useState<string | null>(null);
+  const selectedId = choice ?? repoId ?? repos[0]?.id ?? null;
+  const selected = repos.find((r) => r.id === selectedId);
+
+  const proceed = () => {
+    if (selectedId && selectedId !== repoId) {
+      // The cache clear remounts the wizard; land on the scan step after it.
+      sessionStorage.setItem(STEP_HANDOFF, "1");
+      switchRepo(selectedId);
+    } else {
+      onNext();
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+      <Card title="Import into a connected repository" style={{ flex: "1 1 380px", minWidth: 340 }}>
+        <Typography.Paragraph type="secondary" style={{ marginTop: -4 }}>
+          Configurations live in Git repositories managed on the server. Pick the one to import
+          settings into.
+        </Typography.Paragraph>
+        <Select
+          style={{ width: "100%" }}
+          value={selectedId ?? undefined}
+          placeholder="Choose a repository"
+          onChange={(v) => setChoice(v)}
+          options={repos.map((r) => ({
+            value: r.id,
+            label: (
+              <Space size={6}>
+                {r.local ? <HddOutlined /> : <GithubOutlined />}
+                {r.name}
+                {r.project && r.project !== r.name && (
+                  <span style={{ opacity: 0.55, fontSize: 12 }}>{r.project}</span>
+                )}
+              </Space>
+            ),
+          }))}
+        />
+        {selected && (
+          <div style={{ marginTop: 12 }}>
+            <Space size={4} wrap>
+              {selected.branch && (
+                <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
+                  {selected.branch}
+                </Tag>
+              )}
+              <Tag>{selected.params} parameters managed</Tag>
+              <Tag>{selected.instances} instances</Tag>
+              {selected.id === repoId && <Tag color="blue">currently open</Tag>}
+            </Space>
+            <div className="mono" style={{ fontSize: 11, opacity: 0.55, marginTop: 6, overflowWrap: "anywhere" }}>
+              {selected.origin}
+            </div>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <Button type="primary" disabled={!selectedId} onClick={proceed}>
+            Continue: scan this repository <ArrowRightOutlined />
+          </Button>
+        </div>
+      </Card>
+      <Card title="Or connect a new repository" style={{ flex: "1 1 380px", minWidth: 340 }}>
+        <ConnectForm
+          compact
+          onDone={(r) => {
+            sessionStorage.setItem(STEP_HANDOFF, "1");
+            switchRepo(r.id);
+          }}
+        />
+      </Card>
     </div>
   );
 }
@@ -382,6 +485,7 @@ function ScanStep({
   setPersistIgnore,
   counts,
   eligibleNew,
+  onBack,
   onNext,
 }: {
   scan: ScanResult | null;
@@ -393,6 +497,7 @@ function ScanStep({
   setPersistIgnore: (v: boolean) => void;
   counts: Record<string, { fresh: number; already: number }>;
   eligibleNew: number;
+  onBack: () => void;
   onNext: () => void;
 }) {
   if (!scan) {
@@ -408,9 +513,14 @@ function ScanStep({
             configuration files. You then pick which settings to manage; everything else stays
             untouched.
           </Typography.Paragraph>
-          <Button type="primary" size="large" icon={<FileSearchOutlined />} loading={scanning} onClick={onScan}>
-            Scan repository
-          </Button>
+          <Space>
+            <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+              Repository
+            </Button>
+            <Button type="primary" size="large" icon={<FileSearchOutlined />} loading={scanning} onClick={onScan}>
+              Scan repository
+            </Button>
+          </Space>
         </div>
       </Card>
     );
@@ -523,7 +633,10 @@ function ScanStep({
               Remember the unticked files as ignore rules, so future scans skip them
             </Checkbox>
           )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 16 }}>
+            <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+              Repository
+            </Button>
             <Button type="primary" disabled={eligibleNew === 0} onClick={onNext}>
               Continue: choose parameters <ArrowRightOutlined />
             </Button>

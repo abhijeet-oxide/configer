@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -52,6 +53,62 @@ func EnsureRepo(dir, name, email string) (*Repo, error) {
 		return nil, err
 	}
 	return r, nil
+}
+
+// Clone clones a remote repository into dir (parents created), optionally
+// checking out a specific branch. When a token is given it is injected into
+// the https remote URL, so later fetches and pushes on this server-side clone
+// keep working against private repositories; use Redact before showing the
+// origin URL anywhere.
+func Clone(url, dir, branch, token, name, email string) (*Repo, error) {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return nil, err
+	}
+	r := &Repo{Dir: dir, Name: name, Email: email}
+	args := []string{"clone"}
+	if branch != "" {
+		args = append(args, "--branch", branch)
+	}
+	args = append(args, AuthURL(url, token), dir)
+	if _, err := r.git(filepath.Dir(dir), args...); err != nil {
+		msg := err.Error()
+		if token != "" {
+			// never leak the credential through the git error text
+			msg = strings.ReplaceAll(msg, token, "***")
+		}
+		return nil, fmt.Errorf("clone %s: %s", Redact(url), msg)
+	}
+	return r, nil
+}
+
+// AuthURL injects a token into an https remote URL ("" token or non-https
+// URLs pass through unchanged).
+func AuthURL(url, token string) string {
+	if token == "" || !strings.HasPrefix(url, "https://") {
+		return url
+	}
+	return "https://x-access-token:" + token + "@" + strings.TrimPrefix(url, "https://")
+}
+
+var (
+	credRe  = regexp.MustCompile(`^(https?://)[^/@\s]+@`)
+	tokenRe = regexp.MustCompile(`^https?://[^/:@\s]*:([^/@\s]+)@`)
+)
+
+// Redact strips embedded credentials from a remote URL for display.
+func Redact(url string) string {
+	return credRe.ReplaceAllString(url, "$1")
+}
+
+// TokenFromURL extracts an embedded credential from an https remote URL
+// ("" when the URL carries none). Lets a restarted server rediscover the
+// PR-provider token from the clone it made earlier.
+func TokenFromURL(url string) string {
+	m := tokenRe.FindStringSubmatch(url)
+	if m == nil {
+		return ""
+	}
+	return m[1]
 }
 
 // CurrentBranch returns the branch the primary working tree is on.

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 )
 
 // RepoStatus is the git-liveness snapshot shown in the UI: Configer's tree vs
@@ -42,18 +44,46 @@ func (s *Server) StartSyncLoop(interval time.Duration) {
 	s.sync.mu.Lock()
 	s.sync.status.AutoSyncMs = int(interval.Milliseconds())
 	s.sync.mu.Unlock()
+	stop := make(chan struct{})
+	s.syncStop = stop
 	go func() {
 		t := time.NewTicker(interval)
 		defer t.Stop()
-		for range t.C {
-			s.syncOnce()
+		for {
+			select {
+			case <-t.C:
+				s.syncOnce()
+			case <-stop:
+				return
+			}
 		}
 	}()
 }
 
+// StopSync ends the polling loop (used when a repository is disconnected
+// from the workspace).
+func (s *Server) StopSync() {
+	if s.syncStop != nil {
+		close(s.syncStop)
+		s.syncStop = nil
+	}
+}
+
+// Status returns the last computed git-liveness snapshot (computing it on
+// first use).
+func (s *Server) Status() RepoStatus {
+	s.sync.mu.Lock()
+	st := s.sync.status
+	s.sync.mu.Unlock()
+	if st.LastSync.IsZero() {
+		st = s.syncOnce()
+	}
+	return st
+}
+
 // syncOnce fetches origin and fast-forwards when safely possible.
 func (s *Server) syncOnce() RepoStatus {
-	st := RepoStatus{Remote: s.Git.OriginURL()}
+	st := RepoStatus{Remote: gitengine.Redact(s.Git.OriginURL())}
 	branch, err := s.Git.CurrentBranch()
 	if err == nil {
 		st.Branch = branch
@@ -96,14 +126,7 @@ func (s *Server) syncOnce() RepoStatus {
 }
 
 func (s *Server) repoStatus(w http.ResponseWriter, _ *http.Request) {
-	s.sync.mu.Lock()
-	st := s.sync.status
-	s.sync.mu.Unlock()
-	if st.LastSync.IsZero() {
-		// first call before any poll: compute lazily
-		st = s.syncOnce()
-	}
-	writeJSON(w, http.StatusOK, st)
+	writeJSON(w, http.StatusOK, s.Status())
 }
 
 func (s *Server) repoSync(w http.ResponseWriter, _ *http.Request) {

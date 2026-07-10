@@ -49,6 +49,7 @@ type Server struct {
 	Environment string
 	writeMu     sync.Mutex // serializes writes to the working tree + store
 	sync        syncState  // git-liveness status (see sync.go)
+	syncStop    chan struct{}
 }
 
 func getenv(k, def string) string {
@@ -79,11 +80,17 @@ func New(repoPath string) (*Server, error) {
 
 	var prov provider.Provider
 	if origin := repo.OriginURL(); origin != "" {
-		prov = provider.ForOrigin(origin, os.Getenv("GITHUB_TOKEN"))
+		// A token embedded in the clone's origin URL (private repositories
+		// connected with a token) wins over the server-wide env token.
+		token := os.Getenv("GITHUB_TOKEN")
+		if t := gitengine.TokenFromURL(origin); t != "" {
+			token = t
+		}
+		prov = provider.ForOrigin(origin, token)
 		if prov != nil {
-			log.Printf("PR provider: %s (origin %s)", prov.Name(), origin)
+			log.Printf("PR provider: %s (origin %s)", prov.Name(), gitengine.Redact(origin))
 		} else {
-			log.Printf("PR provider: none (pure-git mode, origin %s)", origin)
+			log.Printf("PR provider: none (pure-git mode, origin %s)", gitengine.Redact(origin))
 		}
 	} else {
 		log.Printf("PR provider: none (local repository, no remote)")
@@ -100,8 +107,13 @@ func New(repoPath string) (*Server, error) {
 	}, nil
 }
 
-// Routes returns the HTTP handler with all endpoints mounted.
-func (s *Server) Routes() http.Handler {
+// Routes returns the standalone HTTP handler (CORS included) for single-repo
+// deployments and tests.
+func (s *Server) Routes() http.Handler { return withCORS(s.Handler()) }
+
+// Handler returns the raw per-repo mux; the workspace Hub mounts it under
+// /api/repos/{id}/ and applies CORS once at the outer edge.
+func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/plugins", s.plugins)
@@ -131,7 +143,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/repo/findings/ack", s.ackFindings)
 	mux.HandleFunc("POST /api/import", s.importParameters)
 	mux.HandleFunc("POST /api/parameters/retire-file", s.retireFile)
-	return withCORS(mux)
+	return mux
 }
 
 func (s *Server) load() (*project.Project, error) { return project.Load(s.RepoPath) }
@@ -233,7 +245,7 @@ func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
 		"categories": g.Categories,
 		"paramCount": len(g.Rows),
 		"branch":     branch,
-		"remote":     s.Git.OriginURL(),
+		"remote":     gitengine.Redact(s.Git.OriginURL()),
 	})
 }
 

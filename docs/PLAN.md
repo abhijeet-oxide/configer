@@ -117,9 +117,26 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
    Systems tree that scroll-and-flash the grid row/column (`store.setJump`); content-aware
    column widths; local search inside the grid toolbar; CR reference id + category (commit
    trailers + PR body + tags in views). Verified E2E in the browser (14 checks).
-1. **Remote-first multi-configuration workspace** (§21): repo registry + switcher, connect step
-   in the import wizard, portfolio dashboard (phase R1 with the local engine), then the
-   `RepoBackend` remote API engine (R2), then cherry-pick / promote / upgrade-to-v2 (R3).
+1. **Remote-first multi-configuration workspace** (§21): phase R1 is DONE. The backend is now a
+   workspace Hub (`internal/workspace` registry persisted in `CONFIGER_DATA/workspace.json`,
+   `api.Hub` in `backend/internal/api/hub.go`): every repo-scoped endpoint is mounted under
+   `/api/repos/{id}/...` (path-rewrite dispatch onto the unchanged per-repo `Server`), the
+   legacy unscoped `/api/...` routes serve the first repository for compatibility, and
+   `GET /api/workspace`, `POST /api/repos` (connect: git URL cloned via `gitengine.Clone` with
+   optional token, local path opened in place), `DELETE /api/repos/{id}` manage the registry.
+   `CONFIGER_REPO` now only seeds an empty workspace. Tokens are embedded in the server-side
+   clone's origin (rediscovered on restart via `gitengine.TokenFromURL`) and redacted
+   (`gitengine.Redact`) in every response and log. Each repo has its own crstore, sync loop
+   (stoppable via `Server.StopSync`), findings ack and PR provider. Frontend: active repo in
+   the store (`repoId`, persisted) routes the whole API client (`setApiRepo`/`rp` in `api.ts`);
+   switching (`useSwitchRepo`) clears the query cache; offline snapshots are namespaced per
+   repo. WorkspaceView is the portfolio dashboard (cards: project, branch, params, instances
+   by environment, open CRs, sync health; connect modal; disconnect), the TopBar breadcrumb is
+   a repo switcher, and the import wizard gained a "Connect repository" step 0 (pick a
+   connected repo or connect a new one, then scan). Verified E2E in the browser with three
+   repos (8 checks) plus the full 14-check feedback regression on the hub. NEXT here: R2, the
+   `RepoBackend` interface + GitHub RemoteBackend (reads via contents/trees APIs, writes via
+   the Git data API, no server-side clone), then cherry-pick / promote / upgrade-to-v2 (R3).
 2. **Upstream data sources** (§20): vendored snapshots, bindings, sync-as-change-request
    (phases A/B).
 3. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
@@ -138,6 +155,10 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
 cd backend && go test ./... && CONFIGER_REPO=../sample-repo go run ./cmd/configer   # :8080
 cd frontend && npm install && npm run dev                                            # :5173
 ```
+`CONFIGER_REPO` seeds the workspace on first start; further repositories are connected from
+the UI (Workspace screen or the import wizard) or `POST /api/repos`. Server state, including
+clones of remotely connected repos, lives under `CONFIGER_DATA` (default `./configer-data`),
+so delete that directory for a fully fresh workspace.
 `sample-repo/` is a seeded fixture (`telco-platform` project) with 6 instances demonstrating
 scope precedence, list parameters, and exclusion. For change-request E2E testing you need a real
 git remote (a bare repo works): `git init --bare` + `git clone`, then point `CONFIGER_REPO` at
@@ -747,10 +768,10 @@ changes from configuration version 1 onto a newly delivered version 2.
    since it is server state, not repo state.
 
 **Phasing (deliberately incremental, nothing big-bang)**
-- **R1**: multi-repo registry + repo switcher with the *existing local engine* (server manages
-  N clones instead of 1; `CONFIGER_REPO` becomes a seed). Import wizard gains the "Connect
-  repository" step. Dashboard portfolio level. This delivers the user-visible multi-config
-  experience quickly.
+- **R1 (SHIPPED)**: multi-repo registry + repo switcher with the *existing local engine*
+  (server manages N clones instead of 1; `CONFIGER_REPO` becomes a seed). Import wizard gains
+  the "Connect repository" step. Dashboard portfolio level (WorkspaceView). See §0 item 1 for
+  the implementation map.
 - **R2**: `RepoBackend` interface + RemoteBackend for GitHub (reads first, then Git-data-API
   commits); clones become an optional cache, not a requirement.
 - **R3**: cherry-pick (semantic + git-level), promote, and the "Upgrade to v2" carry-forward

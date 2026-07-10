@@ -23,6 +23,7 @@ import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import DashboardView from "./components/DashboardView";
+import ImportWizard from "./components/ImportWizard";
 import MobileParamList from "./components/MobileParamList";
 import { DashboardSkeleton, GridSkeleton, ListSkeleton } from "./components/Skeletons";
 
@@ -235,6 +236,12 @@ export default function App() {
     }
 
     if (section === "plugins") return <PluginsView />;
+    if (section === "import")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <ImportWizard grid={grid} />
+        </div>
+      );
     if (section === "home")
       return (
         <div style={{ height: "100%", ...panelBg }}>

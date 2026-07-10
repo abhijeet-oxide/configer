@@ -46,6 +46,9 @@ interface UIState {
   filters: RowFilters;
   prefs: ViewPrefs;
   navCollapsed: boolean;
+  /** file or folder prefix the Import wizard should focus on (set by the
+   *  Repository Changes inbox when jumping into an import) */
+  importFocus: string | null;
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
@@ -57,6 +60,7 @@ interface UIState {
   setFilters: (f: Partial<RowFilters>) => void;
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
+  setImportFocus: (f: string | null) => void;
 }
 
 export const useUI = create<UIState>((set) => ({
@@ -72,6 +76,7 @@ export const useUI = create<UIState>((set) => ({
   filters: { invalidOnly: false, overriddenOnly: false, hideNA: false },
   prefs: loadPrefs(),
   navCollapsed: false,
+  importFocus: null,
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
@@ -97,4 +102,5 @@ export const useUI = create<UIState>((set) => ({
       return { prefs };
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
+  setImportFocus: (importFocus) => set({ importFocus }),
 }));

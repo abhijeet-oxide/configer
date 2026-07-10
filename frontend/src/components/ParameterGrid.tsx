@@ -15,6 +15,7 @@ import {
   Segmented,
   Modal,
   App as AntApp,
+  theme as antdTheme,
   type GetRef,
 } from "antd";
 import {
@@ -29,6 +30,7 @@ import {
   GlobalOutlined,
 } from "@ant-design/icons";
 import AddParameterModal from "./AddParameterModal";
+import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -520,6 +522,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const { categoryKey, selectedParamId, selectParam, search, setSearch, filters, setFilters, prefs, setPrefs, jump } =
     useUI();
   const { message } = AntApp.useApp();
+  const { token } = antdTheme.useToken();
   const qc = useQueryClient();
   const presetsQ = useQuery({ queryKey: ["presets"], queryFn: api.presets });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -747,6 +750,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       title: instanceHeader(inst),
       key: inst.name,
       width: instWidths[inst.name] ?? 150,
+      // Excel-like value filter per instance column: distinct effective
+      // values, searchable when long.
+      filters: [...new Set(grid.rows.map((r) => fmtValue(r.cells[inst.name]?.value)))]
+        .sort()
+        .slice(0, 60)
+        .map((v) => ({ text: v === "" ? "(empty)" : v, value: v })),
+      filterSearch: true,
+      onFilter: (v, r) => fmtValue(r.cells[inst.name]?.value) === v,
       onHeaderCell: () => ({
         className:
           (inst.environment ? `th-env-${inst.environment}` : "") +
@@ -885,6 +896,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add Parameter
           </Button>
+          <SubmitChangesButton instances={grid.instances} />
           <Dropdown
             trigger={["click"]}
             menu={{
@@ -927,10 +939,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <Checkbox checked={prefs.showDescCol} onChange={(e) => setPrefs({ showDescCol: e.target.checked })}>
                   Description
                 </Checkbox>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>PANELS</Typography.Text>
-                <Checkbox checked={prefs.showCompare} onChange={(e) => setPrefs({ showCompare: e.target.checked })}>
-                  Compare panel
-                </Checkbox>
               </div>
             }
           >
@@ -952,7 +960,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           setGlobalAsk(null);
         }}
       />
-      <div ref={rootRef} style={{ display: "contents" }}>
+      <div
+        ref={rootRef}
+        style={{ display: "contents", "--grid-bg": token.colorBgContainer } as React.CSSProperties}
+      >
       <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Table<Row>
           ref={tableRef}

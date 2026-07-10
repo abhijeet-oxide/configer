@@ -84,7 +84,7 @@ export const useUI = create<UIState>((set) => ({
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   repoId: initialRepo,
-  section: "home",
+  section: "workspace",
   categoryKey: null,
   selectedParamId: null,
   compareLeft: null,

@@ -7,14 +7,8 @@ import {
   Badge,
   Avatar,
   Dropdown,
-  Modal,
-  Form,
   Tag,
-  Table,
-  Alert,
   Typography,
-  Select,
-  App as AntApp,
   type InputRef,
 } from "antd";
 import {
@@ -22,77 +16,54 @@ import {
   MoonOutlined,
   SunOutlined,
   BellOutlined,
-  QuestionCircleOutlined,
-  PullRequestOutlined,
   BgColorsOutlined,
   SyncOutlined,
   CloudServerOutlined,
-  ArrowRightOutlined,
-  DeleteOutlined,
   FontSizeOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeItem, type Instance } from "../api";
-import { fmtValue } from "../rules";
+import { useQuery } from "@tanstack/react-query";
+import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { brands, type BrandKey } from "../theme";
 
-// afterValue renders the post-change value with action awareness.
-function afterValue(it: ChangeItem & { action?: string }) {
-  if (it.action === "exclude") return "∅ removed from this instance";
-  if (it.action === "reset") return "(back to inherited value)";
-  return fmtValue(it.new);
+// Application header, kept deliberately light: an ellipsized breadcrumb that
+// can never wrap the layout, the global search, appearance controls, the
+// approvals bell and fullscreen. Editing-specific actions (Create Change
+// Request, git sync status) live in the editor toolbar where they belong.
+
+function ellipsis(maxWidth: number): React.CSSProperties {
+  return {
+    display: "inline-block",
+    maxWidth,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    verticalAlign: "bottom",
+  };
 }
 
-// Application header: breadcrumb context, git-liveness indicator, the global
-// parameter search (⌘K), theme controls, and the Create Change Request flow.
-export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, selectParam, repoId } =
+export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
+  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, repoId, section } =
     useUI();
   const switchRepo = useSwitchRepo();
-  const { message } = AntApp.useApp();
-  const qc = useQueryClient();
   const searchRef = useRef<InputRef>(null);
-  const [crOpen, setCrOpen] = useState(false);
-  const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
+  const [fullscreen, setFullscreen] = useState(false);
 
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
+  const statusQ = useQuery({
+    queryKey: ["repo-status"],
+    queryFn: api.repoStatus,
+    refetchInterval: 20_000,
+    enabled: section === "config",
+  });
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
   const activeRepo = repos.find((r) => r.id === repoId);
-  const items = draftQ.data?.draft?.items ?? [];
-  const pending = items.length;
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const prodTouched = items.some(
-    (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
-  );
-
-  const revert = useMutation({
-    mutationFn: (it: ChangeItem) => api.revertValue(it.paramId, it.instance),
-    onSuccess: () => qc.invalidateQueries(),
-  });
-
-  const submit = useMutation({
-    mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
-      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "demo-user" }),
-    onSuccess: (cr) => {
-      setCrOpen(false);
-      form.resetFields();
-      qc.invalidateQueries();
-      message.success(
-        cr.prUrl
-          ? `Change request #${cr.id} submitted, PR ${cr.prUrl}`
-          : `Change request #${cr.id} submitted on branch ${cr.branch}`,
-        6,
-      );
-      setSection("changes");
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -101,66 +72,79 @@ export default function TopBar({ project, instances }: { project?: string; insta
         searchRef.current?.focus();
       }
     };
+    const onFs = () => setFullscreen(!!document.fullscreenElement);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    document.addEventListener("fullscreenchange", onFs);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("fullscreenchange", onFs);
+    };
   }, []);
+
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void document.documentElement.requestFullscreen();
+  };
 
   const st = statusQ.data;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14, width: "100%" }}>
-      <Breadcrumb
-        items={[
-          {
-            title: (
-              <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
-                Workspace
-              </a>
-            ),
-          },
-          {
-            title: (
-              <Dropdown
-                trigger={["click"]}
-                menu={{
-                  selectedKeys: repoId ? [repoId] : [],
-                  items: [
-                    ...repos.map((r) => ({
-                      key: r.id,
-                      label: (
-                        <Space size={6}>
-                          {r.name}
-                          {r.project && r.project !== r.name && (
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                              {r.project}
-                            </Typography.Text>
-                          )}
-                        </Space>
-                      ),
-                    })),
-                    { type: "divider" as const },
-                    { key: "__workspace", label: "Connect or manage repositories…" },
-                  ],
-                  onClick: ({ key }) => {
-                    if (key === "__workspace") {
-                      setSection("workspace");
-                    } else if (key !== repoId) {
-                      switchRepo(key);
-                    }
-                  },
-                }}
-              >
-                <a style={{ cursor: "pointer" }}>
-                  <b>{activeRepo?.name ?? project ?? "…"}</b>{" "}
-                  <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
+      <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+        <Breadcrumb
+          items={[
+            {
+              title: (
+                <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
+                  Workspace
                 </a>
-              </Dropdown>
-            ),
-          },
-          { title: st?.branch || "main" },
-        ]}
-      />
-      {st && (
+              ),
+            },
+            {
+              title: (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    selectedKeys: repoId ? [repoId] : [],
+                    items: [
+                      ...repos.map((r) => ({
+                        key: r.id,
+                        label: (
+                          <Space size={6}>
+                            {r.name}
+                            {r.project && r.project !== r.name && (
+                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                                {r.project}
+                              </Typography.Text>
+                            )}
+                          </Space>
+                        ),
+                      })),
+                      { type: "divider" as const },
+                      { key: "__workspace", label: "Connect or manage repositories…" },
+                    ],
+                    onClick: ({ key }) => {
+                      if (key === "__workspace") setSection("workspace");
+                      else if (key !== repoId) switchRepo(key);
+                    },
+                  }}
+                >
+                  <a style={{ cursor: "pointer" }}>
+                    <b style={ellipsis(200)} title={activeRepo?.name ?? project}>
+                      {activeRepo?.name ?? project ?? "…"}
+                    </b>{" "}
+                    <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+                  </a>
+                </Dropdown>
+              ),
+            },
+            ...(section === "config" && st?.branch
+              ? [{ title: <span style={ellipsis(110)}>{st.branch}</span> }]
+              : []),
+          ]}
+        />
+      </div>
+      {section === "config" && st && (
         <Tooltip
           title={
             st.upstreamGone
@@ -173,7 +157,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
           <Tag
             icon={st.syncError || st.upstreamGone ? <CloudServerOutlined /> : <SyncOutlined spin={statusQ.isFetching} />}
             color={st.upstreamGone ? "error" : st.syncError ? "warning" : st.behind > 0 ? "processing" : "success"}
-            style={{ marginInlineEnd: 0 }}
+            style={{ marginInlineEnd: 0, flexShrink: 0 }}
           >
             {st.upstreamGone
               ? "branch removed on remote"
@@ -185,7 +169,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
           </Tag>
         </Tooltip>
       )}
-      <div style={{ flex: 1 }} />
+      <div style={{ flex: 1, minWidth: 8 }} />
       <Input
         ref={searchRef}
         prefix={<SearchOutlined />}
@@ -194,9 +178,9 @@ export default function TopBar({ project, instances }: { project?: string; insta
         allowClear
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "clamp(180px, 24vw, 380px)" }}
+        style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
       />
-      <Space size={6}>
+      <Space size={4} style={{ flexShrink: 0 }}>
         <Tooltip title={mode === "light" ? "Switch to dark mode" : "Switch to light mode"}>
           <Button
             size="small"
@@ -231,147 +215,21 @@ export default function TopBar({ project, instances }: { project?: string; insta
             onClick={() => setFontScale(fontScale === "normal" ? "large" : "normal")}
           />
         </Tooltip>
-        <Tooltip title="Help"><Button size="small" type="text" icon={<QuestionCircleOutlined />} /></Tooltip>
+        <Tooltip title={fullscreen ? "Exit full screen" : "Full screen"}>
+          <Button
+            size="small"
+            type="text"
+            icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            onClick={toggleFullscreen}
+          />
+        </Tooltip>
         <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
           <Badge count={awaiting} size="small">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
           </Badge>
         </Tooltip>
-        <Badge count={pending} size="small" offset={[-4, 0]}>
-          <Button
-            size="small"
-            type="primary"
-            icon={<PullRequestOutlined />}
-            disabled={pending === 0}
-            onClick={() => setCrOpen(true)}
-          >
-            Create Change Request
-          </Button>
-        </Badge>
         <Avatar size={26} style={{ background: "#7c3aed", flexShrink: 0 }}>DU</Avatar>
       </Space>
-
-      <Modal
-        title={`Review your changes (${pending})`}
-        open={crOpen}
-        onCancel={() => setCrOpen(false)}
-        onOk={() => form.submit()}
-        okText="Send for review"
-        okButtonProps={{ disabled: pending === 0 }}
-        confirmLoading={submit.isPending}
-        width={760}
-      >
-        {prodTouched && (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 10 }}
-            message="This change touches PRODUCTION instances"
-            description="It will only go live after an approver publishes it."
-          />
-        )}
-        <Table<ChangeItem>
-          size="small"
-          rowKey={(it) => `${it.paramId}|${it.instance}`}
-          dataSource={items}
-          pagination={false}
-          style={{ marginBottom: 14 }}
-          columns={[
-            {
-              title: "Setting",
-              dataIndex: "paramId",
-              render: (v: string) => (
-                <Typography.Link
-                  onClick={() => {
-                    // jump straight to the cell in the editor
-                    selectParam(v);
-                    setSection("config");
-                    setCrOpen(false);
-                  }}
-                >
-                  <span className="mono">{v}</span>
-                </Typography.Link>
-              ),
-            },
-            {
-              title: "Instance",
-              dataIndex: "instance",
-              width: 140,
-              render: (v: string, it: ChangeItem) =>
-                it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
-            },
-            {
-              title: "Before",
-              dataIndex: "old",
-              render: (v) => <span className="mono" style={{ opacity: 0.6 }}>{fmtValue(v)}</span>,
-            },
-            { title: "", width: 30, render: () => <ArrowRightOutlined style={{ opacity: 0.45 }} /> },
-            {
-              title: "After",
-              render: (_v, it) => (
-                <span className="mono" style={{ color: "#389e0d" }}>{afterValue(it)}</span>
-              ),
-            },
-            {
-              title: "",
-              width: 46,
-              render: (_v, it) => (
-                <Tooltip title="Undo this change">
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    loading={revert.isPending}
-                    onClick={() => revert.mutate(it)}
-                  />
-                </Tooltip>
-              ),
-            },
-          ]}
-        />
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={(v) => submit.mutate(v)}
-          initialValues={{ title: "" }}
-        >
-          <Form.Item
-            name="title"
-            label="What is this change about?"
-            rules={[{ required: true, message: "Give the change a short title" }]}
-          >
-            <Input placeholder="e.g. Update staging DNS servers" maxLength={100} />
-          </Form.Item>
-          <div style={{ display: "flex", gap: 10 }}>
-            <Form.Item name="category" label="Change type" initialValue="feature" style={{ flex: 1 }}>
-              <Select
-                options={[
-                  { value: "hotfix", label: "Hotfix (urgent fix)" },
-                  { value: "feature", label: "Feature (new capability)" },
-                  { value: "bugfix", label: "Bugfix" },
-                  { value: "maintenance", label: "Maintenance" },
-                  { value: "security", label: "Security" },
-                  { value: "other", label: "Other" },
-                ]}
-              />
-            </Form.Item>
-            <Form.Item name="reference" label="Reference / CR ID (optional)" style={{ flex: 1 }}>
-              <Input placeholder="e.g. JIRA-123, CRQ000042" maxLength={60} />
-            </Form.Item>
-          </div>
-          <Form.Item name="description" label="Why is it needed? (optional)">
-            <Input.TextArea
-              rows={2}
-              placeholder="Shown to the approver, and kept in the Git history"
-            />
-          </Form.Item>
-        </Form>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          On Git this saves your edits to branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>
-          {" "}and opens a review; nothing goes live until an approver publishes it.
-        </Typography.Text>
-      </Modal>
     </div>
   );
 }

@@ -24,17 +24,31 @@ import {
   DisconnectOutlined,
   RightOutlined,
   DownloadOutlined,
+  StarOutlined,
+  StarFilled,
+  EditOutlined,
 } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type RepoSummary } from "../api";
+import { api, type Grid, type RepoSummary } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
+import DashboardView from "./DashboardView";
 
-// WorkspaceView is the portfolio level of the dashboard: every repository
-// this Configer is connected to, each with its configuration's shape and
-// health, plus the place to connect new ones. Repositories are managed on
-// the server; nothing needs to exist on the user's machine.
+// WorkspaceView is the single landing page: every connected configuration as
+// a card (favorites pinned first), and right below, the overview of the one
+// currently selected: pick a configuration, read its health, press Edit to
+// open the editor. One seamless flow instead of separate Workspace and Home.
+
+const FAV_KEY = "configer.favRepos";
+
+function loadFavs(): string[] {
+  try {
+    return JSON.parse(localStorage.getItem(FAV_KEY) ?? "[]") as string[];
+  } catch {
+    return [];
+  }
+}
 
 const envColor: Record<string, string> = {
   production: "red",
@@ -58,7 +72,17 @@ function SyncTag({ r }: { r: RepoSummary }) {
   );
 }
 
-function RepoCard({ r, active }: { r: RepoSummary; active: boolean }) {
+function RepoCard({
+  r,
+  active,
+  fav,
+  onToggleFav,
+}: {
+  r: RepoSummary;
+  active: boolean;
+  fav: boolean;
+  onToggleFav: () => void;
+}) {
   const { message } = AntApp.useApp();
   const { setSection } = useUI();
   const switchRepo = useSwitchRepo();
@@ -80,26 +104,40 @@ function RepoCard({ r, active }: { r: RepoSummary; active: boolean }) {
   return (
     <Card
         hoverable
-        onClick={() => open("home")}
+        onClick={() => {
+          // Selecting a card switches the overview below to this
+          // configuration; it does not yank the user to another page.
+          if (!active) switchRepo(r.id);
+        }}
         style={{
-          width: 340,
+          width: 330,
           height: "100%",
           borderColor: active ? "var(--ant-color-primary, #2a78d6)" : undefined,
         }}
-        styles={{ body: { padding: 16 } }}
+        styles={{ body: { padding: 14 } }}
       >
         <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <div style={{ fontSize: 22, opacity: 0.75, marginTop: 2 }}>
+          <div style={{ fontSize: 20, opacity: 0.75, marginTop: 2 }}>
             {r.local ? <HddOutlined /> : <GithubOutlined />}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <Typography.Text strong style={{ fontSize: 15 }}>
+            <Typography.Text strong style={{ fontSize: 14.5 }}>
               {r.name}
             </Typography.Text>
             <div className="mono" style={{ fontSize: 11, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {r.origin}
             </div>
           </div>
+          <span onClick={(e) => e.stopPropagation()}>
+            <Tooltip title={fav ? "Unpin from favorites" : "Mark as favorite (pinned first)"}>
+              <Button
+                size="small"
+                type="text"
+                icon={fav ? <StarFilled style={{ color: "#f5b301" }} /> : <StarOutlined />}
+                onClick={onToggleFav}
+              />
+            </Tooltip>
+          </span>
           <span onClick={(e) => e.stopPropagation()}>
             <Dropdown
               trigger={["click"]}
@@ -165,10 +203,24 @@ function RepoCard({ r, active }: { r: RepoSummary; active: boolean }) {
             </Space>
           </>
         )}
-        <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-          <Button size="small" type={active ? "primary" : "default"}>
-            Open <RightOutlined />
-          </Button>
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 6 }}>
+          {active ? (
+            <Button
+              size="small"
+              type="primary"
+              icon={<EditOutlined />}
+              onClick={(e) => {
+                e.stopPropagation();
+                open("config");
+              }}
+            >
+              Edit configuration
+            </Button>
+          ) : (
+            <Button size="small">
+              Select <RightOutlined />
+            </Button>
+          )}
         </div>
       </Card>
   );
@@ -229,24 +281,33 @@ export function ConnectForm({
   );
 }
 
-export default function WorkspaceView() {
+export default function WorkspaceView({ grid }: { grid?: Grid }) {
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const [connectOpen, setConnectOpen] = useState(false);
+  const [favs, setFavs] = useState<string[]>(loadFavs);
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 20_000 });
-  const repos = wsQ.data?.repos ?? [];
+  // favorites pinned first, connection order otherwise
+  const repos = [...(wsQ.data?.repos ?? [])].sort(
+    (a, b) => Number(favs.includes(b.id)) - Number(favs.includes(a.id)),
+  );
+  const toggleFav = (id: string) =>
+    setFavs((f) => {
+      const next = f.includes(id) ? f.filter((x) => x !== id) : [...f, id];
+      localStorage.setItem(FAV_KEY, JSON.stringify(next));
+      return next;
+    });
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 24px" }}>
-      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
               Workspace
             </Typography.Title>
             <Typography.Text type="secondary">
-              Every configuration you manage, each backed by its own Git repository. Connect as many
-              as you need and switch between them anywhere; nothing is stored outside Git.
+              Pick a configuration to see its overview below; everything stays in Git.
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
@@ -274,12 +335,18 @@ export default function WorkspaceView() {
             </Empty>
           </Card>
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 20, alignItems: "stretch" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 16, alignItems: "stretch" }}>
             {repos.map((r) => (
-              <RepoCard key={r.id} r={r} active={r.id === repoId} />
+              <RepoCard
+                key={r.id}
+                r={r}
+                active={r.id === repoId}
+                fav={favs.includes(r.id)}
+                onToggleFav={() => toggleFav(r.id)}
+              />
             ))}
             <Card
-              style={{ width: 340, borderStyle: "dashed", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 220 }}
+              style={{ width: 330, borderStyle: "dashed", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200 }}
               styles={{ body: { textAlign: "center" } }}
               hoverable
               onClick={() => setConnectOpen(true)}
@@ -293,11 +360,17 @@ export default function WorkspaceView() {
           </div>
         )}
 
-        <Typography.Paragraph type="secondary" style={{ marginTop: 18, fontSize: 12 }}>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 14, fontSize: 12 }}>
           <DownloadOutlined /> Tip: after connecting, use <a onClick={() => setSection("import")}>Import</a> to
           bring the repository's settings under management. <DisconnectOutlined style={{ marginInlineStart: 10 }} />{" "}
           Disconnecting never deletes anything on Git.
         </Typography.Paragraph>
+
+        {grid && repoId && (
+          <div style={{ marginTop: 4, borderTop: "1px solid rgba(128,128,128,0.2)" }}>
+            <DashboardView grid={grid} embedded />
+          </div>
+        )}
       </div>
 
       <Modal
@@ -311,7 +384,6 @@ export default function WorkspaceView() {
           onDone={(r) => {
             setConnectOpen(false);
             switchRepo(r.id);
-            setSection("home");
           }}
         />
       </Modal>

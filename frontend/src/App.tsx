@@ -1,4 +1,4 @@
-import { Layout, Menu, Result, Drawer, Button, Alert, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Result, Drawer, Button, Alert, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   HomeOutlined,
@@ -22,33 +22,17 @@ import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
-import DashboardView from "./components/DashboardView";
 import ImportWizard from "./components/ImportWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import MobileParamList from "./components/MobileParamList";
-import { DashboardSkeleton, GridSkeleton, ListSkeleton } from "./components/Skeletons";
+import { GridSkeleton, ListSkeleton } from "./components/Skeletons";
 
 const { Header, Sider, Content } = Layout;
 
-// Horizontal sub-nav under the header, mirroring the reference tabs.
-const topTabs = [
-  { key: "config", label: "Config Editor" },
-  { key: "compare", label: "Compare" },
-  { key: "changes", label: "Change Requests" },
-  { key: "history", label: "History" },
-  { key: "schemas", label: "Schemas" },
-  { key: "validation", label: "Validation" },
-  { key: "deployments", label: "Deployments" },
-  { key: "audit", label: "Audit" },
-];
-
 function ResizeHandleV() {
   return <PanelResizeHandle className="rrp-handle rrp-handle-v" />;
-}
-function ResizeHandleH() {
-  return <PanelResizeHandle className="rrp-handle rrp-handle-h" />;
 }
 
 // ConnectionBanner keeps a temporary service outage non-disruptive: users see
@@ -127,7 +111,7 @@ function OfflineReplay() {
 }
 
 export default function App() {
-  const { section, setSection, prefs, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo } =
+  const { section, setSection, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo } =
     useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
@@ -203,20 +187,8 @@ export default function App() {
           <CategoryTree grid={grid} />
         </Panel>
         <ResizeHandleV />
-        <Panel defaultSize={63} minSize={40} style={{ minWidth: 0 }}>
-          <PanelGroup direction="vertical" autoSaveId="configer-center">
-            <Panel defaultSize={prefs.showCompare ? 70 : 100} minSize={35} style={{ ...panelBg }}>
-              <ParameterGrid grid={grid} />
-            </Panel>
-            {prefs.showCompare && (
-              <>
-                <ResizeHandleH />
-                <Panel defaultSize={30} minSize={12} style={{ ...panelBg }}>
-                  <ComparePanel grid={grid} />
-                </Panel>
-              </>
-            )}
-          </PanelGroup>
+        <Panel defaultSize={63} minSize={40} style={{ minWidth: 0, ...panelBg }}>
+          <ParameterGrid grid={grid} />
         </Panel>
         <ResizeHandleV />
         <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
@@ -229,15 +201,16 @@ export default function App() {
   function body() {
     // The workspace (portfolio) level does not depend on any one repo's grid,
     // so it renders even while a repository is unavailable or none exists.
-    if (section === "workspace")
+    // "home" merged into it: cards on top, the selected configuration's
+    // overview right below on the same page.
+    if (section === "workspace" || section === "home")
       return (
         <div style={{ height: "100%", ...panelBg }}>
-          <WorkspaceView />
+          <WorkspaceView grid={grid} />
         </div>
       );
     if (gridQ.isLoading) {
       // state-aware skeletons: mirror the layout the user is waiting for
-      if (section === "home") return <DashboardSkeleton />;
       if (section === "approvals" || section === "changes") return <ListSkeleton />;
       return <GridSkeleton />;
     }
@@ -274,12 +247,6 @@ export default function App() {
           <ImportWizard grid={grid} />
         </div>
       );
-    if (section === "home")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <DashboardView grid={grid} />
-        </div>
-      );
     if (section === "drift")
       return (
         <div style={{ height: "100%", ...panelBg }}>
@@ -313,8 +280,8 @@ export default function App() {
     if (section === "config") return editorLayout();
     return (
       <Result
-        title={topTabs.find((t) => t.key === section)?.label || section}
-        subTitle="This section is part of the roadmap (see docs/PLAN.md). Config Editor, Compare, and Plugins are live."
+        title={section}
+        subTitle="This section is part of the roadmap (see docs/PLAN.md)."
       />
     );
   }
@@ -322,7 +289,7 @@ export default function App() {
   // Phone tier: single column with a bottom tab bar, no side rail, no tabs row.
   if (phone) {
     const tabs = [
-      { key: "home", icon: <HomeOutlined />, label: "Home" },
+      { key: "workspace", icon: <HomeOutlined />, label: "Home" },
       { key: "config", icon: <TableOutlined />, label: "Settings" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
@@ -365,7 +332,7 @@ export default function App() {
         collapsible
         collapsed={navCollapsed}
         onCollapse={setNavCollapsed}
-        breakpoint="xl"
+        breakpoint="xxl"
         theme="light"
         style={{ borderRight: border }}
       >
@@ -375,13 +342,6 @@ export default function App() {
         <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
           <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
         </Header>
-        <Menu
-          mode="horizontal"
-          selectedKeys={[section]}
-          onClick={({ key }) => setSection(key)}
-          items={topTabs}
-          style={{ borderBottom: border, paddingInline: 12, minWidth: 0, flexShrink: 0 }}
-        />
         <OfflineReplay />
         <ConnectionBanner />
         <Content style={{ overflow: "hidden" }}>{body()}</Content>

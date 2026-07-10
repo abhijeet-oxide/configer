@@ -1,6 +1,6 @@
 // Package transposers holds built-in Transposer plugins that synthesize output
 // artifacts from resolved configuration. These outputs need not exist in the
-// source repo — they are generated into generated/<instance>/.
+// source repo; they are generated into generated/<instance>/.
 package transposers
 
 import (

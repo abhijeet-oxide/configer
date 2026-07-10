@@ -95,7 +95,7 @@ func Value(param model.Parameter, v any) Result {
 			if r := applyRules(rules, s); !r.Valid {
 				msg := p.Name + ": " + r.Message
 				if p.Example != "" {
-					msg += " — example: " + p.Example
+				msg += ", for example " + p.Example
 				}
 				return invalid(msg)
 			}

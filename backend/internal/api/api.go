@@ -43,8 +43,12 @@ type Server struct {
 	Git      *gitengine.Repo
 	Store    *crstore.Store
 	Changes  *changeset.Service
-	writeMu  sync.Mutex // serializes writes to the working tree + store
-	sync     syncState  // git-liveness status (see sync.go)
+	// Version and Environment identify this deployment in the UI and API
+	// (CONFIGER_VERSION / CONFIGER_ENV, e.g. "1.4.0" / "production").
+	Version     string
+	Environment string
+	writeMu     sync.Mutex // serializes writes to the working tree + store
+	sync        syncState  // git-liveness status (see sync.go)
 }
 
 func getenv(k, def string) string {
@@ -86,11 +90,13 @@ func New(repoPath string) (*Server, error) {
 	}
 
 	return &Server{
-		RepoPath: repoPath,
-		Registry: reg,
-		Git:      repo,
-		Store:    store,
-		Changes:  &changeset.Service{Repo: repo, Store: store, Registry: reg, Provider: prov},
+		RepoPath:    repoPath,
+		Registry:    reg,
+		Git:         repo,
+		Store:       store,
+		Changes:     &changeset.Service{Repo: repo, Store: store, Registry: reg, Provider: prov},
+		Version:     getenv("CONFIGER_VERSION", "dev"),
+		Environment: getenv("CONFIGER_ENV", "development"),
 	}, nil
 }
 
@@ -120,6 +126,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/reject", s.rejectChange)
 	mux.HandleFunc("GET /api/repo/status", s.repoStatus)
 	mux.HandleFunc("POST /api/repo/sync", s.repoSync)
+	mux.HandleFunc("GET /api/meta", s.meta)
+	mux.HandleFunc("GET /api/repo/findings", s.findings)
+	mux.HandleFunc("POST /api/repo/findings/ack", s.ackFindings)
+	mux.HandleFunc("POST /api/import", s.importParameters)
+	mux.HandleFunc("POST /api/parameters/retire-file", s.retireFile)
 	return withCORS(mux)
 }
 
@@ -173,6 +184,23 @@ func dropExcl(ov *model.Overlay, paramID string) {
 
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// meta identifies this deployment: shown in the UI footer and used for
+// professional, environment-aware messaging (never "localhost" jargon).
+func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
+	branch, _ := s.Git.CurrentBranch()
+	project := ""
+	if p, err := s.load(); err == nil {
+		project = p.Catalog.Metadata.Project
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"name":        "Configer",
+		"version":     s.Version,
+		"environment": s.Environment,
+		"project":     project,
+		"branch":      branch,
+	})
 }
 
 func (s *Server) plugins(w http.ResponseWriter, _ *http.Request) {
@@ -301,7 +329,7 @@ func (s *Server) presets(w http.ResponseWriter, _ *http.Request) {
 //   - set (default): coerce to the declared type (lists per item), validate,
 //     stage the override;
 //   - reset: stage removal of the instance override (fall back to the chain);
-//   - exclude: stage a tombstone — the parameter renders NOTHING in this
+//   - exclude: stage a tombstone; the parameter renders NOTHING in this
 //     instance's generated files.
 //
 // Nothing touches Git until the draft is submitted.

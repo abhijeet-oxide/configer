@@ -13,7 +13,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Parameter, type Validation } from "../api";
 
-// RuleEditor lets users define a parameter's data type and validation rules —
+// RuleEditor lets users define a parameter's data type and validation rules:
 // either custom (pattern, min/max, character limits, enum) or picked from the
 // predefined rule library. Saved rules are written to catalog.yaml and
 // immediately enforced by every cell editor and by the server on write.
@@ -76,7 +76,7 @@ function Editor({ param }: { param: Parameter }) {
         <Select
           size="small"
           allowClear
-          placeholder="None — custom rules only"
+            placeholder="None (custom rules only)"
           loading={presetsQ.isLoading}
           value={v.preset}
           options={(presetsQ.data ?? []).map((p) => ({ value: p.id, label: p.name }))}

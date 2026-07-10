@@ -13,7 +13,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* Semantic accents — mirrored from theme.ts: green = live/valid, amber =
+/* Semantic accents, mirrored from theme.ts: green = live/valid, amber =
    pending, blue = in review, red = invalid/production. */
 :root {
   --c-ok: #0ca30c;
@@ -66,7 +66,7 @@ body {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.45; transform: scale(0.8); }
 }
-/* excluded: hatched wash — clearly "nothing here on purpose" */
+/* excluded: hatched wash, clearly "nothing here on purpose" */
 .cell-excluded {
   opacity: 0.6;
   font-style: italic;

@@ -24,7 +24,7 @@ import CrSteps, { StateTag } from "./CrSteps";
 // ChangeRequestsView is the workflow home: every draft, in-review, published
 // and rejected change request, with its parameter-level diff and the actions
 // that drive the git-native lifecycle. Everything here can equally be done on
-// GitHub directly — Configer reflects external merges/closes on refresh.
+// GitHub directly; Configer reflects external merges/closes on refresh.
 
 export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
   if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
@@ -40,12 +40,12 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
         {
           title: "Old value",
           dataIndex: "old",
-          render: (v) => <span className="mono" style={{ opacity: 0.65 }}>{String(v ?? "—")}</span>,
+          render: (v) => <span className="mono" style={{ opacity: 0.65 }}>{String(v ?? "-")}</span>,
         },
         {
           title: "New value",
           dataIndex: "new",
-          render: (v) => <span className="mono" style={{ color: "#389e0d" }}>{String(v ?? "—")}</span>,
+          render: (v) => <span className="mono" style={{ color: "#389e0d" }}>{String(v ?? "-")}</span>,
         },
       ]}
     />
@@ -96,7 +96,7 @@ export default function ChangeRequestsView() {
         loading={q.isLoading}
         dataSource={q.data}
         pagination={false}
-        locale={{ emptyText: <Empty description="No change requests yet — edit some cells in the Config Editor to start a draft." /> }}
+        locale={{ emptyText: <Empty description="No change requests yet. Edit some cells in the Config Editor to start a draft." /> }}
         expandable={{
           expandedRowRender: (cr) => (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

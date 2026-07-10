@@ -39,6 +39,7 @@ import {
   type Row,
 } from "../api";
 import { effectiveRules, validateString, fmtValue, type Rules } from "../rules";
+import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
@@ -54,7 +55,7 @@ const scopeAbbrev: Record<string, string> = {
 };
 
 const scopeExplain: Record<string, string> = {
-  default: "Built-in default value — applies unless something more specific is set",
+    default: "Built-in default value: applies unless something more specific is set",
   global: "Set once for ALL instances",
   environment: "Set for every instance in this environment",
   site: "Set for every instance at this site",
@@ -107,12 +108,12 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
           : pendingItem.action === "reset"
             ? "back to inherited"
             : fmtValue(pendingItem.new)
-      }   (pending — not yet sent for review)`
+      }   (pending, not yet sent for review)`
     : undefined;
 
   if (cell.excluded) {
     return (
-      <Tooltip title={pendingTip ?? "Excluded on this instance — nothing is rendered in its generated files"}>
+    <Tooltip title={pendingTip ?? "Excluded on this instance: nothing is rendered in its generated files"}>
         <span className={"cell-excluded" + (cell.pending ? " cell-pending" : "")}>∅ excluded</span>
       </Tooltip>
     );
@@ -128,7 +129,7 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
   if (Array.isArray(cell.value)) {
     display = <ListChips items={cell.value} />;
   } else if (cell.value === undefined || cell.value === null || cell.value === "") {
-    display = <span style={{ opacity: 0.3 }}>—</span>;
+    display = <span style={{ opacity: 0.3 }}>-</span>;
   } else if (typeof cell.value === "boolean") {
     display = <Tag color={cell.value ? "green" : "default"}>{cell.value ? "on" : "off"}</Tag>;
   } else {
@@ -308,7 +309,7 @@ function ListEditor({
             suffixIcon={null}
           />
           <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 11 }}>
-            {err ?? `${items.length} entr${items.length === 1 ? "y" : "ies"} — one line/element is rendered per entry`}
+            {err ?? `${items.length} entr${items.length === 1 ? "y" : "ies"}, one line/element is rendered per entry`}
           </Typography.Text>
           <Space>
             <Button size="small" type="primary" disabled={!!err} onClick={() => onCommit(items)}>
@@ -353,7 +354,7 @@ function EditableCell({
   onCopyTo: (target: string) => void;
   onUndo: () => void;
 }) {
-  if (!cell) return <span style={{ opacity: 0.3 }}>—</span>;
+  if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
 
   if (editing) {
@@ -513,7 +514,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
     },
-    onError: (e: Error) => message.error(`Rejected: ${e.message}`),
+    onError: (e: Error, vars) => {
+      if (e instanceof OfflineError) {
+        // Service unreachable: keep the edit on this device; it syncs
+        // automatically when the connection returns.
+        enqueueEdit(vars);
+        message.info("Saved on this device; it will sync when the service is reachable again.");
+        return;
+      }
+      message.error(`Rejected: ${e.message}`);
+    },
   });
 
   const q = search.trim().toLowerCase();
@@ -674,12 +684,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             title="What do the marks mean?"
             content={
               <div style={{ display: "flex", flexDirection: "column", gap: 7, width: 300, fontSize: 12 }}>
-                <span><span className="cell-pending mono">10.0.0.1</span> — your pending change (hover it to see before → after)</span>
-                <span><span className="cell-new mono">1.2</span> — newly introduced in this software version</span>
-                <span><span className="cell-deprecated mono">off</span> — deprecated; no longer editable</span>
-                <span><span className="cell-invalid mono">99999</span> — value breaks a rule (hover for why)</span>
-                <span><span className="cell-excluded">∅ excluded</span> — removed from this instance's files entirely</span>
-                <span><span className="cell-na">n/a</span> — doesn't exist in this software version yet</span>
+                <span><span className="cell-pending mono">10.0.0.1</span>: your pending change (hover it to see before → after)</span>
+                <span><span className="cell-new mono">1.2</span>: newly introduced in this software version</span>
+                <span><span className="cell-deprecated mono">off</span>: deprecated; no longer editable</span>
+                <span><span className="cell-invalid mono">99999</span>: value breaks a rule (hover for why)</span>
+                <span><span className="cell-excluded">∅ excluded</span>: removed from this instance's files entirely</span>
+                <span><span className="cell-na">n/a</span>: doesn't exist in this software version yet</span>
                 <span>
                   <span className="source-badge">glb</span> where a value comes from:{" "}
                   glb = all instances · env = environment · zone/site = that area · def = built-in default

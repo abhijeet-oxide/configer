@@ -79,7 +79,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
       qc.invalidateQueries();
       message.success(
         cr.prUrl
-          ? `Change request #${cr.id} submitted — PR ${cr.prUrl}`
+          ? `Change request #${cr.id} submitted, PR ${cr.prUrl}`
           : `Change request #${cr.id} submitted on branch ${cr.branch}`,
         6,
       );
@@ -113,17 +113,25 @@ export default function TopBar({ project, instances }: { project?: string; insta
       {st && (
         <Tooltip
           title={
-            st.remote
-              ? `Synced with ${st.remote}${st.syncError ? ` — ${st.syncError}` : ""}. External Git commits are picked up automatically.`
-              : "Local repository (no remote configured)"
+            st.upstreamGone
+              ? `The branch "${st.branch}" no longer exists on the remote; it may have been deleted on GitHub. Your local work is safe; ask an administrator to restore the branch or point Configer at a different one.`
+              : st.remote
+                ? `Synced with the Git remote${st.syncError ? `: ${st.syncError}` : ""}. Commits made directly on Git are picked up automatically.`
+                : "Local repository (no remote configured)"
           }
         >
           <Tag
-            icon={st.syncError ? <CloudServerOutlined /> : <SyncOutlined spin={statusQ.isFetching} />}
-            color={st.syncError ? "warning" : st.behind > 0 ? "processing" : "success"}
+            icon={st.syncError || st.upstreamGone ? <CloudServerOutlined /> : <SyncOutlined spin={statusQ.isFetching} />}
+            color={st.upstreamGone ? "error" : st.syncError ? "warning" : st.behind > 0 ? "processing" : "success"}
             style={{ marginInlineEnd: 0 }}
           >
-            {st.remote ? (st.behind > 0 ? `${st.behind} behind` : "git: live") : "git: local"}
+            {st.upstreamGone
+              ? "branch removed on remote"
+              : st.remote
+                ? st.behind > 0
+                  ? `${st.behind} behind`
+                  : "git: live"
+                : "git: local"}
           </Tag>
         </Tooltip>
       )}
@@ -288,7 +296,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
         </Form>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           On Git this saves your edits to branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>
-          {" "}and opens a review — nothing goes live until an approver publishes it.
+          {" "}and opens a review; nothing goes live until an approver publishes it.
         </Typography.Text>
       </Modal>
     </div>

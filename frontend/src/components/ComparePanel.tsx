@@ -74,8 +74,8 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
             pagination={false}
             columns={[
               { title: "Parameter", dataIndex: "name", width: 240 },
-              { title: left, dataIndex: "left", render: (v) => <span className="mono">{String(v ?? "—")}</span> },
-              { title: right, dataIndex: "right", render: (v) => <span className="mono">{String(v ?? "—")}</span> },
+              { title: left, dataIndex: "left", render: (v) => <span className="mono">{String(v ?? "-")}</span> },
+              { title: right, dataIndex: "right", render: (v) => <span className="mono">{String(v ?? "-")}</span> },
               { title: "Change", dataIndex: "status", width: 120,
                 render: (s: string) => <Tag color={statusColor[s]}>{s}</Tag> },
             ]}

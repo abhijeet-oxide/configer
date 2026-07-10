@@ -15,7 +15,7 @@ import { StateTag } from "./CrSteps";
 import { ActivitySparkline, CategoryDonut, HealthTiles, type TileDatum } from "./charts";
 import { useUI } from "../store";
 
-// DashboardView is the landing page — a visual command center that fills the
+// DashboardView is the landing page: a visual command center that fills the
 // viewport with genuinely useful data: health map, category inventory, change
 // activity, recent history, and a Git education footer.
 
@@ -198,7 +198,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                     <Space wrap>
                       <StateTag state={cr.state} />
                       <span>
-                        <b>{cr.author}</b> — {cr.title}
+                        <b>{cr.author}</b>: {cr.title}
                         <Typography.Text type="secondary">
                           {" "}· {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"} · {relTime(cr.updatedAt)}
                         </Typography.Text>
@@ -227,7 +227,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                     {i.name}
                   </Space>
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {i.softwareVersion} · {i.region ?? "—"}
+                    {i.softwareVersion} · {i.region ?? "-"}
                   </Typography.Text>
                 </List.Item>
               )}
@@ -249,7 +249,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <Typography.Text>
             Everything here is stored in <b>Git</b>
             {st?.remote ? <> and synced with your repository (branch <code>{st.branch}</code>)</> : <> (branch <code>{st?.branch ?? "main"}</code>)</>}.
-            {" "}Your edits become a <b>change request</b>, get reviewed, and only go live after approval — you can't break anything by exploring.
+            {" "}Your edits become a <b>change request</b>, get reviewed, and only go live after approval; you can't break anything by exploring.
           </Typography.Text>
         </Space>
       </Card>

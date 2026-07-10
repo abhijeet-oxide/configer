@@ -1,36 +1,24 @@
 import { Menu, Typography, Badge } from "antd";
-import {
-  HomeOutlined,
-  TableOutlined,
-  DiffOutlined,
-  PullRequestOutlined,
-  FileTextOutlined,
-  CheckCircleOutlined,
-  SafetyCertificateOutlined,
-  RocketOutlined,
-  ApiOutlined,
-  AlertOutlined,
-  AuditOutlined,
-  TeamOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
 import type { MenuProps } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { Ic, icons } from "./icons";
 import { useUI } from "../store";
 
 // The far-left navigation rail. Grouped to echo the reference layout
-// (Configuration / Observability / Settings).
-function buildItems(approvalsCount: number): MenuProps["items"] {
+// (Configuration / Observability / Settings). Icons are bundled Phosphor
+// glyphs (offline-safe Iconify data imports).
+function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
   return [
-    { key: "home", icon: <HomeOutlined />, label: "Home" },
+    { key: "home", icon: <Ic icon={icons.home} />, label: "Home" },
     { type: "group", label: "CONFIGURATION", children: [
-      { key: "config", icon: <TableOutlined />, label: "Config Editor" },
-      { key: "compare", icon: <DiffOutlined />, label: "Compare" },
-      { key: "changes", icon: <PullRequestOutlined />, label: "Change Requests" },
+      { key: "config", icon: <Ic icon={icons.editor} />, label: "Config Editor" },
+      { key: "import", icon: <Ic icon={icons.import} />, label: "Import" },
+      { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
+      { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
       {
         key: "approvals",
-        icon: <CheckCircleOutlined />,
+        icon: <Ic icon={icons.approvals} />,
         label: (
           <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
             Approvals
@@ -38,18 +26,27 @@ function buildItems(approvalsCount: number): MenuProps["items"] {
           </span>
         ),
       },
-      { key: "history", icon: <FileTextOutlined />, label: "History" },
-      { key: "schemas", icon: <SafetyCertificateOutlined />, label: "Schemas" },
-      { key: "plugins", icon: <ApiOutlined />, label: "Plugins" },
-      { key: "deployments", icon: <RocketOutlined />, label: "Deployments" },
+      { key: "history", icon: <Ic icon={icons.history} />, label: "History" },
+      { key: "schemas", icon: <Ic icon={icons.schemas} />, label: "Schemas" },
+      { key: "plugins", icon: <Ic icon={icons.plugins} />, label: "Plugins" },
+      { key: "deployments", icon: <Ic icon={icons.deployments} />, label: "Deployments" },
     ]},
     { type: "group", label: "OBSERVABILITY", children: [
-      { key: "drift", icon: <AlertOutlined />, label: "Drift Detection" },
-      { key: "audit", icon: <AuditOutlined />, label: "Audit Logs" },
+      {
+        key: "drift",
+        icon: <Ic icon={icons.drift} />,
+        label: (
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+            Repository Changes
+            <Badge count={findingsCount} size="small" color="orange" />
+          </span>
+        ),
+      },
+      { key: "audit", icon: <Ic icon={icons.audit} />, label: "Audit Logs" },
     ]},
     { type: "group", label: "SETTINGS", children: [
-      { key: "users", icon: <TeamOutlined />, label: "Users & Teams" },
-      { key: "settings", icon: <SettingOutlined />, label: "System Settings" },
+      { key: "users", icon: <Ic icon={icons.users} />, label: "Users & Teams" },
+      { key: "settings", icon: <Ic icon={icons.settings} />, label: "System Settings" },
     ]},
   ];
 }
@@ -57,8 +54,9 @@ function buildItems(approvalsCount: number): MenuProps["items"] {
 export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
   const { section, setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const items = buildItems(approvalsCount);
+  const items = buildItems(approvalsCount, findingsQ.data?.findings?.length ?? 0);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
@@ -88,11 +86,32 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}
       />
       {!collapsed && <GitStatusChip />}
+      {!collapsed && <DeploymentChip />}
     </div>
   );
 }
 
-// GitStatusChip anchors the rail with the live connection state — a constant,
+// DeploymentChip identifies this installation (version + environment) so
+// support conversations and screenshots are unambiguous.
+function DeploymentChip() {
+  const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
+  const m = metaQ.data;
+  if (!m) return null;
+  const envColor: Record<string, string> = { production: "#f5222d", staging: "#fa8c16" };
+  return (
+    <div style={{ margin: "0 10px 10px", fontSize: 10.5, opacity: 0.75, display: "flex", alignItems: "center", gap: 6 }}>
+      <span
+        style={{
+          width: 6, height: 6, borderRadius: 3, flexShrink: 0,
+          background: envColor[m.environment] ?? "#52c41a",
+        }}
+      />
+      {m.name} {m.version} · {m.environment}
+    </div>
+  );
+}
+
+// GitStatusChip anchors the rail with the live connection state: a constant,
 // calm reminder that the source of truth is Git.
 function GitStatusChip() {
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 30_000 });

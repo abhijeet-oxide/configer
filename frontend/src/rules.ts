@@ -50,7 +50,7 @@ export function validateString(value: string, rules: Rules): string | null {
     try {
       if (!new RegExp(rules.pattern).test(value)) {
         if (rules.presetName) {
-          return `Needs to be a valid ${rules.presetName}${rules.example ? ` — for example ${rules.example}` : ""}`;
+          return `Needs to be a valid ${rules.presetName}${rules.example ? `, for example ${rules.example}` : ""}`;
         }
         return "This doesn't match the required format";
       }
@@ -63,7 +63,7 @@ export function validateString(value: string, rules: Rules): string | null {
 
 // fmtValue renders any cell value (scalars, lists, absence) for humans.
 export function fmtValue(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
+  if (v === null || v === undefined || v === "") return "-";
   if (Array.isArray(v)) return v.length ? v.map(String).join(", ") : "[ ]";
   if (typeof v === "boolean") return v ? "on" : "off";
   return String(v);

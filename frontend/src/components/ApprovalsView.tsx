@@ -45,7 +45,7 @@ export default function ApprovalsView() {
       </Typography.Title>
       <Typography.Paragraph type="secondary">
         Changes waiting for your decision. Approving publishes them to Git; you can also review on
-        GitHub via the pull request link — both work.
+        GitHub via the pull request link; both work.
       </Typography.Paragraph>
 
       {waiting.length === 0 && (

@@ -35,7 +35,7 @@ func (r *Repo) git(dir string, args ...string) (string, error) {
 }
 
 // EnsureRepo opens dir as a git repository, initializing one (with an initial
-// import commit) when the directory is not yet under version control — a dev
+// import commit) when the directory is not yet under version control: a dev
 // convenience so any config folder can be pointed at directly.
 func EnsureRepo(dir, name, email string) (*Repo, error) {
 	r := &Repo{Dir: dir, Name: name, Email: email}
@@ -137,6 +137,49 @@ func (r *Repo) DeleteBranch(branch string) {
 func (r *Repo) Fetch() error {
 	_, err := r.git(r.Dir, "fetch", "origin", "--prune")
 	return err
+}
+
+// FileChange is one entry of a name-status diff between two commits.
+type FileChange struct {
+	Status  string // A(dded) M(odified) D(eleted) R(enamed)
+	Path    string
+	OldPath string // set for renames
+}
+
+// DiffNameStatus lists file-level changes between two refs.
+func (r *Repo) DiffNameStatus(from, to string) ([]FileChange, error) {
+	out, err := r.git(r.Dir, "diff", "--name-status", "-M", from+".."+to)
+	if err != nil {
+		return nil, err
+	}
+	var changes []FileChange
+	for _, line := range strings.Split(out, "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 2 {
+			continue
+		}
+		status := parts[0][:1]
+		fc := FileChange{Status: status, Path: parts[1]}
+		if status == "R" && len(parts) >= 3 {
+			fc.OldPath = parts[1]
+			fc.Path = parts[2]
+		}
+		changes = append(changes, fc)
+	}
+	return changes, nil
+}
+
+// UpstreamGone reports whether the branch's origin counterpart no longer
+// exists (e.g. the remote branch was deleted). Call after a pruning Fetch.
+func (r *Repo) UpstreamGone(branch string) bool {
+	if !r.HasRemote() {
+		return false
+	}
+	_, err := r.git(r.Dir, "rev-parse", "--verify", "--quiet", "origin/"+branch)
+	return err != nil
 }
 
 // AheadBehind reports how many commits branch is ahead of / behind its origin

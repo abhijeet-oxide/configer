@@ -2,7 +2,7 @@ import { Modal, Form, Input, Select, Switch, App as AntApp } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
 
-// AddParameterModal creates a new catalog parameter from the GUI — e.g. an
+// AddParameterModal creates a new catalog parameter from the GUI, e.g. an
 // optional vendor key that only some instances will carry. Instances without
 // a value simply render nothing for it; set values per instance afterwards.
 const types = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];

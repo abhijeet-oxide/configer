@@ -1,6 +1,6 @@
 // Small dependency-free SVG charts following the dataviz method:
 // - categorical palette in FIXED slot order (validated: light worst adjacent
-//   CVD dE 24.2, dark 10.3 with mandatory legend relief — every categorical
+//   CVD dE 24.2, dark 10.3 with mandatory legend relief; every categorical
 //   chart here renders a visible legend with labels, never color alone);
 // - status colors are reserved for state and always paired with icon + label;
 // - thin marks, 2px gaps between fills, one axis, no dual scales.
@@ -90,7 +90,7 @@ export function CategoryDonut({ data, size = 132 }: { data: Slice[]; size?: numb
 }
 
 // --- HealthTiles -------------------------------------------------------------
-// Status map: one tile per instance. Status is never color alone — each tile
+// Status map: one tile per instance. Status is never color alone; each tile
 // carries an icon and the counts as text.
 
 export interface TileDatum {
@@ -128,7 +128,7 @@ export function HealthTiles({ data, onClick }: { data: TileDatum[]; onClick?: (n
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
             </div>
             <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
-              {t.environment ?? "—"} · {t.version ?? "—"}
+              {t.environment ?? "-"} · {t.version ?? "-"}
             </div>
             <div style={{ fontSize: 11, marginTop: 2, color }}>{note}</div>
           </div>
@@ -139,7 +139,7 @@ export function HealthTiles({ data, onClick }: { data: TileDatum[]; onClick?: (n
 }
 
 // --- ActivitySparkline --------------------------------------------------------
-// Single series (change events per day) — 2px line + soft area, no legend
+// Single series (change events per day): 2px line + soft area, no legend
 // (the card title names the series), hover shows day + count per point.
 
 export function ActivitySparkline({

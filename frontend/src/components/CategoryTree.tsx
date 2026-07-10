@@ -4,7 +4,7 @@ import type { CategoryNode } from "../api";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
-// Left "Parameter Groups" panel — a virtualized tree of categories with counts
+// Left "Parameter Groups" panel: a virtualized tree of categories with counts
 // that fills whatever height its (resizable) panel provides.
 interface TreeItem {
   key: string;

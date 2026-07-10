@@ -9,7 +9,7 @@ import (
 )
 
 // RepoStatus is the git-liveness snapshot shown in the UI: Configer's tree vs
-// the origin remote. Git remains the source of truth — when someone commits
+// the origin remote. Git remains the source of truth; when someone commits
 // directly on GitHub, the poller fast-forwards the tree and every grid read
 // reflects it. Configer streamlines Git; it never gates it.
 type RepoStatus struct {
@@ -21,6 +21,10 @@ type RepoStatus struct {
 	SyncError  string    `json:"syncError,omitempty"`
 	Provider   string    `json:"provider,omitempty"`
 	AutoSyncMs int       `json:"autoSyncMs,omitempty"`
+	// UpstreamGone means the branch's remote counterpart was deleted (e.g.
+	// someone removed the branch on GitHub). Local work continues safely;
+	// the UI explains and suggests choosing a new target branch.
+	UpstreamGone bool `json:"upstreamGone,omitempty"`
 }
 
 type syncState struct {
@@ -61,6 +65,8 @@ func (s *Server) syncOnce() RepoStatus {
 	if s.Git.HasRemote() {
 		if err := s.Git.Fetch(); err != nil {
 			st.SyncError = err.Error()
+		} else if s.Git.UpstreamGone(branch) {
+			st.UpstreamGone = true
 		} else if ahead, behind, err := s.Git.AheadBehind(branch); err == nil {
 			st.Ahead, st.Behind = ahead, behind
 			if behind > 0 && ahead == 0 {

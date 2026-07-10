@@ -4,10 +4,10 @@
 // explicit presence semantics:
 //
 //   - a parameter with a resolved value is WRITTEN at its path;
-//   - an unset or excluded parameter is REMOVED entirely — no key, no line,
+//   - an unset or excluded parameter is REMOVED entirely: no key, no line,
 //     no element appears in that instance's file;
 //   - a list parameter renders its collection natively: a YAML/JSON array, or
-//     repeated sibling elements in XML — so one instance can carry 1 entry
+//     repeated sibling elements in XML, so one instance can carry 1 entry
 //     and another 10;
 //   - unmanaged content in the base file passes through untouched.
 //
@@ -173,7 +173,7 @@ func renderTree(base []byte, apps []application, format string) (string, error) 
 }
 
 // pathSegments turns "$.a.b.c" into ["a","b","c"] (array indices unsupported
-// for tree paths — model collections as list parameters instead).
+// for tree paths; model collections as list parameters instead).
 func pathSegments(path string) []string {
 	s := strings.TrimPrefix(path, "$.")
 	s = strings.TrimPrefix(s, "$")
@@ -342,7 +342,7 @@ func pruneEmptyXML(el *etree.Element) {
 	for el != nil {
 		parent := el.Parent()
 		// parent == nil: detached; parent.Parent() == nil: el is the root
-		// element (its parent is the document container) — keep the root.
+// element (its parent is the document container); keep the root.
 		if parent == nil || parent.Parent() == nil {
 			return
 		}

@@ -81,7 +81,7 @@ export default function MobileParamList({ grid }: { grid: Grid }) {
           onChange={(e) => setSearch(e.target.value)}
         />
         <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          {rows.length} settings · read-only on phones — edit on a tablet or computer
+          {rows.length} settings · read-only on phones; edit on a tablet or computer
         </Typography.Text>
       </div>
       <div style={{ flex: 1, overflow: "auto", padding: "4px 12px 12px" }}>

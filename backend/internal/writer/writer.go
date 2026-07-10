@@ -183,6 +183,33 @@ func DeleteParameter(root, paramID string, instances []string) error {
 	return nil
 }
 
+// AddIgnoreFiles appends file globs to .configer/ignore.yaml so the scan
+// skips them (the import wizard's "don't import these" persistence).
+func AddIgnoreFiles(root string, files []string) error {
+	path := filepath.Join(root, ".configer", "ignore.yaml")
+	var ig struct {
+		Files      []string `yaml:"files"`
+		Parameters []string `yaml:"parameters"`
+	}
+	if b, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(b, &ig); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	have := map[string]bool{}
+	for _, f := range ig.Files {
+		have[f] = true
+	}
+	for _, f := range files {
+		if !have[f] {
+			ig.Files = append(ig.Files, f)
+		}
+	}
+	return writeYAML(path, ig)
+}
+
 func writeYAML(path string, v any) error {
 	b, err := yaml.Marshal(v)
 	if err != nil {

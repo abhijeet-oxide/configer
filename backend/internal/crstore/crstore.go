@@ -18,8 +18,9 @@ import (
 )
 
 type fileData struct {
-	Seq int                      `json:"seq"`
-	CRs []*change.ChangeRequest  `json:"crs"`
+	Seq  int                     `json:"seq"`
+	CRs  []*change.ChangeRequest `json:"crs"`
+	Meta map[string]string       `json:"meta,omitempty"` // small operational KV (e.g. acknowledged reconcile SHA)
 }
 
 // Store is a mutex-guarded JSON-file-backed change request store.
@@ -126,6 +127,24 @@ func (s *Store) Update(id int, fn func(*change.ChangeRequest) error) (*change.Ch
 		}
 	}
 	return nil, fmt.Errorf("change request %d not found", id)
+}
+
+// GetMeta returns a small operational value ("" when unset).
+func (s *Store) GetMeta(key string) string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.data.Meta[key]
+}
+
+// SetMeta stores a small operational value.
+func (s *Store) SetMeta(key, value string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.data.Meta == nil {
+		s.data.Meta = map[string]string{}
+	}
+	s.data.Meta[key] = value
+	return s.save()
 }
 
 // Delete removes the CR with the given id.

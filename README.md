@@ -2,12 +2,12 @@
 
 Enterprise-grade configuration management platform that abstracts heterogeneous
 configuration formats (YAML, JSON, XML, Helm values, Flux, kpt/KRM, …) into a
-single structured parameter model — while **Git remains the source of truth**.
+single structured parameter model, while **Git remains the source of truth**.
 
 Configer scans a Git repository and presents a **spreadsheet view**: every
 **row is a parameter**, every **column is an instance** (region / environment /
 zone / site). Teams enrich parameters with metadata, set per-instance values,
-bulk-edit, compare, and validate — and every change flows back to Git as
+bulk-edit, compare, and validate, and every change flows back to Git as
 commits on branches, reviewed via pull requests, and published by merging.
 
 ![Dashboard](docs/screenshot-dashboard.png)
@@ -57,14 +57,14 @@ which scope supplied it.
 ### Typed editing & validation enforcement
 
 Every parameter declares a **data type** (`string`, `integer`, `number`,
-`boolean`, `enum`, `ipv4`, `cidr`) and **validation rules** — required, regex
+`boolean`, `enum`, `ipv4`, `cidr`) and **validation rules**: required, regex
 pattern, min/max, character limits (`minLength`/`maxLength`), allowed values,
 or a **predefined rule** from the built-in library (`ipv4`, `cidr`, `port`,
 `hostname`, `fqdn`, `url`, `email`, `uuid`, `semver`, `duration`).
 
 - The grid renders a **type-appropriate editor** per cell: a toggle for
   booleans, a number input that **clamps to min/max** for integers, a dropdown
-  for enums, and a text input with live regex/length feedback for strings —
+for enums, and a text input with live regex/length feedback for strings;
   invalid entries cannot be committed.
 - The **rule editor** (details panel → Schema tab) lets users pick a
   predefined rule from a dropdown or define custom rules; saved rules land in
@@ -74,14 +74,14 @@ or a **predefined rule** from the built-in library (`ipv4`, `cidr`, `port`,
 
 ### Structural divergence: lists, absence, and per-instance cardinality
 
-Instances differ in *shape*, not just values — lab may carry 1 NTP server while
+Instances differ in *shape*, not just values: lab may carry 1 NTP server while
 production carries 10. Verified renderer semantics (see
 `backend/internal/render/render_test.go`):
 
-| Scenario | YAML / JSON (incl. Helm values, Flux, kpt — YAML at rest) | XML |
+| Scenario | YAML / JSON (incl. Helm values, Flux, kpt, which are YAML at rest) | XML |
 |---|---|---|
-| **List parameter** (`type: list`, `itemType: ipv4`, …) | native sequence — one line per entry, length per instance | repeated sibling elements — one `<server>…</server>` per entry |
-| **Value unset / instance excluded** | key omitted entirely; empty parent maps pruned — **no line remains** | attribute/element removed; empty parent elements pruned — no husk like `<syslog/>` |
+| **List parameter** (`type: list`, `itemType: ipv4`, …) | native sequence: one line per entry, length per instance | repeated sibling elements: one `<server>…</server>` per entry |
+| **Value unset / instance excluded** | key omitted entirely; empty parent maps pruned, **no line remains** | attribute/element removed; empty parent elements pruned, no husk like `<syslog/>` |
 | **Unmanaged content in the base file** | passes through untouched | passes through untouched (incl. comments) |
 | **User adds a parameter** (GUI → catalog) | appears only in instances where a value resolves | element/attr created on demand per instance |
 | **User retires a parameter** (GUI) | removed from catalog + every overlay; regenerated files drop it everywhere | same |
@@ -89,19 +89,19 @@ production carries 10. Verified renderer semantics (see
 Cell-level actions (right-click): **Edit value**, **Reset to inherited**
 (remove the override, fall back to zone/site/env/global/default), **Exclude
 from this instance** (render nothing, even if a default exists), and **Copy
-value to…** other instances. All actions stage into the draft change request —
+value to…** other instances. All actions stage into the draft change request,
 reviewable before anything touches Git.
 
 ### Git-native change requests
 
-Cell edits never touch Git directly — they stage into a **draft change
+Cell edits never touch Git directly; they stage into a **draft change
 request** (dashed-orange pending cells, auto-saved). Submitting the draft:
 
 1. cuts branch `configer/cr-<n>` from the target in an **isolated worktree**,
 2. writes the sparse overlays and re-renders `generated/` for the touched
    instances,
 3. commits with the machine identity plus a `Changed-by: <user>` trailer,
-4. pushes and — when the origin is GitHub and `GITHUB_TOKEN` is set — **opens a
+4. pushes and, when the origin is GitHub and `GITHUB_TOKEN` is set, **opens a
    real pull request**,
 5. tracks state: `Draft → Under Review → Approved → Published / Rejected`.
 
@@ -113,7 +113,7 @@ merged or closed directly on GitHub are detected and reflected back.
 
 A background sync loop (`CONFIGER_SYNC_SECONDS`, default 30) fetches origin and
 fast-forwards the working tree, so **commits made directly on Git appear in the
-grid automatically** — the header shows `git: live`. Everything Configer writes
+grid automatically**: the header shows `git: live`. Everything Configer writes
 is ordinary Git (branches, commits, PRs), so anything it does can also be done
 directly on GitHub; if Configer is down, nothing is blocked.
 
@@ -123,7 +123,7 @@ directly on GitHub; if Configer is down, nothing is blocked.
   donut, 14-day change-activity sparkline, accent stat cards, recent activity
   in human sentences, and a Git education footer.
 - **Virtualized** parameter×instance grid that auto-fits columns to the
-  available width — smooth with tens of thousands of rows; zebra rows,
+available width: smooth with tens of thousands of rows; zebra rows,
   environment-tinted column headers, and a **group-overview strip** that fills
   leftover space when rows end early (no dead screen area).
 - **Four responsive tiers**: phone (<576px: bottom tabs + read-only parameter
@@ -141,12 +141,12 @@ directly on GitHub; if Configer is down, nothing is blocked.
 
 The core is a plugin registry (`backend/internal/plugin`):
 
-- **Ingest parsers** — YAML / JSON / XML (built-in), pluggable for more formats.
-- **Transposers** — turn resolved config into arbitrary output artifacts. The
+- **Ingest parsers**: YAML / JSON / XML (built-in), pluggable for more formats.
+- **Transposers**: turn resolved config into arbitrary output artifacts. The
   built-in **Flux HelmRelease generator** synthesizes manifests that do *not*
   exist in the source repo. Add your own to emit any target shape into
   `generated/`.
-- **Schema importers / validators / AI providers** — interfaces defined for
+- **Schema importers / validators / AI providers**: interfaces defined for
   JSON-Schema/YANG import, custom validation, and a plug-and-play AI module
   (intent → change request, chat across configs).
 

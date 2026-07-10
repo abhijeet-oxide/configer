@@ -100,7 +100,7 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
 
 	// Submit: branch + commit + push.
-	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com")
+	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 	// Submitted CR rejection keeps the record with state rejected.
 	cr2, _ := svc.Store.Draft("bob", "main")
 	cr2.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
-	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob")
+	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob", "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestSubmitValidation(t *testing.T) {
 	ctx := context.Background()
 	// Empty draft cannot be submitted.
 	cr, _ := svc.Store.Draft("bob", "main")
-	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob"); err == nil {
+	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob", "", ""); err == nil {
 		t.Error("expected error submitting empty draft")
 	}
 }

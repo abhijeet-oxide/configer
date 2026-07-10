@@ -107,12 +107,28 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
 
 ### Not started at all (next work, suggested priority order)
 
-1. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
-   cleanly but there's no resolver UI; "Rebase & resubmit" also missing), see §19.
-2. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
-3. GitHub push webhooks (sync is polling today, works but not instant).
-4. Postgres grid cache (currently re-reads Git per request, fine at demo scale).
-5. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
+0. DONE: the UX/bug feedback batch shipped. Editors commit on blur (the "edits revert" bug:
+   blur used to cancel), Escape cancels, invalid input warns and never commits; dedicated Scope
+   column (sortable, filterable) plus sorters on Parameter/Type; editing a global-scope value
+   prompts "change for everyone / only this instance / cancel" and the everyone-path stages a
+   scope-level item written to `.configer/scopes.yaml` on submit (`change.Item.Scope`,
+   `writer.SetGlobalValue`); Details panel metadata is editable (description, display name,
+   category, scope, secret) with source file/path locked; left pane has parameter leaves and a
+   Systems tree that scroll-and-flash the grid row/column (`store.setJump`); content-aware
+   column widths; local search inside the grid toolbar; CR reference id + category (commit
+   trailers + PR body + tags in views). Verified E2E in the browser (14 checks).
+1. **Remote-first multi-configuration workspace** (§21): repo registry + switcher, connect step
+   in the import wizard, portfolio dashboard (phase R1 with the local engine), then the
+   `RepoBackend` remote API engine (R2), then cherry-pick / promote / upgrade-to-v2 (R3).
+2. **Upstream data sources** (§20): vendored snapshots, bindings, sync-as-change-request
+   (phases A/B).
+3. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
+   cleanly but there's no resolver UI; "Rebase & resubmit" also missing), see §19. Note §20/§21
+   both increase conflict frequency, design together.
+4. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
+5. GitHub push webhooks (sync is polling today, works but not instant).
+6. Postgres grid cache (needed for real by the §21 workspace registry).
+7. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
    (chat/intent-to-change-request); GitLab/Bitbucket providers; indexed parameter families
    beyond simple lists (§18 tier 2).
 
@@ -586,3 +602,156 @@ users never see raw git conflict markers; plus a **"Rebase & resubmit"** action 
   branch), scanning it diffs against the current catalog and proposes introduced/deprecated
 parameters (setting `versionIntroduced`/`versionDeprecated`) as a **catalog change request**;
   reviewed and merged like any other change, with a “new version available” notification badge.
+
+## 20. Upstream data sources (external values, vendored through review) - ADDED
+
+**Use case.** Values often originate outside the managed repo: a platform team's shared config
+repo (org-wide NTP/DNS/proxy), an IPAM/inventory export keyed by site, vendor release metadata,
+Terraform outputs. Today someone copies them by hand and they rot. Configer should pull them in
+programmatically, with full review.
+
+**Core principle (non-negotiable).** Never read upstream live at render time; that would break
+deterministic renders and the audit trail. Instead, **vendor a snapshot into Git through the
+normal change request pipeline**: fetch upstream, evaluate mappings, and stage any differences as
+an ordinary change request (before/after table, review, publish). The snapshot lives at
+`.configer/sources/<id>/snapshot.yaml`, so renders never touch the network and upstream outages
+block nothing. Every upstream-driven change carries a `Synced-from: <source>@<sha>` trailer.
+
+**Source declarations** in `.configer/sources.yaml` (versioned, reviewable):
+
+```yaml
+sources:
+  - id: platform-shared
+    type: git                    # git | http | file; more via plugins
+    repo: github.com/acme/platform-config
+    ref: main                    # or a pinned tag/sha for strict determinism
+    path: exports/network.yaml
+    format: yaml
+    auth: env:PLATFORM_REPO_TOKEN     # reference, never a literal
+    refresh: { mode: manual }         # manual | interval | webhook
+    policy: review                    # review | auto-publish (per target scope later)
+```
+
+**Bindings** connect upstream data to parameters, two shapes:
+1. **Scalar binding**: parameter X at scope S takes its value from source Y at JSONPath P.
+   Stored next to `validation`; the Details panel shows "Value comes from: platform-shared".
+2. **Keyed binding** (the important one): upstream is a table keyed by site/instance. Declare a
+   join: rows under `$.sites[*]` match instances where `instance.site == row.name`; map
+   `row.syslog` to `net-syslog-collectors` at instance scope. A join between the instance
+   registry and the upstream document; this is what makes 200 sites maintainable.
+
+Selection via JSONPath (parsers already speak it), then type coercion + validation through the
+existing `validate` package: a bad upstream value fails validation and becomes a finding, never a
+silently broken render.
+
+**Sync lifecycle** (reuses what exists): `POST /api/sources/{id}/sync` fetches, evaluates,
+diffs. No changes: update "last checked". Changes: stage a CR "Sync from platform-shared
+(a1b2c3d)" and surface an `upstream_change` finding in the Repository Changes inbox with
+"Review & apply". Grid cells bound to a source get a provenance badge.
+
+**Nuances**
+- **Local override vs upstream**: per-binding policy `upstream-wins` | `local-wins` (pin, sync
+  reports drift) | `manual` (every divergence is a review item). Default `manual`.
+- **Upstream schema drift**: path gone or type changed → the binding fails loudly as a finding,
+  last-good snapshot stays, never publish a hole.
+- **Secrets**: never vendor plaintext; secret sources bind by reference (resolved at deploy),
+  out of scope for v1.
+- **Cycles/trust**: refuse a source that resolves to the managed repo itself; upstream content
+  is untrusted input (validation + review gate it).
+- **Determinism knob**: `ref: main` (convenient) vs pinned sha bumped via CR (strict); either
+  way the snapshot records the exact resolved sha.
+- **One-directional**: upstream is read-only input; the downstream direction is already covered
+  by transposers. Mixing the two creates ownership ambiguity.
+
+**Implementation phases**
+- **A (backend core)**: `Source`/`Binding` in `model`; `sources.yaml` in `project`; new
+  `internal/upstream` package with a `SourceProvider` plugin interface
+  (`Fetch(ctx) (content, resolvedVersion, error)`) and built-ins git (reuse `gitengine`),
+  http (ETag-aware), file (same-repo, trivial, great for tests); snapshot storage; binding
+  evaluation; sync that stages a CR via the existing `changeset` service. Fourth plugin kind in
+  the registry.
+- **B (UI)**: Sources view (cards: last sync, resolved version, status, Sync now), binding
+  editor in the Details panel, grid provenance badge, `upstream_change` finding with one-click
+  review.
+- **C**: interval/webhook refresh, per-scope auto-publish for trusted sources, provider plugins
+  (S3, NetBox, Terraform state).
+
+## 21. Remote-first, multi-configuration workspace (no local clone) - ADDED
+
+**The intent (user's words):** a user owns and manages *multiple* configurations; they open the
+app, pick a repository, connect, and edit. All changes are remote operations against the Git
+provider (REST/GraphQL APIs): partial checkouts, partial commits, branch creation, PRs. Nothing
+needs to be cloned to the server's disk as a prerequisite for a user to work. Advanced flows are
+first-class: cherry-picking a change from one instance to another, and porting/carrying forward
+changes from configuration version 1 onto a newly delivered version 2.
+
+**What changes architecturally**
+
+1. **Workspace model above projects.** Today the backend serves exactly one repo
+   (`CONFIGER_REPO`). Introduce `Workspace → Repositories → Configurations`: a registry of
+   connected repos (provider, owner/name, branch, auth installation id), each holding one or
+   more Configer projects (a repo subpath with its own `.configer/`). All APIs gain a
+   `{repoId}` scope: `/api/repos`, `/api/repos/{id}/grid`, etc. The UI gets a repository
+   switcher (top bar) and a "Connect repository" step folded into the import wizard: pick
+   provider → pick repo/branch (via provider API) → scan → import (the wizard's steps 1-3
+   as they exist today).
+
+2. **RepoBackend abstraction: local engine vs remote API engine.** Define one interface the
+   rest of the backend already implicitly uses:
+   `ReadFile/ListTree/Commit(files, message, branch)/CreateBranch/Diff/Merge/PR ops`.
+   - **RemoteBackend (new, default for connected repos)**: GitHub first. Reads via the
+     contents/trees APIs (partial checkout: fetch only `.configer/**`, `base/**` and the files
+     bound to parameters, never the whole repo); writes via the Git data API (create blobs →
+     tree → commit → update ref), which gives atomic multi-file "partial commits" without any
+     working tree. PRs/merges via the existing `provider` package. A small content-addressed
+     cache (sha → blob) keeps it fast and cheap; ETags/conditional requests respect rate limits.
+   - **LocalBackend (kept)**: the current gitengine/worktree path; still ideal for self-hosted
+     air-gapped mode, for the renderer's golden tests, and as the fallback when a provider
+     lacks APIs. The renderer, resolver, validate, change pipeline all stay backend-agnostic;
+     only gitengine call sites move behind the interface.
+   - Rate-limit reality: remote mode batches reads (trees API with `recursive=1`, then selective
+     blobs) and keeps the materialized grid cache (§4) as the thing the UI reads, refreshed by
+     webhooks; the provider API is not hit per user interaction.
+
+3. **Cross-instance and cross-version change operations** (all built on the same primitive:
+   *a change set = a list of (parameter, scope/instance, action, value) items*, which is
+   already the CR item model):
+   - **Cherry-pick between instances**: select cells or a whole column diff (Compare view
+     already computes it), choose "Apply these to <instance>", stage as a draft CR. This is a
+     semantic cherry-pick (by parameter identity, not git commit), so it survives file layout
+     differences. The existing copy-to-instance context action is the single-cell version;
+     this generalizes it to diff-driven bulk.
+   - **Cherry-pick between branches/CRs (git-level)**: for published commits, offer real
+     `cherry-pick` semantics: remote mode replays the commit's overlay diff onto a new branch
+     via the Git data API; local mode shells to `git cherry-pick`. Conflicts fall into the
+     param-level conflict UI (§19), never raw markers.
+   - **Version-to-version carry-forward**: when v2 lands (new folder/branch/tag), compute
+     three lists: params unchanged (auto-carry), params whose *defaults* changed in v2 but were
+     locally overridden (review each: keep my override / take vendor's new default), params
+     gone/new in v2 (retire/import, already built). Present as a guided "Upgrade to v2" wizard
+     producing one reviewable CR. This is the §1.5/§19 version-drop story matured into a
+     migration flow.
+   - **Promote between environments**: same mechanics as instance cherry-pick but
+     scope-to-scope (staging → production), with the production warning + approval gates.
+
+4. **Dashboard matures into a portfolio view.** Home shows all connected repositories →
+   configurations → instances as a drillable hierarchy: per-config health (validation
+   failures, drift findings, open CRs, behind/ahead vs remote), recent activity across all
+   repos, and attention items ("prod-us-east has 2 findings", "v2 available for telco-core").
+   The current single-config dashboard becomes the drill-in level. Multi-config also means
+   per-repo state isolation (each repo gets its own crstore/state, sync loop, findings ack).
+
+5. **Sessions/tenancy implications**: connected-repo credentials come from the GitHub App
+   installation (per-repo tokens, least privilege, §15 mode 2) or the user's OAuth (mode 1);
+   the workspace registry is the first thing that genuinely needs the Postgres layer (§4),
+   since it is server state, not repo state.
+
+**Phasing (deliberately incremental, nothing big-bang)**
+- **R1**: multi-repo registry + repo switcher with the *existing local engine* (server manages
+  N clones instead of 1; `CONFIGER_REPO` becomes a seed). Import wizard gains the "Connect
+  repository" step. Dashboard portfolio level. This delivers the user-visible multi-config
+  experience quickly.
+- **R2**: `RepoBackend` interface + RemoteBackend for GitHub (reads first, then Git-data-API
+  commits); clones become an optional cache, not a requirement.
+- **R3**: cherry-pick (semantic + git-level), promote, and the "Upgrade to v2" carry-forward
+  wizard on top of the diff/CR primitives.

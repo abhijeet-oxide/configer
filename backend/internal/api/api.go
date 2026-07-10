@@ -148,6 +148,18 @@ func (s *Server) loadWithDraft() (*project.Project, *change.ChangeRequest, error
 		return p, nil, nil
 	}
 	for _, it := range draft.Items {
+		if it.Scope == "global" {
+			// Scope-level pending edit: preview it in the global overlay.
+			if p.Scopes.Global == nil {
+				p.Scopes.Global = map[string]any{}
+			}
+			if it.Act() == change.ActionSet {
+				p.Scopes.Global[it.ParamID] = it.New
+			} else {
+				delete(p.Scopes.Global, it.ParamID)
+			}
+			continue
+		}
 		ov, ok := p.Overlays[it.Instance]
 		if !ok {
 			ov = model.Overlay{Kind: "Overlay", Instance: it.Instance, Values: map[string]any{}}
@@ -234,22 +246,29 @@ func (s *Server) grid(w http.ResponseWriter, _ *http.Request) {
 	g := grid.Build(p)
 	if draft != nil {
 		pending := map[string]map[string]bool{}
+		globalPending := map[string]bool{}
 		for _, it := range draft.Items {
+			if it.Scope == "global" {
+				globalPending[it.ParamID] = true
+				continue
+			}
 			if pending[it.ParamID] == nil {
 				pending[it.ParamID] = map[string]bool{}
 			}
 			pending[it.ParamID][it.Instance] = true
 		}
 		for i := range g.Rows {
-			insts := pending[g.Rows[i].Param.ID]
-			if insts == nil {
-				continue
-			}
-			for name := range insts {
-				if c, ok := g.Rows[i].Cells[name]; ok {
+			id := g.Rows[i].Param.ID
+			for name, c := range g.Rows[i].Cells {
+				if pending[id][name] {
 					c.Pending = true
-					g.Rows[i].Cells[name] = c
 				}
+				// A pending global edit shows on every cell that would take
+				// it (i.e. not overridden at a more specific level).
+				if globalPending[id] && (c.Source == model.ScopeGlobal || c.Source == model.ScopeDefault) {
+					c.Pending = true
+				}
+				g.Rows[i].Cells[name] = c
 			}
 		}
 	}
@@ -337,12 +356,20 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Instance string `json:"instance"`
 		ParamID  string `json:"paramId"`
-		Value    any    `json:"value"`
-		Action   string `json:"action"`
-		Author   string `json:"author"`
+		// Scope "global" stages a scope-level edit that applies to every
+		// instance not overriding at a more specific level ("change it for
+		// everyone"). Instance is ignored then.
+		Scope  string `json:"scope"`
+		Value  any    `json:"value"`
+		Action string `json:"action"`
+		Author string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	if req.Scope != "" && req.Scope != "global" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only the global scope supports scope-level edits today"})
 		return
 	}
 	p, err := s.load()
@@ -355,15 +382,14 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "parameter not found"})
 		return
 	}
-	inst, found := p.InstanceByName(req.Instance)
-	if !found {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance not found"})
-		return
-	}
 
 	action := change.Action(req.Action)
 	if action == "" {
 		action = change.ActionSet
+	}
+	if req.Scope == "global" && action == change.ActionExclude {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "exclusion is per-instance; a global value cannot be excluded"})
+		return
 	}
 	var coerced any
 	if action == change.ActionSet {
@@ -378,8 +404,25 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Baseline = the currently committed effective value for this cell.
-	res := (&resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}).Resolve(param, inst)
+	// Baseline = the currently committed effective value.
+	var oldVal any
+	instance := req.Instance
+	if req.Scope == "global" {
+		instance = ""
+		if v, ok := p.Scopes.Global[req.ParamID]; ok {
+			oldVal = v
+		} else {
+			oldVal = param.Default
+		}
+	} else {
+		inst, found := p.InstanceByName(req.Instance)
+		if !found {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance not found"})
+			return
+		}
+		res := (&resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}).Resolve(param, inst)
+		oldVal = res.Value
+	}
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -394,16 +437,16 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
-		it := change.Item{ParamID: req.ParamID, Instance: req.Instance, Action: action,
-			Old: res.Value, New: coerced, UpdatedAt: time.Now().UTC()}
+		it := change.Item{ParamID: req.ParamID, Instance: instance, Scope: req.Scope, Action: action,
+			Old: oldVal, New: coerced, UpdatedAt: time.Now().UTC()}
 		cr.UpsertItem(it)
 		// Setting a cell back to its committed value cancels the pending edit.
 		if action == change.ActionSet {
 			for _, existing := range cr.Items {
-				if existing.ParamID == req.ParamID && existing.Instance == req.Instance &&
+				if existing.ParamID == req.ParamID && existing.Instance == instance &&
 					existing.Act() == change.ActionSet &&
 					stringify(existing.Old) == stringify(coerced) {
-					cr.RemoveItem(req.ParamID, req.Instance)
+					cr.RemoveItem(req.ParamID, instance)
 					break
 				}
 			}
@@ -449,9 +492,14 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 // (with attribution), keeping the working tree consistent with Git.
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Type       *model.ParamType  `json:"type,omitempty"`
-		Validation *model.Validation `json:"validation,omitempty"`
-		Author     string            `json:"author,omitempty"`
+		Type        *model.ParamType  `json:"type,omitempty"`
+		Validation  *model.Validation `json:"validation,omitempty"`
+		DisplayName *string           `json:"displayName,omitempty"`
+		Description *string           `json:"description,omitempty"`
+		Category    *string           `json:"category,omitempty"`
+		Scope       *model.Scope      `json:"scope,omitempty"`
+		Secret      *bool             `json:"secret,omitempty"`
+		Author      string            `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -467,8 +515,13 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	param, err := writer.UpdateParameter(s.RepoPath, r.PathValue("id"), writer.ParamPatch{
-		Type:       req.Type,
-		Validation: req.Validation,
+		Type:        req.Type,
+		Validation:  req.Validation,
+		DisplayName: req.DisplayName,
+		Description: req.Description,
+		Category:    req.Category,
+		Scope:       req.Scope,
+		Secret:      req.Secret,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
@@ -478,7 +531,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	if author == "" {
 		author = "anonymous"
 	}
-	msg := "Update validation rules for " + param.Name + "\n\nChanged-by: " + author + "\n"
+	msg := "Update parameter " + param.Name + "\n\nChanged-by: " + author + "\n"
 	if _, err := s.Git.CommitAll(s.RepoPath, msg); err != nil && !strings.Contains(err.Error(), "nothing to commit") {
 		writeErr(w, err)
 		return
@@ -670,6 +723,8 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		Reference   string `json:"reference"`
+		Category    string `json:"category"`
 		Author      string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -678,7 +733,7 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, req.Author)
+	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, req.Author, req.Reference, req.Category)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return

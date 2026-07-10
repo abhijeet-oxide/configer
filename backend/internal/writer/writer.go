@@ -78,11 +78,51 @@ func ExcludeValue(root, instance, paramID string) error {
 	})
 }
 
+// SetGlobalValue writes a parameter value at the global scope
+// (.configer/scopes.yaml): it applies to every instance that does not
+// override it at a more specific level.
+func SetGlobalValue(root, paramID string, value any) error {
+	return mutateScopes(root, func(sc *model.ScopeOverlays) {
+		if sc.Global == nil {
+			sc.Global = map[string]any{}
+		}
+		sc.Global[paramID] = value
+	})
+}
+
+// ResetGlobalValue removes the global-scope value so resolution falls back to
+// the parameter default.
+func ResetGlobalValue(root, paramID string) error {
+	return mutateScopes(root, func(sc *model.ScopeOverlays) {
+		delete(sc.Global, paramID)
+	})
+}
+
+func mutateScopes(root string, fn func(*model.ScopeOverlays)) error {
+	path := filepath.Join(root, ".configer", "scopes.yaml")
+	var sc model.ScopeOverlays
+	if b, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(b, &sc); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	fn(&sc)
+	return writeYAML(path, sc)
+}
+
 // ParamPatch is a partial update to a parameter's metadata. Nil fields are
-// left unchanged.
+// left unchanged. Source file/path/format are deliberately NOT patchable:
+// they are the parameter's identity in the repository.
 type ParamPatch struct {
-	Type       *model.ParamType
-	Validation *model.Validation
+	Type        *model.ParamType
+	Validation  *model.Validation
+	DisplayName *string
+	Description *string
+	Category    *string
+	Scope       *model.Scope
+	Secret      *bool
 }
 
 // UpdateParameter applies a patch to one parameter in .configer/catalog.yaml
@@ -113,6 +153,21 @@ func UpdateParameter(root, paramID string, patch ParamPatch) (model.Parameter, e
 	}
 	if patch.Validation != nil {
 		cat.Parameters[idx].Validation = *patch.Validation
+	}
+	if patch.DisplayName != nil {
+		cat.Parameters[idx].DisplayName = *patch.DisplayName
+	}
+	if patch.Description != nil {
+		cat.Parameters[idx].Description = *patch.Description
+	}
+	if patch.Category != nil && *patch.Category != "" {
+		cat.Parameters[idx].Category = *patch.Category
+	}
+	if patch.Scope != nil && *patch.Scope != "" {
+		cat.Parameters[idx].Scope = *patch.Scope
+	}
+	if patch.Secret != nil {
+		cat.Parameters[idx].Secret = *patch.Secret
 	}
 
 	if err := writeYAML(path, cat); err != nil {

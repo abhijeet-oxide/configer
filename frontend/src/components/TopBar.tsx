@@ -13,6 +13,7 @@ import {
   Table,
   Alert,
   Typography,
+  Select,
   App as AntApp,
   type InputRef,
 } from "antd";
@@ -53,7 +54,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
   const qc = useQueryClient();
   const searchRef = useRef<InputRef>(null);
   const [crOpen, setCrOpen] = useState(false);
-  const [form] = Form.useForm<{ title: string; description?: string }>();
+  const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
 
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
@@ -71,7 +72,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
   });
 
   const submit = useMutation({
-    mutationFn: (v: { title: string; description?: string }) =>
+    mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
       api.submitChange(draftQ.data!.draft!.id, { ...v, author: "demo-user" }),
     onSuccess: (cr) => {
       setCrOpen(false);
@@ -243,7 +244,13 @@ export default function TopBar({ project, instances }: { project?: string; insta
                 </Typography.Link>
               ),
             },
-            { title: "Instance", dataIndex: "instance", width: 120, render: (v) => <Tag>{v}</Tag> },
+            {
+              title: "Instance",
+              dataIndex: "instance",
+              width: 140,
+              render: (v: string, it: ChangeItem) =>
+                it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
+            },
             {
               title: "Before",
               dataIndex: "old",
@@ -287,6 +294,23 @@ export default function TopBar({ project, instances }: { project?: string; insta
           >
             <Input placeholder="e.g. Update staging DNS servers" maxLength={100} />
           </Form.Item>
+          <div style={{ display: "flex", gap: 10 }}>
+            <Form.Item name="category" label="Change type" initialValue="feature" style={{ flex: 1 }}>
+              <Select
+                options={[
+                  { value: "hotfix", label: "Hotfix (urgent fix)" },
+                  { value: "feature", label: "Feature (new capability)" },
+                  { value: "bugfix", label: "Bugfix" },
+                  { value: "maintenance", label: "Maintenance" },
+                  { value: "security", label: "Security" },
+                  { value: "other", label: "Other" },
+                ]}
+              />
+            </Form.Item>
+            <Form.Item name="reference" label="Reference / CR ID (optional)" style={{ flex: 1 }}>
+              <Input placeholder="e.g. JIRA-123, CRQ000042" maxLength={60} />
+            </Form.Item>
+          </div>
           <Form.Item name="description" label="Why is it needed? (optional)">
             <Input.TextArea
               rows={2}

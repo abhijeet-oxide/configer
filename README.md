@@ -155,19 +155,35 @@ available width: smooth with tens of thousands of rows; zebra rows,
   `@iconify-icons/ph`), imported as per-icon data so the app never fetches
   icons at runtime (works fully offline/air-gapped).
 
-### Repository reconcile (backend ready, UI not yet built, see Status)
+### Import wizard
 
-`GET /api/repo/findings` diffs the last-acknowledged commit against `HEAD` and
-reports what changed directly on Git since Configer last looked: new
-config-shaped files (with a candidate-parameter count), managed files that
-were edited, deleted, or renamed, and folders where several new files
-appeared at once (a likely new vendor version drop). `POST
-/api/repo/findings/ack` marks the current `HEAD` as seen. `POST /api/import`
-promotes scanned candidates into the catalog in one attributed commit; `POST
-/api/parameters/retire-file` retires every parameter sourced from one file
-(the deleted-file resolution). The nav rail already shows a live findings
-count badge on **Repository Changes**; the section itself still renders the
-generic placeholder, see Status below for what's next.
+The **Import** section turns repository files into managed parameters in
+three steps. A read-only scan (`POST /api/scan`) lists every detected config
+file with counts of new vs already-managed settings; unticked files can be
+remembered as ignore rules. The selection step offers inline and bulk editing
+of type, category, scope and secret, with categories suggested from the
+setting name and credential-looking names pre-marked secret (values masked).
+The review step summarizes and explains, in plain words, the single Git
+commit that `POST /api/import` will make. Lists that parsers flatten into
+indexed entries (`servers[0]`, `servers[1]`, ...) are folded back into one
+list parameter, and a list that is already managed never gets re-offered
+element by element.
+
+### Repository Changes inbox
+
+Anything committed directly on Git, outside Configer, surfaces in the
+**Repository Changes** section (live count badge in the nav rail). `GET
+/api/repo/findings` compares the last-acknowledged commit with `HEAD`: new
+config-shaped files (with a candidate count), managed files edited, deleted
+or renamed, folders where several files appeared at once (a likely vendor
+version drop), plus a safety net that flags any managed source file missing
+from disk even when it was added and deleted within one unacknowledged
+window. Each finding is a card with a plain-word explanation and a one-click
+action: import the new file's parameters (jumps into the wizard focused on
+that file), retire parameters whose source file was deleted (`POST
+/api/parameters/retire-file`), or open affected parameters in the editor.
+Findings resolve themselves once handled; `POST /api/repo/findings/ack`
+marks everything as seen.
 
 ### Plugin architecture (everything is extensible)
 
@@ -233,7 +249,7 @@ docker compose up --build                             # frontend on :8088, backe
 | GET | `/api/repo/status` · POST `/api/repo/sync` | Git-liveness status / force a sync now. |
 | GET | `/api/meta` | Deployment name, version, environment. |
 | GET | `/api/repo/findings` · POST `/api/repo/findings/ack` | Reconcile: what changed on Git since last look; mark it seen. |
-| POST | `/api/import` | Promote scanned candidates into the catalog (backend ready, no wizard UI yet). |
+| POST | `/api/import` | Promote scanned candidates into the catalog (the import wizard's final step). |
 | POST | `/api/parameters/retire-file` | Retire every parameter sourced from one file. |
 
 ## Status
@@ -243,29 +259,15 @@ docker compose up --build                             # frontend on :8088, backe
 parameters and absence/exclusion) to a **draft to change request to branch to
 commit to PR to publish** pipeline that is git-native both ways (external
 commits sync in automatically; PRs approved on GitHub reflect back). Also
-live: the dashboard command center, approvals inbox, compare view, the
-plugin architecture (YAML/JSON/XML parsers, Flux transposer), offline
-resilience with a local edit queue, and the responsive/themeable UI across
-phone/tablet/laptop/monitor.
+live: the **import wizard** (scan, choose and enrich, initialize), the
+**Repository Changes inbox** (external Git activity with one-click
+import/retire resolutions), the dashboard command center, approvals inbox,
+compare view, the plugin architecture (YAML/JSON/XML parsers, Flux
+transposer), offline resilience with a local edit queue, and the
+responsive/themeable UI across phone/tablet/laptop/monitor.
 
-**Backend ready, frontend not built yet, this is the next work:**
-- **Import wizard** (`POST /api/scan`, `POST /api/import`): a fresh scan of
-  the repo and a guided "select which parameters to import" flow.
-  `AddParameterModal.tsx` is the closest existing pattern (a form that calls
-  `api.addParameter`) but the wizard needs multi-step selection over
-  `ScanResult`/`ScanCandidate` (types already in `frontend/src/api.ts`).
-- **Repository Changes inbox** (`GET /api/repo/findings`): a list view over
-  `Finding[]` with a per-finding action (new file → jump into the import
-  wizard filtered to it; deleted file → call `api.retireFile`; ack button).
-  `ChangeRequestsView.tsx` / `ApprovalsView.tsx` are the closest existing
-  pattern (card/table list + mutation buttons + `qc.invalidateQueries()`).
-- Wire both into `App.tsx`'s `body()` (search `section === "plugins"` for
-  where the section-to-view `if` chain lives); `"import"` and `"drift"` are
-  already valid nav keys (see `NavRail.tsx`) but fall through to the generic
-  "part of the roadmap" `Result` placeholder.
-
-**Not started** (see `docs/PLAN.md` for the full design): Postgres grid
-cache, GitHub push webhooks (sync is polling-based today, works, just not
-instant), param-level 3-way merge / conflict-resolution UI, auth (OIDC/SSO)
-+ RBAC, JSON-Schema/YANG schema import, secrets encryption, the AI module,
-GitLab/Bitbucket providers.
+**Not started, the next work** (see `docs/PLAN.md` §0 for the suggested
+order): param-level 3-way merge / conflict-resolution UI, auth (OIDC/SSO) +
+RBAC, GitHub push webhooks (sync is polling-based today, works, just not
+instant), Postgres grid cache, JSON-Schema/YANG schema import, secrets
+encryption, the AI module, GitLab/Bitbucket providers.

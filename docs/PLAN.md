@@ -82,34 +82,39 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
 - **Plugin architecture**: `backend/internal/plugin` registry; built-ins are the 3 parsers and
   the Flux HelmRelease transposer (`transposers/flux.go`, proves the "generate an artifact that
   doesn't exist in source" use case). `PluginsView.tsx` lists them.
+- **Import wizard** (`ImportWizard.tsx`, nav key `"import"`): 3 steps over `POST /api/scan` and
+  `POST /api/import`. Step 1 scans read-only and shows per-file new vs already-managed counts
+  (matched by source `file|path` against the catalog); unticked files can persist into ignore
+  rules. Step 2 is a selectable table with inline type/category/scope/secret editors, bulk-apply
+  controls, category suggestions from the dotted name, and auto secret-marking for
+  credential-looking names (values masked). Step 3 reviews with summary stats and explains the
+  single Git commit before initializing. Indexed list entries from the parsers (`servers[0]`,
+  `servers[1]`) are folded into one list candidate (`foldFile`), and a family whose list
+  parameter is already managed counts as managed. The Repository Changes inbox can hand over a
+  focus file via `importFocus` in `store.ts`: the wizard then auto-scans and preselects only
+  that file/folder.
+- **Repository Changes inbox** (`RepoChangesView.tsx`, nav key `"drift"`): cards per finding
+  from `GET /api/repo/findings` with per-type icon/color, plain-word detail, affected-parameter
+  chips that jump to the editor, and one-click actions: new file → "Import parameters" (jumps
+  into the wizard with focus), deleted file → "Retire parameters" (`POST
+  /api/parameters/retire-file` behind a Popconfirm), changed file → "View in editor", plus
+  "Check now" and "Mark all as seen" (`POST /api/repo/findings/ack`). Findings self-resolve:
+  the backend (`reconcile.go`) subtracts already-managed candidates from `new_file` counts and
+  skips fully-imported files, and independently reports any managed source file missing from
+  disk as `file_deleted` even when the ack..HEAD diff never shows a `D` (added and deleted
+  within one unacknowledged window). Verified E2E in the browser: external commit → finding →
+  focused import → finding resolves; external delete → retire → caught-up state.
 
-### Backend ready, frontend NOT built (the next work, in priority order)
+### Not started at all (next work, suggested priority order)
 
-1. **Import wizard.** Endpoints exist and work: `POST /api/scan` (returns `ScanResult` with
-   candidate parameters per file), `POST /api/import` (promotes selected candidates into
-   `catalog.yaml` in one attributed commit, also accepts `ignoreFiles`). Types already defined
-   in `frontend/src/api.ts` (`ScanResult`, `ScanCandidate`, `ScanFile`). Nothing calls these from
-   the UI yet. `AddParameterModal.tsx` is the closest existing pattern (a form → `api.addParameter`)
-   but the wizard needs multi-step: scan → select candidates (checkbox table, bulk category/type/
-   secret/scope) → review → `api.importParameters`. Target: 3 steps, `antd Steps`, see
-   `docs/PLAN.md §6` for the original design intent.
-2. **Repository Changes inbox.** Endpoints exist: `GET /api/repo/findings` (diffs the
-   last-acknowledged commit vs HEAD: new files with candidate counts, changed/deleted/renamed
-   managed files, new-folder-looks-like-a-version-drop heuristic), `POST /api/repo/findings/ack`,
-   `POST /api/parameters/retire-file` (one-click resolution for a deleted source file). Nav rail
-   already shows a live count badge on "Repository Changes" (`NavRail.tsx`, key `"drift"`) but
-   the section renders the generic placeholder. `ChangeRequestsView.tsx` / `ApprovalsView.tsx`
-   are the closest pattern (list + mutation buttons + `qc.invalidateQueries()`).
-3. Wire both into `App.tsx`: search for `section === "plugins"` in the `body()` function, that's
-   the if-chain to extend with `section === "import"` and `section === "drift"`.
-
-### Not started at all
-
-Postgres grid cache (currently re-reads Git per request, fine at demo scale), GitHub push
-webhooks (sync is polling today, works but not instant), parameter-level 3-way merge /
-conflict-resolution UI (conflicts currently fail the merge cleanly but there's no resolver UI),
-auth (OIDC/SSO, Microsoft Entra) + RBAC, JSON-Schema/YANG schema import, secrets encryption at
-rest, the AI module (chat/intent-to-change-request), GitLab/Bitbucket providers.
+1. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
+   cleanly but there's no resolver UI; "Rebase & resubmit" also missing), see §19.
+2. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
+3. GitHub push webhooks (sync is polling today, works but not instant).
+4. Postgres grid cache (currently re-reads Git per request, fine at demo scale).
+5. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
+   (chat/intent-to-change-request); GitLab/Bitbucket providers; indexed parameter families
+   beyond simple lists (§18 tier 2).
 
 ### Running it locally (for verification during development)
 

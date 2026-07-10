@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -42,33 +43,33 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 	if ack == "" {
 		// First run: everything up to now is the baseline, not news.
 		_ = s.Store.SetMeta(ackKey, head)
-		writeJSON(w, http.StatusOK, map[string]any{"baseSha": head, "headSha": head, "findings": []Finding{}})
-		return
+		ack = head
 	}
-	if ack == head {
-		writeJSON(w, http.StatusOK, map[string]any{"baseSha": ack, "headSha": head, "findings": []Finding{}})
-		return
-	}
-
-	changes, err := s.Git.DiffNameStatus(ack, head)
-	if err != nil {
-		// The acknowledged commit may have been rewritten away (force-push):
-		// re-baseline rather than erroring forever.
-		_ = s.Store.SetMeta(ackKey, head)
-		writeJSON(w, http.StatusOK, map[string]any{"baseSha": head, "headSha": head, "findings": []Finding{}})
-		return
+	var changes []gitengine.FileChange
+	if ack != head {
+		var derr error
+		changes, derr = s.Git.DiffNameStatus(ack, head)
+		if derr != nil {
+			// The acknowledged commit may have been rewritten away
+			// (force-push): re-baseline rather than erroring forever.
+			_ = s.Store.SetMeta(ackKey, head)
+			ack, changes = head, nil
+		}
 	}
 
 	p, _ := s.load()
 	managedBy := map[string][]string{} // file -> param IDs
+	managedPath := map[string]bool{}   // "file|path" -> already in the catalog
 	if p != nil {
 		for _, param := range p.Catalog.Parameters {
 			managedBy[param.Source.File] = append(managedBy[param.Source.File], param.ID)
+			managedPath[param.Source.File+"|"+param.Source.Path] = true
 		}
 	}
 
-	var out []Finding
+	out := []Finding{}
 	newDirs := map[string]int{}
+	reportedGone := map[string]bool{}
 	for _, c := range changes {
 		path := filepath.ToSlash(c.Path)
 		if strings.HasPrefix(path, ".configer/") || strings.HasPrefix(path, "generated/") {
@@ -85,10 +86,21 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 				continue // not a config file
 			}
 			cands, _ := parser.Extract(path, content)
+			// Only candidates not yet in the catalog are news; once the user
+			// imports them the finding resolves itself.
+			fresh := 0
+			for _, c := range cands {
+				if !managedPath[path+"|"+c.Path] {
+					fresh++
+				}
+			}
+			if fresh == 0 {
+				continue
+			}
 			out = append(out, Finding{
 				Type:       "new_file",
 				Path:       path,
-				Candidates: len(cands),
+				Candidates: fresh,
 				Detail:     "A new configuration file appeared in the repository. You can import its parameters or ignore it.",
 			})
 			if dir := filepath.ToSlash(filepath.Dir(path)); dir != "." && dir != "base" {
@@ -105,6 +117,7 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 			}
 		case "D":
 			if ids := managedBy[path]; len(ids) > 0 {
+				reportedGone[path] = true
 				out = append(out, Finding{
 					Type:   "file_deleted",
 					Path:   path,
@@ -115,6 +128,7 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 		case "R":
 			old := filepath.ToSlash(c.OldPath)
 			if ids := managedBy[old]; len(ids) > 0 {
+				reportedGone[old] = true
 				out = append(out, Finding{
 					Type:    "file_renamed",
 					Path:    path,
@@ -125,6 +139,24 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 			}
 		}
 	}
+	// Safety net beyond the diff: a managed source file can be missing even
+	// when the ack..HEAD range never shows a "D" (added and deleted inside
+	// one unacknowledged window, or gone since before the baseline).
+	// Parameters pointing at a missing file always deserve a finding.
+	for file, ids := range managedBy {
+		if reportedGone[file] {
+			continue
+		}
+		if _, statErr := os.Stat(filepath.Join(s.RepoPath, file)); os.IsNotExist(statErr) {
+			out = append(out, Finding{
+				Type:   "file_deleted",
+				Path:   file,
+				Params: ids,
+				Detail: "A file that parameters are sourced from no longer exists in the repository. Retire the affected parameters or restore the file.",
+			})
+		}
+	}
+
 	for dir, n := range newDirs {
 		if n >= 2 {
 			out = append(out, Finding{

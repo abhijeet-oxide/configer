@@ -24,6 +24,7 @@ import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import DashboardView from "./components/DashboardView";
 import ImportWizard from "./components/ImportWizard";
+import RepoChangesView from "./components/RepoChangesView";
 import MobileParamList from "./components/MobileParamList";
 import { DashboardSkeleton, GridSkeleton, ListSkeleton } from "./components/Skeletons";
 
@@ -246,6 +247,12 @@ export default function App() {
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <DashboardView grid={grid} />
+        </div>
+      );
+    if (section === "drift")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <RepoChangesView />
         </div>
       );
     if (section === "approvals")

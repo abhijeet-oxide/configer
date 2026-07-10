@@ -10,7 +10,7 @@ export const stateMeta: Record<ChangeState, { color: string; label: string; expl
   draft: {
     color: "default",
     label: "Draft",
-    explain: "Your edits are saved here in Configer only — nothing has been written to Git yet.",
+    explain: "Your edits are saved here in Configer only; nothing has been written to Git yet.",
   },
   under_review: {
     color: "processing",
@@ -20,7 +20,7 @@ export const stateMeta: Record<ChangeState, { color: string; label: string; expl
   approved: {
     color: "cyan",
     label: "Approved",
-    explain: "Approved by a reviewer — ready to be published (merged) to the target branch.",
+    explain: "Approved by a reviewer; ready to be published (merged) to the target branch.",
   },
   published: {
     color: "success",

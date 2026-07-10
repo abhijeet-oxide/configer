@@ -10,14 +10,14 @@ import RuleEditor from "./RuleEditor";
 function DetailsTab({ p }: { p: Parameter }) {
   return (
     <Descriptions column={1} size="small" bordered items={[
-      { key: "desc", label: "Description", children: p.description || "—" },
+      { key: "desc", label: "Description", children: p.description || "-" },
       { key: "type", label: "Data Type", children: <Tag>{p.type}</Tag> },
-      { key: "default", label: "Default Value", children: <span className="mono">{String(p.default ?? "—")}</span> },
+      { key: "default", label: "Default Value", children: <span className="mono">{String(p.default ?? "-")}</span> },
       { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
       { key: "scope", label: "Scope", children: <Tag color="blue">{p.scope}</Tag> },
       { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">secret</Tag> : "No" },
-      { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "—" },
-      { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "—" },
+      { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
+      { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },
       { key: "file", label: "Defined In", children: <span className="mono">{p.source.file}</span> },
       { key: "path", label: "Path", children: <span className="mono">{p.source.path}</span> },
     ]} />
@@ -25,7 +25,7 @@ function DetailsTab({ p }: { p: Parameter }) {
 }
 
 // ProjectOverview fills the details panel with useful, live numbers when no
-// parameter is selected — no dead space on big monitors.
+// parameter is selected, no dead space on big monitors.
 function ProjectOverview({ grid }: { grid: Grid }) {
   let invalid = 0;
   let overridden = 0;
@@ -51,7 +51,7 @@ function ProjectOverview({ grid }: { grid: Grid }) {
         {grid.project}
       </Typography.Title>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        Project overview — select a parameter row for details and rules.
+        Project overview: select a parameter row for details and rules.
       </Typography.Text>
       <Divider style={{ margin: "12px 0" }} />
       <ARow gutter={[8, 14]}>
@@ -82,7 +82,7 @@ function ProjectOverview({ grid }: { grid: Grid }) {
           <div key={i.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
             <span>{i.name}</span>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {i.softwareVersion} · {i.region ?? "—"}
+              {i.softwareVersion} · {i.region ?? "-"}
             </Typography.Text>
           </div>
         ))}

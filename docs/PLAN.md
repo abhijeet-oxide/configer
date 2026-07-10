@@ -1,9 +1,9 @@
-# Configer — Git-Native Configuration Management Platform: Detailed Plan
+# Configer - Git-Native Configuration Management Platform: Detailed Plan
 
 ## Context
 
 **Problem.** Teams that operate at scale (telco, platform, infra) manage hundreds of config
-files — XML, JSON, YAML, Helm `values.yaml`, Flux/Kustomize, kpt/KRM packages — each with
+files: XML, JSON, YAML, Helm `values.yaml`, Flux/Kustomize, kpt/KRM packages, each with
 thousands to tens of thousands of parameters, replicated across many deployment instances
 (regions, environments, zones, sites) that may run different software versions. Editing these
 by hand across files and branches is error-prone, hard to compare, and impossible to reason
@@ -14,7 +14,7 @@ Git repository, scans it, and presents a **spreadsheet view**: each **row is a p
 **column is an instance**. Users import parameters from the source files, enrich them with
 metadata (category, type, validation, secret flag, scope), set per-instance values, do bulk edits,
 compare, and validate. Every change is written back as Git commits on branches, reviewed via pull
-requests, and published by merging to target branches — **Git remains the single source of truth.**
+requests, and published by merging to target branches. **Git remains the single source of truth.**
 
 **Decisions locked with user:**
 - **Backend:** Go (speed + concurrency + go-git/KRM-native ecosystem).
@@ -23,13 +23,114 @@ requests, and published by merging to target branches — **Git remains the sing
 - **Git provider:** GitHub-first behind a `PRProvider` interface (GitLab/Bitbucket later).
 - **Deployment:** Self-hosted, single org, multi-tenant (tenants = teams/projects inside one org).
 
-**Reference:** the provided "CLM" mockup — left category tree, center parameter×instance grid with
+**Reference:** the provided "CLM" mockup: left category tree, center parameter×instance grid with
 per-instance version headers, right Parameter Details panel, bottom Diff/JSON/YAML view, top nav
 (Config Editor · Compare · Change Requests · History · Schemas · Validation · Deployments · Audit).
 
 ---
 
-## 1. Core Model — how the abstraction maps to Git
+## 0. Current Implementation Status (read this first, before exploring code)
+
+This section is kept in sync with the actual codebase after every work session. Trust this over
+memory of "what should exist" from the numbered design sections below, those describe the
+target design; this section says what's real right now. Repo: `abhijeet-oxide/configer`,
+branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and frontend
+`tsc --noEmit && vite build` are green as of the latest commit on that branch.
+
+### Live end to end (built, wired, verified)
+
+- **Ingest to catalog to grid**: `backend/internal/{ingest,parsers,project,grid,resolver}` scan
+  YAML/JSON/XML, resolve scope precedence (default→global→env→site→zone→instance), and serve
+  `GET /api/grid`. `frontend/src/components/ParameterGrid.tsx` renders it virtualized, with
+  typed editors (string/int/number/bool/enum/**list**), live validation, cell-level actions
+  (edit / reset-to-inherited / exclude / copy-to-instance via right-click menu), hover diff on
+  pending cells, and a no-dead-space category summary strip when rows end early.
+- **Validation**: `backend/internal/validate` (type coercion + a predefined rule library with
+  human messages and examples, `presets.go`) enforced both client-side (blocks bad input) and
+  server-side (`422` on write). Rule editor: `RuleEditor.tsx`.
+- **Structural flexibility**: `type: list` parameters (chips editor, `ListEditor` in
+  `ParameterGrid.tsx`) and instance-level exclusion tombstones. The renderer
+  (`backend/internal/render/render.go`, tests in `render_test.go`) proves per-format semantics:
+  YAML/JSON omit absent keys entirely (empty parents pruned), XML removes/repeats elements
+  (no empty husks), verified for all three formats.
+- **Change-request pipeline** (fully git-native): edits stage into a draft
+  (`backend/internal/change`, `crstore`), `Submit` cuts an isolated worktree branch
+  `configer/cr-<n>` (`backend/internal/changeset`, `gitengine`), commits with a
+  `Changed-by:` attribution trailer, pushes, opens a real GitHub PR when `GITHUB_TOKEN` is set
+  (`backend/internal/provider`). `Approve & Merge` calls the real GitHub merge API or a local
+  `--no-ff` merge. State machine `Draft → Under Review → Approved → Published/Rejected`
+  surfaces as `CrSteps.tsx` (a Steps tracker) and `StateTag`. Frontend views:
+  `TopBar.tsx` (review-before-send modal: before/after table, per-row undo, jump-to-cell,
+  production warning), `ChangeRequestsView.tsx`, `ApprovalsView.tsx` (approver inbox).
+- **Git liveness both directions**: `backend/internal/api/sync.go` polls origin
+  (`CONFIGER_SYNC_SECONDS`, default 30s), fast-forwards on external commits, detects a deleted
+  upstream branch. `GET /api/repo/status` backs the "git: live / N behind" chip in `TopBar.tsx`
+  and the status chip in `NavRail.tsx`.
+- **Dashboard command center**: `DashboardView.tsx` + `charts.tsx` (dependency-free inline SVG,
+  dataviz-skill-validated palette: health tiles, category donut, 14-day activity sparkline,
+  diff mini-bar). Fills the viewport, no dead space.
+- **Offline resilience**: `frontend/src/offline.ts`, edits queue locally when the backend is
+  unreachable and replay on reconnect; grid/changes/meta snapshot to `localStorage` as a
+  fallback render source; `App.tsx` shows a calm, deployment-aware "can't connect" state (uses
+  `GET /api/meta` for name/version/environment) instead of dev-only text; state-aware skeletons
+  per view (`Skeletons.tsx`) instead of a spinner.
+- **UI shell**: responsive at 4 tiers (phone bottom-tabs + `MobileParamList.tsx` read-only cards,
+  tablet drawers, laptop 3-panel, big-monitor scaling), resizable panels, light/dark/brand theming
+  + comfort text-size toggle (`theme.ts`, `store.ts`), global search (⌘K), Phosphor icons via
+  Iconify (`icons.tsx`, bundled, no runtime fetch). Zero em dashes anywhere in the codebase, keep
+  it that way (use `:` `;` `,` or restructure the sentence instead).
+- **Plugin architecture**: `backend/internal/plugin` registry; built-ins are the 3 parsers and
+  the Flux HelmRelease transposer (`transposers/flux.go`, proves the "generate an artifact that
+  doesn't exist in source" use case). `PluginsView.tsx` lists them.
+- **Import wizard** (`ImportWizard.tsx`, nav key `"import"`): 3 steps over `POST /api/scan` and
+  `POST /api/import`. Step 1 scans read-only and shows per-file new vs already-managed counts
+  (matched by source `file|path` against the catalog); unticked files can persist into ignore
+  rules. Step 2 is a selectable table with inline type/category/scope/secret editors, bulk-apply
+  controls, category suggestions from the dotted name, and auto secret-marking for
+  credential-looking names (values masked). Step 3 reviews with summary stats and explains the
+  single Git commit before initializing. Indexed list entries from the parsers (`servers[0]`,
+  `servers[1]`) are folded into one list candidate (`foldFile`), and a family whose list
+  parameter is already managed counts as managed. The Repository Changes inbox can hand over a
+  focus file via `importFocus` in `store.ts`: the wizard then auto-scans and preselects only
+  that file/folder.
+- **Repository Changes inbox** (`RepoChangesView.tsx`, nav key `"drift"`): cards per finding
+  from `GET /api/repo/findings` with per-type icon/color, plain-word detail, affected-parameter
+  chips that jump to the editor, and one-click actions: new file → "Import parameters" (jumps
+  into the wizard with focus), deleted file → "Retire parameters" (`POST
+  /api/parameters/retire-file` behind a Popconfirm), changed file → "View in editor", plus
+  "Check now" and "Mark all as seen" (`POST /api/repo/findings/ack`). Findings self-resolve:
+  the backend (`reconcile.go`) subtracts already-managed candidates from `new_file` counts and
+  skips fully-imported files, and independently reports any managed source file missing from
+  disk as `file_deleted` even when the ack..HEAD diff never shows a `D` (added and deleted
+  within one unacknowledged window). Verified E2E in the browser: external commit → finding →
+  focused import → finding resolves; external delete → retire → caught-up state.
+
+### Not started at all (next work, suggested priority order)
+
+1. Parameter-level 3-way merge / conflict-resolution UI (conflicts currently fail the merge
+   cleanly but there's no resolver UI; "Rebase & resubmit" also missing), see §19.
+2. Auth (OIDC/SSO, Microsoft Entra) + RBAC (roles designed in §14, nothing implemented).
+3. GitHub push webhooks (sync is polling today, works but not instant).
+4. Postgres grid cache (currently re-reads Git per request, fine at demo scale).
+5. JSON-Schema/YANG schema import; secrets encryption at rest; the AI module
+   (chat/intent-to-change-request); GitLab/Bitbucket providers; indexed parameter families
+   beyond simple lists (§18 tier 2).
+
+### Running it locally (for verification during development)
+
+```bash
+cd backend && go test ./... && CONFIGER_REPO=../sample-repo go run ./cmd/configer   # :8080
+cd frontend && npm install && npm run dev                                            # :5173
+```
+`sample-repo/` is a seeded fixture (`telco-platform` project) with 6 instances demonstrating
+scope precedence, list parameters, and exclusion. For change-request E2E testing you need a real
+git remote (a bare repo works): `git init --bare` + `git clone`, then point `CONFIGER_REPO` at
+the clone, not `sample-repo/` directly (it has no remote, so submit/merge degrade to local-only
+mode, which is still valid but doesn't exercise push/PR).
+
+---
+
+## 1. Core Model: how the abstraction maps to Git
 
 Git is the source of truth. Configer stores three kinds of artifacts in the repo, plus a **metadata
 DB that is only a cache/index** (rebuildable from Git at any time).
@@ -61,7 +162,7 @@ DB that is only a cache/index** (rebuildable from Git at any time).
 
 - **Overlays are sparse** (only params that differ from base/global) → minimal diffs → fewer merge
   conflicts and clean reviews.
-- **`generated/`** is what downstream tools (Flux, Helm, kpt) actually consume — fully git-native.
+- **`generated/`** is what downstream tools (Flux, Helm, kpt) actually consume, fully git-native.
 - Adding an instance = append to `.configer/instances.yaml` + new `instances/<name>/overlay.yaml` +
   new column in the grid + new `generated/<name>/`.
 
@@ -95,7 +196,7 @@ parameters:
 
 ### 1.3 Central instance registry (`instances.yaml`) + per-instance overlay
 
-`.configer/instances.yaml` is the **single catalog of all instances** — one place that answers
+`.configer/instances.yaml` is the **single catalog of all instances**: one place that answers
 "which instance is at which software version, in which region/zone/environment/site, with what
 labels." It is the authoritative index the grid columns are built from; adding a column appends here.
 
@@ -167,12 +268,12 @@ Monorepo `configer/`. HTTP API via **Echo** (or Chi); internal services as packa
 | `schema` | Import JSON Schema & YANG → derive validation rules; validate values | santhosh-tekuri/jsonschema; pyang shell / goyang for YANG |
 | `render` | Apply overlays→base→`generated/`, **comment/format preserving**, deterministic | yaml.v3 `Node`, etree |
 | `diff` | Semantic **parameter-level** diff (instance↔instance, version↔version, branch↔branch) | internal |
-| `catalog` | Read/write `catalog.yaml`; maintain param index | — |
-| `changeset` | CR lifecycle: branch → write overlays+render → commit → push → PR | — |
+| `catalog` | Read/write `catalog.yaml`; maintain param index | - |
+| `changeset` | CR lifecycle: branch → write overlays+render → commit → push → PR | - |
 | `provider` | `PRProvider` interface; **GitHub impl first** (open PR, status, reviews, merge), webhooks | go-github |
 | `store` | Postgres access; the cache/index (see §4) | pgx + sqlc |
 | `secrets` | Encrypt secret params before commit; never store plaintext | SOPS/age or Vault |
-| `drift` | Reconcile Git ↔ cache; flag out-of-band edits (Git wins) | — |
+| `drift` | Reconcile Git ↔ cache; flag out-of-band edits (Git wins) | - |
 
 **Performance principles:**
 - **Bare mirror per repo** + shallow/partial fetch; **incremental parse** using `git diff <lastSHA>..HEAD`
@@ -199,19 +300,19 @@ Monorepo `configer/`. HTTP API via **Echo** (or Chi); internal services as packa
 4. **Publish.** On approval + merge to target branch (`lab`/`production`/`main`/special) → state
    **Published**; cache re-synced from merged commit.
 
-**Merge-conflict strategy (a top failure point) — resolve at the parameter level, not raw text:**
+**Merge-conflict strategy (a top failure point): resolve at the parameter level, not raw text:**
 - Because sparse overlays are keyed by parameter ID, two CRs touching *different* params never
   conflict even in the same file. Re-render is deterministic from overlays.
 - Before opening/merging, **rebase the CR's overlays onto the latest target** and run a **3-way
   param-level merge**: conflict only when the *same* (param, instance) changed on both sides since
-  `base_sha`. Surface those few cells in a **conflict-resolution UI** (theirs / mine / edit) — users
+`base_sha`. Surface those few cells in a **conflict-resolution UI** (theirs / mine / edit); users
   never see Git text conflicts.
 - **Optimistic locking** via `base_sha`; if the target moved, re-render + re-diff and prompt.
 - **Presence indicators** ("Alice is editing prod-us-east") + soft advisory locks to reduce collisions.
 
 ---
 
-## 4. Metadata database (deliberately light — Postgres)
+## 4. Metadata database (deliberately light: Postgres)
 
 DB stores **cache + operational state only**; **no config values are canonical here** (Git is).
 It is fully rebuildable by re-scanning Git.
@@ -234,7 +335,7 @@ effective value + source_scope), `change_requests`, `change_items`, `schemas_met
   custom work). Left **virtualized Tree** = parameter categories; right **Parameter Details** tabs
   (Details · Schema · History · Depends On).
 - **The spreadsheet grid:** use **Glide Data Grid** (canvas-rendered, purpose-built for
-  spreadsheet-scale — handles both **row and column virtualization** for tens of thousands of params ×
+spreadsheet-scale: handles both **row and column virtualization** for tens of thousands of params ×
   many instances). Alternative: AG Grid Community. This is the single most important perf choice.
 - **Compare/Diff:** bottom panel, inline & side-by-side, "changes only" toggle; Monaco diff for raw
   file view, custom param-diff for the semantic table (as in mockup).
@@ -308,15 +409,15 @@ configer/
 
 ## 9. Phased delivery
 
-- **Phase 0 — Foundations:** monorepo scaffold, Docker Compose (Go API + Postgres + Vite), GitHub App
+- **Phase 0 - Foundations:** monorepo scaffold, Docker Compose (Go API + Postgres + Vite), GitHub App
   auth, tenant/RBAC skeleton, migrations.
-- **Phase 1 — Ingest + Catalog (MVP read path):** YAML/JSON/XML parsers, scan wizard, `catalog.yaml`
+- **Phase 1 - Ingest + Catalog (MVP read path):** YAML/JSON/XML parsers, scan wizard, `catalog.yaml`
   write, grid cache, read-only spreadsheet (Glide grid) + category tree + details panel.
-- **Phase 2 — Edit + Change Requests:** cell edit, sparse overlays, deterministic renderer, CR
+- **Phase 2 - Edit + Change Requests:** cell edit, sparse overlays, deterministic renderer, CR
   branch→commit→push→**GitHub PR**, state machine, param-level diff/compare, validation engine.
-- **Phase 3 — Scale & collaboration:** conflict resolution UI, presence/locks, incremental parse,
+- **Phase 3 - Scale & collaboration:** conflict resolution UI, presence/locks, incremental parse,
   webhook-driven cache refresh, drift detection, bulk edit, audit log.
-- **Phase 4 — Advanced:** per-instance software versions (introduce/deprecate), schema import (JSON
+- **Phase 4 - Advanced:** per-instance software versions (introduce/deprecate), schema import (JSON
   Schema + YANG), Helm/Flux/kpt parser plugins, secrets (SOPS/Vault), Deployments view.
 
 ---
@@ -341,30 +442,30 @@ configer/
 
 ---
 
-## 11. Plugin architecture (everything extensible) — ADDED
+## 11. Plugin architecture (everything extensible) - ADDED
 
 The system is built around a **plugin registry** so capabilities can be added without touching the
 core. Four plugin kinds, each a Go interface with a `Manifest` (id, name, version, kind, config
 schema) so plugins are discoverable and configurable from the UI:
 
-1. **IngestParser** — reads a source file → extracts candidate parameters (path, type, value).
+1. **IngestParser**: reads a source file → extracts candidate parameters (path, type, value).
    Impls: YAML, JSON, XML, Helm values, Flux, kpt/KRM. Pluggable so new formats drop in.
-2. **SchemaImporter** — reads a schema (JSON Schema, YANG) → emits validation rules onto params.
-3. **Transposer / Generator** — the key new kind. Takes the resolved parameter set for an instance
+2. **SchemaImporter**: reads a schema (JSON Schema, YANG) → emits validation rules onto params.
+3. **Transposer / Generator**: the key new kind. Takes the resolved parameter set for an instance
    and **transposes it into arbitrary output artifacts** written to `generated/`. Example use case:
    a **Flux artifact generator** that synthesizes Flux/Kustomize/HelmRelease files that do **not
    exist in the source** but are produced from the config. A transposer declares which
    `generated/<instance>/...` paths it owns; the renderer delegates those paths to it. Config-driven
    (e.g. templates + parameter mapping) so users add new output shapes as plugins.
-4. **Validator** — custom cross-parameter / policy validation (e.g. OPA/Rego, regex bundles).
+4. **Validator**: custom cross-parameter / policy validation (e.g. OPA/Rego, regex bundles).
 
 `internal/plugin` defines the registry + interfaces; built-ins register at startup; external
 plugins load via Go plugin descriptors / a plugin manifest per project
 (`.configer/plugins.yaml`) so each project enables the plugins it needs.
 
-## 12. AI module (plug-and-play, intent → config) — ADDED
+## 12. AI module (plug-and-play, intent → config) - ADDED
 
-- Every parameter already carries a **`description`** (in `catalog.yaml`) — this is the grounding
+- Every parameter already carries a **`description`** (in `catalog.yaml`): this is the grounding
   context the AI uses. Enrichment can auto-draft descriptions.
 - A pluggable **AIProvider** interface (default: Claude via the Anthropic API; provider-agnostic so
   it can be swapped/disabled). Kept behind the plugin registry so it is truly optional.
@@ -374,7 +475,7 @@ plugins load via Go plugin descriptors / a plugin manifest per project
   description/validation drafting. The AI only ever proposes; changes still flow through the normal
   CR → PR → publish pipeline.
 
-## 13. Ignore rules (selective import) — ADDED
+## 13. Ignore rules (selective import) - ADDED
 
 - **`.configer/ignore.yaml`** (or `.configerignore`): glob patterns for **files** to skip during
   scan, plus a list of **parameter paths/IDs** to ignore. The ingest wizard also lets users
@@ -382,7 +483,7 @@ plugins load via Go plugin descriptors / a plugin manifest per project
 - Ignored files never produce candidate params; ignored params never appear in the grid and are
   never written to overlays/generated output.
 
-## 14. Auth, SSO & RBAC — ADDED
+## 14. Auth, SSO & RBAC - ADDED
 
 - **Login / identity:** pluggable auth via **OIDC/SAML**, including **Microsoft Entra ID (Azure AD)
   SSO** and any standard IdP; local accounts as fallback. Sessions via signed JWT.
@@ -391,46 +492,46 @@ plugins load via Go plugin descriptors / a plugin manifest per project
   Enforced on every action: who may edit, create a CR, approve, and merge to protected branches
   (lab/production). Stored in `memberships` with row-level tenant scoping.
 
-## 15. Git identity — two modes (ADDED)
+## 15. Git identity: two modes (ADDED)
 
 1. **Per-user OAuth (act on behalf of user):** user authorizes via GitHub OAuth; commits/PRs are
    authored as that user with their own token. Cleanest attribution.
 2. **Service account / machine identity:** a configured bot account + token (or GitHub App
    installation) performs all Git ops from the backend. Because every commit comes from one identity,
-   the **commit message must attribute the real author** — Configer appends a trailer, e.g.
+the **commit message must attribute the real author**: Configer appends a trailer, e.g.
    `Changed-by: Alice Wu <alice@corp>` (and Co-authored-by), and records the true user in the audit
    log and PR body. Mode is a per-repository setting.
 
-## 16. Theming & design language — ADDED
+## 16. Theming & design language - ADDED
 
 - **Mature, modern aesthetic:** consistent icon set (Ant Design Icons / Lucide), tasteful color,
   clear density, subtle graphics. The mockup's polish is the bar.
 - **Theme system:** light / dark / **custom company theme** via **YAML/JSON theme overrides**
-  (Ant Design `ConfigProvider` design tokens — primary color, radius, fonts). Users pick a theme or
+(Ant Design `ConfigProvider` design tokens: primary color, radius, fonts). Users pick a theme or
   supply brand tokens; persisted per user and overridable per tenant. Layout is customizable
   (panel visibility, density, column pinning).
 
-## 17. CI/CD — ADDED
+## 17. CI/CD - ADDED
 
 - **GitHub Actions** workflows: `ci.yml` (Go build/test/lint + frontend build/typecheck on PRs) and
   `deploy.yml` (build & push backend/frontend container images, deploy). Configer's own repo and the
   managed config repos both benefit; the deploy pipeline ships the self-hosted stack.
 
-## 18. Structural divergence between instances (list & repeated parameters) — ADDED
+## 18. Structural divergence between instances (list & repeated parameters) - ADDED
 
 **Problem.** Instances differ not only in values but in *shape*: lab has one NTP source,
 production has ten. A pure row-per-parameter grid cannot express per-instance cardinality.
 
 **Three-tier design:**
 
-1. **List-typed parameters** — `type: list<string>` (or `list<integer>`, `list<ipv4>`, …). The
+1. **List-typed parameters**: `type: list<string>` (or `list<integer>`, `list<ipv4>`, …). The
    cell's value *is* the list; the cell editor becomes a **chips/tags editor** (add, remove,
    reorder inline). One grid row, naturally different lengths per instance; overlays store the
    whole list per instance. Validation gains `itemRules` (each element checked against
    pattern/preset) plus `minItems`/`maxItems`. This covers the NTP case with zero grid
    complexity and is the recommended default for simple value lists.
 
-2. **Indexed parameter families** — for repeated *structured* blocks (`ntp[i].ip`, `ntp[i].port`,
+2. **Indexed parameter families**: for repeated *structured* blocks (`ntp[i].ip`, `ntp[i].port`,
    `ntp[i].keyId`), the catalog declares a **repeat group** with a path template
    (`$.ntp.servers[*]`). The grid renders a **group header row** showing per-instance entry
    counts ("lab: 1 · prod: 10") that expands into child rows per index; a cell whose index an
@@ -438,18 +539,18 @@ production has ten. A pure row-per-parameter grid cannot express per-instance ca
    that appends the sparse block only to that instance's overlay. Removing an entry tombstones it
    in that overlay.
 
-3. **Copy affordances** — column-header menu: **“Copy values from ‹instance›…”** (whole column,
+3. **Copy affordances**: column-header menu: **"Copy values from ‹instance›…"** (whole column,
    a category subtree, or one repeat group); cell/group context menu: **“Copy to instances…”**
-   with a checklist. Every copy stages ordinary draft items — bulk structural changes remain
+with a checklist. Every copy stages ordinary draft items; bulk structural changes remain
    reviewable in the change request before touching Git.
 
 **Ingest detection.** The parsers already emit `[i]` indices when flattening; the scan folds
 candidates identical up-to-index into a proposed *family* and asks the user (wizard step) whether
 to model it as a list parameter or an indexed family.
 
-## 19. Git-nativeness guarantees: liveness, conflicts, approvals, external changes — ADDED
+## 19. Git-nativeness guarantees: liveness, conflicts, approvals, external changes - ADDED
 
-**Core principle (non-negotiable):** everything Configer produces is plain Git — ordinary
+**Core principle (non-negotiable):** everything Configer produces is plain Git: ordinary
 branches (`configer/cr-N`), ordinary commits (machine committer + `Changed-by:` trailer),
 ordinary PRs. Anything Configer can do can also be done directly on GitHub; if Configer is down
 nothing is blocked, and when it returns it absorbs whatever happened while it was away.
@@ -457,11 +558,11 @@ nothing is blocked, and when it returns it absorbs whatever happened while it wa
 - **Liveness (SHIPPED, Phase 2b):** a backend sync loop fetches origin every N seconds (default
   30, `CONFIGER_SYNC_SECONDS`) and fast-forwards the working tree when it is strictly behind, so
   **external commits appear in the grid automatically**; the header shows a live indicator
-  ("git: live" / "N behind"). Phase 3 adds **GitHub push webhooks** for near-instant sync —
+("git: live" / "N behind"). Phase 3 adds **GitHub push webhooks** for near-instant sync;
   same behavior, lower latency; polling remains the fallback.
 
-- **Approvals both ways (SHIPPED, Phase 2b):** *In the UI* — Approve & Merge calls the real
-  GitHub PR merge API (indistinguishable from merging on GitHub). *On GitHub* — every CR shows
+- **Approvals both ways (SHIPPED, Phase 2b):** *In the UI*: Approve & Merge calls the real
+GitHub PR merge API (indistinguishable from merging on GitHub). *On GitHub*: every CR shows
   its PR link; reviewers may approve/merge there instead, and Configer's refresh detects
   externally merged/closed PRs and flips the CR to Published/Rejected. Notifications can deep-link
   to either surface; the UI never forces a redirect, it embeds the PR link.
@@ -469,13 +570,13 @@ nothing is blocked, and when it returns it absorbs whatever happened while it wa
 - **Merge conflicts:** every CR records `base_sha`. If the target advanced and the same overlay
   keys changed, the merge fails cleanly and the error is surfaced on the CR. Phase 3 completes
   the design: **parameter-level 3-way merge** (sparse overlays keyed by param ID make textual
-  conflicts rare); true conflicts render as a cell-level resolution UI (theirs / mine / edit) —
-  users never see raw git conflict markers — plus a **“Rebase & resubmit”** action that re-cuts
+conflicts rare); true conflicts render as a cell-level resolution UI (theirs / mine / edit);
+users never see raw git conflict markers; plus a **"Rebase & resubmit"** action that re-cuts
   the branch from the new HEAD and replays the items.
 
 - **Files added / deleted / changed outside Configer:** each sync that lands commits triggers an
   incremental reconcile (`git diff lastSHA..HEAD`, Phase 3):
-  - **new config-looking file** → “Unmanaged changes” inbox: *“base/new-feature.yaml appeared —
+  - **new config-looking file** → "Unmanaged changes" inbox: *"base/new-feature.yaml appeared,
     import 14 candidate parameters?”* (one click into the import wizard);
   - **deleted/renamed file** → affected parameters flagged `source missing` (grid badge +
     Validation tab); user re-points the source or retires the parameters via a catalog CR;
@@ -483,5 +584,5 @@ nothing is blocked, and when it returns it absorbs whatever happened while it wa
 
 - **New version / folder drops:** when a vendor drops a new base version (folder, tag, or
   branch), scanning it diffs against the current catalog and proposes introduced/deprecated
-  parameters (setting `versionIntroduced`/`versionDeprecated`) as a **catalog change request** —
+parameters (setting `versionIntroduced`/`versionDeprecated`) as a **catalog change request**;
   reviewed and merged like any other change, with a “new version available” notification badge.

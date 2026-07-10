@@ -14,8 +14,9 @@ const queryClient = new QueryClient({
 function Root() {
   const mode = useUI((s) => s.mode);
   const brand = useUI((s) => s.brand);
+  const fontScale = useUI((s) => s.fontScale);
   return (
-    <ConfigProvider theme={buildTheme(mode, brand)}>
+    <ConfigProvider theme={buildTheme(mode, brand, fontScale)}>
       <AntApp>
         <QueryClientProvider client={queryClient}>
           <App />

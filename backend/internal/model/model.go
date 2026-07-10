@@ -42,7 +42,7 @@ const (
 	TypeIPv4    ParamType = "ipv4"
 	TypeCIDR    ParamType = "cidr"
 	// TypeList holds an ordered collection; ItemType declares the element
-	// type. Instances may hold different lengths — this is how one instance
+	// type. Instances may hold different lengths: this is how one instance
 	// renders 1 NTP server and another renders 10.
 	TypeList ParamType = "list"
 )
@@ -117,7 +117,7 @@ type InstanceRegistry struct {
 	Instances  []Instance  `yaml:"instances" json:"instances"`
 }
 
-// Instance is a deployment target — one column in the grid.
+// Instance is a deployment target: one column in the grid.
 type Instance struct {
 	Name            string            `yaml:"name" json:"name"`
 	Environment     string            `yaml:"environment,omitempty" json:"environment,omitempty"`

@@ -8,6 +8,6 @@ values:
   net-vip-ip: 10.10.10.100
   net-vip-netmask: 255.255.255.0
   net-vip-gateway: 10.10.10.1
-  # production carries more entries than lab — one rendered line/element each
+  # production carries more entries than lab, one rendered line/element each
   net-ntp-servers: [10.10.0.1, 10.10.0.2, 10.10.0.3]
   net-syslog-collectors: [10.10.9.1, 10.10.9.2]

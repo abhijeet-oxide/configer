@@ -1,4 +1,5 @@
 // Typed client for the Configer backend REST API.
+import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 
 export type Scope =
   | "default"
@@ -165,6 +166,58 @@ export interface RepoStatus {
   syncError?: string;
   provider?: string;
   autoSyncMs?: number;
+  /** the remote branch was deleted; local work continues safely */
+  upstreamGone?: boolean;
+}
+
+// Deployment identity for professional, environment-aware messaging.
+export interface Meta {
+  name: string;
+  version: string;
+  environment: string;
+  project?: string;
+  branch?: string;
+}
+
+// One repository event detected between the acknowledged commit and HEAD.
+export interface Finding {
+  type: "new_file" | "file_changed" | "file_deleted" | "file_renamed" | "new_folder";
+  path: string;
+  oldPath?: string;
+  candidates?: number;
+  params?: string[];
+  detail: string;
+}
+
+export interface FindingsResult {
+  baseSha: string;
+  headSha: string;
+  findings: Finding[];
+}
+
+// Ingest scan result (import wizard).
+export interface ScanCandidate {
+  name: string;
+  path: string;
+  type: string;
+  value: unknown;
+  file: string;
+  format: string;
+}
+
+export interface ScanFile {
+  file: string;
+  format: string;
+  parser: string;
+  candidates: ScanCandidate[] | null;
+  error?: string;
+}
+
+export interface ScanResult {
+  root: string;
+  files: ScanFile[] | null;
+  skipped: string[] | null;
+  total: number;
 }
 
 export interface PluginManifest {
@@ -175,14 +228,37 @@ export interface PluginManifest {
   description: string;
 }
 
+// request marks the connection online/offline as a side effect, so every API
+// call keeps the resilience layer informed. Network failures become
+// OfflineError (handled gracefully), HTTP errors carry the server's message.
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  let res: Response;
+  try {
+    res = await fetch(`/api${path}`, init);
+  } catch {
+    markOffline();
+    throw new OfflineError();
+  }
+  markOnline();
+  return res;
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`/api${path}`);
+  const res = await request(path);
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json() as Promise<T>;
 }
 
+// snapGet caches the successful response locally so the UI can keep working
+// from the last snapshot when the service is temporarily unreachable.
+async function snapGet<T>(path: string, snapKey: string): Promise<T> {
+  const data = await get<T>(path);
+  saveSnapshot(snapKey, data);
+  return data;
+}
+
 async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`/api${path}`, {
+  const res = await request(path, {
     method,
     headers: { "Content-Type": "application/json" },
     body: body === undefined ? "{}" : JSON.stringify(body),
@@ -203,10 +279,19 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
 
 export const api = {
-  grid: () => get<Grid>("/grid"),
+  health: () => get<{ status: string }>("/health"),
+  meta: () => snapGet<Meta>("/meta", "meta"),
+  grid: () => snapGet<Grid>("/grid", "grid"),
   compare: (left: string, right: string) =>
     get<DiffResult>(`/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`),
   plugins: () => get<PluginManifest[]>("/plugins"),
+  scan: () => send<ScanResult>("POST", "/scan"),
+  importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
+    send<{ ok: boolean; imported: number; skipped: string[] }>("POST", "/import", p),
+  findings: () => get<FindingsResult>("/repo/findings"),
+  ackFindings: () => send<{ ok: boolean }>("POST", "/repo/findings/ack"),
+  retireFile: (file: string, author?: string) =>
+    send<{ ok: boolean; retired: string[] }>("POST", "/parameters/retire-file", { file, author }),
   render: (instance: string) =>
     get<{ instance: string; files: { path: string; content: string }[] }>(
       `/render/${encodeURIComponent(instance)}`,
@@ -227,8 +312,8 @@ export const api = {
     put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
   repoStatus: () => get<RepoStatus>("/repo/status"),
   repoSync: () => send<RepoStatus>("POST", "/repo/sync"),
-  changes: () => get<ChangeRequest[]>("/changes"),
-  draft: () => get<{ draft: ChangeRequest | null }>("/changes/draft"),
+  changes: () => snapGet<ChangeRequest[]>("/changes", "changes"),
+  draft: () => snapGet<{ draft: ChangeRequest | null }>("/changes/draft", "draft"),
   change: (id: number) => get<ChangeRequest>(`/changes/${id}`),
   submitChange: (id: number, p: { title: string; description?: string; author?: string }) =>
     send<ChangeRequest>("POST", `/changes/${id}/submit`, p),

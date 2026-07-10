@@ -39,6 +39,7 @@ import {
   type Row,
 } from "../api";
 import { effectiveRules, validateString, fmtValue, type Rules } from "../rules";
+import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
@@ -54,7 +55,7 @@ const scopeAbbrev: Record<string, string> = {
 };
 
 const scopeExplain: Record<string, string> = {
-  default: "Built-in default value — applies unless something more specific is set",
+    default: "Built-in default value: applies unless something more specific is set",
   global: "Set once for ALL instances",
   environment: "Set for every instance in this environment",
   site: "Set for every instance at this site",
@@ -107,12 +108,12 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
           : pendingItem.action === "reset"
             ? "back to inherited"
             : fmtValue(pendingItem.new)
-      }   (pending — not yet sent for review)`
+      }   (pending, not yet sent for review)`
     : undefined;
 
   if (cell.excluded) {
     return (
-      <Tooltip title={pendingTip ?? "Excluded on this instance — nothing is rendered in its generated files"}>
+    <Tooltip title={pendingTip ?? "Excluded on this instance: nothing is rendered in its generated files"}>
         <span className={"cell-excluded" + (cell.pending ? " cell-pending" : "")}>∅ excluded</span>
       </Tooltip>
     );
@@ -128,7 +129,7 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
   if (Array.isArray(cell.value)) {
     display = <ListChips items={cell.value} />;
   } else if (cell.value === undefined || cell.value === null || cell.value === "") {
-    display = <span style={{ opacity: 0.3 }}>—</span>;
+    display = <span style={{ opacity: 0.3 }}>-</span>;
   } else if (typeof cell.value === "boolean") {
     display = <Tag color={cell.value ? "green" : "default"}>{cell.value ? "on" : "off"}</Tag>;
   } else {
@@ -308,7 +309,7 @@ function ListEditor({
             suffixIcon={null}
           />
           <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 11 }}>
-            {err ?? `${items.length} entr${items.length === 1 ? "y" : "ies"} — one line/element is rendered per entry`}
+            {err ?? `${items.length} entr${items.length === 1 ? "y" : "ies"}, one line/element is rendered per entry`}
           </Typography.Text>
           <Space>
             <Button size="small" type="primary" disabled={!!err} onClick={() => onCommit(items)}>
@@ -353,7 +354,7 @@ function EditableCell({
   onCopyTo: (target: string) => void;
   onUndo: () => void;
 }) {
-  if (!cell) return <span style={{ opacity: 0.3 }}>—</span>;
+  if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
 
   if (editing) {
@@ -513,7 +514,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
     },
-    onError: (e: Error) => message.error(`Rejected: ${e.message}`),
+    onError: (e: Error, vars) => {
+      if (e instanceof OfflineError) {
+        // Service unreachable: keep the edit on this device; it syncs
+        // automatically when the connection returns.
+        enqueueEdit(vars);
+        message.info("Saved on this device; it will sync when the service is reachable again.");
+        return;
+      }
+      message.error(`Rejected: ${e.message}`);
+    },
   });
 
   const q = search.trim().toLowerCase();
@@ -584,6 +594,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       title: instanceHeader(inst),
       key: inst.name,
       width: instW,
+      onHeaderCell: () => ({ className: inst.environment ? `th-env-${inst.environment}` : "" }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
         return (
@@ -622,6 +633,34 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const title = categoryKey ? categoryKey.split("/").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
 
+  // No dead space: when the rows end well before the panel does, cap the
+  // table to its content height and use the leftover area for a category /
+  // health summary strip instead of blank canvas.
+  const rowH = prefs.density === "compact" ? 39 : 47;
+  const contentH = rows.length * rowH;
+  const availH = Math.max(bodyH - headerH, 120);
+  const leftover = availH - contentH;
+  const showSummary = leftover > 110;
+  const tableY = showSummary ? contentH + 8 : availH;
+
+  const summary = useMemo(() => {
+    if (!showSummary) return [];
+    return grid.categories.map((c) => {
+      let invalid = 0;
+      let pendingN = 0;
+      let count = 0;
+      for (const r of grid.rows) {
+        if (r.param.category !== c.key && !r.param.category.startsWith(c.key + "/")) continue;
+        count++;
+        for (const cell of Object.values(r.cells)) {
+          if (!cell.valid) invalid++;
+          if (cell.pending) pendingN++;
+        }
+      }
+      return { key: c.key, title: c.title, count, invalid, pending: pendingN };
+    });
+  }, [showSummary, grid]);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
@@ -645,12 +684,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             title="What do the marks mean?"
             content={
               <div style={{ display: "flex", flexDirection: "column", gap: 7, width: 300, fontSize: 12 }}>
-                <span><span className="cell-pending mono">10.0.0.1</span> — your pending change (hover it to see before → after)</span>
-                <span><span className="cell-new mono">1.2</span> — newly introduced in this software version</span>
-                <span><span className="cell-deprecated mono">off</span> — deprecated; no longer editable</span>
-                <span><span className="cell-invalid mono">99999</span> — value breaks a rule (hover for why)</span>
-                <span><span className="cell-excluded">∅ excluded</span> — removed from this instance's files entirely</span>
-                <span><span className="cell-na">n/a</span> — doesn't exist in this software version yet</span>
+                <span><span className="cell-pending mono">10.0.0.1</span>: your pending change (hover it to see before → after)</span>
+                <span><span className="cell-new mono">1.2</span>: newly introduced in this software version</span>
+                <span><span className="cell-deprecated mono">off</span>: deprecated; no longer editable</span>
+                <span><span className="cell-invalid mono">99999</span>: value breaks a rule (hover for why)</span>
+                <span><span className="cell-excluded">∅ excluded</span>: removed from this instance's files entirely</span>
+                <span><span className="cell-na">n/a</span>: doesn't exist in this software version yet</span>
                 <span>
                   <span className="source-badge">glb</span> where a value comes from:{" "}
                   glb = all instances · env = environment · zone/site = that area · def = built-in default
@@ -717,14 +756,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Space>
       </div>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
-      <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+      <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Table<Row>
+          className="param-grid"
           rowKey={(r) => r.param.id}
           columns={columns}
           dataSource={rows}
           size={prefs.density === "compact" ? "small" : "middle"}
           virtual
-          scroll={{ x: scrollX, y: Math.max(bodyH - headerH, 120) }}
+          scroll={{ x: scrollX, y: tableY }}
           pagination={false}
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),
@@ -734,6 +774,38 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 : { cursor: "pointer" },
           })}
         />
+        {showSummary && (
+          <div style={{ flex: 1, padding: "14px 12px 10px", overflow: "auto" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+              GROUP OVERVIEW
+            </Typography.Text>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8, marginTop: 8 }}>
+              {summary.map((s) => (
+                <div
+                  key={s.key}
+                  className="card-clickable"
+                  onClick={() => useUI.getState().setCategory(s.key)}
+                  style={{
+                    border: "1px solid rgba(127,137,160,0.25)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>{s.title}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                    <Tag style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.count} settings</Tag>
+                    {s.invalid > 0 && <Tag color="error" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.invalid} invalid</Tag>}
+                    {s.pending > 0 && <Tag color="warning" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.pending} pending</Tag>}
+                    {s.invalid === 0 && s.pending === 0 && (
+                      <Tag color="success" style={{ fontSize: 11, marginInlineEnd: 0 }}>healthy</Tag>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

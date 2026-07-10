@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BrandKey, Mode } from "./theme";
+import type { BrandKey, FontScale, Mode } from "./theme";
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -36,6 +36,7 @@ export interface RowFilters {
 interface UIState {
   mode: Mode;
   brand: BrandKey;
+  fontScale: FontScale;
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
@@ -45,8 +46,12 @@ interface UIState {
   filters: RowFilters;
   prefs: ViewPrefs;
   navCollapsed: boolean;
+  /** file or folder prefix the Import wizard should focus on (set by the
+   *  Repository Changes inbox when jumping into an import) */
+  importFocus: string | null;
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
+  setFontScale: (f: FontScale) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
@@ -55,11 +60,13 @@ interface UIState {
   setFilters: (f: Partial<RowFilters>) => void;
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
+  setImportFocus: (f: string | null) => void;
 }
 
 export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
+  fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   section: "home",
   categoryKey: null,
   selectedParamId: null,
@@ -69,6 +76,7 @@ export const useUI = create<UIState>((set) => ({
   filters: { invalidOnly: false, overriddenOnly: false, hideNA: false },
   prefs: loadPrefs(),
   navCollapsed: false,
+  importFocus: null,
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
@@ -76,6 +84,10 @@ export const useUI = create<UIState>((set) => ({
   setBrand: (brand) => {
     localStorage.setItem("configer.brand", brand);
     set({ brand });
+  },
+  setFontScale: (fontScale) => {
+    localStorage.setItem("configer.fontScale", fontScale);
+    set({ fontScale });
   },
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),
@@ -90,4 +102,5 @@ export const useUI = create<UIState>((set) => ({
       return { prefs };
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
+  setImportFocus: (importFocus) => set({ importFocus }),
 }));

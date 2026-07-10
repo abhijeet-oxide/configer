@@ -10,8 +10,9 @@ zone / site). Teams enrich parameters with metadata, set per-instance values,
 bulk-edit, compare, and validate — and every change flows back to Git as
 commits on branches, reviewed via pull requests, and published by merging.
 
+![Dashboard](docs/screenshot-dashboard.png)
 ![Config Editor](docs/screenshot-light.png)
-![Dark mode + details](docs/screenshot-dark.png)
+![Dark mode](docs/screenshot-dark.png)
 ![Validation enforcement in the cell editor](docs/screenshot-validation.png)
 
 ## Why
@@ -118,14 +119,23 @@ directly on GitHub; if Configer is down, nothing is blocked.
 
 ### UI
 
+- **Dashboard command center**: system health tile map, settings-by-category
+  donut, 14-day change-activity sparkline, accent stat cards, recent activity
+  in human sentences, and a Git education footer.
 - **Virtualized** parameter×instance grid that auto-fits columns to the
-  available width — smooth with tens of thousands of rows, scales to large
-  monitors, responsive down to tablets (drawer-based tree and details).
+  available width — smooth with tens of thousands of rows; zebra rows,
+  environment-tinted column headers, and a **group-overview strip** that fills
+  leftover space when rows end early (no dead screen area).
+- **Four responsive tiers**: phone (<576px: bottom tabs + read-only parameter
+  cards with search), tablet (drawer-based panels), laptop (three-panel), and
+  big monitors (proportional scaling).
 - **Resizable panels** (tree / grid / compare / details) with persisted sizes;
-  **View** menu for density, column visibility, and panel toggles.
+  **View** menu for density, column visibility, and panel toggles; a
+  **comfort text-size toggle** for easier reading.
 - **Global search (⌘K)** matches names, descriptions, categories, source
   files/paths, and **values** across every instance.
-- Light / dark / **company-brand theming** via design-token overrides.
+- Light / dark / **company-brand theming** via design-token overrides; charts
+  use a CVD-validated palette with legends (never color alone).
 
 ### Plugin architecture (everything is extensible)
 

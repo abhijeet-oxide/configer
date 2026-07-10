@@ -28,6 +28,7 @@ import {
   CloudServerOutlined,
   ArrowRightOutlined,
   DeleteOutlined,
+  FontSizeOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -46,7 +47,8 @@ function afterValue(it: ChangeItem & { action?: string }) {
 // Application header: breadcrumb context, git-liveness indicator, the global
 // parameter search (⌘K), theme controls, and the Create Change Request flow.
 export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, brand, setBrand, search, setSearch, setSection, selectParam } = useUI();
+  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, selectParam } =
+    useUI();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const searchRef = useRef<InputRef>(null);
@@ -162,6 +164,15 @@ export default function TopBar({ project, instances }: { project?: string; insta
         >
           <Button size="small" type="text" icon={<BgColorsOutlined />} />
         </Dropdown>
+        <Tooltip title={fontScale === "normal" ? "Larger text (easier reading)" : "Normal text size"}>
+          <Button
+            size="small"
+            type={fontScale === "large" ? "primary" : "text"}
+            ghost={fontScale === "large"}
+            icon={<FontSizeOutlined />}
+            onClick={() => setFontScale(fontScale === "normal" ? "large" : "normal")}
+          />
+        </Tooltip>
         <Tooltip title="Help"><Button size="small" type="text" icon={<QuestionCircleOutlined />} /></Tooltip>
         <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
           <Badge count={awaiting} size="small">

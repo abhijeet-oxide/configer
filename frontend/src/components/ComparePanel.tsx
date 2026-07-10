@@ -3,6 +3,7 @@ import { SwapOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";
+import { DiffMiniBar } from "./charts";
 import { useUI } from "../store";
 
 // Bottom compare panel: pick two instances and see a parameter-level diff with
@@ -47,7 +48,13 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
           <Switch size="small" checked={changesOnly} onChange={setChangesOnly} /> Changes only
         </span>
         {q.data && (
-          <Space size={4}>
+          <Space size={6} align="center">
+            <DiffMiniBar
+              modified={q.data.summary.modified}
+              added={q.data.summary.added}
+              removed={q.data.summary.removed}
+              unchanged={q.data.summary.unchanged}
+            />
             <Tag color="orange">{q.data.summary.modified} modified</Tag>
             <Tag color="green">{q.data.summary.added} added</Tag>
             <Tag color="red">{q.data.summary.removed} removed</Tag>

@@ -584,6 +584,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       title: instanceHeader(inst),
       key: inst.name,
       width: instW,
+      onHeaderCell: () => ({ className: inst.environment ? `th-env-${inst.environment}` : "" }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
         return (
@@ -621,6 +622,34 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split("/").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
+
+  // No dead space: when the rows end well before the panel does, cap the
+  // table to its content height and use the leftover area for a category /
+  // health summary strip instead of blank canvas.
+  const rowH = prefs.density === "compact" ? 39 : 47;
+  const contentH = rows.length * rowH;
+  const availH = Math.max(bodyH - headerH, 120);
+  const leftover = availH - contentH;
+  const showSummary = leftover > 110;
+  const tableY = showSummary ? contentH + 8 : availH;
+
+  const summary = useMemo(() => {
+    if (!showSummary) return [];
+    return grid.categories.map((c) => {
+      let invalid = 0;
+      let pendingN = 0;
+      let count = 0;
+      for (const r of grid.rows) {
+        if (r.param.category !== c.key && !r.param.category.startsWith(c.key + "/")) continue;
+        count++;
+        for (const cell of Object.values(r.cells)) {
+          if (!cell.valid) invalid++;
+          if (cell.pending) pendingN++;
+        }
+      }
+      return { key: c.key, title: c.title, count, invalid, pending: pendingN };
+    });
+  }, [showSummary, grid]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
@@ -717,14 +746,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Space>
       </div>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
-      <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0 }}>
+      <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Table<Row>
+          className="param-grid"
           rowKey={(r) => r.param.id}
           columns={columns}
           dataSource={rows}
           size={prefs.density === "compact" ? "small" : "middle"}
           virtual
-          scroll={{ x: scrollX, y: Math.max(bodyH - headerH, 120) }}
+          scroll={{ x: scrollX, y: tableY }}
           pagination={false}
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),
@@ -734,6 +764,38 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 : { cursor: "pointer" },
           })}
         />
+        {showSummary && (
+          <div style={{ flex: 1, padding: "14px 12px 10px", overflow: "auto" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+              GROUP OVERVIEW
+            </Typography.Text>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8, marginTop: 8 }}>
+              {summary.map((s) => (
+                <div
+                  key={s.key}
+                  className="card-clickable"
+                  onClick={() => useUI.getState().setCategory(s.key)}
+                  style={{
+                    border: "1px solid rgba(127,137,160,0.25)",
+                    borderRadius: 8,
+                    padding: "8px 10px",
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: 12 }}>{s.title}</div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                    <Tag style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.count} settings</Tag>
+                    {s.invalid > 0 && <Tag color="error" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.invalid} invalid</Tag>}
+                    {s.pending > 0 && <Tag color="warning" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.pending} pending</Tag>}
+                    {s.invalid === 0 && s.pending === 0 && (
+                      <Tag color="success" style={{ fontSize: 11, marginInlineEnd: 0 }}>healthy</Tag>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

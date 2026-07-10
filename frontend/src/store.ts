@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { BrandKey, Mode } from "./theme";
+import type { BrandKey, FontScale, Mode } from "./theme";
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -36,6 +36,7 @@ export interface RowFilters {
 interface UIState {
   mode: Mode;
   brand: BrandKey;
+  fontScale: FontScale;
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
@@ -47,6 +48,7 @@ interface UIState {
   navCollapsed: boolean;
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
+  setFontScale: (f: FontScale) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
@@ -60,6 +62,7 @@ interface UIState {
 export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
+  fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   section: "home",
   categoryKey: null,
   selectedParamId: null,
@@ -76,6 +79,10 @@ export const useUI = create<UIState>((set) => ({
   setBrand: (brand) => {
     localStorage.setItem("configer.brand", brand);
     set({ brand });
+  },
+  setFontScale: (fontScale) => {
+    localStorage.setItem("configer.fontScale", fontScale);
+    set({ fontScale });
   },
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),

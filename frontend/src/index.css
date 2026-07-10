@@ -9,9 +9,21 @@ body,
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
     Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Grid cell affordances for lifecycle state. */
+/* Semantic accents — mirrored from theme.ts: green = live/valid, amber =
+   pending, blue = in review, red = invalid/production. */
+:root {
+  --c-ok: #0ca30c;
+  --c-pending: #fa8c16;
+  --c-review: #1677ff;
+  --c-danger: #d03b3b;
+}
+
+/* ---------------------------------------------------------------- cells */
+
 .cell-na {
   opacity: 0.35;
   font-style: italic;
@@ -21,21 +33,50 @@ body {
   opacity: 0.55;
 }
 .cell-new {
-  background: rgba(82, 196, 26, 0.14);
+  background: rgba(12, 163, 12, 0.12);
+  border-radius: 4px;
+  padding: 0 3px;
 }
+/* invalid: red left border + soft tint, readable in both modes */
 .cell-invalid {
-  background: rgba(255, 77, 79, 0.14);
-  color: #cf1322;
+  background: rgba(208, 59, 59, 0.1);
+  border-left: 3px solid var(--c-danger);
+  border-radius: 3px;
+  padding: 0 4px;
+  color: #d03b3b;
 }
-/* Value staged in the draft change request, not yet committed to Git. */
+/* pending: dashed underline + softly pulsing amber dot */
 .cell-pending {
-  border-bottom: 2px dashed #fa8c16;
+  border-bottom: 2px dashed var(--c-pending);
   padding-bottom: 1px;
+  position: relative;
 }
-/* Instance-level tombstone: parameter renders nothing in generated files. */
+.cell-pending::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 5px;
+  border-radius: 3px;
+  background: var(--c-pending);
+  vertical-align: middle;
+  animation: pendingPulse 2s ease-in-out infinite;
+}
+@keyframes pendingPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.8); }
+}
+/* excluded: hatched wash — clearly "nothing here on purpose" */
 .cell-excluded {
-  opacity: 0.45;
+  opacity: 0.6;
   font-style: italic;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 4px,
+    rgba(137, 135, 129, 0.14) 4px 8px
+  );
+  border-radius: 4px;
+  padding: 0 5px;
 }
 
 .source-badge {
@@ -51,14 +92,37 @@ body {
 .mono {
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
+
+/* ------------------------------------------------------------------ nav */
 
 .nav-rail .ant-menu-item {
   height: 34px;
   line-height: 34px;
   margin: 2px 6px !important;
   width: auto;
+  transition: background 0.15s ease, color 0.15s ease;
 }
+.nav-rail .ant-menu-item-selected {
+  font-weight: 600;
+}
+
+.logo-tile {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #2f6bff 0%, #6c3df4 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.35);
+}
+
+/* ------------------------------------------------------------- surfaces */
 
 /* Resizable panel handles: slim, discoverable on hover/drag. */
 .rrp-handle {
@@ -82,7 +146,90 @@ body {
   background: rgba(47, 107, 255, 0.35);
 }
 
-/* Let the virtual grid breathe: hide double borders inside panels. */
 .ant-table-wrapper .ant-table {
   border-radius: 0;
+}
+
+/* zebra striping + calm hover for the parameter grid (works with the
+   virtualized body, which renders row divs) */
+.param-grid .ant-table-tbody > tr:nth-child(even) > td,
+.param-grid .ant-table-tbody-virtual .ant-table-row:nth-child(even) .ant-table-cell {
+  background: rgba(127, 137, 160, 0.045);
+}
+
+/* environment-tinted instance column headers */
+.th-env-production {
+  box-shadow: inset 0 3px 0 rgba(245, 34, 45, 0.55);
+}
+.th-env-staging {
+  box-shadow: inset 0 3px 0 rgba(250, 140, 22, 0.6);
+}
+.th-env-development {
+  box-shadow: inset 0 3px 0 rgba(82, 196, 26, 0.6);
+}
+
+/* cards lift slightly on hover when clickable */
+.card-clickable {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card-clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.1);
+}
+
+/* gradient accent strip on dashboard stat cards */
+.stat-accent {
+  position: relative;
+  overflow: hidden;
+}
+.stat-accent::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--accent, var(--c-review));
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------- mobile */
+
+.mobile-tabbar {
+  display: flex;
+  border-top: 1px solid rgba(127, 137, 160, 0.25);
+  height: 54px;
+  flex-shrink: 0;
+}
+.mobile-tabbar button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.65;
+}
+.mobile-tabbar button.active {
+  opacity: 1;
+  color: var(--c-review);
+  font-weight: 600;
+}
+.mobile-tabbar .anticon {
+  font-size: 18px;
+}
+
+/* -------------------------------------------------------------- motion */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

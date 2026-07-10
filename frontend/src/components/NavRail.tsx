@@ -70,15 +70,7 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
-        <div
-          style={{
-            width: 28, height: 28, borderRadius: 7, background: "var(--ant-color-primary,#2f6bff)",
-            color: "#fff", display: "flex", alignItems: "center", justifyContent: "center",
-            fontWeight: 700, flexShrink: 0,
-          }}
-        >
-          C
-        </div>
+        <div className="logo-tile">C</div>
         {!collapsed && (
           <div style={{ lineHeight: 1.1 }}>
             <Typography.Text strong>Configer</Typography.Text>
@@ -95,6 +87,43 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         items={items}
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}
       />
+      {!collapsed && <GitStatusChip />}
+    </div>
+  );
+}
+
+// GitStatusChip anchors the rail with the live connection state — a constant,
+// calm reminder that the source of truth is Git.
+function GitStatusChip() {
+  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 30_000 });
+  const st = statusQ.data;
+  if (!st) return null;
+  const ok = !st.syncError;
+  return (
+    <div
+      style={{
+        margin: 10,
+        padding: "6px 10px",
+        borderRadius: 8,
+        fontSize: 11,
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        background: ok ? "rgba(12,163,12,0.09)" : "rgba(250,178,25,0.12)",
+        border: `1px solid ${ok ? "rgba(12,163,12,0.25)" : "rgba(250,178,25,0.4)"}`,
+      }}
+    >
+      <span
+        style={{
+          width: 7, height: 7, borderRadius: 4, flexShrink: 0,
+          background: ok ? "#0ca30c" : "#fab219",
+        }}
+      />
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {st.remote ? "Git · " : "Git (local) · "}
+        <b>{st.branch}</b>
+        {st.remote ? (st.behind > 0 ? ` · ${st.behind} behind` : " · live") : ""}
+      </span>
     </div>
   );
 }

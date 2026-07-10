@@ -1,5 +1,11 @@
-import { Layout, Menu, Spin, Result, Drawer, Button, Grid as AntGrid, theme as antdTheme } from "antd";
-import { ApartmentOutlined } from "@ant-design/icons";
+import { Layout, Menu, Skeleton, Result, Drawer, Button, Grid as AntGrid, theme as antdTheme } from "antd";
+import {
+  ApartmentOutlined,
+  HomeOutlined,
+  TableOutlined,
+  PullRequestOutlined,
+  CheckCircleOutlined,
+} from "@ant-design/icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -15,6 +21,7 @@ import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import DashboardView from "./components/DashboardView";
+import MobileParamList from "./components/MobileParamList";
 
 const { Header, Sider, Content } = Layout;
 
@@ -42,12 +49,20 @@ export default function App() {
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
+  const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
 
   function editorLayout() {
     const grid = gridQ.data!;
+    if (phone) {
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <MobileParamList grid={grid} />
+        </div>
+      );
+    }
     if (!wide) {
       // Small screens: full-width grid; groups + details slide in as drawers.
       return (
@@ -100,7 +115,14 @@ export default function App() {
   }
 
   function body() {
-    if (gridQ.isLoading) return <Spin style={{ margin: 60 }} />;
+    if (gridQ.isLoading)
+      return (
+        <div style={{ padding: 24 }}>
+          <Skeleton active paragraph={{ rows: 2 }} />
+          <Skeleton.Node active style={{ width: "100%", height: 160, marginTop: 16 }} />
+          <Skeleton active paragraph={{ rows: 6 }} style={{ marginTop: 16 }} />
+        </div>
+      );
     if (gridQ.isError || !gridQ.data)
       return (
         <Result
@@ -142,6 +164,42 @@ export default function App() {
         title={topTabs.find((t) => t.key === section)?.label || section}
         subTitle="This section is part of the roadmap (see docs/PLAN.md). Config Editor, Compare, and Plugins are live."
       />
+    );
+  }
+
+  // Phone tier: single column with a bottom tab bar — no side rail, no tabs row.
+  if (phone) {
+    const tabs = [
+      { key: "home", icon: <HomeOutlined />, label: "Home" },
+      { key: "config", icon: <TableOutlined />, label: "Settings" },
+      { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
+      { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
+    ];
+    return (
+      <Layout style={{ height: "100vh" }}>
+        <div
+          style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 14px",
+            borderBottom: border, background: token.colorBgContainer, flexShrink: 0,
+          }}
+        >
+          <div className="logo-tile">C</div>
+          <b>{gridQ.data?.project ?? "Configer"}</b>
+        </div>
+        <Content style={{ overflow: "hidden", minHeight: 0 }}>{body()}</Content>
+        <div className="mobile-tabbar" style={{ background: token.colorBgContainer }}>
+          {tabs.map((t) => (
+            <button
+              key={t.key}
+              className={section === t.key ? "active" : ""}
+              onClick={() => setSection(t.key)}
+            >
+              {t.icon}
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </Layout>
     );
   }
 

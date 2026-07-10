@@ -234,6 +234,50 @@ export interface PluginManifest {
   description: string;
 }
 
+// One repository in the workspace, as summarized by the portfolio endpoint.
+export interface RepoSummary {
+  id: string;
+  name: string;
+  origin?: string;
+  local?: boolean;
+  branch?: string;
+  project?: string;
+  params: number;
+  instances: number;
+  environments?: Record<string, number>;
+  openChanges: number;
+  drafts: number;
+  behind?: number;
+  syncError?: string;
+  provider?: string;
+  remote?: string;
+  addedAt: string;
+  error?: string;
+}
+
+export interface Workspace {
+  name: string;
+  version: string;
+  environment: string;
+  repos: RepoSummary[];
+}
+
+// The active repository. Every repo-scoped call is routed to
+// /api/repos/<id>/...; when unset the legacy unscoped routes hit the
+// server's default repository, so the app works before the workspace loads.
+let activeRepo: string | null = null;
+
+export function setApiRepo(id: string | null) {
+  activeRepo = id;
+}
+
+// rp scopes a path to the active repository.
+const rp = (path: string) => (activeRepo ? `/repos/${encodeURIComponent(activeRepo)}${path}` : path);
+
+// snapKey namespaces offline snapshots per repository, so a snapshot from one
+// configuration is never shown while another is selected.
+export const snapKey = (key: string) => `${activeRepo ?? "default"}:${key}`;
+
 // request marks the connection online/offline as a side effect, so every API
 // call keeps the resilience layer informed. Network failures become
 // OfflineError (handled gracefully), HTTP errors carry the server's message.
@@ -285,34 +329,42 @@ async function send<T>(method: string, path: string, body?: unknown): Promise<T>
 const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
 
 export const api = {
+  // --- workspace level (not repo-scoped) ---
   health: () => get<{ status: string }>("/health"),
-  meta: () => snapGet<Meta>("/meta", "meta"),
-  grid: () => snapGet<Grid>("/grid", "grid"),
+  workspace: () => get<Workspace>("/workspace"),
+  connectRepo: (p: { url: string; name?: string; branch?: string; token?: string }) =>
+    send<RepoSummary>("POST", "/repos", p),
+  removeRepo: (id: string) =>
+    send<{ ok: boolean; removed: string }>("DELETE", `/repos/${encodeURIComponent(id)}`),
+
+  // --- active-repository scoped ---
+  meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
+  grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
   compare: (left: string, right: string) =>
-    get<DiffResult>(`/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`),
-  plugins: () => get<PluginManifest[]>("/plugins"),
-  scan: () => send<ScanResult>("POST", "/scan"),
+    get<DiffResult>(rp(`/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`)),
+  plugins: () => get<PluginManifest[]>(rp("/plugins")),
+  scan: () => send<ScanResult>("POST", rp("/scan")),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
-    send<{ ok: boolean; imported: number; skipped: string[] }>("POST", "/import", p),
-  findings: () => get<FindingsResult>("/repo/findings"),
-  ackFindings: () => send<{ ok: boolean }>("POST", "/repo/findings/ack"),
+    send<{ ok: boolean; imported: number; skipped: string[] }>("POST", rp("/import"), p),
+  findings: () => get<FindingsResult>(rp("/repo/findings")),
+  ackFindings: () => send<{ ok: boolean }>("POST", rp("/repo/findings/ack")),
   retireFile: (file: string, author?: string) =>
-    send<{ ok: boolean; retired: string[] }>("POST", "/parameters/retire-file", { file, author }),
+    send<{ ok: boolean; retired: string[] }>("POST", rp("/parameters/retire-file"), { file, author }),
   render: (instance: string) =>
     get<{ instance: string; files: { path: string; content: string }[] }>(
-      `/render/${encodeURIComponent(instance)}`,
+      rp(`/render/${encodeURIComponent(instance)}`),
     ),
-  presets: () => get<PresetRule[]>("/validation/presets"),
+  presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
-    put<{ ok: boolean; value: unknown; pending: number; changeId: number }>("/values", p),
+    put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
   addParameter: (param: Partial<Parameter>, author?: string) =>
-    send<Parameter>("POST", "/parameters", { param, author }),
+    send<Parameter>("POST", rp("/parameters"), { param, author }),
   deleteParameter: (id: string, author?: string) =>
-    send<{ ok: boolean }>("DELETE", `/parameters/${encodeURIComponent(id)}`, { author }),
+    send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
   revertValue: (paramId: string, instance: string) =>
     send<{ ok: boolean }>(
       "DELETE",
-      `/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`,
+      rp(`/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`),
     ),
   updateParameter: (
     id: string,
@@ -326,16 +378,16 @@ export const api = {
       secret?: boolean;
       author?: string;
     },
-  ) => put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
-  repoStatus: () => get<RepoStatus>("/repo/status"),
-  repoSync: () => send<RepoStatus>("POST", "/repo/sync"),
-  changes: () => snapGet<ChangeRequest[]>("/changes", "changes"),
-  draft: () => snapGet<{ draft: ChangeRequest | null }>("/changes/draft", "draft"),
-  change: (id: number) => get<ChangeRequest>(`/changes/${id}`),
+  ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),
+  repoStatus: () => get<RepoStatus>(rp("/repo/status")),
+  repoSync: () => send<RepoStatus>("POST", rp("/repo/sync")),
+  changes: () => snapGet<ChangeRequest[]>(rp("/changes"), snapKey("changes")),
+  draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
+  change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
   submitChange: (
     id: number,
     p: { title: string; description?: string; reference?: string; category?: string; author?: string },
-  ) => send<ChangeRequest>("POST", `/changes/${id}/submit`, p),
-  mergeChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/merge`),
-  rejectChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/reject`),
+  ) => send<ChangeRequest>("POST", rp(`/changes/${id}/submit`), p),
+  mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
+  rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),
 };

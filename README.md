@@ -137,6 +137,38 @@ available width: smooth with tens of thousands of rows; zebra rows,
 - Light / dark / **company-brand theming** via design-token overrides; charts
   use a CVD-validated palette with legends (never color alone).
 
+### Resilience, deployment identity, and offline editing
+
+- `GET /api/meta` reports the deployment's name, version (`CONFIGER_VERSION`),
+  and environment (`CONFIGER_ENV`), so in-app messaging names the actual
+  deployment instead of pointing at `localhost` or dev-only instructions.
+  Shown as a chip in the nav rail.
+- The frontend keeps a **local snapshot** of the grid, changes, and meta
+  (`localStorage`, see `frontend/src/offline.ts`). If the backend is
+  temporarily unreachable, the UI keeps rendering the last snapshot instead of
+  a blank error page, with a calm banner explaining what's happening.
+- Cell edits made while offline are **queued on the device** and replay
+  automatically once the connection returns; nothing is lost.
+- Every view has a **state-aware skeleton** (`components/Skeletons.tsx`) that
+  mirrors its real layout instead of a generic spinner.
+- Icons are bundled **Phosphor** glyphs via Iconify (`components/icons.tsx`,
+  `@iconify-icons/ph`), imported as per-icon data so the app never fetches
+  icons at runtime (works fully offline/air-gapped).
+
+### Repository reconcile (backend ready, UI not yet built, see Status)
+
+`GET /api/repo/findings` diffs the last-acknowledged commit against `HEAD` and
+reports what changed directly on Git since Configer last looked: new
+config-shaped files (with a candidate-parameter count), managed files that
+were edited, deleted, or renamed, and folders where several new files
+appeared at once (a likely new vendor version drop). `POST
+/api/repo/findings/ack` marks the current `HEAD` as seen. `POST /api/import`
+promotes scanned candidates into the catalog in one attributed commit; `POST
+/api/parameters/retire-file` retires every parameter sourced from one file
+(the deleted-file resolution). The nav rail already shows a live findings
+count badge on **Repository Changes**; the section itself still renders the
+generic placeholder, see Status below for what's next.
+
 ### Plugin architecture (everything is extensible)
 
 The core is a plugin registry (`backend/internal/plugin`):
@@ -199,14 +231,41 @@ docker compose up --build                             # frontend on :8088, backe
 | POST | `/api/changes/{id}/merge` | Approve & merge (GitHub PR merge or local git merge) → Published. |
 | POST | `/api/changes/{id}/reject` | Reject/close (draft: discard). |
 | GET | `/api/repo/status` · POST `/api/repo/sync` | Git-liveness status / force a sync now. |
+| GET | `/api/meta` | Deployment name, version, environment. |
+| GET | `/api/repo/findings` · POST `/api/repo/findings/ack` | Reconcile: what changed on Git since last look; mark it seen. |
+| POST | `/api/import` | Promote scanned candidates into the catalog (backend ready, no wizard UI yet). |
+| POST | `/api/parameters/retire-file` | Retire every parameter sourced from one file. |
 
 ## Status
 
-Working today: ingest → catalog → scope resolution → **editable grid with
-typed, validation-enforced editors** → **draft → change request → branch →
-commit → PR → publish** (git-native, with live sync of external commits and
-PR-state reflection), plus the predefined rule library, rule editor, deep
-search, resizable/responsive themeable UI, and the plugin architecture.
-Next phases (docs/PLAN.md): webhooks + Postgres grid cache, param-level
-conflict resolution UI, list/repeated parameters, import wizard, auth
-(OIDC/SSO) + RBAC, schema import, secrets, and the AI module.
+**Live end to end today:** ingest to catalog to scope resolution to an
+**editable grid** with typed, validation-enforced editors (incl. list
+parameters and absence/exclusion) to a **draft to change request to branch to
+commit to PR to publish** pipeline that is git-native both ways (external
+commits sync in automatically; PRs approved on GitHub reflect back). Also
+live: the dashboard command center, approvals inbox, compare view, the
+plugin architecture (YAML/JSON/XML parsers, Flux transposer), offline
+resilience with a local edit queue, and the responsive/themeable UI across
+phone/tablet/laptop/monitor.
+
+**Backend ready, frontend not built yet, this is the next work:**
+- **Import wizard** (`POST /api/scan`, `POST /api/import`): a fresh scan of
+  the repo and a guided "select which parameters to import" flow.
+  `AddParameterModal.tsx` is the closest existing pattern (a form that calls
+  `api.addParameter`) but the wizard needs multi-step selection over
+  `ScanResult`/`ScanCandidate` (types already in `frontend/src/api.ts`).
+- **Repository Changes inbox** (`GET /api/repo/findings`): a list view over
+  `Finding[]` with a per-finding action (new file → jump into the import
+  wizard filtered to it; deleted file → call `api.retireFile`; ack button).
+  `ChangeRequestsView.tsx` / `ApprovalsView.tsx` are the closest existing
+  pattern (card/table list + mutation buttons + `qc.invalidateQueries()`).
+- Wire both into `App.tsx`'s `body()` (search `section === "plugins"` for
+  where the section-to-view `if` chain lives); `"import"` and `"drift"` are
+  already valid nav keys (see `NavRail.tsx`) but fall through to the generic
+  "part of the roadmap" `Result` placeholder.
+
+**Not started** (see `docs/PLAN.md` for the full design): Postgres grid
+cache, GitHub push webhooks (sync is polling-based today, works, just not
+instant), param-level 3-way merge / conflict-resolution UI, auth (OIDC/SSO)
++ RBAC, JSON-Schema/YANG schema import, secrets encryption, the AI module,
+GitLab/Bitbucket providers.

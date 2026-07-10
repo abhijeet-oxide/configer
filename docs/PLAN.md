@@ -29,6 +29,102 @@ per-instance version headers, right Parameter Details panel, bottom Diff/JSON/YA
 
 ---
 
+## 0. Current Implementation Status (read this first, before exploring code)
+
+This section is kept in sync with the actual codebase after every work session. Trust this over
+memory of "what should exist" from the numbered design sections below, those describe the
+target design; this section says what's real right now. Repo: `abhijeet-oxide/configer`,
+branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and frontend
+`tsc --noEmit && vite build` are green as of the latest commit on that branch.
+
+### Live end to end (built, wired, verified)
+
+- **Ingest to catalog to grid**: `backend/internal/{ingest,parsers,project,grid,resolver}` scan
+  YAML/JSON/XML, resolve scope precedence (default→global→env→site→zone→instance), and serve
+  `GET /api/grid`. `frontend/src/components/ParameterGrid.tsx` renders it virtualized, with
+  typed editors (string/int/number/bool/enum/**list**), live validation, cell-level actions
+  (edit / reset-to-inherited / exclude / copy-to-instance via right-click menu), hover diff on
+  pending cells, and a no-dead-space category summary strip when rows end early.
+- **Validation**: `backend/internal/validate` (type coercion + a predefined rule library with
+  human messages and examples, `presets.go`) enforced both client-side (blocks bad input) and
+  server-side (`422` on write). Rule editor: `RuleEditor.tsx`.
+- **Structural flexibility**: `type: list` parameters (chips editor, `ListEditor` in
+  `ParameterGrid.tsx`) and instance-level exclusion tombstones. The renderer
+  (`backend/internal/render/render.go`, tests in `render_test.go`) proves per-format semantics:
+  YAML/JSON omit absent keys entirely (empty parents pruned), XML removes/repeats elements
+  (no empty husks), verified for all three formats.
+- **Change-request pipeline** (fully git-native): edits stage into a draft
+  (`backend/internal/change`, `crstore`), `Submit` cuts an isolated worktree branch
+  `configer/cr-<n>` (`backend/internal/changeset`, `gitengine`), commits with a
+  `Changed-by:` attribution trailer, pushes, opens a real GitHub PR when `GITHUB_TOKEN` is set
+  (`backend/internal/provider`). `Approve & Merge` calls the real GitHub merge API or a local
+  `--no-ff` merge. State machine `Draft → Under Review → Approved → Published/Rejected`
+  surfaces as `CrSteps.tsx` (a Steps tracker) and `StateTag`. Frontend views:
+  `TopBar.tsx` (review-before-send modal: before/after table, per-row undo, jump-to-cell,
+  production warning), `ChangeRequestsView.tsx`, `ApprovalsView.tsx` (approver inbox).
+- **Git liveness both directions**: `backend/internal/api/sync.go` polls origin
+  (`CONFIGER_SYNC_SECONDS`, default 30s), fast-forwards on external commits, detects a deleted
+  upstream branch. `GET /api/repo/status` backs the "git: live / N behind" chip in `TopBar.tsx`
+  and the status chip in `NavRail.tsx`.
+- **Dashboard command center**: `DashboardView.tsx` + `charts.tsx` (dependency-free inline SVG,
+  dataviz-skill-validated palette: health tiles, category donut, 14-day activity sparkline,
+  diff mini-bar). Fills the viewport, no dead space.
+- **Offline resilience**: `frontend/src/offline.ts`, edits queue locally when the backend is
+  unreachable and replay on reconnect; grid/changes/meta snapshot to `localStorage` as a
+  fallback render source; `App.tsx` shows a calm, deployment-aware "can't connect" state (uses
+  `GET /api/meta` for name/version/environment) instead of dev-only text; state-aware skeletons
+  per view (`Skeletons.tsx`) instead of a spinner.
+- **UI shell**: responsive at 4 tiers (phone bottom-tabs + `MobileParamList.tsx` read-only cards,
+  tablet drawers, laptop 3-panel, big-monitor scaling), resizable panels, light/dark/brand theming
+  + comfort text-size toggle (`theme.ts`, `store.ts`), global search (⌘K), Phosphor icons via
+  Iconify (`icons.tsx`, bundled, no runtime fetch). Zero em dashes anywhere in the codebase, keep
+  it that way (use `:` `;` `,` or restructure the sentence instead).
+- **Plugin architecture**: `backend/internal/plugin` registry; built-ins are the 3 parsers and
+  the Flux HelmRelease transposer (`transposers/flux.go`, proves the "generate an artifact that
+  doesn't exist in source" use case). `PluginsView.tsx` lists them.
+
+### Backend ready, frontend NOT built (the next work, in priority order)
+
+1. **Import wizard.** Endpoints exist and work: `POST /api/scan` (returns `ScanResult` with
+   candidate parameters per file), `POST /api/import` (promotes selected candidates into
+   `catalog.yaml` in one attributed commit, also accepts `ignoreFiles`). Types already defined
+   in `frontend/src/api.ts` (`ScanResult`, `ScanCandidate`, `ScanFile`). Nothing calls these from
+   the UI yet. `AddParameterModal.tsx` is the closest existing pattern (a form → `api.addParameter`)
+   but the wizard needs multi-step: scan → select candidates (checkbox table, bulk category/type/
+   secret/scope) → review → `api.importParameters`. Target: 3 steps, `antd Steps`, see
+   `docs/PLAN.md §6` for the original design intent.
+2. **Repository Changes inbox.** Endpoints exist: `GET /api/repo/findings` (diffs the
+   last-acknowledged commit vs HEAD: new files with candidate counts, changed/deleted/renamed
+   managed files, new-folder-looks-like-a-version-drop heuristic), `POST /api/repo/findings/ack`,
+   `POST /api/parameters/retire-file` (one-click resolution for a deleted source file). Nav rail
+   already shows a live count badge on "Repository Changes" (`NavRail.tsx`, key `"drift"`) but
+   the section renders the generic placeholder. `ChangeRequestsView.tsx` / `ApprovalsView.tsx`
+   are the closest pattern (list + mutation buttons + `qc.invalidateQueries()`).
+3. Wire both into `App.tsx`: search for `section === "plugins"` in the `body()` function, that's
+   the if-chain to extend with `section === "import"` and `section === "drift"`.
+
+### Not started at all
+
+Postgres grid cache (currently re-reads Git per request, fine at demo scale), GitHub push
+webhooks (sync is polling today, works but not instant), parameter-level 3-way merge /
+conflict-resolution UI (conflicts currently fail the merge cleanly but there's no resolver UI),
+auth (OIDC/SSO, Microsoft Entra) + RBAC, JSON-Schema/YANG schema import, secrets encryption at
+rest, the AI module (chat/intent-to-change-request), GitLab/Bitbucket providers.
+
+### Running it locally (for verification during development)
+
+```bash
+cd backend && go test ./... && CONFIGER_REPO=../sample-repo go run ./cmd/configer   # :8080
+cd frontend && npm install && npm run dev                                            # :5173
+```
+`sample-repo/` is a seeded fixture (`telco-platform` project) with 6 instances demonstrating
+scope precedence, list parameters, and exclusion. For change-request E2E testing you need a real
+git remote (a bare repo works): `git init --bare` + `git clone`, then point `CONFIGER_REPO` at
+the clone, not `sample-repo/` directly (it has no remote, so submit/merge degrade to local-only
+mode, which is still valid but doesn't exercise push/PR).
+
+---
+
 ## 1. Core Model: how the abstraction maps to Git
 
 Git is the source of truth. Configer stores three kinds of artifacts in the repo, plus a **metadata

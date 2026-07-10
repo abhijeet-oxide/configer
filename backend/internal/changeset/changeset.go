@@ -49,13 +49,20 @@ func commitMessage(cr *change.ChangeRequest) string {
 	fmt.Fprintf(&b, "%d configuration value(s) changed across %d instance(s).\n\n",
 		len(cr.Items), len(cr.Instances()))
 	fmt.Fprintf(&b, "Change-Request: #%d\n", cr.ID)
+	if cr.Reference != "" {
+		fmt.Fprintf(&b, "Reference: %s\n", cr.Reference)
+	}
+	if cr.Category != "" {
+		fmt.Fprintf(&b, "Category: %s\n", cr.Category)
+	}
 	fmt.Fprintf(&b, "Changed-by: %s\n", cr.Author)
 	return b.String()
 }
 
 // Submit moves a draft CR to under_review: branch, apply, render, commit,
-// push, open PR.
-func (s *Service) Submit(ctx context.Context, id int, title, description, author string) (*change.ChangeRequest, error) {
+// push, open PR. Reference and category are optional classification metadata
+// recorded as commit trailers and in the PR body.
+func (s *Service) Submit(ctx context.Context, id int, title, description, author, reference, category string) (*change.ChangeRequest, error) {
 	cr, err := s.Store.Get(id)
 	if err != nil {
 		return nil, err
@@ -75,6 +82,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if author != "" {
 		cr.Author = author
 	}
+	cr.Reference, cr.Category = reference, category
 	if cr.TargetBranch == "" {
 		if cr.TargetBranch, err = s.Repo.CurrentBranch(); err != nil {
 			return nil, err
@@ -100,16 +108,27 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		return nil, err
 	}
 
-	// 1) Apply sparse overlay updates (set / reset-to-inherited / exclude).
+	// 1) Apply updates: sparse instance overlays, or the global scope overlay
+	//    for scope-level items ("change it for everyone").
+	globalTouched := false
 	for _, it := range cr.Items {
 		var aerr error
-		switch it.Act() {
-		case change.ActionReset:
-			aerr = writer.ResetValue(wt, it.Instance, it.ParamID)
-		case change.ActionExclude:
-			aerr = writer.ExcludeValue(wt, it.Instance, it.ParamID)
-		default:
-			aerr = writer.SetValue(wt, it.Instance, it.ParamID, it.New)
+		if it.Scope == "global" {
+			globalTouched = true
+			if it.Act() == change.ActionSet {
+				aerr = writer.SetGlobalValue(wt, it.ParamID, it.New)
+			} else {
+				aerr = writer.ResetGlobalValue(wt, it.ParamID)
+			}
+		} else {
+			switch it.Act() {
+			case change.ActionReset:
+				aerr = writer.ResetValue(wt, it.Instance, it.ParamID)
+			case change.ActionExclude:
+				aerr = writer.ExcludeValue(wt, it.Instance, it.ParamID)
+			default:
+				aerr = writer.SetValue(wt, it.Instance, it.ParamID, it.New)
+			}
 		}
 		if aerr != nil {
 			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, aerr)
@@ -117,11 +136,22 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	}
 
 	// 2) Re-render generated/ for every touched instance (deterministic).
+	//    A global item touches every instance.
 	proj, err := project.Load(wt)
 	if err != nil {
 		return nil, fmt.Errorf("load project from worktree: %w", err)
 	}
-	for _, inst := range cr.Instances() {
+	touched := cr.Instances()
+	if globalTouched {
+		touched = touched[:0]
+		for _, inst := range proj.Registry.Instances {
+			touched = append(touched, inst.Name)
+		}
+	}
+	for _, inst := range touched {
+		if inst == "" {
+			continue // scope-level pseudo-instance
+		}
 		files, err := render.Instance(proj, inst, s.Registry)
 		if err != nil {
 			return nil, fmt.Errorf("render %s: %w", inst, err)
@@ -177,9 +207,22 @@ func prBody(cr *change.ChangeRequest) string {
 		b.WriteString(cr.Description)
 		b.WriteString("\n\n")
 	}
+	if cr.Reference != "" || cr.Category != "" {
+		if cr.Reference != "" {
+			fmt.Fprintf(&b, "**Reference:** %s  \n", cr.Reference)
+		}
+		if cr.Category != "" {
+			fmt.Fprintf(&b, "**Category:** %s\n", cr.Category)
+		}
+		b.WriteString("\n")
+	}
 	b.WriteString("| Parameter | Instance | Old | New |\n|---|---|---|---|\n")
 	for _, it := range cr.Items {
-		fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, it.Instance, it.Old, it.New)
+		inst := it.Instance
+		if it.Scope == "global" {
+			inst = "ALL (global)"
+		}
+		fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 	}
 	fmt.Fprintf(&b, "\n_Change request #%d, submitted by %s via Configer._\n", cr.ID, cr.Author)
 	return b.String()

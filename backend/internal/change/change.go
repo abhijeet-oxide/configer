@@ -31,10 +31,14 @@ const (
 	ActionExclude Action = "exclude"
 )
 
-// Item is one pending cell edit: a (parameter, instance) change.
+// Item is one pending cell edit: a (parameter, instance) change, or a
+// scope-level change when Scope is set (Instance is empty then).
 type Item struct {
-	ParamID   string    `json:"paramId"`
-	Instance  string    `json:"instance"`
+	ParamID  string `json:"paramId"`
+	Instance string `json:"instance"`
+	// Scope marks a scope-level edit ("global" today): the value applies to
+	// every instance that does not override it at a more specific level.
+	Scope     string    `json:"scope,omitempty"`
 	Action    Action    `json:"action,omitempty"` // empty == set
 	Old       any       `json:"old"`
 	New       any       `json:"new"`
@@ -53,10 +57,15 @@ func (it Item) Act() Action {
 // it accumulates items; on submit it becomes a git branch + commit (+ PR when
 // a provider is configured) and advances through the state machine.
 type ChangeRequest struct {
-	ID           int    `json:"id"`
-	Title        string `json:"title"`
-	Description  string `json:"description,omitempty"`
-	Author       string `json:"author"`
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description,omitempty"`
+	// Reference links this CR to an external ticket/CR id (e.g. JIRA-123).
+	Reference string `json:"reference,omitempty"`
+	// Category classifies the change: hotfix | feature | bugfix |
+	// maintenance | security | other.
+	Category string `json:"category,omitempty"`
+	Author   string `json:"author"`
 	TargetBranch string `json:"targetBranch"`
 	Branch       string `json:"branch,omitempty"`
 	BaseSHA      string `json:"baseSha,omitempty"`

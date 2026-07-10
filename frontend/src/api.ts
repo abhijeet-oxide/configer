@@ -93,6 +93,8 @@ export type ChangeState = "draft" | "under_review" | "approved" | "published" | 
 export interface ChangeItem {
   paramId: string;
   instance: string;
+  /** "global" marks a scope-level edit applying to every instance */
+  scope?: string;
   action?: CellAction;
   old: unknown;
   new: unknown;
@@ -103,6 +105,10 @@ export interface ChangeRequest {
   id: number;
   title: string;
   description?: string;
+  /** external ticket / CR id, e.g. JIRA-123 */
+  reference?: string;
+  /** hotfix | feature | bugfix | maintenance | security | other */
+  category?: string;
   author: string;
   targetBranch: string;
   branch?: string;
@@ -297,7 +303,7 @@ export const api = {
       `/render/${encodeURIComponent(instance)}`,
     ),
   presets: () => get<PresetRule[]>("/validation/presets"),
-  setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; author?: string }) =>
+  setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>("/values", p),
   addParameter: (param: Partial<Parameter>, author?: string) =>
     send<Parameter>("POST", "/parameters", { param, author }),
@@ -308,15 +314,28 @@ export const api = {
       "DELETE",
       `/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`,
     ),
-  updateParameter: (id: string, patch: { type?: string; validation?: Validation; author?: string }) =>
-    put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
+  updateParameter: (
+    id: string,
+    patch: {
+      type?: string;
+      validation?: Validation;
+      displayName?: string;
+      description?: string;
+      category?: string;
+      scope?: Scope;
+      secret?: boolean;
+      author?: string;
+    },
+  ) => put<Parameter>(`/parameters/${encodeURIComponent(id)}`, patch),
   repoStatus: () => get<RepoStatus>("/repo/status"),
   repoSync: () => send<RepoStatus>("POST", "/repo/sync"),
   changes: () => snapGet<ChangeRequest[]>("/changes", "changes"),
   draft: () => snapGet<{ draft: ChangeRequest | null }>("/changes/draft", "draft"),
   change: (id: number) => get<ChangeRequest>(`/changes/${id}`),
-  submitChange: (id: number, p: { title: string; description?: string; author?: string }) =>
-    send<ChangeRequest>("POST", `/changes/${id}/submit`, p),
+  submitChange: (
+    id: number,
+    p: { title: string; description?: string; reference?: string; category?: string; author?: string },
+  ) => send<ChangeRequest>("POST", `/changes/${id}/submit`, p),
   mergeChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/merge`),
   rejectChange: (id: number) => send<ChangeRequest>("POST", `/changes/${id}/reject`),
 };

@@ -13,7 +13,9 @@ import {
   Dropdown,
   Checkbox,
   Segmented,
+  Modal,
   App as AntApp,
+  type GetRef,
 } from "antd";
 import {
   FilterOutlined,
@@ -23,10 +25,12 @@ import {
   CheckCircleFilled,
   PlusOutlined,
   QuestionCircleOutlined,
+  SearchOutlined,
+  GlobalOutlined,
 } from "@ant-design/icons";
 import AddParameterModal from "./AddParameterModal";
 import type { ColumnsType } from "antd/es/table";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -67,6 +71,16 @@ const envColor: Record<string, string> = {
   production: "#f5222d",
   staging: "#fa8c16",
   development: "#52c41a",
+};
+
+// Tag colors for the declared parameter scope column.
+const scopeColor: Record<string, string> = {
+  global: "purple",
+  environment: "blue",
+  site: "cyan",
+  zone: "geekblue",
+  instance: "default",
+  default: "default",
 };
 
 function SourceBadge({ cell }: { cell: Cell }) {
@@ -147,8 +161,10 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
 }
 
 // --- Typed inline editors -------------------------------------------------
-// Each editor constrains input to the parameter's declared type and effective
-// validation rules; commits happen on Enter (or toggle), Escape/blur cancels.
+// Spreadsheet semantics: Enter commits, clicking away (blur) ALSO commits when
+// the value is valid and changed (never silently discard someone's typing),
+// Escape cancels explicitly, and an invalid value blocks the commit with a
+// visible warning. The `done` ref guards the Enter-then-blur double fire.
 
 function NumberEditor({
   initial,
@@ -167,19 +183,23 @@ function NumberEditor({
     const n = Number(initial);
     return Number.isFinite(n) ? n : null;
   });
+  const done = useRef(false);
   // Commit whatever is visible in the input (not just React state) so the
   // value the user sees is exactly what is validated and saved.
-  const commit = (raw?: string) => {
+  const finish = (raw?: string) => {
+    if (done.current) return;
     let v = val;
     if (raw != null && raw.trim() !== "") {
       const parsed = Number(raw);
       if (Number.isFinite(parsed)) v = parsed;
     }
+    done.current = true;
     if (v == null) return onCancel();
     if (integer) v = Math.round(v);
     // clamp to the effective min/max so an out-of-range entry cannot commit
     if (rules.min != null && v < rules.min) v = rules.min;
     if (rules.max != null && v > rules.max) v = rules.max;
+    if (v === Number(initial)) return onCancel();
     onCommit(v);
   };
   return (
@@ -192,9 +212,14 @@ function NumberEditor({
       precision={integer ? 0 : undefined}
       value={val}
       onChange={setVal}
-      onPressEnter={(e) => commit((e.target as HTMLInputElement).value)}
-      onBlur={onCancel}
-      onKeyDown={(e) => e.key === "Escape" && onCancel()}
+      onPressEnter={(e) => finish((e.target as HTMLInputElement).value)}
+      onBlur={(e) => finish((e.target as HTMLInputElement).value)}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") {
+          done.current = true;
+          onCancel();
+        }
+      }}
     />
   );
 }
@@ -211,8 +236,23 @@ function StringEditor({
   onCancel: () => void;
 }) {
   const [val, setVal] = useState(String(initial ?? ""));
+  const done = useRef(false);
   const err = validateString(val, rules);
   const changed = val !== String(initial ?? "");
+  // tryFinish commits when valid+changed; on blur an unchanged or invalid
+  // value closes the editor without saving (Enter keeps it open to fix).
+  const tryFinish = (raw: string, closing: boolean) => {
+    if (done.current) return;
+    const isChanged = raw !== String(initial ?? "");
+    const invalid = validateString(raw, rules);
+    if (isChanged && !invalid) {
+      done.current = true;
+      onCommit(raw);
+    } else if (closing || !isChanged) {
+      done.current = true;
+      onCancel();
+    }
+  };
   return (
     <Tooltip open={!!err} title={err} color="#cf1322">
       <Input
@@ -230,13 +270,14 @@ function StringEditor({
         }
         maxLength={rules.maxLength}
         onChange={(e) => setVal(e.target.value)}
-        onPressEnter={(e) => {
-          // validate the actual input content at commit time
-          const raw = (e.target as HTMLInputElement).value;
-          if (!validateString(raw, rules)) onCommit(raw);
+        onPressEnter={(e) => tryFinish((e.target as HTMLInputElement).value, false)}
+        onBlur={(e) => tryFinish(e.target.value, true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            done.current = true;
+            onCancel();
+          }
         }}
-        onBlur={onCancel}
-        onKeyDown={(e) => e.key === "Escape" && onCancel()}
       />
     </Tooltip>
   );
@@ -476,7 +517,7 @@ function instanceHeader(inst: Instance) {
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, search, setSearch, filters, setFilters, prefs, setPrefs } =
+  const { categoryKey, selectedParamId, selectParam, search, setSearch, filters, setFilters, prefs, setPrefs, jump } =
     useUI();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -485,8 +526,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // key: `${paramId}|${instance}` of the cell currently in edit mode
   const [editing, setEditing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  // in-view search (the toolbar box), ANDed with the global ⌘K search
+  const [localQ, setLocalQ] = useState("");
+  // pending "this is a global setting" question for a just-committed value
+  const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
+  // one-shot flash highlight after a jump from the left-hand trees
+  const [flash, setFlash] = useState<{ kind: "param" | "instance"; id: string } | null>(null);
+  const tableRef = useRef<GetRef<typeof Table>>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
 
-  // pending draft items indexed by cell, for hover before→after and undo
+  // pending draft items indexed by cell, for hover before→after and undo;
+  // a global item is stored under `${paramId}|` (empty instance)
   const pendingMap = useMemo(() => {
     const m = new Map<string, ChangeItem>();
     for (const it of draftQ.data?.draft?.items ?? []) {
@@ -507,7 +557,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const { ref: bodyRef, width: bodyW, height: bodyH } = useElementSize<HTMLDivElement>();
 
   const save = useMutation({
-    mutationFn: (p: { instance: string; paramId: string; value?: unknown; action?: "set" | "reset" | "exclude" }) =>
+    mutationFn: (p: { instance: string; paramId: string; value?: unknown; action?: "set" | "reset" | "exclude"; scope?: "global" }) =>
       api.setValue(p),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["grid"] });
@@ -527,32 +577,106 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   });
 
   const q = search.trim().toLowerCase();
+  const lq = localQ.trim().toLowerCase();
   const rows = useMemo(() => {
     return grid.rows.filter((r) => {
       if (categoryKey && r.param.category !== categoryKey && !r.param.category.startsWith(categoryKey + "/"))
         return false;
       if (q && !rowMatches(r, q)) return false;
+      if (lq && !rowMatches(r, lq)) return false;
       const cells = Object.values(r.cells);
       if (filters.invalidOnly && !cells.some((c) => !c.valid)) return false;
       if (filters.overriddenOnly && !cells.some((c) => c.set && c.source === "instance")) return false;
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
-  }, [grid.rows, categoryKey, q, filters]);
+  }, [grid.rows, categoryKey, q, lq, filters]);
 
-  // Auto-fit: distribute the actual container width across columns (with
-  // sensible minimums) instead of hardcoding a total; the virtual table keeps
-  // memory flat regardless of column/row count.
+  // Auto-fit: each instance column gets at least what its longest visible
+  // value needs (so "staging.example.internal" never truncates), and any
+  // remaining container width is distributed evenly so wide screens fill up.
   const PARAM_W = 230;
-  const TYPE_W = prefs.showTypeCol ? 88 : 0;
-  const DESC_W = prefs.showDescCol ? 180 : 0;
-  const instW = useMemo(() => {
-    const n = Math.max(grid.instances.length, 1);
-    const avail = bodyW - PARAM_W - TYPE_W - DESC_W;
-    return Math.max(150, Math.floor(avail / n) - 1);
-  }, [bodyW, grid.instances.length, TYPE_W, DESC_W]);
+  const TYPE_W = prefs.showTypeCol ? 86 : 0;
+  const SCOPE_W = prefs.showScopeCol ? 108 : 0;
+  const DESC_W = prefs.showDescCol ? 170 : 0;
+  const instWidths = useMemo(() => {
+    const px = (s: string) => Math.round(s.length * 7.4) + 46; // approx mono glyphs + padding/badge
+    const need: Record<string, number> = {};
+    for (const inst of grid.instances) {
+      let w = px(inst.name) + 16; // header text + env dot
+      for (const r of rows) {
+        const c = r.cells[inst.name];
+        if (!c || c.value == null || Array.isArray(c.value)) continue;
+        const s = String(c.value);
+        if (s) w = Math.max(w, px(s));
+      }
+      need[inst.name] = Math.min(Math.max(w, 130), 360);
+    }
+    const fixed = PARAM_W + TYPE_W + SCOPE_W + DESC_W;
+    const sum = Object.values(need).reduce((a, b) => a + b, 0);
+    const extra = bodyW - fixed - sum;
+    if (extra > 0 && grid.instances.length > 0) {
+      const per = Math.floor(extra / grid.instances.length);
+      for (const k of Object.keys(need)) need[k] += per;
+    }
+    return need;
+  }, [grid.instances, rows, bodyW, TYPE_W, SCOPE_W, DESC_W]);
+
+  // routeCommit: a value for a global-scope parameter that is still fed by
+  // the global/default chain asks the user what they mean before staging.
+  const routeCommit = (param: Parameter, instName: string, cell: Cell | undefined, value: unknown) => {
+    if (
+      param.scope === "global" &&
+      cell &&
+      !cell.excluded &&
+      (cell.source === "global" || cell.source === "default")
+    ) {
+      setGlobalAsk({ param, instance: instName, value });
+      return;
+    }
+    save.mutate({ instance: instName, paramId: param.id, value });
+  };
+
+  // Jump requests from the left-hand trees: scroll to the row / column and
+  // flash it. Consumed once per request (jump.n), retried when rows update
+  // (e.g. the category filter changed in the same click).
+  const consumedJump = useRef(0);
+  useEffect(() => {
+    if (!jump || consumedJump.current === jump.n) return;
+    if (jump.kind === "param") {
+      const idx = rows.findIndex((r) => r.param.id === jump.id);
+      if (idx < 0) return; // rows not filtered to it yet; retry on next update
+      consumedJump.current = jump.n;
+      tableRef.current?.scrollTo({ index: Math.max(idx - 2, 0) });
+      selectParam(jump.id);
+    } else {
+      consumedJump.current = jump.n;
+      let left = 0;
+      for (const inst of grid.instances) {
+        if (inst.name === jump.id) break;
+        left += instWidths[inst.name] ?? 150;
+      }
+      // find the horizontal scroller inside the table and glide to the column
+      const root = rootRef.current;
+      if (root) {
+        const nodes = root.querySelectorAll<HTMLElement>("div");
+        for (const el of nodes) {
+          if (el.scrollWidth > el.clientWidth + 8 && el.clientHeight > 60) {
+            el.scrollTo({ left: Math.max(left - 60, 0), behavior: "smooth" });
+            break;
+          }
+        }
+      }
+    }
+    setFlash({ kind: jump.kind, id: jump.id });
+    const t = setTimeout(() => setFlash(null), 2000);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jump, rows]);
 
   const columns: ColumnsType<Row> = useMemo(() => {
+    const types = [...new Set(grid.rows.map((r) => r.param.type))].sort();
+    const scopes = [...new Set(grid.rows.map((r) => r.param.scope))].sort();
     const base: ColumnsType<Row> = [
       {
         title: "Parameter",
@@ -560,6 +684,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         key: "param",
         fixed: "left",
         width: PARAM_W,
+        sorter: (a, b) => a.param.name.localeCompare(b.param.name),
         render: (_v, r) => (
           <Space size={4}>
             {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
@@ -573,7 +698,28 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         title: "Type",
         key: "type",
         width: TYPE_W,
+        sorter: (a, b) => a.param.type.localeCompare(b.param.type),
+        filters: types.map((t) => ({ text: t, value: t })),
+        onFilter: (v, r) => r.param.type === v,
         render: (_v, r) => <Tag>{r.param.type}</Tag>,
+      });
+    }
+    if (prefs.showScopeCol) {
+      base.push({
+        title: "Scope",
+        key: "scope",
+        width: SCOPE_W,
+        sorter: (a, b) => a.param.scope.localeCompare(b.param.scope),
+        filters: scopes.map((s) => ({ text: s, value: s })),
+        onFilter: (v, r) => r.param.scope === v,
+        render: (_v, r) => (
+          <Tooltip title={scopeExplain[r.param.scope]}>
+            <Tag color={scopeColor[r.param.scope]} style={{ marginInlineEnd: 0 }}>
+              {r.param.scope === "global" && <GlobalOutlined style={{ marginInlineEnd: 4 }} />}
+              {r.param.scope}
+            </Tag>
+          </Tooltip>
+        ),
       });
     }
     if (prefs.showDescCol) {
@@ -593,32 +739,48 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     const instCols: ColumnsType<Row> = grid.instances.map((inst) => ({
       title: instanceHeader(inst),
       key: inst.name,
-      width: instW,
-      onHeaderCell: () => ({ className: inst.environment ? `th-env-${inst.environment}` : "" }),
+      width: instWidths[inst.name] ?? 150,
+      onHeaderCell: () => ({
+        className:
+          (inst.environment ? `th-env-${inst.environment}` : "") +
+          (flash?.kind === "instance" && flash.id === inst.name ? " th-flash" : ""),
+      }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
+        const cell = r.cells[inst.name];
+        // a pending global edit surfaces on every cell it would affect
+        const pendingItem =
+          pendingMap.get(key) ??
+          (cell && (cell.source === "global" || cell.source === "default")
+            ? pendingMap.get(`${r.param.id}|`)
+            : undefined);
         return (
           <EditableCell
-            cell={r.cells[inst.name]}
+            cell={cell}
             param={r.param}
             instance={inst.name}
             allInstances={instanceNames}
             presets={presetsQ.data}
-            pendingItem={pendingMap.get(key)}
+            pendingItem={pendingItem}
             editing={editing === key}
             onStartEdit={() => setEditing(key)}
             onCancel={() => setEditing(null)}
             onCommit={(value) => {
               setEditing(null);
-              save.mutate({ instance: inst.name, paramId: r.param.id, value });
+              routeCommit(r.param, inst.name, cell, value);
             }}
             onAction={(action) =>
               save.mutate({ instance: inst.name, paramId: r.param.id, action })
             }
             onCopyTo={(target) =>
-              save.mutate({ instance: target, paramId: r.param.id, value: r.cells[inst.name]?.value })
+              save.mutate({ instance: target, paramId: r.param.id, value: cell?.value })
             }
-            onUndo={() => revert.mutate({ paramId: r.param.id, instance: inst.name })}
+            onUndo={() =>
+              revert.mutate({
+                paramId: r.param.id,
+                instance: pendingItem?.scope === "global" ? "" : inst.name,
+              })
+            }
           />
         );
       },
@@ -626,9 +788,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showDescCol, instW]);
+  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash]);
 
-  const scrollX = PARAM_W + TYPE_W + DESC_W + grid.instances.length * instW;
+  const scrollX =
+    PARAM_W + TYPE_W + SCOPE_W + DESC_W +
+    grid.instances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split("/").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
@@ -640,7 +804,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const contentH = rows.length * rowH;
   const availH = Math.max(bodyH - headerH, 120);
   const leftover = availH - contentH;
-  const showSummary = leftover > 110;
+  const showSummary = leftover > 60;
   const tableY = showSummary ? contentH + 8 : availH;
 
   const summary = useMemo(() => {
@@ -677,6 +841,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           </Tag>
         )}
         <div style={{ flex: 1 }} />
+        <Input
+          size="small"
+          allowClear
+          prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+          placeholder={`Search in ${title}…`}
+          value={localQ}
+          onChange={(e) => setLocalQ(e.target.value)}
+          style={{ width: "clamp(150px, 16vw, 240px)" }}
+        />
         <Space size={4}>
           <Popover
             trigger="click"
@@ -741,6 +914,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <Checkbox checked={prefs.showTypeCol} onChange={(e) => setPrefs({ showTypeCol: e.target.checked })}>
                   Type
                 </Checkbox>
+                <Checkbox checked={prefs.showScopeCol} onChange={(e) => setPrefs({ showScopeCol: e.target.checked })}>
+                  Scope
+                </Checkbox>
                 <Checkbox checked={prefs.showDescCol} onChange={(e) => setPrefs({ showDescCol: e.target.checked })}>
                   Description
                 </Checkbox>
@@ -756,8 +932,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Space>
       </div>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
+      <GlobalPrompt
+        ask={globalAsk}
+        instanceCount={grid.instances.length}
+        onClose={() => setGlobalAsk(null)}
+        onEveryone={() => {
+          if (globalAsk) save.mutate({ instance: "", paramId: globalAsk.param.id, value: globalAsk.value, scope: "global" });
+          setGlobalAsk(null);
+        }}
+        onJustThis={() => {
+          if (globalAsk) save.mutate({ instance: globalAsk.instance, paramId: globalAsk.param.id, value: globalAsk.value });
+          setGlobalAsk(null);
+        }}
+      />
+      <div ref={rootRef} style={{ display: "contents" }}>
       <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Table<Row>
+          ref={tableRef}
           className="param-grid"
           rowKey={(r) => r.param.id}
           columns={columns}
@@ -766,6 +957,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           virtual
           scroll={{ x: scrollX, y: tableY }}
           pagination={false}
+          rowClassName={(r) =>
+            flash?.kind === "param" && flash.id === r.param.id ? "row-flash" : ""
+          }
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),
             style:
@@ -807,6 +1001,65 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           </div>
         )}
       </div>
+      </div>
     </div>
+  );
+}
+
+// GlobalPrompt asks what a new value for a global-scope parameter means:
+// change it for every instance (stays global), override only the edited
+// instance (scope narrows for that one), or cancel.
+function GlobalPrompt({
+  ask,
+  instanceCount,
+  onClose,
+  onEveryone,
+  onJustThis,
+}: {
+  ask: { param: Parameter; instance: string; value: unknown } | null;
+  instanceCount: number;
+  onClose: () => void;
+  onEveryone: () => void;
+  onJustThis: () => void;
+}) {
+  return (
+    <Modal
+      open={!!ask}
+      onCancel={onClose}
+      title={
+        <Space>
+          <GlobalOutlined style={{ color: "#722ed1" }} />
+          You are changing a global value
+        </Space>
+      }
+      footer={[
+        <Button key="cancel" onClick={onClose}>
+          Cancel
+        </Button>,
+        <Button key="one" onClick={onJustThis}>
+          Only for {ask?.instance}
+        </Button>,
+        <Button key="all" type="primary" onClick={onEveryone}>
+          Change it for everyone
+        </Button>,
+      ]}
+    >
+      {ask && (
+        <>
+          <Typography.Paragraph style={{ marginBottom: 8 }}>
+            <b className="mono">{ask.param.name}</b> is a <Tag color="purple" style={{ marginInlineEnd: 0 }}>global</Tag>{" "}
+            setting: all {instanceCount} systems currently share one value.
+          </Typography.Paragraph>
+          <Typography.Paragraph style={{ marginBottom: 8 }}>
+            New value: <span className="mono" style={{ color: "#389e0d" }}>{fmtValue(ask.value)}</span>
+          </Typography.Paragraph>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+            "Change it for everyone" updates the shared global value. "Only for {ask.instance}" sets an
+            override on that system alone; the others keep the global value. Either way the change is
+            staged for review first, nothing goes live yet.
+          </Typography.Paragraph>
+        </>
+      )}
+    </Modal>
   );
 }

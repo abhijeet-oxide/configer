@@ -177,7 +177,7 @@ export default function App() {
     return (
       <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
         <Panel defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
-          <CategoryTree categories={grid.categories} total={grid.rows.length} />
+          <CategoryTree grid={grid} />
         </Panel>
         <ResizeHandleV />
         <Panel defaultSize={63} minSize={40} style={{ minWidth: 0 }}>
@@ -363,7 +363,7 @@ function TreeDrawerButton({ grid }: { grid: GridData }) {
         {categoryKey ? categoryKey.split("/").pop() : "All Parameters"}
       </Button>
       <Drawer title="Parameter Groups" placement="left" width={280} open={open} onClose={() => setOpen(false)}>
-        <CategoryTree categories={grid.categories} total={grid.rows.length} />
+        <CategoryTree grid={grid} />
       </Drawer>
     </>
   );

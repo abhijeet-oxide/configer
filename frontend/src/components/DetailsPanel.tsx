@@ -1,25 +1,123 @@
-import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, App as AntApp } from "antd";
-import { SafetyOutlined, DeleteOutlined } from "@ant-design/icons";
+import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Tooltip, App as AntApp } from "antd";
+import { SafetyOutlined, DeleteOutlined, LockOutlined } from "@ant-design/icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter } from "../api";
+import { api, type Grid, type Parameter, type Scope } from "../api";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
-// value summary across instances.
-function DetailsTab({ p }: { p: Parameter }) {
+// value summary across instances. Descriptive metadata (description, display
+// name, category, scope, secret) is editable in place; the source file/path
+// is locked because it is the parameter's identity in the repository.
+
+const scopeOptions: Scope[] = ["global", "environment", "site", "zone", "instance"];
+
+function Locked({ text }: { text: string }) {
+  return (
+    <Tooltip title="Fixed: this is where the parameter lives in the repository. Re-import to change it.">
+      <span className="mono" style={{ opacity: 0.75 }}>
+        {text} <LockOutlined style={{ fontSize: 11, opacity: 0.6 }} />
+      </span>
+    </Tooltip>
+  );
+}
+
+function DetailsTab({ p, categories }: { p: Parameter; categories: string[] }) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const patch = useMutation({
+    mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
+      api.updateParameter(p.id, { ...v, author: "demo-user" }),
+    onSuccess: () => {
+      message.success("Saved to the catalog (committed to Git with attribution)");
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
   return (
     <Descriptions column={1} size="small" bordered items={[
-      { key: "desc", label: "Description", children: p.description || "-" },
+      {
+        key: "desc",
+        label: "Description",
+        children: (
+          <Typography.Paragraph
+            style={{ margin: 0, fontSize: 12 }}
+            editable={{
+              tooltip: "Edit description",
+              onChange: (v) => {
+                if (v !== (p.description ?? "")) patch.mutate({ description: v });
+              },
+            }}
+          >
+            {p.description || ""}
+          </Typography.Paragraph>
+        ),
+      },
+      {
+        key: "display",
+        label: "Display Name",
+        children: (
+          <Typography.Paragraph
+            style={{ margin: 0, fontSize: 12 }}
+            editable={{
+              tooltip: "Edit display name",
+              onChange: (v) => {
+                if (v !== (p.displayName ?? "")) patch.mutate({ displayName: v });
+              },
+            }}
+          >
+            {p.displayName || ""}
+          </Typography.Paragraph>
+        ),
+      },
       { key: "type", label: "Data Type", children: <Tag>{p.type}</Tag> },
+      {
+        key: "category",
+        label: "Category",
+        children: (
+          <Select
+            size="small"
+            variant="borderless"
+            style={{ width: "100%", marginInlineStart: -8 }}
+            value={p.category}
+            options={categories.map((c) => ({ value: c, label: c }))}
+            showSearch
+            onChange={(v) => patch.mutate({ category: v })}
+          />
+        ),
+      },
+      {
+        key: "scope",
+        label: "Scope",
+        children: (
+          <Select
+            size="small"
+            variant="borderless"
+            style={{ width: "100%", marginInlineStart: -8 }}
+            value={p.scope}
+            options={scopeOptions.map((s) => ({ value: s, label: s }))}
+            onChange={(v) => patch.mutate({ scope: v })}
+          />
+        ),
+      },
+      {
+        key: "secret",
+        label: "Secret",
+        children: (
+          <Switch
+            size="small"
+            checked={p.secret}
+            onChange={(v) => patch.mutate({ secret: v })}
+          />
+        ),
+      },
       { key: "default", label: "Default Value", children: <span className="mono">{String(p.default ?? "-")}</span> },
       { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
-      { key: "scope", label: "Scope", children: <Tag color="blue">{p.scope}</Tag> },
-      { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">secret</Tag> : "No" },
       { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
       { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },
-      { key: "file", label: "Defined In", children: <span className="mono">{p.source.file}</span> },
-      { key: "path", label: "Path", children: <span className="mono">{p.source.path}</span> },
+      { key: "file", label: "Defined In", children: <Locked text={p.source.file} /> },
+      { key: "path", label: "Path", children: <Locked text={p.source.path} /> },
     ]} />
   );
 }
@@ -109,6 +207,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
 
   if (!row) return <ProjectOverview grid={grid} />;
   const p = row.param;
+  const categories = [...new Set(grid.rows.map((r) => r.param.category))].sort();
 
   // small cross-instance summary
   const values = grid.instances.map((i) => row.cells[i.name]);
@@ -124,7 +223,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
       <Tabs
         size="small"
         items={[
-          { key: "details", label: "Details", children: <DetailsTab p={p} /> },
+          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} /> },
           { key: "schema", label: "Schema", children: <RuleEditor param={p} /> },
           { key: "history", label: "History", children: <Empty description="Git history (backend endpoint TODO)" /> },
           { key: "depends", label: "Depends On", children:

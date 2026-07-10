@@ -5,6 +5,7 @@ import type { BrandKey, FontScale, Mode } from "./theme";
 export interface ViewPrefs {
   density: "compact" | "comfortable";
   showTypeCol: boolean;
+  showScopeCol: boolean;
   showDescCol: boolean;
   showCompare: boolean;
 }
@@ -12,6 +13,7 @@ export interface ViewPrefs {
 const defaultPrefs: ViewPrefs = {
   density: "compact",
   showTypeCol: true,
+  showScopeCol: true,
   showDescCol: true,
   showCompare: true,
 };
@@ -49,6 +51,9 @@ interface UIState {
   /** file or folder prefix the Import wizard should focus on (set by the
    *  Repository Changes inbox when jumping into an import) */
   importFocus: string | null;
+  /** one-shot navigation request: scroll the grid to a parameter row or an
+   *  instance column and flash-highlight it (n makes repeats re-trigger) */
+  jump: { kind: "param" | "instance"; id: string; n: number } | null;
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
@@ -61,6 +66,7 @@ interface UIState {
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
   setImportFocus: (f: string | null) => void;
+  setJump: (kind: "param" | "instance", id: string) => void;
 }
 
 export const useUI = create<UIState>((set) => ({
@@ -77,6 +83,7 @@ export const useUI = create<UIState>((set) => ({
   prefs: loadPrefs(),
   navCollapsed: false,
   importFocus: null,
+  jump: null,
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
@@ -103,4 +110,5 @@ export const useUI = create<UIState>((set) => ({
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
   setImportFocus: (importFocus) => set({ importFocus }),
+  setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
 }));

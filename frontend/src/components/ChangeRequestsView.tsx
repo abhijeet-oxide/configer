@@ -26,6 +26,15 @@ import CrSteps, { StateTag } from "./CrSteps";
 // that drive the git-native lifecycle. Everything here can equally be done on
 // GitHub directly; Configer reflects external merges/closes on refresh.
 
+export const categoryColor: Record<string, string> = {
+  hotfix: "red",
+  feature: "blue",
+  bugfix: "orange",
+  maintenance: "default",
+  security: "purple",
+  other: "default",
+};
+
 export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
   if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
   return (
@@ -36,7 +45,12 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
       pagination={false}
       columns={[
         { title: "Parameter", dataIndex: "paramId", render: (v) => <span className="mono">{v}</span> },
-        { title: "Instance", dataIndex: "instance", render: (v) => <Tag>{v}</Tag> },
+        {
+          title: "Instance",
+          dataIndex: "instance",
+          render: (v: string, it: ChangeItem) =>
+            it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
+        },
         {
           title: "Old value",
           dataIndex: "old",
@@ -112,7 +126,17 @@ export default function ChangeRequestsView() {
             dataIndex: "title",
             render: (t, cr) => (
               <>
-                <div>{t}</div>
+                <div>
+                  {t}
+                  {cr.category && (
+                    <Tag color={categoryColor[cr.category] ?? "default"} style={{ marginInlineStart: 8, fontSize: 11 }}>
+                      {cr.category}
+                    </Tag>
+                  )}
+                  {cr.reference && (
+                    <Tag style={{ fontSize: 11 }} className="mono">{cr.reference}</Tag>
+                  )}
+                </div>
                 {cr.description && (
                   <Typography.Text type="secondary" style={{ fontSize: 12 }}>{cr.description}</Typography.Text>
                 )}

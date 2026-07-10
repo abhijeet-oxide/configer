@@ -511,7 +511,12 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Category    *string           `json:"category,omitempty"`
 		Scope       *model.Scope      `json:"scope,omitempty"`
 		Secret      *bool             `json:"secret,omitempty"`
-		Author      string            `json:"author,omitempty"`
+		Default     *any              `json:"default,omitempty"`
+		// Source attaches a design-phase parameter to a real file/path (or
+		// re-maps an existing one). Always set through the interactive
+		// picker, never free text.
+		Source *model.Source `json:"source,omitempty"`
+		Author string        `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -521,6 +526,15 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		if _, found := validate.PresetByID(req.Validation.Preset); !found {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "unknown preset rule"})
 			return
+		}
+	}
+	if req.Source != nil {
+		if req.Source.File == "" || req.Source.Path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attaching requires both the file and the path"})
+			return
+		}
+		if req.Source.Format == "" {
+			req.Source.Format = formatForFile(req.Source.File)
 		}
 	}
 
@@ -534,26 +548,20 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Category:    req.Category,
 		Scope:       req.Scope,
 		Secret:      req.Secret,
+		Default:     req.Default,
+		Source:      req.Source,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	author := req.Author
-	if author == "" {
-		author = "anonymous"
+	title := "Update parameter " + param.Name
+	if req.Source != nil {
+		title = "Attach parameter " + param.Name + " to " + param.Source.File
 	}
-	msg := "Update parameter " + param.Name + "\n\nChanged-by: " + author + "\n"
-	if _, err := s.Git.CommitAll(s.RepoPath, msg); err != nil && !strings.Contains(err.Error(), "nothing to commit") {
-		writeErr(w, err)
-		return
-	} else if err == nil && s.Git.HasRemote() {
-		branch, _ := s.Git.CurrentBranch()
-		if perr := s.Git.Push(branch); perr != nil {
-			log.Printf("warn: push rules update: %v", perr)
-		}
-	}
-	writeJSON(w, http.StatusOK, param)
+	// commitCatalogChange re-renders every instance's generated files, which
+	// matters here: attaching a parameter makes its values render for real.
+	s.commitCatalogChange(w, title, req.Author, param)
 }
 
 // addParameter creates a new catalog parameter from the GUI (e.g. an optional
@@ -569,8 +577,15 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pm := req.Param
-	if pm.Name == "" || pm.Source.File == "" || pm.Source.Path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, source.file and source.path are required"})
+	if pm.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	// A parameter may be created in the design phase, before its
+	// configuration file exists: source stays empty and is attached later.
+	// But a half-specified source is always a mistake.
+	if (pm.Source.File == "") != (pm.Source.Path == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source.file and source.path go together; leave both empty for a design-phase parameter"})
 		return
 	}
 	if pm.ID == "" {
@@ -585,7 +600,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	if pm.Category == "" {
 		pm.Category = "Uncategorized"
 	}
-	if pm.Source.Format == "" {
+	if pm.Source.File != "" && pm.Source.Format == "" {
 		pm.Source.Format = formatForFile(pm.Source.File)
 	}
 

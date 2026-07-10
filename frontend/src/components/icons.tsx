@@ -20,6 +20,7 @@ import pencilSimpleLine from "@iconify-icons/ph/pencil-simple-line";
 import tray from "@iconify-icons/ph/tray";
 import hardDrives from "@iconify-icons/ph/hard-drives";
 import squaresFour from "@iconify-icons/ph/squares-four";
+import folderOpen from "@iconify-icons/ph/folder-open";
 
 export const icons = {
   home: house,
@@ -40,6 +41,7 @@ export const icons = {
   inbox: tray,
   systems: hardDrives,
   workspace: squaresFour,
+  files: folderOpen,
 } satisfies Record<string, IconifyIcon>;
 
 export function Ic({

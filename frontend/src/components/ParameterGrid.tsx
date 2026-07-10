@@ -689,6 +689,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <Space size={4}>
             {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
             <span>{r.param.name}</span>
+            {!r.param.source.file && (
+              <Tooltip title="Design phase: not attached to a configuration file yet. Values work as usual and start rendering once attached (details panel).">
+                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2 }}>
+                  design
+                </Tag>
+              </Tooltip>
+            )}
           </Space>
         ),
       },

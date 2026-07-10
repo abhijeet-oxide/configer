@@ -59,6 +59,12 @@ func Instance(p *project.Project, instanceName string, reg *plugin.Registry) ([]
 	byFile := map[string][]application{}   // source file -> applications
 
 	for _, param := range p.Catalog.Parameters {
+		if param.Source.File == "" {
+			// Design-phase parameter: not attached to any file yet, so it
+			// appears in NO generated artifact (source files or transposer
+			// outputs) until attached.
+			continue
+		}
 		res := r.Resolve(param, inst)
 		app := application{param: param}
 		switch {

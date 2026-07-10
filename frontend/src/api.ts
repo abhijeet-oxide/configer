@@ -376,6 +376,9 @@ export const api = {
       category?: string;
       scope?: Scope;
       secret?: boolean;
+      default?: unknown;
+      /** attach or re-map: always produced by the interactive picker */
+      source?: { file: string; path: string; format?: string };
       author?: string;
     },
   ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),

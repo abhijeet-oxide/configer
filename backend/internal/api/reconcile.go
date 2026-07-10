@@ -62,6 +62,9 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 	managedPath := map[string]bool{}   // "file|path" -> already in the catalog
 	if p != nil {
 		for _, param := range p.Catalog.Parameters {
+			if param.Source.File == "" {
+				continue // design-phase parameters have no file to watch
+			}
 			managedBy[param.Source.File] = append(managedBy[param.Source.File], param.ID)
 			managedPath[param.Source.File+"|"+param.Source.Path] = true
 		}

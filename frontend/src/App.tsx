@@ -26,6 +26,7 @@ import DashboardView from "./components/DashboardView";
 import ImportWizard from "./components/ImportWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
+import RenderedFilesView from "./components/RenderedFilesView";
 import MobileParamList from "./components/MobileParamList";
 import { DashboardSkeleton, GridSkeleton, ListSkeleton } from "./components/Skeletons";
 
@@ -301,6 +302,12 @@ export default function App() {
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <ComparePanel grid={grid} />
+        </div>
+      );
+    if (section === "files")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <RenderedFilesView grid={grid} />
         </div>
       );
     if (section === "config") return editorLayout();

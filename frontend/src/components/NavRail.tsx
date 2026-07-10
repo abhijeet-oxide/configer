@@ -16,6 +16,7 @@ function buildItems(approvalsCount: number, findingsCount: number): MenuProps["i
       { key: "config", icon: <Ic icon={icons.editor} />, label: "Config Editor" },
       { key: "import", icon: <Ic icon={icons.import} />, label: "Import" },
       { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
+      { key: "files", icon: <Ic icon={icons.files} />, label: "Rendered Files" },
       { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
       {
         key: "approvals",

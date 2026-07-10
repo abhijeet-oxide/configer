@@ -1,124 +1,195 @@
-import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Tooltip, App as AntApp } from "antd";
-import { SafetyOutlined, DeleteOutlined, LockOutlined } from "@ant-design/icons";
+import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
+import { SafetyOutlined, DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Parameter, type Scope } from "../api";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
+import PathPicker from "./PathPicker";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
-// value summary across instances. Descriptive metadata (description, display
-// name, category, scope, secret) is editable in place; the source file/path
-// is locked because it is the parameter's identity in the repository.
+// value summary across instances. One overall Edit button turns every major
+// field into a form (saved as a single attributed catalog commit); the source
+// file/path change only through the interactive attach picker, never as free
+// text. A parameter without a source is in the design phase: fully editable
+// and valued, rendered nowhere until attached.
 
 const scopeOptions: Scope[] = ["global", "environment", "site", "zone", "instance"];
+const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
 
-function Locked({ text }: { text: string }) {
-  return (
-    <Tooltip title="Fixed: this is where the parameter lives in the repository. Re-import to change it.">
-      <span className="mono" style={{ opacity: 0.75 }}>
-        {text} <LockOutlined style={{ fontSize: 11, opacity: 0.6 }} />
-      </span>
-    </Tooltip>
-  );
+interface EditValues {
+  displayName?: string;
+  description?: string;
+  category: string;
+  type: string;
+  scope: Scope;
+  secret: boolean;
+  default?: string;
 }
 
-function DetailsTab({ p, categories }: { p: Parameter; categories: string[] }) {
+// coerceDefault turns the edited default (a string from the form) back into
+// the parameter's declared type so the catalog keeps proper YAML types.
+function coerceDefault(raw: string | undefined, type: string): unknown {
+  if (raw === undefined || raw === "") return undefined;
+  switch (type) {
+    case "integer":
+    case "number": {
+      const n = Number(raw);
+      return Number.isNaN(n) ? raw : n;
+    }
+    case "boolean":
+      return raw === "true";
+    case "list":
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    default:
+      return raw;
+  }
+}
+
+function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[]; grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [form] = Form.useForm<EditValues>();
+  const design = !p.source.file;
+
   const patch = useMutation({
     mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
       api.updateParameter(p.id, { ...v, author: "demo-user" }),
     onSuccess: () => {
       message.success("Saved to the catalog (committed to Git with attribution)");
+      setEditing(false);
       qc.invalidateQueries();
     },
     onError: (e: Error) => message.error(e.message),
   });
 
+  const startEdit = () => {
+    form.setFieldsValue({
+      displayName: p.displayName,
+      description: p.description,
+      category: p.category,
+      type: p.type,
+      scope: p.scope,
+      secret: p.secret,
+      default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
+    });
+    setEditing(true);
+  };
+
+  const save = (v: EditValues) => {
+    const d = coerceDefault(v.default, v.type);
+    patch.mutate({
+      displayName: v.displayName ?? "",
+      description: v.description ?? "",
+      category: v.category,
+      type: v.type,
+      scope: v.scope,
+      secret: v.secret,
+      ...(d !== undefined ? { default: d } : {}),
+    });
+  };
+
+  const sourceRow = design ? (
+    <Space direction="vertical" size={4}>
+      <Tag color="purple">design phase: not attached yet</Tag>
+      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        Values can be set and reviewed now; they render into files once attached.
+      </Typography.Text>
+      <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
+        Attach to a file…
+      </Button>
+    </Space>
+  ) : (
+    <Space direction="vertical" size={2}>
+      <span className="mono" style={{ fontSize: 12 }}>{p.source.file}</span>
+      <span className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{p.source.path}</span>
+      <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
+        Re-map…
+      </Button>
+    </Space>
+  );
+
+  if (editing) {
+    return (
+      <Form form={form} layout="vertical" size="small" onFinish={save}>
+        <Form.Item name="displayName" label="Display name" style={{ marginBottom: 8 }}>
+          <Input placeholder="Human-friendly name" />
+        </Form.Item>
+        <Form.Item name="description" label="Description" style={{ marginBottom: 8 }}>
+          <Input.TextArea rows={3} placeholder="What does this parameter control?" />
+        </Form.Item>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Form.Item name="category" label="Category" style={{ flex: 1, marginBottom: 8 }} rules={[{ required: true }]}>
+            <AutoComplete
+              options={categories.map((c) => ({ value: c }))}
+              filterOption={(input, opt) => (opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
+            />
+          </Form.Item>
+          <Form.Item name="type" label="Data type" style={{ width: 110, marginBottom: 8 }}>
+            <Select options={typeOptions.map((t) => ({ value: t, label: t }))} />
+          </Form.Item>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+          <Form.Item name="scope" label="Scope" style={{ flex: 1, marginBottom: 8 }}>
+            <Select options={scopeOptions.map((s) => ({ value: s, label: s }))} />
+          </Form.Item>
+          <Form.Item name="secret" label="Secret" valuePropName="checked" style={{ marginBottom: 8 }}>
+            <Switch size="small" />
+          </Form.Item>
+        </div>
+        <Form.Item
+          name="default"
+          label="Default value (lists comma-separated)"
+          style={{ marginBottom: 10 }}
+        >
+          <Input className="mono" placeholder="Inherited default" />
+        </Form.Item>
+        <Space>
+          <Button type="primary" size="small" icon={<CheckOutlined />} htmlType="submit" loading={patch.isPending}>
+            Save all
+          </Button>
+          <Button size="small" icon={<CloseOutlined />} onClick={() => setEditing(false)} disabled={patch.isPending}>
+            Cancel
+          </Button>
+        </Space>
+        <Typography.Paragraph type="secondary" style={{ fontSize: 11, marginTop: 8 }}>
+          Saving makes one commit to the catalog with your attribution. The file and path are
+          changed separately via {design ? "Attach" : "Re-map"}, so they stay validated.
+        </Typography.Paragraph>
+      </Form>
+    );
+  }
+
   return (
-    <Descriptions column={1} size="small" bordered items={[
-      {
-        key: "desc",
-        label: "Description",
-        children: (
-          <Typography.Paragraph
-            style={{ margin: 0, fontSize: 12 }}
-            editable={{
-              tooltip: "Edit description",
-              onChange: (v) => {
-                if (v !== (p.description ?? "")) patch.mutate({ description: v });
-              },
-            }}
-          >
-            {p.description || ""}
-          </Typography.Paragraph>
-        ),
-      },
-      {
-        key: "display",
-        label: "Display Name",
-        children: (
-          <Typography.Paragraph
-            style={{ margin: 0, fontSize: 12 }}
-            editable={{
-              tooltip: "Edit display name",
-              onChange: (v) => {
-                if (v !== (p.displayName ?? "")) patch.mutate({ displayName: v });
-              },
-            }}
-          >
-            {p.displayName || ""}
-          </Typography.Paragraph>
-        ),
-      },
-      { key: "type", label: "Data Type", children: <Tag>{p.type}</Tag> },
-      {
-        key: "category",
-        label: "Category",
-        children: (
-          <Select
-            size="small"
-            variant="borderless"
-            style={{ width: "100%", marginInlineStart: -8 }}
-            value={p.category}
-            options={categories.map((c) => ({ value: c, label: c }))}
-            showSearch
-            onChange={(v) => patch.mutate({ category: v })}
-          />
-        ),
-      },
-      {
-        key: "scope",
-        label: "Scope",
-        children: (
-          <Select
-            size="small"
-            variant="borderless"
-            style={{ width: "100%", marginInlineStart: -8 }}
-            value={p.scope}
-            options={scopeOptions.map((s) => ({ value: s, label: s }))}
-            onChange={(v) => patch.mutate({ scope: v })}
-          />
-        ),
-      },
-      {
-        key: "secret",
-        label: "Secret",
-        children: (
-          <Switch
-            size="small"
-            checked={p.secret}
-            onChange={(v) => patch.mutate({ secret: v })}
-          />
-        ),
-      },
-      { key: "default", label: "Default Value", children: <span className="mono">{String(p.default ?? "-")}</span> },
-      { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
-      { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
-      { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },
-      { key: "file", label: "Defined In", children: <Locked text={p.source.file} /> },
-      { key: "path", label: "Path", children: <Locked text={p.source.path} /> },
-    ]} />
+    <>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+        <Button size="small" icon={<EditOutlined />} onClick={startEdit}>
+          Edit
+        </Button>
+      </div>
+      <Descriptions column={1} size="small" bordered items={[
+        { key: "display", label: "Display Name", children: p.displayName || <span style={{ opacity: 0.45 }}>-</span> },
+        {
+          key: "desc",
+          label: "Description",
+          children: p.description
+            ? <Typography.Paragraph style={{ margin: 0, fontSize: 12 }}>{p.description}</Typography.Paragraph>
+            : <span style={{ opacity: 0.45 }}>-</span>,
+        },
+        { key: "type", label: "Data Type", children: <Tag>{p.type}{p.type === "list" && p.itemType ? ` of ${p.itemType}` : ""}</Tag> },
+        { key: "category", label: "Category", children: p.category },
+        { key: "scope", label: "Scope", children: <Tag>{p.scope}</Tag> },
+        { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">yes</Tag> : "no" },
+        { key: "default", label: "Default Value", children: <span className="mono">{p.default === undefined || p.default === null ? "-" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default)}</span> },
+        { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
+        { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
+        { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },
+        { key: "source", label: "Defined In", children: sourceRow },
+      ]} />
+      <PathPicker open={pickerOpen} onClose={() => setPickerOpen(false)} param={p} grid={grid} />
+    </>
   );
 }
 
@@ -219,11 +290,12 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
       <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
       <Tag color="geekblue">{p.type}</Tag>
       {p.secret && <Tag color="gold">secret</Tag>}
+      {!p.source.file && <Tag color="purple">design</Tag>}
       <Divider style={{ margin: "10px 0" }} />
       <Tabs
         size="small"
         items={[
-          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} /> },
+          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} /> },
           { key: "schema", label: "Schema", children: <RuleEditor param={p} /> },
           { key: "history", label: "History", children: <Empty description="Git history (backend endpoint TODO)" /> },
           { key: "depends", label: "Depends On", children:

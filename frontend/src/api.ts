@@ -240,6 +240,8 @@ export interface RepoSummary {
   name: string;
   origin?: string;
   local?: boolean;
+  /** managed through the GitHub API with no clone (R2) */
+  noClone?: boolean;
   branch?: string;
   project?: string;
   params: number;
@@ -332,7 +334,7 @@ export const api = {
   // --- workspace level (not repo-scoped) ---
   health: () => get<{ status: string }>("/health"),
   workspace: () => get<Workspace>("/workspace"),
-  connectRepo: (p: { url: string; name?: string; branch?: string; token?: string }) =>
+  connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),
   removeRepo: (id: string) =>
     send<{ ok: boolean; removed: string }>("DELETE", `/repos/${encodeURIComponent(id)}`),
@@ -376,6 +378,9 @@ export const api = {
       category?: string;
       scope?: Scope;
       secret?: boolean;
+      default?: unknown;
+      /** attach or re-map: always produced by the interactive picker */
+      source?: { file: string; path: string; format?: string };
       author?: string;
     },
   ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),

@@ -1,10 +1,13 @@
-import { Modal, Form, Input, Select, Switch, App as AntApp } from "antd";
+import { Modal, Form, Input, Select, Switch, Radio, Typography, App as AntApp, type InputRef } from "antd";
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
 
-// AddParameterModal creates a new catalog parameter from the GUI, e.g. an
-// optional vendor key that only some instances will carry. Instances without
-// a value simply render nothing for it; set values per instance afterwards.
+// AddParameterModal creates a new catalog parameter from the GUI. Two modes:
+// attach to a source file right away, or create it in the DESIGN PHASE (no
+// file yet, e.g. the vendor's configuration hasn't arrived); design
+// parameters carry values and reviews like any other and are attached to a
+// real file later from the details panel.
 const types = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
 const itemTypes = ["string", "integer", "number", "ipv4", "cidr"];
 const scopes = ["instance", "zone", "site", "environment", "global"];
@@ -18,7 +21,8 @@ interface FormValues {
   itemType?: string;
   scope: string;
   secret?: boolean;
-  file: string;
+  mode: "attach" | "design";
+  file?: string;
   path?: string;
 }
 
@@ -34,9 +38,11 @@ export default function AddParameterModal({
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const [form] = Form.useForm<FormValues>();
+  const nameRef = useRef<InputRef>(null);
   const type = Form.useWatch("type", form);
+  const mode = Form.useWatch("mode", form);
 
-  const files = [...new Set(grid.rows.map((r) => r.param.source.file))];
+  const files = [...new Set(grid.rows.map((r) => r.param.source.file).filter(Boolean))];
   const categories = [...new Set(grid.rows.map((r) => r.param.category))];
 
   const create = useMutation({
@@ -51,17 +57,25 @@ export default function AddParameterModal({
           itemType: v.type === "list" ? v.itemType || "string" : undefined,
           scope: v.scope as never,
           secret: !!v.secret,
-          source: {
-            file: v.file,
-            // default path: dotted name under root for yaml/json
-            path: v.path || (v.file.endsWith(".xml") ? "" : `$.${v.name}`),
-            format: v.file.endsWith(".xml") ? "xml" : v.file.endsWith(".json") ? "json" : "yaml",
-          },
+          source:
+            v.mode === "design" || !v.file
+              ? undefined
+              : {
+                  file: v.file,
+                  // default path: dotted name under root for yaml/json
+                  path: v.path || (v.file.endsWith(".xml") ? "" : `$.${v.name}`),
+                  format: v.file.endsWith(".xml") ? "xml" : v.file.endsWith(".json") ? "json" : "yaml",
+                },
         },
         "demo-user",
       ),
     onSuccess: (p) => {
-      message.success(`Parameter ${p.name} added to the catalog`);
+      message.success(
+        p.source?.file
+          ? `Parameter ${p.name} added to the catalog`
+          : `Parameter ${p.name} added in the design phase. Set its values now; attach it to a file from the details panel when the configuration arrives.`,
+        6,
+      );
       form.resetFields();
       onClose();
       qc.invalidateQueries();
@@ -77,12 +91,13 @@ export default function AddParameterModal({
       onOk={() => form.submit()}
       okText="Add to catalog"
       confirmLoading={create.isPending}
+      afterOpenChange={(o) => o && nameRef.current?.focus()}
     >
       <Form
         form={form}
         layout="vertical"
         onFinish={(v) => create.mutate(v)}
-        initialValues={{ type: "string", scope: "instance", category: categories[0], file: files[0] }}
+        initialValues={{ type: "string", scope: "instance", category: categories[0], file: files[0], mode: "attach" }}
       >
         <Form.Item
           name="name"
@@ -92,7 +107,7 @@ export default function AddParameterModal({
             { pattern: /^[a-zA-Z0-9_.\-\[\]]+$/, message: "Letters, digits, dots, dashes" },
           ]}
         >
-          <Input placeholder="network.ntp.servers" className="mono" />
+          <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />
         </Form.Item>
         <Form.Item name="displayName" label="Display name">
           <Input placeholder="NTP servers" />
@@ -121,15 +136,31 @@ export default function AddParameterModal({
         <Form.Item name="secret" label="Secret" valuePropName="checked">
           <Switch size="small" />
         </Form.Item>
-        <Form.Item name="file" label="Source file" rules={[{ required: true }]}>
-          <Select showSearch options={files.map((f) => ({ value: f, label: f }))} />
+        <Form.Item name="mode" label="Where does it live?">
+          <Radio.Group>
+            <Radio.Button value="attach">Attach to a file now</Radio.Button>
+            <Radio.Button value="design">Design phase (no file yet)</Radio.Button>
+          </Radio.Group>
         </Form.Item>
-        <Form.Item
-          name="path"
-          label="Path in file (blank = derived from name; XPath required for XML)"
-        >
-          <Input placeholder="$.network.ntp.servers or /network/ntp/server" className="mono" />
-        </Form.Item>
+        {mode === "design" ? (
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -6 }}>
+            The configuration file hasn't arrived yet. The parameter behaves normally: set
+            values per instance, validate, review; nothing renders until you attach it to a
+            real file later (details panel, one click per setting).
+          </Typography.Paragraph>
+        ) : (
+          <>
+            <Form.Item name="file" label="Source file" rules={[{ required: true, message: "Pick a file, or switch to design phase" }]}>
+              <Select showSearch options={files.map((f) => ({ value: f, label: f }))} />
+            </Form.Item>
+            <Form.Item
+              name="path"
+              label="Path in file (blank = derived from name; XPath required for XML)"
+            >
+              <Input placeholder="$.network.ntp.servers or /network/ntp/server" className="mono" />
+            </Form.Item>
+          </>
+        )}
       </Form>
     </Modal>
   );

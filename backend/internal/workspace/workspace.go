@@ -24,7 +24,14 @@ type Entry struct {
 	Branch string `json:"branch,omitempty"`
 	// Local means the repository was opened in place (a path on this
 	// machine) rather than cloned into the data directory.
-	Local   bool      `json:"local,omitempty"`
+	Local bool `json:"local,omitempty"`
+	// Remote means the repository is managed entirely through the Git data
+	// API with no clone: Path is a materialized read cache, not a git tree.
+	Remote bool `json:"remote,omitempty"`
+	// Token is the access token for a Remote repository, persisted (0600)
+	// like a clone's embedded credential so API calls survive restarts. It
+	// is never included in any API response.
+	Token   string    `json:"token,omitempty"`
 	AddedAt time.Time `json:"addedAt"`
 }
 

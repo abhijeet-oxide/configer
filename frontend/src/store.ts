@@ -51,6 +51,8 @@ interface UIState {
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
+  /** instance whose column is highlighted in the grid */
+  selectedInstance: string | null;
   compareLeft: string | null;
   compareRight: string | null;
   search: string;
@@ -70,6 +72,7 @@ interface UIState {
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
+  selectInstance: (name: string | null) => void;
   setCompare: (left: string | null, right: string | null) => void;
   setSearch: (q: string) => void;
   setFilters: (f: Partial<RowFilters>) => void;
@@ -84,9 +87,10 @@ export const useUI = create<UIState>((set) => ({
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   repoId: initialRepo,
-  section: "home",
+  section: "workspace",
   categoryKey: null,
   selectedParamId: null,
+  selectedInstance: null,
   compareLeft: null,
   compareRight: null,
   search: "",
@@ -117,6 +121,7 @@ export const useUI = create<UIState>((set) => ({
       repoId,
       categoryKey: null,
       selectedParamId: null,
+      selectedInstance: null,
       compareLeft: null,
       compareRight: null,
       jump: null,
@@ -126,6 +131,7 @@ export const useUI = create<UIState>((set) => ({
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),
   selectParam: (selectedParamId) => set({ selectedParamId }),
+  selectInstance: (selectedInstance) => set({ selectedInstance }),
   setCompare: (compareLeft, compareRight) => set({ compareLeft, compareRight }),
   setSearch: (search) => set({ search }),
   setFilters: (f) => set((s) => ({ filters: { ...s.filters, ...f } })),

@@ -25,7 +25,7 @@ const envDot: Record<string, string> = {
 };
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectParam, setJump } = useUI();
+  const { categoryKey, setCategory, selectParam, selectInstance, setJump } = useUI();
   const [filter, setFilter] = useState("");
   const { ref, height } = useElementSize<HTMLDivElement>();
 
@@ -109,7 +109,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   }, [grid.instances]);
 
   return (
-    <div style={{ padding: "8px 8px 0", height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="cat-tree" style={{ padding: "8px 8px 0", height: "100%", display: "flex", flexDirection: "column" }}>
       <Typography.Text strong style={{ padding: "0 4px" }}>Parameter Groups</Typography.Text>
       <Input.Search
         placeholder="Filter groups and parameters"
@@ -122,6 +122,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         <Tree<TreeItem>
           treeData={treeData}
           blockNode
+          showLine={{ showLeafIcon: false }}
           height={Math.max(height, 100)}
           virtual
           defaultExpandAll
@@ -149,11 +150,16 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         <Tree
           treeData={systemsData}
           blockNode
+          showLine={{ showLeafIcon: false }}
           defaultExpandAll
           selectedKeys={[]}
           onSelect={(keys) => {
             const k = keys[0] as string | undefined;
-            if (k?.startsWith("i:")) setJump("instance", k.slice(2));
+            if (k?.startsWith("i:")) {
+              const name = k.slice(2);
+              setJump("instance", name);
+              selectInstance(name);
+            }
           }}
           filterTreeNode={filter ? (node) => (node as unknown as TreeItem).searchText?.includes(filter) : undefined}
         />

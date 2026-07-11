@@ -13,6 +13,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 )
 
@@ -85,7 +86,8 @@ values: { p1: 8080 }
 	}
 	reg := plugin.NewRegistry()
 	transposers.Register(reg)
-	return workDir, originDir, &Service{Repo: repo, Store: store, Registry: reg}
+	backend := repobackend.NewLocal(repo, nil)
+	return workDir, originDir, &Service{Backend: backend, Store: store, Registry: reg}
 }
 
 func TestSubmitAndMergePipeline(t *testing.T) {

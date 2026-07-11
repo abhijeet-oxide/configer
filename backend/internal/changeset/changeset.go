@@ -17,20 +17,20 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
-	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
-	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/render"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
-// Service wires the pieces of the CR pipeline together.
+// Service wires the pieces of the CR pipeline together. The Backend seam
+// makes the pipeline identical whether the repository is a local git working
+// tree or a remote repository managed through the Git data API (no clone).
 type Service struct {
-	Repo     *gitengine.Repo
+	Backend  repobackend.Backend
 	Store    *crstore.Store
 	Registry *plugin.Registry
-	Provider provider.Provider // nil => pure-git fallback
 }
 
 func branchName(id int) string { return fmt.Sprintf("configer/cr-%d", id) }
@@ -84,29 +84,25 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	}
 	cr.Reference, cr.Category = reference, category
 	if cr.TargetBranch == "" {
-		if cr.TargetBranch, err = s.Repo.CurrentBranch(); err != nil {
+		if cr.TargetBranch, err = s.Backend.DefaultBranch(ctx); err != nil {
 			return nil, err
 		}
 	}
 
-	baseSHA, err := s.Repo.HeadSHA(cr.TargetBranch)
+	baseSHA, err := s.Backend.HeadSHA(ctx, cr.TargetBranch)
 	if err != nil {
 		return nil, err
 	}
 	branch := branchName(cr.ID)
 
-	// Isolated worktree so readers of the primary tree are never disturbed.
-	wt, err := os.MkdirTemp("", fmt.Sprintf("configer-cr-%d-", cr.ID))
+	// Isolated checkout so readers of the primary tree/cache are never
+	// disturbed (a git worktree locally, a materialized temp dir remotely).
+	ws, err := s.Backend.OpenCR(ctx, branch, cr.TargetBranch)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		s.Repo.RemoveWorktree(wt)
-		_ = os.RemoveAll(wt)
-	}()
-	if err := s.Repo.AddWorktree(wt, branch, cr.TargetBranch); err != nil {
-		return nil, err
-	}
+	defer ws.Close()
+	wt := ws.Dir()
 
 	// 1) Apply updates: sparse instance overlays, or the global scope overlay
 	//    for scope-level items ("change it for everyone").
@@ -167,25 +163,22 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		}
 	}
 
-	// 3) One commit for the whole CR.
-	sha, err := s.Repo.CommitAll(wt, commitMessage(cr))
+	// 3) One commit for the whole CR (worktree commit+push locally, a
+	//    Git-data-API partial commit remotely). The branch ref is created.
+	sha, err := ws.Commit(ctx, commitMessage(cr))
 	if err != nil {
 		return nil, err
 	}
 
-	// 4) Push + open PR when possible; otherwise stay pure-git local.
+	// 4) Open a hosted PR when a provider is configured; otherwise the
+	//    branch alone is the reviewable artifact (pure-git / no provider).
 	prNum, prURL := 0, ""
-	if s.Repo.HasRemote() {
-		if err := s.Repo.Push(branch); err != nil {
-			return nil, fmt.Errorf("push %s: %w", branch, err)
+	if s.Backend.CanPublish() && s.Backend.Provider() != nil {
+		pr, err := s.Backend.Provider().Create(ctx, branch, cr.TargetBranch, cr.Title, prBody(cr))
+		if err != nil {
+			return nil, fmt.Errorf("open pull request: %w", err)
 		}
-		if s.Provider != nil {
-			pr, err := s.Provider.Create(ctx, branch, cr.TargetBranch, cr.Title, prBody(cr))
-			if err != nil {
-				return nil, fmt.Errorf("open pull request: %w", err)
-			}
-			prNum, prURL = pr.Number, pr.URL
-		}
+		prNum, prURL = pr.Number, pr.URL
 	}
 
 	return s.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
@@ -240,31 +233,17 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 	}
 
 	msg := fmt.Sprintf("Publish change request #%d: %s", cr.ID, cr.Title)
-	if s.Provider != nil && cr.PRNumber > 0 {
-		if err := s.Provider.Merge(ctx, cr.PRNumber, msg); err != nil {
+	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
+		if err := s.Backend.Provider().Merge(ctx, cr.PRNumber, msg); err != nil {
 			return nil, err
 		}
-		if err := s.Repo.Pull(cr.TargetBranch); err != nil {
+		if _, err := s.Backend.Sync(ctx, cr.TargetBranch); err != nil {
 			return nil, fmt.Errorf("sync after merge: %w", err)
 		}
-	} else {
-		cur, err := s.Repo.CurrentBranch()
-		if err != nil {
-			return nil, err
-		}
-		if cur != cr.TargetBranch {
-			return nil, fmt.Errorf("primary tree is on %s, cannot locally merge into %s", cur, cr.TargetBranch)
-		}
-		if err := s.Repo.MergeBranch(cr.Branch, msg); err != nil {
-			return nil, err
-		}
-		if s.Repo.HasRemote() {
-			if err := s.Repo.Push(cr.TargetBranch); err != nil {
-				return nil, fmt.Errorf("push %s: %w", cr.TargetBranch, err)
-			}
-		}
+	} else if err := s.Backend.MergeBranch(ctx, cr.TargetBranch, cr.Branch, msg); err != nil {
+		return nil, err
 	}
-	s.Repo.DeleteBranch(cr.Branch)
+	s.Backend.DeleteBranch(ctx, cr.Branch)
 
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		c.State = change.StatePublished
@@ -289,12 +268,12 @@ func (s *Service) Reject(ctx context.Context, id int) (*change.ChangeRequest, er
 	if cr.State != change.StateUnderReview && cr.State != change.StateApproved {
 		return nil, fmt.Errorf("change request %d is %s, cannot reject", id, cr.State)
 	}
-	if s.Provider != nil && cr.PRNumber > 0 {
-		if err := s.Provider.Close(ctx, cr.PRNumber); err != nil {
+	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
+		if err := s.Backend.Provider().Close(ctx, cr.PRNumber); err != nil {
 			return nil, err
 		}
 	}
-	s.Repo.DeleteBranch(cr.Branch)
+	s.Backend.DeleteBranch(ctx, cr.Branch)
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		c.State = change.StateRejected
 		return nil
@@ -308,16 +287,16 @@ func (s *Service) Refresh(ctx context.Context, id int) (*change.ChangeRequest, e
 	if err != nil {
 		return nil, err
 	}
-	if s.Provider == nil || cr.PRNumber == 0 || cr.State != change.StateUnderReview {
+	if s.Backend.Provider() == nil || cr.PRNumber == 0 || cr.State != change.StateUnderReview {
 		return cr, nil
 	}
-	pr, err := s.Provider.Get(ctx, cr.PRNumber)
+	pr, err := s.Backend.Provider().Get(ctx, cr.PRNumber)
 	if err != nil {
 		return cr, nil // provider unreachable: keep local state
 	}
 	switch {
 	case pr.Merged:
-		_ = s.Repo.Pull(cr.TargetBranch)
+		_, _ = s.Backend.Sync(ctx, cr.TargetBranch)
 		return s.Store.Update(id, func(c *change.ChangeRequest) error {
 			c.State = change.StatePublished
 			return nil

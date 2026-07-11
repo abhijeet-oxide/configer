@@ -5,50 +5,53 @@ import { api } from "../api";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
 
-// The far-left navigation rail. Grouped to echo the reference layout
-// (Configuration / Observability / Settings). Icons are bundled Phosphor
-// glyphs (offline-safe Iconify data imports).
+// The far-left navigation rail, kept to the few things people actually use
+// all day: Workspace (all configurations), Editor, Import, Approvals. Less
+// frequent tools live under More; admin-ish surfaces (Plugins) are tucked at
+// the bottom of More rather than polluting the main flow. Badges sit on the
+// icons so the collapsed rail stays clean and readable.
+
+function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
+  if (!count) return <span className="nav-ic">{icon}</span>;
+  return (
+    <Badge count={count} size="small" color={color} offset={[4, -2]}>
+      <span className="nav-ic">{icon}</span>
+    </Badge>
+  );
+}
+
 function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
   return [
-    { key: "workspace", icon: <Ic icon={icons.workspace} />, label: "Workspace" },
-    { key: "home", icon: <Ic icon={icons.home} />, label: "Home" },
-    { type: "group", label: "CONFIGURATION", children: [
-      { key: "config", icon: <Ic icon={icons.editor} />, label: "Config Editor" },
-      { key: "import", icon: <Ic icon={icons.import} />, label: "Import" },
-      { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
-      { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
-      {
-        key: "approvals",
-        icon: <Ic icon={icons.approvals} />,
-        label: (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            Approvals
-            <Badge count={approvalsCount} size="small" />
-          </span>
-        ),
-      },
-      { key: "history", icon: <Ic icon={icons.history} />, label: "History" },
-      { key: "schemas", icon: <Ic icon={icons.schemas} />, label: "Schemas" },
-      { key: "plugins", icon: <Ic icon={icons.plugins} />, label: "Plugins" },
-      { key: "deployments", icon: <Ic icon={icons.deployments} />, label: "Deployments" },
-    ]},
-    { type: "group", label: "OBSERVABILITY", children: [
-      {
-        key: "drift",
-        icon: <Ic icon={icons.drift} />,
-        label: (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-            Repository Changes
-            <Badge count={findingsCount} size="small" color="orange" />
-          </span>
-        ),
-      },
-      { key: "audit", icon: <Ic icon={icons.audit} />, label: "Audit Logs" },
-    ]},
-    { type: "group", label: "SETTINGS", children: [
-      { key: "users", icon: <Ic icon={icons.users} />, label: "Users & Teams" },
-      { key: "settings", icon: <Ic icon={icons.settings} />, label: "System Settings" },
-    ]},
+    { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Workspace" },
+    { key: "config", icon: <span className="nav-ic"><Ic icon={icons.editor} /></span>, label: "Editor" },
+    { key: "import", icon: <span className="nav-ic"><Ic icon={icons.import} /></span>, label: "Import" },
+    {
+      key: "approvals",
+      icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount),
+      label: "Approvals",
+    },
+    {
+      key: "more",
+      icon: iconWithBadge(<Ic icon={icons.settings} />, findingsCount, "orange"),
+      label: "More",
+      children: [
+        { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
+        { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
+        { key: "files", icon: <Ic icon={icons.files} />, label: "Rendered Files" },
+        {
+          key: "drift",
+          icon: <Ic icon={icons.drift} />,
+          label: (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Repository Changes
+              <Badge count={findingsCount} size="small" color="orange" />
+            </span>
+          ),
+        },
+        { type: "divider" },
+        { key: "plugins", icon: <Ic icon={icons.plugins} />, label: "Plugins (admin)" },
+      ],
+    },
   ];
 }
 
@@ -86,7 +89,6 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         items={items}
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}
       />
-      {!collapsed && <GitStatusChip />}
       {!collapsed && <DeploymentChip />}
     </div>
   );
@@ -108,42 +110,6 @@ function DeploymentChip() {
         }}
       />
       {m.name} {m.version} · {m.environment}
-    </div>
-  );
-}
-
-// GitStatusChip anchors the rail with the live connection state: a constant,
-// calm reminder that the source of truth is Git.
-function GitStatusChip() {
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 30_000 });
-  const st = statusQ.data;
-  if (!st) return null;
-  const ok = !st.syncError;
-  return (
-    <div
-      style={{
-        margin: 10,
-        padding: "6px 10px",
-        borderRadius: 8,
-        fontSize: 11,
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        background: ok ? "rgba(12,163,12,0.09)" : "rgba(250,178,25,0.12)",
-        border: `1px solid ${ok ? "rgba(12,163,12,0.25)" : "rgba(250,178,25,0.4)"}`,
-      }}
-    >
-      <span
-        style={{
-          width: 7, height: 7, borderRadius: 4, flexShrink: 0,
-          background: ok ? "#0ca30c" : "#fab219",
-        }}
-      />
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {st.remote ? "Git · " : "Git (local) · "}
-        <b>{st.branch}</b>
-        {st.remote ? (st.behind > 0 ? ` · ${st.behind} behind` : " · live") : ""}
-      </span>
     </div>
   );
 }

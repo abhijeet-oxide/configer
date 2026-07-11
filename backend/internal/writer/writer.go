@@ -113,8 +113,9 @@ func mutateScopes(root string, fn func(*model.ScopeOverlays)) error {
 }
 
 // ParamPatch is a partial update to a parameter's metadata. Nil fields are
-// left unchanged. Source file/path/format are deliberately NOT patchable:
-// they are the parameter's identity in the repository.
+// left unchanged. Source is patchable only as a whole (the attach/re-map
+// flow: completing a design-phase parameter, or re-pointing one after a file
+// rename); it is never edited as free text in the UI.
 type ParamPatch struct {
 	Type        *model.ParamType
 	Validation  *model.Validation
@@ -123,6 +124,8 @@ type ParamPatch struct {
 	Category    *string
 	Scope       *model.Scope
 	Secret      *bool
+	Default     *any
+	Source      *model.Source
 }
 
 // UpdateParameter applies a patch to one parameter in .configer/catalog.yaml
@@ -168,6 +171,15 @@ func UpdateParameter(root, paramID string, patch ParamPatch) (model.Parameter, e
 	}
 	if patch.Secret != nil {
 		cat.Parameters[idx].Secret = *patch.Secret
+	}
+	if patch.Default != nil {
+		cat.Parameters[idx].Default = *patch.Default
+	}
+	if patch.Source != nil {
+		if patch.Source.File == "" || patch.Source.Path == "" {
+			return model.Parameter{}, fmt.Errorf("attaching a parameter requires both the file and the path")
+		}
+		cat.Parameters[idx].Source = *patch.Source
 	}
 
 	if err := writeYAML(path, cat); err != nil {

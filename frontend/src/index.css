@@ -255,8 +255,79 @@ body {
   animation: thFlash 1.9s ease-out;
 }
 
-/* No phantom scrollbars: only show them when content actually overflows. */
-.param-grid .ant-table-body,
+/* Exactly ONE scrollbar for the grid body: the holder's native one. antd's
+   virtual table also paints its own overlay scrollbar on top (the ghosted
+   second bar that scrolls in tandem); hide it. Phantom bars stay away
+   because the holder only overflows when content really does. */
 .param-grid .ant-table-tbody-virtual-holder {
   overflow: auto !important;
+}
+.param-grid .ant-table-tbody-virtual-scrollbar {
+  display: none !important;
+}
+
+/* Sticky (fixed) columns must be fully opaque; otherwise scrolled content
+   shows through the Parameter column. The token-driven background variable
+   is set by the grid root and follows light/dark themes. */
+.param-grid .ant-table-cell-fix-left,
+.param-grid .ant-table-cell-fix-right {
+  background: var(--grid-bg, #fff) !important;
+}
+.param-grid .ant-table-tbody-virtual .ant-table-row:nth-child(even) .ant-table-cell-fix-left {
+  background: var(--grid-bg, #fff) !important;
+  background-image: linear-gradient(rgba(127, 137, 160, 0.045), rgba(127, 137, 160, 0.045)) !important;
+}
+
+/* Whole-row highlight for the selected parameter and whole-column highlight
+   for the selected instance. Declared after the fixed-column opacity rules
+   so the tint also shows on sticky cells (as a gradient over the opaque
+   background). */
+.param-grid .ant-table-row.row-selected .ant-table-cell {
+  background-image: linear-gradient(rgba(47, 107, 255, 0.10), rgba(47, 107, 255, 0.10)) !important;
+}
+.param-grid .ant-table-cell.col-selected {
+  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+}
+.param-grid th.col-selected-h {
+  box-shadow: inset 0 -3px 0 rgba(47, 107, 255, 0.75);
+  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+}
+
+/* ---------------------------------------------------- left trees (editor) */
+
+/* Tighter indentation so deep groups fit the narrow panel, with connecting
+   lines for structure. */
+.cat-tree .ant-tree-indent-unit {
+  width: 10px !important;
+}
+.cat-tree .ant-tree .ant-tree-treenode {
+  padding-inline-end: 0;
+}
+.cat-tree .ant-tree-node-content-wrapper {
+  padding-inline: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------- collapsed nav polish */
+
+.nav-rail.ant-menu-inline-collapsed .ant-menu-item,
+.nav-rail.ant-menu-inline-collapsed .ant-menu-submenu-title {
+  padding-inline: calc(50% - 9px) !important;
+}
+.nav-rail.ant-menu-inline-collapsed .ant-menu-title-content {
+  display: none;
+}
+.nav-rail .nav-ic {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: -0.2em;
+}
+.nav-rail .nav-ic svg {
+  display: block;
+}
+.nav-rail .ant-menu-item .ant-badge,
+.nav-rail .ant-menu-submenu-title .ant-badge {
+  color: inherit;
 }

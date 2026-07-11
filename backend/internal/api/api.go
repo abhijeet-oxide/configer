@@ -7,6 +7,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -30,6 +31,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/render"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
@@ -38,9 +40,11 @@ import (
 
 // Server holds the wired services behind the HTTP surface.
 type Server struct {
+	// RepoPath is the directory the read engine reads: a git working tree
+	// (local backend) or a materialized cache (remote backend).
 	RepoPath string
 	Registry *plugin.Registry
-	Git      *gitengine.Repo
+	Backend  repobackend.Backend
 	Store    *crstore.Store
 	Changes  *changeset.Service
 	// Version and Environment identify this deployment in the UI and API
@@ -50,6 +54,12 @@ type Server struct {
 	writeMu     sync.Mutex // serializes writes to the working tree + store
 	sync        syncState  // git-liveness status (see sync.go)
 	syncStop    chan struct{}
+}
+
+// branch returns the backend's default working branch (best effort).
+func (s *Server) branch() string {
+	b, _ := s.Backend.DefaultBranch(context.Background())
+	return b
 }
 
 func getenv(k, def string) string {
@@ -96,15 +106,22 @@ func New(repoPath string) (*Server, error) {
 		log.Printf("PR provider: none (local repository, no remote)")
 	}
 
+	backend := repobackend.NewLocal(repo, prov)
+	return NewWithBackend(reg, backend, store), nil
+}
+
+// NewWithBackend assembles a Server around a prepared backend and store (the
+// remote-mode entry point; New is the local convenience wrapper).
+func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *crstore.Store) *Server {
 	return &Server{
-		RepoPath:    repoPath,
+		RepoPath:    backend.RootDir(),
 		Registry:    reg,
-		Git:         repo,
+		Backend:     backend,
 		Store:       store,
-		Changes:     &changeset.Service{Repo: repo, Store: store, Registry: reg, Provider: prov},
+		Changes:     &changeset.Service{Backend: backend, Store: store, Registry: reg},
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
-	}, nil
+	}
 }
 
 // Routes returns the standalone HTTP handler (CORS included) for single-repo
@@ -213,7 +230,7 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 // meta identifies this deployment: shown in the UI footer and used for
 // professional, environment-aware messaging (never "localhost" jargon).
 func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
-	branch, _ := s.Git.CurrentBranch()
+	branch := s.branch()
 	project := ""
 	if p, err := s.load(); err == nil {
 		project = p.Catalog.Metadata.Project
@@ -238,14 +255,14 @@ func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
 		return
 	}
 	g := grid.Build(p)
-	branch, _ := s.Git.CurrentBranch()
+	branch := s.branch()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"project":    g.Project,
 		"instances":  g.Instances,
 		"categories": g.Categories,
 		"paramCount": len(g.Rows),
 		"branch":     branch,
-		"remote":     gitengine.Redact(s.Git.OriginURL()),
+		"remote":     s.Backend.Origin(),
 	})
 }
 
@@ -438,7 +455,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	branch, _ := s.Git.CurrentBranch()
+	branch := s.branch()
 	author := req.Author
 	if author == "" {
 		author = "anonymous"
@@ -511,7 +528,12 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Category    *string           `json:"category,omitempty"`
 		Scope       *model.Scope      `json:"scope,omitempty"`
 		Secret      *bool             `json:"secret,omitempty"`
-		Author      string            `json:"author,omitempty"`
+		Default     *any              `json:"default,omitempty"`
+		// Source attaches a design-phase parameter to a real file/path (or
+		// re-maps an existing one). Always set through the interactive
+		// picker, never free text.
+		Source *model.Source `json:"source,omitempty"`
+		Author string        `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -521,6 +543,15 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		if _, found := validate.PresetByID(req.Validation.Preset); !found {
 			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "unknown preset rule"})
 			return
+		}
+	}
+	if req.Source != nil {
+		if req.Source.File == "" || req.Source.Path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attaching requires both the file and the path"})
+			return
+		}
+		if req.Source.Format == "" {
+			req.Source.Format = formatForFile(req.Source.File)
 		}
 	}
 
@@ -534,26 +565,20 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Category:    req.Category,
 		Scope:       req.Scope,
 		Secret:      req.Secret,
+		Default:     req.Default,
+		Source:      req.Source,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	author := req.Author
-	if author == "" {
-		author = "anonymous"
+	title := "Update parameter " + param.Name
+	if req.Source != nil {
+		title = "Attach parameter " + param.Name + " to " + param.Source.File
 	}
-	msg := "Update parameter " + param.Name + "\n\nChanged-by: " + author + "\n"
-	if _, err := s.Git.CommitAll(s.RepoPath, msg); err != nil && !strings.Contains(err.Error(), "nothing to commit") {
-		writeErr(w, err)
-		return
-	} else if err == nil && s.Git.HasRemote() {
-		branch, _ := s.Git.CurrentBranch()
-		if perr := s.Git.Push(branch); perr != nil {
-			log.Printf("warn: push rules update: %v", perr)
-		}
-	}
-	writeJSON(w, http.StatusOK, param)
+	// commitCatalogChange re-renders every instance's generated files, which
+	// matters here: attaching a parameter makes its values render for real.
+	s.commitCatalogChange(w, title, req.Author, param)
 }
 
 // addParameter creates a new catalog parameter from the GUI (e.g. an optional
@@ -569,8 +594,15 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	pm := req.Param
-	if pm.Name == "" || pm.Source.File == "" || pm.Source.Path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name, source.file and source.path are required"})
+	if pm.Name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		return
+	}
+	// A parameter may be created in the design phase, before its
+	// configuration file exists: source stays empty and is attached later.
+	// But a half-specified source is always a mistake.
+	if (pm.Source.File == "") != (pm.Source.Path == "") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source.file and source.path go together; leave both empty for a design-phase parameter"})
 		return
 	}
 	if pm.ID == "" {
@@ -585,7 +617,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	if pm.Category == "" {
 		pm.Category = "Uncategorized"
 	}
-	if pm.Source.Format == "" {
+	if pm.Source.File != "" && pm.Source.Format == "" {
 		pm.Source.Format = formatForFile(pm.Source.File)
 	}
 
@@ -665,15 +697,13 @@ func (s *Server) commitCatalogChange(w http.ResponseWriter, title, author string
 			}
 		}
 	}
+	// Catalog metadata is committed directly onto the working branch, with
+	// attribution (a working-tree commit locally, a Git-data-API partial
+	// commit remotely).
 	msg := title + "\n\nChanged-by: " + author + "\n"
-	if _, err := s.Git.CommitAll(s.RepoPath, msg); err != nil && !strings.Contains(err.Error(), "nothing to commit") {
+	if _, _, err := s.Backend.CommitWorking(context.Background(), msg); err != nil {
 		writeErr(w, err)
 		return
-	} else if err == nil && s.Git.HasRemote() {
-		branch, _ := s.Git.CurrentBranch()
-		if perr := s.Git.Push(branch); perr != nil {
-			log.Printf("warn: push catalog change: %v", perr)
-		}
 	}
 	writeJSON(w, http.StatusOK, response)
 }

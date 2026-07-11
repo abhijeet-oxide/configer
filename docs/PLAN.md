@@ -134,9 +134,12 @@ branch `claude/config-management-system-nvrgou`. Backend `go build/vet/test` and
    by environment, open CRs, sync health; connect modal; disconnect), the TopBar breadcrumb is
    a repo switcher, and the import wizard gained a "Connect repository" step 0 (pick a
    connected repo or connect a new one, then scan). Verified E2E in the browser with three
-   repos (8 checks) plus the full 14-check feedback regression on the hub. NEXT here: R2, the
-   `RepoBackend` interface + GitHub RemoteBackend (reads via contents/trees APIs, writes via
-   the Git data API, no server-side clone), then cherry-pick / promote / upgrade-to-v2 (R3).
+   repos (8 checks) plus the full 14-check feedback regression on the hub. R2 is now ALSO shipped:
+   the `repobackend.Backend` seam (`internal/repobackend`) with LocalBackend + RemoteBackend, the
+   `internal/remoterepo` Git-data-API client (materialize / refresh / partial commit / merge with
+   no clone), `changeset.Service` and `api.Server` rewired through the seam, and a `mode:"remote"`
+   connect option in the UI. See §21 R2 for the detail. NEXT here: R3 (cherry-pick / promote /
+   upgrade-to-v2).
 2. **Design-phase parameters + interactive attach + details edit mode + rendered-files
    explorer** (§22): being implemented immediately after R1, alongside R2.
 3. **Upstream data sources** (§20): vendored snapshots, bindings, sync-as-change-request
@@ -774,8 +777,17 @@ changes from configuration version 1 onto a newly delivered version 2.
   (server manages N clones instead of 1; `CONFIGER_REPO` becomes a seed). Import wizard gains
   the "Connect repository" step. Dashboard portfolio level (WorkspaceView). See §0 item 1 for
   the implementation map.
-- **R2**: `RepoBackend` interface + RemoteBackend for GitHub; clones become an optional cache,
-  not a requirement. Concrete design (refined after R1):
+- **R2 (SHIPPED)**: `repobackend.Backend` seam with `LocalBackend` (wraps the git working tree,
+  behavior-identical) and `RemoteBackend` (the GitHub Git data API, no clone). `changeset.Service`
+  and `api.Server` (catalog commits, reconcile, sync) both run through the seam. `internal/remoterepo`
+  is the Git-data-API client: `Materialize` (partial checkout via trees+blobs into a plain cache),
+  `Refresh` (compare-driven partial update), `CommitPaths` (blobs -> tree -> commit -> ref: a
+  partial commit with no clone), `Merge`, `Compare`. `RemoteBackend` computes the changed/deleted
+  paths for each commit by content-hash diff against a materialized baseline. Connect gains
+  `mode:"remote"` (no clone, token persisted 0600 in the registry, redacted everywhere; CR state
+  kept outside the cache). Verified by a stub-GitHub-API test suite (materialize/CR-commit/merge/
+  refresh/working-commit) plus the full local browser regressions on the refactored server. NEXT:
+  R3. Original design notes:
   - `internal/remoterepo`: a GitHub Git-data-API client speaking refs, recursive trees, blobs,
     create-blob/tree/commit, update-ref, the merges API and compare. No `git` binary, no
     `.git` directory.

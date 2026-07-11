@@ -7,6 +7,7 @@ import {
   Form,
   Input,
   Modal,
+  Radio,
   Space,
   Statistic,
   Tag,
@@ -175,6 +176,11 @@ function RepoCard({
           <>
             <Space size={4} wrap style={{ marginTop: 10 }}>
               {active && <Tag color="blue">active</Tag>}
+              {r.noClone && (
+                <Tooltip title="Managed through the GitHub API with no clone on the server">
+                  <Tag color="geekblue">no clone</Tag>
+                </Tooltip>
+              )}
               {r.branch && (
                 <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
                   {r.branch}
@@ -238,11 +244,13 @@ export function ConnectForm({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [form] = Form.useForm<{ url: string; name?: string; branch?: string; token?: string }>();
+  const [form] = Form.useForm<{ url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }>();
   const connect = useMutation({
-    mutationFn: (v: { url: string; name?: string; branch?: string; token?: string }) => api.connectRepo(v),
+    mutationFn: (v: { url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }) =>
+      api.connectRepo({ ...v, mode: v.mode === "remote" ? "remote" : undefined }),
     onSuccess: (r) => {
-      message.success(`Connected "${r.name}"${r.local ? "" : " (cloned on the server)"}.`);
+      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API (no clone)" : "cloned on the server";
+      message.success(`Connected "${r.name}" (${how}).`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
       form.resetFields();
       onDone(r);
@@ -250,7 +258,13 @@ export function ConnectForm({
     onError: (e: Error) => message.error(e.message, 6),
   });
   return (
-    <Form form={form} layout="vertical" onFinish={(v) => connect.mutate(v)} requiredMark={false}>
+    <Form
+      form={form}
+      layout="vertical"
+      onFinish={(v) => connect.mutate(v)}
+      requiredMark={false}
+      initialValues={{ mode: "clone" }}
+    >
       <Form.Item
         name="url"
         label="Repository"
@@ -270,9 +284,23 @@ export function ConnectForm({
       <Form.Item
         name="token"
         label="Access token (private repositories)"
-        extra="Used by the server to clone, fetch and push. It never leaves the server and is never shown again."
+        extra="Used by the server for Git operations. It never leaves the server and is never shown again."
       >
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
+      </Form.Item>
+      <Form.Item
+        name="mode"
+        label="How should the server manage it?"
+        extra={
+          compact
+            ? undefined
+            : "Clone keeps a working copy on the server. Remote uses the GitHub API for partial checkouts and commits with nothing cloned (a GitHub https URL and token are required)."
+        }
+      >
+        <Radio.Group>
+          <Radio.Button value="clone">Clone on server</Radio.Button>
+          <Radio.Button value="remote">Remote via GitHub API (no clone)</Radio.Button>
+        </Radio.Group>
       </Form.Item>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>

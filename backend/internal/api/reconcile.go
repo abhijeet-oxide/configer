@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
@@ -33,8 +33,8 @@ type Finding struct {
 const ackKey = "reconcileAckSha"
 
 // findings computes repository events between the acknowledged SHA and HEAD.
-func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
-	head, err := s.Git.HeadSHA("HEAD")
+func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
+	head, err := s.Backend.HeadSHA(r.Context(), "HEAD")
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -45,10 +45,10 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 		_ = s.Store.SetMeta(ackKey, head)
 		ack = head
 	}
-	var changes []gitengine.FileChange
+	var changes []repobackend.FileChange
 	if ack != head {
 		var derr error
-		changes, derr = s.Git.DiffNameStatus(ack, head)
+		changes, derr = s.Backend.Diff(r.Context(), ack, head)
 		if derr != nil {
 			// The acknowledged commit may have been rewritten away
 			// (force-push): re-baseline rather than erroring forever.
@@ -175,8 +175,8 @@ func (s *Server) findings(w http.ResponseWriter, _ *http.Request) {
 }
 
 // ackFindings marks everything up to HEAD as seen.
-func (s *Server) ackFindings(w http.ResponseWriter, _ *http.Request) {
-	head, err := s.Git.HeadSHA("HEAD")
+func (s *Server) ackFindings(w http.ResponseWriter, r *http.Request) {
+	head, err := s.Backend.HeadSHA(r.Context(), "HEAD")
 	if err != nil {
 		writeErr(w, err)
 		return

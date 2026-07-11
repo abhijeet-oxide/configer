@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -11,7 +12,14 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
+	"github.com/abhijeet-oxide/configer/backend/internal/parsers"
+	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
+	"github.com/abhijeet-oxide/configer/backend/internal/provider"
+	"github.com/abhijeet-oxide/configer/backend/internal/remoterepo"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
 
@@ -19,9 +27,9 @@ import (
 // mounted under /api/repos/{id}/..., the workspace endpoints manage the
 // registry (connect, list, disconnect), and the unscoped /api/... routes keep
 // working against the default repository so single-repo deployments and older
-// clients see no change. This is phase R1 of the remote-first architecture:
-// the server manages N working trees with the existing local git engine;
-// the RemoteBackend (GitHub data API, no clone) arrives in R2.
+// clients see no change. Each repository is served by a repobackend.Backend:
+// LocalBackend (a git working tree) or, when connected in remote mode,
+// RemoteBackend (the GitHub Git data API with no clone, phase R2).
 type Hub struct {
 	Version     string
 	Environment string
@@ -82,19 +90,27 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 func (h *Hub) Count() int { return len(h.registry.List()) }
 
 // open builds (or rebuilds) the per-repo server and starts its sync loop.
-// A cloned repository whose working tree vanished (ephemeral disk) is
-// re-cloned from its origin.
+// Remote repositories are materialized through the API (no clone); cloned
+// repositories whose working tree vanished (ephemeral disk) are re-cloned.
 func (h *Hub) open(e workspace.Entry) error {
-	if _, err := os.Stat(e.Path); os.IsNotExist(err) && !e.Local {
-		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
-		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
-		if _, cerr := gitengine.Clone(e.Origin, e.Path, e.Branch, "", gitName, gitEmail); cerr != nil {
-			return cerr
+	var s *Server
+	if e.Remote {
+		var err error
+		if s, err = h.openRemote(e); err != nil {
+			return err
 		}
-	}
-	s, err := New(e.Path)
-	if err != nil {
-		return err
+	} else {
+		if _, err := os.Stat(e.Path); os.IsNotExist(err) && !e.Local {
+			gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
+			gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
+			if _, cerr := gitengine.Clone(e.Origin, e.Path, e.Branch, "", gitName, gitEmail); cerr != nil {
+				return cerr
+			}
+		}
+		var err error
+		if s, err = New(e.Path); err != nil {
+			return err
+		}
 	}
 	s.StartSyncLoop(h.interval)
 	h.mu.Lock()
@@ -103,6 +119,34 @@ func (h *Hub) open(e workspace.Entry) error {
 	delete(h.errs, e.ID)
 	h.mu.Unlock()
 	return nil
+}
+
+// openRemote wires a no-clone server: a RemoteBackend materializes the branch
+// into a cache directory the read engine reads, and the CR store lives beside
+// it (there is no .git to hold state).
+func (h *Hub) openRemote(e workspace.Entry) (*Server, error) {
+	reg := plugin.NewRegistry()
+	parsers.Register(reg)
+	transposers.Register(reg)
+
+	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
+	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
+	client, err := remoterepo.New(e.Origin, e.Token, gitName, gitEmail)
+	if err != nil {
+		return nil, err
+	}
+	prov := provider.ForOrigin(e.Origin, e.Token)
+	backend, err := repobackend.NewRemote(context.Background(), client, e.Branch, e.Path, prov)
+	if err != nil {
+		return nil, err
+	}
+	// State lives OUTSIDE the materialized cache so it is never swept into a
+	// commit by the tree diff (the cache is the repo tree, byte for byte).
+	store, err := crstore.New(filepath.Join(h.dataDir, "state", e.ID, "state.json"))
+	if err != nil {
+		return nil, err
+	}
+	return NewWithBackend(reg, backend, store), nil
 }
 
 func (h *Hub) server(id string) (*Server, http.Handler) {
@@ -178,6 +222,7 @@ type RepoSummary struct {
 	Name    string `json:"name"`
 	Origin  string `json:"origin,omitempty"`
 	Local   bool   `json:"local,omitempty"`
+	NoClone bool   `json:"noClone,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Project string `json:"project,omitempty"`
 	Params  int    `json:"params"`
@@ -198,7 +243,7 @@ type RepoSummary struct {
 func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 	sum := RepoSummary{
 		ID: e.ID, Name: e.Name, Origin: gitengine.Redact(e.Origin),
-		Local: e.Local, AddedAt: e.AddedAt,
+		Local: e.Local, NoClone: e.Remote, AddedAt: e.AddedAt,
 	}
 	s, _ := h.server(e.ID)
 	if s == nil {
@@ -210,7 +255,7 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 		}
 		return sum
 	}
-	sum.Branch, _ = s.Git.CurrentBranch()
+	sum.Branch = s.branch()
 	if p, err := s.load(); err == nil {
 		sum.Project = p.Catalog.Metadata.Project
 		sum.Params = len(p.Catalog.Parameters)
@@ -274,6 +319,9 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		Name   string `json:"name"`
 		Branch string `json:"branch"`
 		Token  string `json:"token"`
+		// Mode "remote" manages the repository through the Git data API with
+		// NO clone (materialized cache only); default clones as before.
+		Mode string `json:"mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.URL) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url (git URL or local path) is required"})
@@ -300,11 +348,18 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	id := h.registry.UniqueID(workspace.Slug(name))
 
 	var e workspace.Entry
-	if st, err := os.Stat(req.URL); err == nil && st.IsDir() {
+	switch {
+	case func() bool { st, err := os.Stat(req.URL); return err == nil && st.IsDir() }():
 		abs, _ := filepath.Abs(req.URL)
 		e = workspace.Entry{ID: id, Name: name, Origin: abs, Path: abs,
 			Branch: req.Branch, Local: true, AddedAt: time.Now().UTC()}
-	} else {
+	case req.Mode == "remote":
+		// No clone: manage entirely through the Git data API. Path is the
+		// materialized read cache the engine reads.
+		e = workspace.Entry{ID: id, Name: name, Origin: req.URL,
+			Path: filepath.Join(h.dataDir, "repos", id), Branch: req.Branch,
+			Remote: true, Token: req.Token, AddedAt: time.Now().UTC()}
+	default:
 		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 		dir := filepath.Join(h.dataDir, "repos", id)

@@ -1,13 +1,11 @@
 package api
 
 import (
-	"log"
+	"context"
 	"net/http"
 	"strconv"
 	"sync"
 	"time"
-
-	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 )
 
 // RepoStatus is the git-liveness snapshot shown in the UI: Configer's tree vs
@@ -34,11 +32,12 @@ type syncState struct {
 	status RepoStatus
 }
 
-// StartSyncLoop begins polling origin every interval, fast-forwarding the
-// working tree when it is strictly behind (external commits land in the UI
-// without any user action). No-op when the repo has no remote.
+// StartSyncLoop begins polling the remote every interval, fast-forwarding the
+// working tree / refreshing the read cache when external commits land, so they
+// appear in the UI without any user action. No-op when the backend cannot
+// publish (a pure-local repo with no remote).
 func (s *Server) StartSyncLoop(interval time.Duration) {
-	if !s.Git.HasRemote() || interval <= 0 {
+	if !s.Backend.CanPublish() || interval <= 0 {
 		return
 	}
 	s.sync.mu.Lock()
@@ -81,39 +80,22 @@ func (s *Server) Status() RepoStatus {
 	return st
 }
 
-// syncOnce fetches origin and fast-forwards when safely possible.
+// syncOnce delegates to the backend: locally it fetches origin and
+// fast-forwards; remotely it refreshes the materialized cache via the compare
+// API. Either way external commits become visible without user action.
 func (s *Server) syncOnce() RepoStatus {
-	st := RepoStatus{Remote: gitengine.Redact(s.Git.OriginURL())}
-	branch, err := s.Git.CurrentBranch()
-	if err == nil {
-		st.Branch = branch
-	}
-	if s.Changes != nil && s.Changes.Provider != nil {
-		st.Provider = s.Changes.Provider.Name()
+	branch := s.branch()
+	st := RepoStatus{Branch: branch, Remote: s.Backend.Origin()}
+	if prov := s.Backend.Provider(); prov != nil {
+		st.Provider = prov.Name()
 	}
 
-	if s.Git.HasRemote() {
-		if err := s.Git.Fetch(); err != nil {
-			st.SyncError = err.Error()
-		} else if s.Git.UpstreamGone(branch) {
-			st.UpstreamGone = true
-		} else if ahead, behind, err := s.Git.AheadBehind(branch); err == nil {
-			st.Ahead, st.Behind = ahead, behind
-			if behind > 0 && ahead == 0 {
-				// External commits only: fast-forward so the grid goes live.
-				s.writeMu.Lock()
-				if err := s.Git.Pull(branch); err != nil {
-					st.SyncError = err.Error()
-				} else {
-					st.Behind = 0
-					log.Printf("synced %d external commit(s) from origin/%s", behind, branch)
-				}
-				s.writeMu.Unlock()
-			}
-		} else {
-			st.SyncError = err.Error()
-		}
-	}
+	s.writeMu.Lock()
+	res, _ := s.Backend.Sync(context.Background(), branch)
+	s.writeMu.Unlock()
+	st.Ahead, st.Behind = res.Ahead, res.Behind
+	st.UpstreamGone = res.UpstreamGone
+	st.SyncError = res.SyncError
 	st.LastSync = time.Now().UTC()
 
 	s.sync.mu.Lock()

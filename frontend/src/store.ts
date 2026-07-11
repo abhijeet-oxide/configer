@@ -4,8 +4,19 @@ import type { BrandKey, FontScale, Mode } from "./theme";
 
 // The active repository survives reloads; the API client is kept in sync so
 // every repo-scoped call goes to the selected configuration.
-const initialRepo = localStorage.getItem("configer.repoId");
+//
+// Views are deep-linked in the URL query string so any state is shareable:
+//   ?app=<repoId>&view=<section>&param=<id>&inst=<name>&files=1
+// The URL takes precedence over the remembered repo on first load, and the
+// store keeps the URL in sync as the user navigates (back/forward work too).
+const url = new URLSearchParams(window.location.search);
+const urlRepo = url.get("app");
+const initialRepo = urlRepo || localStorage.getItem("configer.repoId");
 setApiRepo(initialRepo);
+const initialSection = url.get("view") || (urlRepo ? "overview" : "workspace");
+const initialParam = url.get("param");
+const initialInstance = url.get("inst");
+const initialConfigView: "table" | "exported" = url.get("files") === "1" ? "exported" : "table";
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -95,10 +106,10 @@ export const useUI = create<UIState>((set) => ({
   brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   repoId: initialRepo,
-  section: "workspace",
+  section: initialSection,
   categoryKey: null,
-  selectedParamId: null,
-  selectedInstance: null,
+  selectedParamId: initialParam,
+  selectedInstance: initialInstance,
   compareLeft: null,
   compareRight: null,
   search: "",
@@ -106,7 +117,7 @@ export const useUI = create<UIState>((set) => ({
   prefs: loadPrefs(),
   navCollapsed: false,
   editorFocus: false,
-  configView: "table",
+  configView: initialConfigView,
   importFocus: null,
   jump: null,
   setMode: (mode) => {
@@ -157,3 +168,44 @@ export const useUI = create<UIState>((set) => ({
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
 }));
+
+// ------------------------------------------------------------------ URL sync
+
+// Serialize the shareable slice of state into a query string. Only the fields
+// that identify "which view am I looking at" are encoded; transient UI (search
+// text, filters, focus) is intentionally left out so links stay clean.
+function queryFor(s: UIState): string {
+  const q = new URLSearchParams();
+  if (s.repoId) q.set("app", s.repoId);
+  if (s.section && s.section !== "workspace") q.set("view", s.section);
+  if (s.selectedParamId) q.set("param", s.selectedParamId);
+  if (s.selectedInstance) q.set("inst", s.selectedInstance);
+  if (s.configView === "exported") q.set("files", "1");
+  return q.toString();
+}
+
+let lastQuery = queryFor(useUI.getState());
+useUI.subscribe((s) => {
+  const q = queryFor(s);
+  if (q === lastQuery) return;
+  lastQuery = q;
+  const next = q ? `${window.location.pathname}?${q}` : window.location.pathname;
+  window.history.replaceState(null, "", next);
+});
+
+// Browser back/forward: re-read the URL and apply it to the store. Switching
+// repositories still routes through setApiRepo so repo-scoped calls follow.
+window.addEventListener("popstate", () => {
+  const p = new URLSearchParams(window.location.search);
+  const repoId = p.get("app") || null;
+  const section = p.get("view") || (repoId ? "overview" : "workspace");
+  const selectedParamId = p.get("param");
+  const selectedInstance = p.get("inst");
+  const configView: "table" | "exported" = p.get("files") === "1" ? "exported" : "table";
+  lastQuery = p.toString();
+  if (repoId !== useUI.getState().repoId) {
+    setApiRepo(repoId);
+    if (repoId) localStorage.setItem("configer.repoId", repoId);
+  }
+  useUI.setState({ repoId, section, selectedParamId, selectedInstance, configView });
+});

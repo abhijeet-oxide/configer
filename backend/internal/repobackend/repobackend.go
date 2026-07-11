@@ -76,6 +76,13 @@ type Backend interface {
 	// Diff lists file-level changes from..to (reconcile).
 	Diff(ctx context.Context, from, to string) ([]FileChange, error)
 
+	// MaterializeRef checks a ref (branch/tag/commit) out into dir (which must
+	// not exist yet) for read-only project loading (compare / render at a ref).
+	// The returned cleanup removes any backend-side materialization state.
+	MaterializeRef(ctx context.Context, ref, dir string) (cleanup func(), err error)
+	// ListRefs lists selectable branches and tags.
+	ListRefs(ctx context.Context) (branches, tags []string, err error)
+
 	// Sync brings the read cache / working tree up to date with the remote
 	// and reports the resulting status. No-op-safe when there is no remote.
 	Sync(ctx context.Context, branch string) (SyncStatus, error)

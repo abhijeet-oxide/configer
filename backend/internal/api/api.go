@@ -147,6 +147,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/parameters/{id}", s.updateParameter)
 	mux.HandleFunc("POST /api/parameters", s.addParameter)
 	mux.HandleFunc("DELETE /api/parameters/{id}", s.deleteParameter)
+	mux.HandleFunc("POST /api/instances", s.addInstance)
+	mux.HandleFunc("PUT /api/instances/{name}", s.updateInstance)
+	mux.HandleFunc("DELETE /api/instances/{name}", s.deleteInstance)
 	mux.HandleFunc("GET /api/changes", s.listChanges)
 	mux.HandleFunc("GET /api/changes/draft", s.currentDraft)
 	mux.HandleFunc("GET /api/changes/{id}", s.getChange)
@@ -154,6 +157,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/merge", s.mergeChange)
 	mux.HandleFunc("POST /api/changes/{id}/reject", s.rejectChange)
 	mux.HandleFunc("GET /api/repo/status", s.repoStatus)
+	mux.HandleFunc("GET /api/repo/refs", s.repoRefs)
 	mux.HandleFunc("POST /api/repo/sync", s.repoSync)
 	mux.HandleFunc("GET /api/meta", s.meta)
 	mux.HandleFunc("GET /api/repo/findings", s.findings)
@@ -212,6 +216,34 @@ func (s *Server) loadWithDraft() (*project.Project, *change.ChangeRequest, error
 		p.Overlays[it.Instance] = ov
 	}
 	return p, draft, nil
+}
+
+// projectAtRef loads the project at a git ref for read-only compare/render.
+// An empty ref is the current working tree; a named ref is materialized
+// read-only into a temp dir via the backend and torn down by the returned func.
+func (s *Server) projectAtRef(ref string) (*project.Project, func(), error) {
+	noop := func() {}
+	if ref == "" {
+		p, err := s.load()
+		return p, noop, err
+	}
+	base, err := os.MkdirTemp("", "configer-ref-")
+	if err != nil {
+		return nil, noop, err
+	}
+	dir := filepath.Join(base, "tree") // must not pre-exist for a detached worktree
+	cleanup, err := s.Backend.MaterializeRef(context.Background(), ref, dir)
+	if err != nil {
+		_ = os.RemoveAll(base)
+		return nil, noop, err
+	}
+	p, err := project.Load(dir)
+	if err != nil {
+		cleanup()
+		_ = os.RemoveAll(base)
+		return nil, noop, err
+	}
+	return p, func() { cleanup(); _ = os.RemoveAll(base) }, nil
 }
 
 func dropExcl(ov *model.Overlay, paramID string) {
@@ -328,12 +360,40 @@ func (s *Server) parameter(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
-	p, _, err := s.loadWithDraft()
-	if err != nil {
-		writeErr(w, err)
+	q := r.URL.Query()
+	left, right := q.Get("left"), q.Get("right")
+	leftRef, rightRef := q.Get("leftRef"), q.Get("rightRef")
+
+	// No refs: compare within the current project (includes pending edits).
+	if leftRef == "" && rightRef == "" {
+		p, _, err := s.loadWithDraft()
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		res, err := diff.CompareInstances(p, left, right)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, res)
 		return
 	}
-	res, err := diff.CompareInstances(p, r.URL.Query().Get("left"), r.URL.Query().Get("right"))
+
+	// Cross-ref: materialize each side's ref and compare across the two.
+	pL, cleanL, err := s.projectAtRef(leftRef)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "left ref: " + err.Error()})
+		return
+	}
+	defer cleanL()
+	pR, cleanR, err := s.projectAtRef(rightRef)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "right ref: " + err.Error()})
+		return
+	}
+	defer cleanR()
+	res, err := diff.CompareAcross(pL, left, pR, right)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -341,13 +401,34 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// repoRefs lists the branches and tags available to compare/render against.
+func (s *Server) repoRefs(w http.ResponseWriter, _ *http.Request) {
+	branches, tags, err := s.Backend.ListRefs(context.Background())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	current, _ := s.Backend.DefaultBranch(context.Background())
+	writeJSON(w, http.StatusOK, map[string]any{"current": current, "branches": branches, "tags": tags})
+}
+
 func (s *Server) render(w http.ResponseWriter, r *http.Request) {
-	// ?draft=false renders the committed state (the baseline for the live
-	// diff); the default applies the current draft so the preview shows exactly
-	// what a publish would write, including unpublished edits.
+	// ?ref renders a specific git ref (branch/tag/commit). Otherwise ?draft=false
+	// renders the committed state (the baseline for the live diff) and the default
+	// applies the current draft, so the preview shows exactly what a publish would
+	// write, including unpublished edits.
 	var p *project.Project
 	var err error
-	if r.URL.Query().Get("draft") == "false" {
+	q := r.URL.Query()
+	if ref := q.Get("ref"); ref != "" {
+		var cleanup func()
+		p, cleanup, err = s.projectAtRef(ref)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		defer cleanup()
+	} else if q.Get("draft") == "false" {
 		p, err = s.load()
 	} else {
 		p, _, err = s.loadWithDraft()
@@ -684,6 +765,118 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	s.commitCatalogChange(w, "Retire parameter "+param.Name, req.Author, map[string]any{"ok": true, "retired": id})
+}
+
+// --- instance registry endpoints ---
+// Instances are structural metadata (like the catalog): add/edit/archive/delete
+// commit directly onto the working branch with attribution, so a new instance
+// appears as a grid column immediately.
+
+type instanceReq struct {
+	Name            string             `json:"name"`
+	Environment     *string            `json:"environment,omitempty"`
+	Region          *string            `json:"region,omitempty"`
+	Zone            *string            `json:"zone,omitempty"`
+	Site            *string            `json:"site,omitempty"`
+	SoftwareVersion *string            `json:"softwareVersion,omitempty"`
+	Status          *string            `json:"status,omitempty"`
+	Labels          *map[string]string `json:"labels,omitempty"`
+	CloneFrom       string             `json:"cloneFrom,omitempty"`
+	Author          string             `json:"author,omitempty"`
+}
+
+func (r instanceReq) patch() writer.InstancePatch {
+	return writer.InstancePatch{
+		Environment: r.Environment, Region: r.Region, Zone: r.Zone, Site: r.Site,
+		SoftwareVersion: r.SoftwareVersion, Status: r.Status, Labels: r.Labels,
+	}
+}
+
+func str(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
+// addInstance creates a new deployment target (or clones an existing one).
+func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
+	var req instanceReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	name := slugify(req.Name)
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid instance name is required"})
+		return
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	if req.CloneFrom != "" {
+		inst, err := writer.CloneInstance(s.RepoPath, req.CloneFrom, name, req.patch())
+		if err != nil {
+			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+			return
+		}
+		s.commitCatalogChange(w, "Add instance "+name+" (clone of "+req.CloneFrom+")", req.Author, inst)
+		return
+	}
+
+	inst := model.Instance{
+		Name: name, Environment: str(req.Environment), Region: str(req.Region),
+		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
+		Status: str(req.Status), Labels: derefLabels(req.Labels),
+	}
+	if err := writer.AddInstance(s.RepoPath, inst); err != nil {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		return
+	}
+	s.commitCatalogChange(w, "Add instance "+name, req.Author, inst)
+}
+
+// updateInstance patches an instance's metadata or status (archive = status
+// "archived").
+func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
+	var req instanceReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	inst, err := writer.UpdateInstance(s.RepoPath, r.PathValue("name"), req.patch())
+	if err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	s.commitCatalogChange(w, "Update instance "+inst.Name, req.Author, inst)
+}
+
+// deleteInstance removes an instance, its overlay, and its generated files.
+func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Author string `json:"author"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	name := r.PathValue("name")
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if err := writer.DeleteInstance(s.RepoPath, name); err != nil {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		return
+	}
+	s.commitCatalogChange(w, "Remove instance "+name, req.Author, map[string]any{"ok": true, "removed": name})
+}
+
+func derefLabels(p *map[string]string) map[string]string {
+	if p == nil {
+		return nil
+	}
+	return *p
 }
 
 // commitCatalogChange regenerates every instance's generated/ files, commits

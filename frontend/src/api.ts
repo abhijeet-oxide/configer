@@ -22,6 +22,21 @@ export interface Instance {
   status?: string;
 }
 
+// Fields accepted when creating or patching an instance. cloneFrom (on add)
+// copies an existing instance's metadata and overlay values.
+export interface InstanceInput {
+  name?: string;
+  environment?: string;
+  region?: string;
+  zone?: string;
+  site?: string;
+  softwareVersion?: string;
+  status?: string;
+  labels?: Record<string, string>;
+  cloneFrom?: string;
+  author?: string;
+}
+
 export interface Validation {
   required?: boolean;
   pattern?: string;
@@ -342,8 +357,13 @@ export const api = {
   // --- active-repository scoped ---
   meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
   grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
-  compare: (left: string, right: string) =>
-    get<DiffResult>(rp(`/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`)),
+  compare: (left: string, right: string, opts?: { leftRef?: string; rightRef?: string }) => {
+    const qs = new URLSearchParams({ left, right });
+    if (opts?.leftRef) qs.set("leftRef", opts.leftRef);
+    if (opts?.rightRef) qs.set("rightRef", opts.rightRef);
+    return get<DiffResult>(rp(`/compare?${qs.toString()}`));
+  },
+  refs: () => get<{ current: string; branches: string[] | null; tags: string[] | null }>(rp("/repo/refs")),
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
@@ -352,15 +372,27 @@ export const api = {
   ackFindings: () => send<{ ok: boolean }>("POST", rp("/repo/findings/ack")),
   retireFile: (file: string, author?: string) =>
     send<{ ok: boolean; retired: string[] }>("POST", rp("/parameters/retire-file"), { file, author }),
-  render: (instance: string, opts?: { draft?: boolean }) =>
-    get<{ instance: string; files: { path: string; content: string }[] }>(
-      rp(`/render/${encodeURIComponent(instance)}${opts?.draft === false ? "?draft=false" : ""}`),
-    ),
+  render: (instance: string, opts?: { draft?: boolean; ref?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.ref) qs.set("ref", opts.ref);
+    else if (opts?.draft === false) qs.set("draft", "false");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ instance: string; files: { path: string; content: string }[] }>(
+      rp(`/render/${encodeURIComponent(instance)}${suffix}`),
+    );
+  },
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
   addParameter: (param: Partial<Parameter>, author?: string) =>
     send<Parameter>("POST", rp("/parameters"), { param, author }),
+  // --- instances (registry lifecycle) ---
+  instanceRegistry: () => get<{ instances: Instance[] | null }>(rp("/instances")),
+  addInstance: (p: InstanceInput) => send<Instance>("POST", rp("/instances"), p),
+  updateInstance: (name: string, patch: InstanceInput) =>
+    put<Instance>(rp(`/instances/${encodeURIComponent(name)}`), patch),
+  deleteInstance: (name: string, author?: string) =>
+    send<{ ok: boolean; removed: string }>("DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
   deleteParameter: (id: string, author?: string) =>
     send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
   revertValue: (paramId: string, instance: string) =>

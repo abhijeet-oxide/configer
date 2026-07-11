@@ -1,15 +1,15 @@
 import { Select, Segmented, Switch, Space, Table, Tag, Typography, Empty, Input } from "antd";
-import { SwapOutlined, SearchOutlined, ArrowRightOutlined } from "@ant-design/icons";
+import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";
 import { DiffMiniBar } from "./charts";
 import { useUI } from "../store";
 
-// Compare view: pick two instances and read a parameter-level diff. Two real
-// layouts: Side by Side (a column per instance) and Inline (one unified
-// column, old value struck through, arrow, new value). A search box makes
-// large diffs navigable.
+// Compare view: pick two sides, each an instance at a git ref (branch/tag or the
+// working tree), and read a parameter-level diff. This compares not just two
+// instances but two versions: the same instance across releases, or two
+// instances across two refs. Instance pickers are grouped by environment.
 const statusColor: Record<string, string> = {
   added: "green",
   removed: "red",
@@ -17,18 +17,25 @@ const statusColor: Record<string, string> = {
   unchanged: "default",
 };
 
+const WORKING = "";
+
 export default function ComparePanel({ grid }: { grid: Grid }) {
   const { compareLeft, compareRight, setCompare } = useUI();
   const left = compareLeft || grid.instances[0]?.name;
   const right = compareRight || grid.instances[2]?.name || grid.instances[1]?.name;
+  const [leftRef, setLeftRef] = useState<string>(WORKING);
+  const [rightRef, setRightRef] = useState<string>(WORKING);
   const [changesOnly, setChangesOnly] = useState(true);
   const [layout, setLayout] = useState<"Inline" | "Side by Side">("Side by Side");
   const [q2, setQ2] = useState("");
 
+  const refsQ = useQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
+
+  const sameSide = left === right && leftRef === rightRef;
   const q = useQuery({
-    queryKey: ["compare", left, right],
-    queryFn: () => api.compare(left, right),
-    enabled: !!left && !!right && left !== right,
+    queryKey: ["compare", left, leftRef, right, rightRef],
+    queryFn: () => api.compare(left, right, { leftRef, rightRef }),
+    enabled: !!left && !!right && !sameSide,
   });
 
   const rows = useMemo(() => {
@@ -45,17 +52,71 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
     return changes;
   }, [q.data, changesOnly, q2]);
 
-  const options = grid.instances.map((i) => ({ value: i.name, label: `${i.name} (${i.softwareVersion})` }));
+  // Instance options grouped by environment (the tree-like picker).
+  const instOptions = useMemo(() => {
+    const byEnv = new Map<string, typeof grid.instances>();
+    for (const i of grid.instances) byEnv.set(i.environment || "other", [...(byEnv.get(i.environment || "other") ?? []), i]);
+    return [...byEnv.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([env, list]) => ({
+        label: env,
+        title: env,
+        options: list.map((i) => ({ value: i.name, label: `${i.name}  ·  ${i.softwareVersion || "-"}` })),
+      }));
+  }, [grid.instances]);
+
+  const refOptions = useMemo(() => {
+    const opts: { label: string; title?: string; value?: string; options?: { value: string; label: string }[] }[] = [
+      { value: WORKING, label: "Working tree (current)" },
+    ];
+    const branches = refsQ.data?.branches ?? [];
+    const tags = refsQ.data?.tags ?? [];
+    if (branches.length) opts.push({ label: "Branches", title: "Branches", options: branches.map((b) => ({ value: b, label: b })) });
+    if (tags.length) opts.push({ label: "Tags", title: "Tags", options: tags.map((t) => ({ value: t, label: t })) });
+    return opts;
+  }, [refsQ.data]);
+
+  const refLabel = (ref: string) => (ref === WORKING ? "working" : ref);
+
+  const side = (
+    value: string,
+    ref: string,
+    onInstance: (v: string) => void,
+    onRef: (v: string) => void,
+  ) => (
+    <Space.Compact size="small">
+      <Select
+        size="small"
+        style={{ width: 190 }}
+        value={value}
+        showSearch
+        optionFilterProp="label"
+        options={instOptions}
+        onChange={onInstance}
+      />
+      <Select
+        size="small"
+        style={{ width: 150 }}
+        value={ref}
+        options={refOptions}
+        onChange={onRef}
+        suffixIcon={<BranchesOutlined />}
+      />
+    </Space.Compact>
+  );
+
+  const leftHead = `${left} @ ${refLabel(leftRef)}`;
+  const rightHead = `${right} @ ${refLabel(rightRef)}`;
 
   const valueColumns =
     layout === "Side by Side"
       ? [
-          { title: left, dataIndex: "left" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
-          { title: right, dataIndex: "right" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
+          { title: leftHead, dataIndex: "left" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
+          { title: rightHead, dataIndex: "right" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
         ]
       : [
           {
-            title: `${left} vs ${right}`,
+            title: `${leftHead}  vs  ${rightHead}`,
             key: "unified",
             render: (_v: unknown, c: DiffChange) =>
               c.status === "unchanged" ? (
@@ -72,13 +133,18 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
 
   return (
     <div style={{ padding: "8px 12px", height: "100%", display: "flex", flexDirection: "column" }}>
-      <Space wrap style={{ marginBottom: 8 }}>
+      <Space wrap style={{ marginBottom: 8 }} align="center">
         <Typography.Text strong>Compare</Typography.Text>
-        <Select size="small" style={{ width: 200 }} value={left} options={options}
-          onChange={(v) => setCompare(v, right)} />
-        <SwapOutlined onClick={() => setCompare(right, left)} style={{ cursor: "pointer" }} />
-        <Select size="small" style={{ width: 200 }} value={right} options={options}
-          onChange={(v) => setCompare(left, v)} />
+        {side(left, leftRef, (v) => setCompare(v, right), setLeftRef)}
+        <SwapOutlined
+          onClick={() => {
+            setCompare(right, left);
+            setLeftRef(rightRef);
+            setRightRef(leftRef);
+          }}
+          style={{ cursor: "pointer" }}
+        />
+        {side(right, rightRef, (v) => setCompare(left, v), setRightRef)}
         <Segmented
           size="small"
           value={layout}
@@ -95,7 +161,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
           placeholder="Search this diff"
           value={q2}
           onChange={(e) => setQ2(e.target.value)}
-          style={{ width: 180 }}
+          style={{ width: 160 }}
         />
         {q.data && (
           <Space size={6} align="center">
@@ -108,13 +174,12 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
             <Tag color="orange">{q.data.summary.modified} modified</Tag>
             <Tag color="green">{q.data.summary.added} added</Tag>
             <Tag color="red">{q.data.summary.removed} removed</Tag>
-            <Tag>{q.data.summary.unchanged} unchanged</Tag>
           </Space>
         )}
       </Space>
       <div style={{ flex: 1, overflow: "auto" }}>
-        {left === right ? (
-          <Empty description="Pick two different instances" />
+        {sameSide ? (
+          <Empty description="Pick two different sides (a different instance or a different version)" />
         ) : (
           <Table<DiffChange>
             rowKey="paramId"

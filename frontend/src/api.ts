@@ -352,9 +352,9 @@ export const api = {
   ackFindings: () => send<{ ok: boolean }>("POST", rp("/repo/findings/ack")),
   retireFile: (file: string, author?: string) =>
     send<{ ok: boolean; retired: string[] }>("POST", rp("/parameters/retire-file"), { file, author }),
-  render: (instance: string) =>
+  render: (instance: string, opts?: { draft?: boolean }) =>
     get<{ instance: string; files: { path: string; content: string }[] }>(
-      rp(`/render/${encodeURIComponent(instance)}`),
+      rp(`/render/${encodeURIComponent(instance)}${opts?.draft === false ? "?draft=false" : ""}`),
     ),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>

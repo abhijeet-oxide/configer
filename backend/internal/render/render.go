@@ -128,6 +128,22 @@ func Instance(p *project.Project, instanceName string, reg *plugin.Registry) ([]
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+
+	// Dedupe by output path so a file never appears twice (two source files can
+	// map to the same generated path, e.g. base/x.xml and x.xml). Deterministic:
+	// the first entry for a path wins after sorting.
+	if len(out) > 1 {
+		seen := make(map[string]bool, len(out))
+		uniq := out[:0]
+		for _, o := range out {
+			if seen[o.Path] {
+				continue
+			}
+			seen[o.Path] = true
+			uniq = append(uniq, o)
+		}
+		out = uniq
+	}
 	return out, nil
 }
 

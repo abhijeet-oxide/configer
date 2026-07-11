@@ -25,7 +25,7 @@ const envDot: Record<string, string> = {
 };
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectParam, setJump } = useUI();
+  const { categoryKey, setCategory, selectParam, selectInstance, setJump } = useUI();
   const [filter, setFilter] = useState("");
   const { ref, height } = useElementSize<HTMLDivElement>();
 
@@ -155,7 +155,11 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           selectedKeys={[]}
           onSelect={(keys) => {
             const k = keys[0] as string | undefined;
-            if (k?.startsWith("i:")) setJump("instance", k.slice(2));
+            if (k?.startsWith("i:")) {
+              const name = k.slice(2);
+              setJump("instance", name);
+              selectInstance(name);
+            }
           }}
           filterTreeNode={filter ? (node) => (node as unknown as TreeItem).searchText?.includes(filter) : undefined}
         />

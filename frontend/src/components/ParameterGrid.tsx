@@ -86,7 +86,9 @@ const scopeColor: Record<string, string> = {
 };
 
 function SourceBadge({ cell }: { cell: Cell }) {
-  if (!cell.set || cell.source === "instance") return null;
+  // No badge for instance values (the norm) nor for global ones: the Scope
+  // column already says "global", repeating it on every cell is noise.
+  if (!cell.set || cell.source === "instance" || cell.source === "global") return null;
   return (
     <Tooltip title={scopeExplain[cell.source]}>
       <span className="source-badge">{scopeAbbrev[cell.source]}</span>
@@ -519,7 +521,7 @@ function instanceHeader(inst: Instance) {
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, search, setSearch, filters, setFilters, prefs, setPrefs, jump } =
+  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump } =
     useUI();
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
@@ -659,13 +661,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         if (inst.name === jump.id) break;
         left += instWidths[inst.name] ?? 150;
       }
-      // find the horizontal scroller inside the table and glide to the column
+      // Glide the table's real horizontal scroller (an antd-internal div; it
+      // carries no stable class, so detect it by actual overflow) until the
+      // column lands just after the sticky columns.
       const root = rootRef.current;
       if (root) {
-        const nodes = root.querySelectorAll<HTMLElement>("div");
-        for (const el of nodes) {
+        for (const el of root.querySelectorAll<HTMLElement>(".param-grid div, div")) {
           if (el.scrollWidth > el.clientWidth + 8 && el.clientHeight > 60) {
-            el.scrollTo({ left: Math.max(left - 60, 0), behavior: "smooth" });
+            el.scrollTo({ left: Math.max(left - 40, 0), behavior: "smooth" });
             break;
           }
         }
@@ -758,10 +761,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         .map((v) => ({ text: v === "" ? "(empty)" : v, value: v })),
       filterSearch: true,
       onFilter: (v, r) => fmtValue(r.cells[inst.name]?.value) === v,
+      // Clicking a header (or a system in the left tree) highlights the
+      // whole column; clicking it again clears the highlight.
       onHeaderCell: () => ({
         className:
           (inst.environment ? `th-env-${inst.environment}` : "") +
-          (flash?.kind === "instance" && flash.id === inst.name ? " th-flash" : ""),
+          (flash?.kind === "instance" && flash.id === inst.name ? " th-flash" : "") +
+          (selectedInstance === inst.name ? " col-selected-h" : ""),
+        onClick: () => selectInstance(selectedInstance === inst.name ? null : inst.name),
+        style: { cursor: "pointer" },
+      }),
+      onCell: () => ({
+        className: selectedInstance === inst.name ? "col-selected" : "",
       }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
@@ -806,7 +817,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash]);
+  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W +
@@ -896,7 +907,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add Parameter
           </Button>
-          <SubmitChangesButton instances={grid.instances} />
           <Dropdown
             trigger={["click"]}
             menu={{
@@ -944,6 +954,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           >
             <Button size="small" icon={<SettingOutlined />}>View</Button>
           </Popover>
+          <SubmitChangesButton instances={grid.instances} />
         </Space>
       </div>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
@@ -956,7 +967,19 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           setGlobalAsk(null);
         }}
         onJustThis={() => {
-          if (globalAsk) save.mutate({ instance: globalAsk.instance, paramId: globalAsk.param.id, value: globalAsk.value });
+          if (globalAsk) {
+            const { param, instance, value } = globalAsk;
+            save.mutate({ instance, paramId: param.id, value });
+            // The parameter is no longer managed as one shared value, so its
+            // declared scope follows: global -> instance (attributed commit).
+            api
+              .updateParameter(param.id, { scope: "instance", author: "demo-user" })
+              .then(() => {
+                message.info(`${param.name} is now scoped per instance; other systems keep the previous shared value.`, 5);
+                qc.invalidateQueries();
+              })
+              .catch((e: Error) => message.error(e.message));
+          }
           setGlobalAsk(null);
         }}
       />
@@ -976,14 +999,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           scroll={{ x: scrollX, y: tableY }}
           pagination={false}
           rowClassName={(r) =>
-            flash?.kind === "param" && flash.id === r.param.id ? "row-flash" : ""
+            (flash?.kind === "param" && flash.id === r.param.id ? "row-flash " : "") +
+            (r.param.id === selectedParamId ? "row-selected" : "")
           }
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),
-            style:
-              r.param.id === selectedParamId
-                ? { background: "rgba(47,107,255,0.08)", cursor: "pointer" }
-                : { cursor: "pointer" },
+            style: { cursor: "pointer" },
           })}
         />
         {showSummary && (
@@ -1073,8 +1094,9 @@ function GlobalPrompt({
           </Typography.Paragraph>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
             "Change it for everyone" updates the shared global value. "Only for {ask.instance}" sets an
-            override on that system alone; the others keep the global value. Either way the change is
-            staged for review first, nothing goes live yet.
+            override on that system alone and changes the parameter's scope from global to instance;
+            the others keep the previous shared value. Value changes are staged for review first,
+            nothing goes live yet.
           </Typography.Paragraph>
         </>
       )}

@@ -278,6 +278,21 @@ body {
   background-image: linear-gradient(rgba(127, 137, 160, 0.045), rgba(127, 137, 160, 0.045)) !important;
 }
 
+/* Whole-row highlight for the selected parameter and whole-column highlight
+   for the selected instance. Declared after the fixed-column opacity rules
+   so the tint also shows on sticky cells (as a gradient over the opaque
+   background). */
+.param-grid .ant-table-row.row-selected .ant-table-cell {
+  background-image: linear-gradient(rgba(47, 107, 255, 0.10), rgba(47, 107, 255, 0.10)) !important;
+}
+.param-grid .ant-table-cell.col-selected {
+  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+}
+.param-grid th.col-selected-h {
+  box-shadow: inset 0 -3px 0 rgba(47, 107, 255, 0.75);
+  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+}
+
 /* ---------------------------------------------------- left trees (editor) */
 
 /* Tighter indentation so deep groups fit the narrow panel, with connecting

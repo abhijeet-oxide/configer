@@ -257,7 +257,7 @@ export function ConnectForm({
         rules={[{ required: true, message: "Give a git URL or a path on the server" }]}
         extra={compact ? undefined : "A GitHub/https git URL is cloned and kept in sync on the server; a directory path is opened in place."}
       >
-        <Input placeholder="https://github.com/acme/network-config.git" className="mono" />
+        <Input placeholder="https://github.com/acme/network-config.git" className="mono" autoFocus />
       </Form.Item>
       <div style={{ display: "flex", gap: 10 }}>
         <Form.Item name="name" label="Display name (optional)" style={{ flex: 1 }}>
@@ -274,9 +274,11 @@ export function ConnectForm({
       >
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
       </Form.Item>
-      <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-        Connect repository
-      </Button>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
+          Connect repository
+        </Button>
+      </div>
     </Form>
   );
 }

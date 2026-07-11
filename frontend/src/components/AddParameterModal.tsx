@@ -1,4 +1,5 @@
-import { Modal, Form, Input, Select, Switch, Radio, Typography, App as AntApp } from "antd";
+import { Modal, Form, Input, Select, Switch, Radio, Typography, App as AntApp, type InputRef } from "antd";
+import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
 
@@ -37,6 +38,7 @@ export default function AddParameterModal({
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const [form] = Form.useForm<FormValues>();
+  const nameRef = useRef<InputRef>(null);
   const type = Form.useWatch("type", form);
   const mode = Form.useWatch("mode", form);
 
@@ -89,6 +91,7 @@ export default function AddParameterModal({
       onOk={() => form.submit()}
       okText="Add to catalog"
       confirmLoading={create.isPending}
+      afterOpenChange={(o) => o && nameRef.current?.focus()}
     >
       <Form
         form={form}
@@ -104,7 +107,7 @@ export default function AddParameterModal({
             { pattern: /^[a-zA-Z0-9_.\-\[\]]+$/, message: "Letters, digits, dots, dashes" },
           ]}
         >
-          <Input placeholder="network.ntp.servers" className="mono" />
+          <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />
         </Form.Item>
         <Form.Item name="displayName" label="Display name">
           <Input placeholder="NTP servers" />

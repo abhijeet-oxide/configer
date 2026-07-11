@@ -13,7 +13,8 @@ import {
   App as AntApp,
 } from "antd";
 import { PullRequestOutlined, ArrowRightOutlined, DeleteOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type Instance } from "../api";
 import { fmtValue } from "../rules";
@@ -35,6 +36,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const { setSection, selectParam } = useUI();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
+  const titleRef = useRef<InputRef>(null);
 
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const items = draftQ.data?.draft?.items ?? [];
@@ -89,6 +91,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         okButtonProps={{ disabled: pending === 0 }}
         confirmLoading={submit.isPending}
         width={760}
+        afterOpenChange={(o) => o && titleRef.current?.focus()}
       >
         {prodTouched && (
           <Alert
@@ -164,7 +167,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             label="What is this change about?"
             rules={[{ required: true, message: "Give the change a short title" }]}
           >
-            <Input placeholder="e.g. Update staging DNS servers" maxLength={100} />
+            <Input ref={titleRef} placeholder="e.g. Update staging DNS servers" maxLength={100} />
           </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="category" label="Change type" initialValue="feature" style={{ flex: 1 }}>

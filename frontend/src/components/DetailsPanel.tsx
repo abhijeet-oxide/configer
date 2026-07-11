@@ -115,7 +115,7 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
     return (
       <Form form={form} layout="vertical" size="small" onFinish={save}>
         <Form.Item name="displayName" label="Display name" style={{ marginBottom: 8 }}>
-          <Input placeholder="Human-friendly name" />
+          <Input placeholder="Human-friendly name" autoFocus />
         </Form.Item>
         <Form.Item name="description" label="Description" style={{ marginBottom: 8 }}>
           <Input.TextArea rows={3} placeholder="What does this parameter control?" />
@@ -146,14 +146,14 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
         >
           <Input className="mono" placeholder="Inherited default" />
         </Form.Item>
-        <Space>
-          <Button type="primary" size="small" icon={<CheckOutlined />} htmlType="submit" loading={patch.isPending}>
-            Save all
-          </Button>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
           <Button size="small" icon={<CloseOutlined />} onClick={() => setEditing(false)} disabled={patch.isPending}>
             Cancel
           </Button>
-        </Space>
+          <Button type="primary" size="small" icon={<CheckOutlined />} htmlType="submit" loading={patch.isPending}>
+            Save all
+          </Button>
+        </div>
         <Typography.Paragraph type="secondary" style={{ fontSize: 11, marginTop: 8 }}>
           Saving makes one commit to the catalog with your attribution. The file and path are
           changed separately via {design ? "Attach" : "Re-map"}, so they stay validated.

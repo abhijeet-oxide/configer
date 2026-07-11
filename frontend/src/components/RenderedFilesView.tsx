@@ -99,8 +99,10 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   const [revealLine, setRevealLine] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [favs, setFavs] = useState<string[]>(loadFavs);
+  const [ref, setRef] = useState("");
 
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
+  const refsQ = useQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
   const environments = useMemo(
     () => [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[],
     [grid.instances],
@@ -119,8 +121,8 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   // Draft-applied render for each target instance (the live preview).
   const draftQs = useQueries({
     queries: targets.map((name) => ({
-      queryKey: ["render", name],
-      queryFn: () => api.render(name),
+      queryKey: ["render", name, ref],
+      queryFn: () => api.render(name, ref ? { ref } : undefined),
       enabled: !!name,
     })),
   });
@@ -174,10 +176,12 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   const current = entries.find((e) => e.key === selected);
 
   // Committed baseline for the selected file's instance, for the live diff.
+  // The committed-vs-draft diff only applies to the working tree; when viewing a
+  // historical ref we just show that ref's content.
   const committedQ = useQuery({
     queryKey: ["render", current?.instance, "committed"],
     queryFn: () => api.render(current!.instance, { draft: false }),
-    enabled: !!current,
+    enabled: !!current && ref === "",
   });
   const committed = committedQ.data?.files.find((f) => f.path === current?.path)?.content;
   const hasDiff = current !== undefined && committed !== undefined && committed !== current.content;
@@ -257,6 +261,21 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
           </Typography.Text>
         </div>
         <Space>
+          <Select
+            style={{ width: 190 }}
+            value={ref}
+            onChange={(v) => setRef(v)}
+            suffixIcon={<BranchesOutlined />}
+            options={[
+              { value: "", label: "Working tree (current)" },
+              ...(refsQ.data?.branches?.length
+                ? [{ label: "Branches", options: refsQ.data.branches.map((b) => ({ value: b, label: b })) }]
+                : []),
+              ...(refsQ.data?.tags?.length
+                ? [{ label: "Tags", options: refsQ.data.tags.map((t) => ({ value: t, label: t })) }]
+                : []),
+            ]}
+          />
           {allMode && environments.length > 1 && (
             <Select
               style={{ width: 150 }}

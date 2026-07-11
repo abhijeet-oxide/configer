@@ -70,6 +70,22 @@ func (b *RemoteBackend) DeleteBranch(ctx context.Context, branch string) {
 	b.client.DeleteBranch(ctx, branch)
 }
 
+func (b *RemoteBackend) MaterializeRef(ctx context.Context, ref, dir string) (func(), error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, err
+	}
+	if _, err := b.client.Materialize(ctx, ref, dir); err != nil {
+		return nil, err
+	}
+	return func() { _ = os.RemoveAll(dir) }, nil
+}
+
+// ListRefs degrades to the default branch for remote repos (a GitHub list-refs
+// call is a small fast-follow); MaterializeRef still works for any ref name.
+func (b *RemoteBackend) ListRefs(_ context.Context) ([]string, []string, error) {
+	return []string{b.branch}, nil, nil
+}
+
 // remoteWorkspace is a materialized checkout of a base branch in a temp dir,
 // with the file hashes captured at checkout so Commit can compute the exact
 // changed + deleted paths for a single Git-data-API partial commit.

@@ -117,6 +117,22 @@ func (b *LocalBackend) CommitWorking(_ context.Context, message string) (string,
 	return sha, true, nil
 }
 
+func (b *LocalBackend) MaterializeRef(_ context.Context, ref, dir string) (func(), error) {
+	if err := b.repo.AddWorktreeDetached(dir, ref); err != nil {
+		return nil, err
+	}
+	return func() { b.repo.RemoveWorktree(dir); _ = os.RemoveAll(dir) }, nil
+}
+
+func (b *LocalBackend) ListRefs(_ context.Context) ([]string, []string, error) {
+	branches, err := b.repo.Branches()
+	if err != nil {
+		return nil, nil, err
+	}
+	tags, _ := b.repo.Tags()
+	return branches, tags, nil
+}
+
 func (b *LocalBackend) Diff(_ context.Context, from, to string) ([]FileChange, error) {
 	fcs, err := b.repo.DiffNameStatus(from, to)
 	if err != nil {

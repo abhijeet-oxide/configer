@@ -357,8 +357,13 @@ export const api = {
   // --- active-repository scoped ---
   meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
   grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
-  compare: (left: string, right: string) =>
-    get<DiffResult>(rp(`/compare?left=${encodeURIComponent(left)}&right=${encodeURIComponent(right)}`)),
+  compare: (left: string, right: string, opts?: { leftRef?: string; rightRef?: string }) => {
+    const qs = new URLSearchParams({ left, right });
+    if (opts?.leftRef) qs.set("leftRef", opts.leftRef);
+    if (opts?.rightRef) qs.set("rightRef", opts.rightRef);
+    return get<DiffResult>(rp(`/compare?${qs.toString()}`));
+  },
+  refs: () => get<{ current: string; branches: string[] | null; tags: string[] | null }>(rp("/repo/refs")),
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
@@ -367,10 +372,15 @@ export const api = {
   ackFindings: () => send<{ ok: boolean }>("POST", rp("/repo/findings/ack")),
   retireFile: (file: string, author?: string) =>
     send<{ ok: boolean; retired: string[] }>("POST", rp("/parameters/retire-file"), { file, author }),
-  render: (instance: string, opts?: { draft?: boolean }) =>
-    get<{ instance: string; files: { path: string; content: string }[] }>(
-      rp(`/render/${encodeURIComponent(instance)}${opts?.draft === false ? "?draft=false" : ""}`),
-    ),
+  render: (instance: string, opts?: { draft?: boolean; ref?: string }) => {
+    const qs = new URLSearchParams();
+    if (opts?.ref) qs.set("ref", opts.ref);
+    else if (opts?.draft === false) qs.set("draft", "false");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ instance: string; files: { path: string; content: string }[] }>(
+      rp(`/render/${encodeURIComponent(instance)}${suffix}`),
+    );
+  },
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),

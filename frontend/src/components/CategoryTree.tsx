@@ -159,8 +159,8 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
 
   return (
     <div className="cat-tree" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <PanelGroup direction="vertical" autoSaveId="configer-cattree" style={{ height: "100%" }}>
-        <Panel defaultSize={62} minSize={15} collapsible collapsedSize={6}>
+      <PanelGroup direction="vertical" autoSaveId="configer-cattree-v2" style={{ height: "100%" }}>
+        <Panel defaultSize={72} minSize={15} collapsible collapsedSize={6}>
           <div style={{ padding: "8px 8px 0", height: "100%", display: "flex", flexDirection: "column" }}>
             <Typography.Text strong style={{ padding: "0 4px" }}>Parameter Groups</Typography.Text>
             <Input.Search
@@ -200,7 +200,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           </div>
         </Panel>
         <PanelResizeHandle className="rrp-handle rrp-handle-h" />
-        <Panel defaultSize={38} minSize={10} collapsible collapsedSize={6}>
+        <Panel defaultSize={28} minSize={8} collapsible collapsedSize={6}>
           <div style={{ padding: "0 8px 6px", height: "100%", display: "flex", flexDirection: "column" }}>
             <Typography.Text strong style={{ padding: "10px 4px 6px", borderTop: "1px solid rgba(127,137,160,0.2)" }}>
               Systems

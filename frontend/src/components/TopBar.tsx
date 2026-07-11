@@ -29,6 +29,7 @@ import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { brands, type BrandKey } from "../theme";
+import { SECTION_LABELS } from "./NavRail";
 
 // Application header, kept deliberately light: an ellipsized breadcrumb that
 // can never wrap the layout, the global search, appearance controls, the
@@ -46,9 +47,11 @@ function ellipsis(maxWidth: number): React.CSSProperties {
   };
 }
 
-export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, repoId, section } =
-    useUI();
+export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
+  const {
+    mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch,
+    setSection, repoId, section, selectedInstance, selectInstance, setJump,
+  } = useUI();
   const switchRepo = useSwitchRepo();
   const searchRef = useRef<InputRef>(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -87,62 +90,121 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   };
 
   const st = statusQ.data;
+  const appName = activeRepo?.name ?? project;
+  // Version and environment are derived from the selected instance (the
+  // instances registry is their single source of truth), so the breadcrumb
+  // never carries state that could disagree with the catalog.
+  const selInst = instances?.find((i) => i.name === selectedInstance);
+
+  // Instance context selector, grouped by environment with an "All instances"
+  // default. Picking one sets the app-level instance context and, in the
+  // Configuration view, scrolls the grid to that column.
+  const instItems = (() => {
+    const byEnv: Record<string, Instance[]> = {};
+    for (const i of instances ?? []) (byEnv[i.environment || "other"] ??= []).push(i);
+    return [
+      { key: "__all", label: "All instances" },
+      ...(instances && instances.length ? [{ type: "divider" as const }] : []),
+      ...Object.entries(byEnv)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([env, list]) => ({
+          type: "group" as const,
+          label: env,
+          children: list.map((i) => ({ key: i.name, label: i.name })),
+        })),
+    ];
+  })();
+
+  const workspaceCrumb = {
+    title: (
+      <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
+        Workspace
+      </a>
+    ),
+  };
+  const appCrumb = {
+    title: (
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          selectedKeys: repoId ? [repoId] : [],
+          items: [
+            ...repos.map((r) => ({
+              key: r.id,
+              label: (
+                <Space size={6}>
+                  {r.name}
+                  {r.project && r.project !== r.name && (
+                    <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                      {r.project}
+                    </Typography.Text>
+                  )}
+                </Space>
+              ),
+            })),
+            { type: "divider" as const },
+            { key: "__workspace", label: "Connect or manage repositories…" },
+          ],
+          onClick: ({ key }) => {
+            if (key === "__workspace") setSection("workspace");
+            else if (key !== repoId) switchRepo(key);
+          },
+        }}
+      >
+        <a style={{ cursor: "pointer" }}>
+          <b style={ellipsis(200)} title={appName}>
+            {appName ?? "…"}
+          </b>{" "}
+          <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+        </a>
+      </Dropdown>
+    ),
+  };
+  const instanceCrumb = {
+    title: (
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          selectedKeys: [selectedInstance ?? "__all"],
+          items: instItems,
+          onClick: ({ key }) => {
+            if (key === "__all") selectInstance(null);
+            else {
+              selectInstance(key);
+              if (section === "config") setJump("instance", key);
+            }
+          },
+        }}
+      >
+        <a style={{ cursor: "pointer" }} title={selectedInstance ?? "All instances"}>
+          <span style={ellipsis(150)}>{selectedInstance ?? "All instances"}</span>{" "}
+          <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
+        </a>
+      </Dropdown>
+    ),
+  };
+  const viewCrumb = { title: <span style={ellipsis(150)}>{SECTION_LABELS[section] ?? section}</span> };
+
+  const crumbItems =
+    section === "workspace"
+      ? [workspaceCrumb]
+      : [
+          workspaceCrumb,
+          appCrumb,
+          ...(selInst?.softwareVersion
+            ? [{ title: <span className="mono" style={{ fontSize: 12, opacity: 0.85 }}>{selInst.softwareVersion}</span> }]
+            : []),
+          ...(selInst?.environment
+            ? [{ title: <span style={{ textTransform: "capitalize" }}>{selInst.environment}</span> }]
+            : []),
+          instanceCrumb,
+          viewCrumb,
+        ];
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
-        <Breadcrumb
-          items={[
-            {
-              title: (
-                <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
-                  Workspace
-                </a>
-              ),
-            },
-            {
-              title: (
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    selectedKeys: repoId ? [repoId] : [],
-                    items: [
-                      ...repos.map((r) => ({
-                        key: r.id,
-                        label: (
-                          <Space size={6}>
-                            {r.name}
-                            {r.project && r.project !== r.name && (
-                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                {r.project}
-                              </Typography.Text>
-                            )}
-                          </Space>
-                        ),
-                      })),
-                      { type: "divider" as const },
-                      { key: "__workspace", label: "Connect or manage repositories…" },
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === "__workspace") setSection("workspace");
-                      else if (key !== repoId) switchRepo(key);
-                    },
-                  }}
-                >
-                  <a style={{ cursor: "pointer" }}>
-                    <b style={ellipsis(200)} title={activeRepo?.name ?? project}>
-                      {activeRepo?.name ?? project ?? "…"}
-                    </b>{" "}
-                    <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
-                  </a>
-                </Dropdown>
-              ),
-            },
-            ...(section === "config" && st?.branch
-              ? [{ title: <span style={ellipsis(110)}>{st.branch}</span> }]
-              : []),
-          ]}
-        />
+        <Breadcrumb items={crumbItems} />
       </div>
       {section === "config" && st && (
         <Tooltip

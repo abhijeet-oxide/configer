@@ -1,8 +1,9 @@
 import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
-import { SafetyOutlined, DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter, type Scope } from "../api";
+import { api, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
@@ -260,6 +261,113 @@ function ProjectOverview({ grid }: { grid: Grid }) {
   );
 }
 
+// One instance's effective value, shown compactly with a scope hint. Excluded
+// and not-applicable cells are called out rather than shown as blanks.
+function CellValue({ cell }: { cell?: Cell }) {
+  if (!cell) return <span style={{ opacity: 0.4 }}>-</span>;
+  if (cell.state === "na") return <Tag style={{ marginInlineEnd: 0 }}>n/a</Tag>;
+  if (cell.excluded) return <Tag color="default" style={{ marginInlineEnd: 0 }}>excluded</Tag>;
+  return (
+    <Space size={4}>
+      <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : "#cf1322" }}>
+        {fmtValue(cell.value)}
+      </span>
+      {cell.set && cell.source !== "instance" && (
+        <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>{cell.source}</Tag>
+      )}
+    </Space>
+  );
+}
+
+// OVERVIEW tab: the value story for this parameter across every instance, plus
+// the set/invalid summary that used to sit in the panel footer.
+function OverviewTab({ row, grid }: { row: GridRow; grid: Grid }) {
+  const values = grid.instances.map((i) => ({ inst: i, cell: row.cells[i.name] }));
+  const set = values.filter((v) => v.cell?.set).length;
+  const invalid = values.filter((v) => v.cell && !v.cell.valid).length;
+  return (
+    <div>
+      <ARow gutter={8} style={{ marginBottom: 12 }}>
+        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
+        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
+        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
+      </ARow>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>VALUE PER INSTANCE</Typography.Text>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        {values.map(({ inst, cell }) => (
+          <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12 }}>{inst.name}</span>
+            <CellValue cell={cell} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// DEPENDENCIES tab: what this parameter depends on, and what depends on it
+// (reverse edges computed from the catalog). Both are click-through.
+function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSelect: (id: string) => void }) {
+  const nameOf = (id: string) => grid.rows.find((r) => r.param.id === id)?.param.name ?? id;
+  const requiredBy = grid.rows.filter((r) => r.param.dependsOn?.includes(p.id)).map((r) => r.param);
+  const chip = (id: string, label: string) => (
+    <Tag key={id} className="mono" style={{ cursor: "pointer" }} onClick={() => onSelect(id)}>
+      {label}
+    </Tag>
+  );
+  return (
+    <div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>DEPENDS ON</Typography.Text>
+      <div style={{ margin: "6px 0 14px", display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {p.dependsOn?.length ? p.dependsOn.map((d) => chip(d, nameOf(d))) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No dependencies" />}
+      </div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>REQUIRED BY</Typography.Text>
+      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {requiredBy.length
+          ? requiredBy.map((rp) => chip(rp.id, rp.name))
+          : <Typography.Text type="secondary" style={{ fontSize: 12 }}>Nothing depends on this parameter.</Typography.Text>}
+      </div>
+    </div>
+  );
+}
+
+// VERSIONS tab: the parameter's lifecycle and how it applies per instance,
+// derived from each cell's version-aware state.
+const applicability: Record<Cell["state"], { label: string; color: string }> = {
+  normal: { label: "active", color: "blue" },
+  new: { label: "new here", color: "green" },
+  deprecated: { label: "deprecated", color: "red" },
+  na: { label: "not in version", color: "default" },
+};
+function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
+  const p = row.param;
+  return (
+    <div>
+      <Descriptions column={1} size="small" bordered items={[
+        { key: "intro", label: "Introduced", children: p.versionIntroduced || "-" },
+        { key: "dep", label: "Deprecated", children: p.versionDeprecated || "-" },
+      ]} />
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4, display: "block", marginTop: 12 }}>
+        APPLICABILITY PER INSTANCE
+      </Typography.Text>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        {grid.instances.map((i) => {
+          const a = applicability[row.cells[i.name]?.state ?? "normal"];
+          return (
+            <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12 }}>{i.name}</span>
+              <Space size={6}>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{i.softwareVersion}</Typography.Text>
+                <Tag color={a.color} style={{ marginInlineEnd: 0 }}>{a.label}</Tag>
+              </Space>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DetailsPanel({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -280,11 +388,6 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   const p = row.param;
   const categories = [...new Set(grid.rows.map((r) => r.param.category))].sort();
 
-  // small cross-instance summary
-  const values = grid.instances.map((i) => row.cells[i.name]);
-  const set = values.filter((c) => c?.set).length;
-  const invalid = values.filter((c) => c && !c.valid).length;
-
   return (
     <div style={{ padding: 12, height: "100%", overflow: "auto" }}>
       <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
@@ -295,20 +398,14 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
       <Tabs
         size="small"
         items={[
+          { key: "overview", label: "Overview", children: <OverviewTab row={row} grid={grid} /> },
           { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} /> },
-          { key: "schema", label: "Schema", children: <RuleEditor param={p} /> },
-          { key: "history", label: "History", children: <Empty description="Git history (backend endpoint TODO)" /> },
-          { key: "depends", label: "Depends On", children:
-            (p.dependsOn?.length ? p.dependsOn.map((d) => <Tag key={d}>{d}</Tag>) : <Empty description="No dependencies" />) },
+          { key: "validation", label: "Validation", children: <RuleEditor param={p} /> },
+          { key: "depends", label: "Dependencies", children: <DependenciesTab p={p} grid={grid} onSelect={selectParam} /> },
+          { key: "versions", label: "Versions", children: <VersionsTab row={row} grid={grid} /> },
         ]}
       />
       <Divider style={{ margin: "10px 0" }} />
-      <ARow gutter={8}>
-        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
-      </ARow>
-      <Button block icon={<SafetyOutlined />} style={{ marginTop: 12 }}>View Parameter Schema</Button>
       <Popconfirm
         title={`Retire ${p.name}?`}
         description="Removes it from the catalog and every overlay; the key/element disappears from all generated files. Committed to Git with attribution."

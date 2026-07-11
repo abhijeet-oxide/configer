@@ -6,6 +6,7 @@ import {
   PullRequestOutlined,
   CheckCircleOutlined,
   CloudSyncOutlined,
+  FullscreenExitOutlined,
 } from "@ant-design/icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -113,8 +114,8 @@ function OfflineReplay() {
 }
 
 export default function App() {
-  const { section, setSection, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo } =
-    useUI();
+  const { section, setSection, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo,
+    editorFocus, setEditorFocus } = useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
@@ -144,8 +145,20 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsQ.data, repoId]);
+  // Focus mode leaves the editor with a single Escape press.
+  useEffect(() => {
+    if (!editorFocus) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setEditorFocus(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [editorFocus, setEditorFocus]);
+
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
+  // Focus mode only makes sense for the three-pane editor on a wide screen.
+  const focus = editorFocus && section === "config" && wide;
 
   // Service unreachable: fall back to the snapshot saved on this device.
   const snapshotGrid = !gridQ.data && gridQ.isError ? loadSnapshot<GridData>("grid")?.data : undefined;
@@ -298,6 +311,26 @@ export default function App() {
           <Button onClick={() => setSection("overview")}>Back to Overview</Button>
         }
       />
+    );
+  }
+
+  // Focus mode: maximize the Configuration workspace, hiding the nav rail and
+  // header so the editor fills the viewport. Scoped to the editor only (not a
+  // browser fullscreen of the whole app); a floating control and Esc restore
+  // the shell.
+  if (focus) {
+    return (
+      <div style={{ height: "100vh", position: "relative", ...panelBg }}>
+        <Content style={{ overflow: "hidden", height: "100%" }}>{editorLayout()}</Content>
+        <Button
+          size="small"
+          icon={<FullscreenExitOutlined />}
+          onClick={() => setEditorFocus(false)}
+          style={{ position: "absolute", top: 8, right: 12, zIndex: 20, boxShadow: token.boxShadowSecondary }}
+        >
+          Exit focus (Esc)
+        </Button>
+      </div>
     );
   }
 

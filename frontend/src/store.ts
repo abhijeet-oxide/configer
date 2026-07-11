@@ -59,6 +59,9 @@ interface UIState {
   filters: RowFilters;
   prefs: ViewPrefs;
   navCollapsed: boolean;
+  /** focus mode: maximize just the Configuration workspace (hide the nav rail
+   *  and header), an in-app "editor fullscreen" scoped to the editor only */
+  editorFocus: boolean;
   /** file or folder prefix the Import wizard should focus on (set by the
    *  Repository Changes inbox when jumping into an import) */
   importFocus: string | null;
@@ -78,6 +81,7 @@ interface UIState {
   setFilters: (f: Partial<RowFilters>) => void;
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
+  setEditorFocus: (f: boolean) => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance", id: string) => void;
 }
@@ -97,6 +101,7 @@ export const useUI = create<UIState>((set) => ({
   filters: { invalidOnly: false, overriddenOnly: false, hideNA: false },
   prefs: loadPrefs(),
   navCollapsed: false,
+  editorFocus: false,
   importFocus: null,
   jump: null,
   setMode: (mode) => {
@@ -142,6 +147,7 @@ export const useUI = create<UIState>((set) => ({
       return { prefs };
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
+  setEditorFocus: (editorFocus) => set({ editorFocus }),
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
 }));

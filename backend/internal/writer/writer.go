@@ -250,6 +250,174 @@ func DeleteParameter(root, paramID string, instances []string) error {
 	return nil
 }
 
+// --- instance registry ----------------------------------------------------
+
+// InstancePatch is a partial update to an instance's metadata. Nil fields are
+// left unchanged; Labels replaces the whole map when non-nil.
+type InstancePatch struct {
+	Environment     *string
+	Region          *string
+	Zone            *string
+	Site            *string
+	SoftwareVersion *string
+	Status          *string
+	Labels          *map[string]string
+}
+
+// mutateRegistry loads .configer/instances.yaml, applies fn, and persists it.
+func mutateRegistry(root string, fn func(*model.InstanceRegistry) error) error {
+	path := filepath.Join(root, ".configer", "instances.yaml")
+	var reg model.InstanceRegistry
+	if b, err := os.ReadFile(path); err == nil {
+		if err := yaml.Unmarshal(b, &reg); err != nil {
+			return fmt.Errorf("parse %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	if reg.APIVersion == "" {
+		reg.APIVersion = "configer.io/v1"
+	}
+	if reg.Kind == "" {
+		reg.Kind = "InstanceRegistry"
+	}
+	if err := fn(&reg); err != nil {
+		return err
+	}
+	return writeYAML(path, reg)
+}
+
+func applyInstancePatch(inst *model.Instance, patch InstancePatch) {
+	if patch.Environment != nil {
+		inst.Environment = *patch.Environment
+	}
+	if patch.Region != nil {
+		inst.Region = *patch.Region
+	}
+	if patch.Zone != nil {
+		inst.Zone = *patch.Zone
+	}
+	if patch.Site != nil {
+		inst.Site = *patch.Site
+	}
+	if patch.SoftwareVersion != nil {
+		inst.SoftwareVersion = *patch.SoftwareVersion
+	}
+	if patch.Status != nil {
+		inst.Status = *patch.Status
+	}
+	if patch.Labels != nil {
+		inst.Labels = *patch.Labels
+	}
+}
+
+// AddInstance appends a new instance to the registry (error if the name is
+// taken). The instance starts with no overlay: it inherits the scope chain.
+func AddInstance(root string, inst model.Instance) error {
+	return mutateRegistry(root, func(reg *model.InstanceRegistry) error {
+		for _, i := range reg.Instances {
+			if i.Name == inst.Name {
+				return fmt.Errorf("instance %q already exists", inst.Name)
+			}
+		}
+		if inst.Status == "" {
+			inst.Status = "active"
+		}
+		reg.Instances = append(reg.Instances, inst)
+		return nil
+	})
+}
+
+// UpdateInstance patches one instance's metadata and returns it.
+func UpdateInstance(root, name string, patch InstancePatch) (model.Instance, error) {
+	var out model.Instance
+	err := mutateRegistry(root, func(reg *model.InstanceRegistry) error {
+		for i := range reg.Instances {
+			if reg.Instances[i].Name == name {
+				applyInstancePatch(&reg.Instances[i], patch)
+				out = reg.Instances[i]
+				return nil
+			}
+		}
+		return fmt.Errorf("instance %q not found", name)
+	})
+	return out, err
+}
+
+// DeleteInstance removes an instance from the registry and deletes its overlay
+// and generated output so nothing stale is left behind.
+func DeleteInstance(root, name string) error {
+	if err := mutateRegistry(root, func(reg *model.InstanceRegistry) error {
+		idx := -1
+		for i := range reg.Instances {
+			if reg.Instances[i].Name == name {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return fmt.Errorf("instance %q not found", name)
+		}
+		reg.Instances = append(reg.Instances[:idx], reg.Instances[idx+1:]...)
+		return nil
+	}); err != nil {
+		return err
+	}
+	_ = os.RemoveAll(filepath.Join(root, ".configer", "instances", name))
+	_ = os.RemoveAll(filepath.Join(root, "generated", name))
+	return nil
+}
+
+// CloneInstance creates a new instance copying the source's metadata (with
+// optional overrides) and its sparse overlay, so the new instance starts as a
+// full copy of an existing one.
+func CloneInstance(root, from, newName string, patch InstancePatch) (model.Instance, error) {
+	var created model.Instance
+	err := mutateRegistry(root, func(reg *model.InstanceRegistry) error {
+		var src *model.Instance
+		for i := range reg.Instances {
+			if reg.Instances[i].Name == from {
+				src = &reg.Instances[i]
+			}
+			if reg.Instances[i].Name == newName {
+				return fmt.Errorf("instance %q already exists", newName)
+			}
+		}
+		if src == nil {
+			return fmt.Errorf("source instance %q not found", from)
+		}
+		clone := *src
+		clone.Name = newName
+		if clone.Labels != nil {
+			cp := make(map[string]string, len(clone.Labels))
+			for k, v := range clone.Labels {
+				cp[k] = v
+			}
+			clone.Labels = cp
+		}
+		applyInstancePatch(&clone, patch)
+		reg.Instances = append(reg.Instances, clone)
+		created = clone
+		return nil
+	})
+	if err != nil {
+		return model.Instance{}, err
+	}
+	// Copy the source overlay (values + exclusions) if it exists.
+	srcOverlay := filepath.Join(root, ".configer", "instances", from, "overlay.yaml")
+	if b, rerr := os.ReadFile(srcOverlay); rerr == nil {
+		var ov model.Overlay
+		if yaml.Unmarshal(b, &ov) == nil {
+			ov.Instance = newName
+			dir := filepath.Join(root, ".configer", "instances", newName)
+			if err := os.MkdirAll(dir, 0o755); err == nil {
+				_ = writeYAML(filepath.Join(dir, "overlay.yaml"), ov)
+			}
+		}
+	}
+	return created, nil
+}
+
 // AddIgnoreFiles appends file globs to .configer/ignore.yaml so the scan
 // skips them (the import wizard's "don't import these" persistence).
 func AddIgnoreFiles(root string, files []string) error {

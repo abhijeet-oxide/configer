@@ -430,6 +430,9 @@ export default function WorkspaceView() {
           onDone={(r) => {
             setConnectOpen(false);
             switchRepo(r.id);
+            // Onboarding: flow straight from connecting an application into
+            // scanning/importing its configuration.
+            setSection("import");
           }}
         />
       </Modal>

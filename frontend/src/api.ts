@@ -22,6 +22,21 @@ export interface Instance {
   status?: string;
 }
 
+// Fields accepted when creating or patching an instance. cloneFrom (on add)
+// copies an existing instance's metadata and overlay values.
+export interface InstanceInput {
+  name?: string;
+  environment?: string;
+  region?: string;
+  zone?: string;
+  site?: string;
+  softwareVersion?: string;
+  status?: string;
+  labels?: Record<string, string>;
+  cloneFrom?: string;
+  author?: string;
+}
+
 export interface Validation {
   required?: boolean;
   pattern?: string;
@@ -361,6 +376,13 @@ export const api = {
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
   addParameter: (param: Partial<Parameter>, author?: string) =>
     send<Parameter>("POST", rp("/parameters"), { param, author }),
+  // --- instances (registry lifecycle) ---
+  instanceRegistry: () => get<{ instances: Instance[] | null }>(rp("/instances")),
+  addInstance: (p: InstanceInput) => send<Instance>("POST", rp("/instances"), p),
+  updateInstance: (name: string, patch: InstanceInput) =>
+    put<Instance>(rp(`/instances/${encodeURIComponent(name)}`), patch),
+  deleteInstance: (name: string, author?: string) =>
+    send<{ ok: boolean; removed: string }>("DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
   deleteParameter: (id: string, author?: string) =>
     send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
   revertValue: (paramId: string, instance: string) =>

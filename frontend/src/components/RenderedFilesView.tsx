@@ -9,6 +9,7 @@ import {
   StarOutlined,
   StarFilled,
   SearchOutlined,
+  FileSearchOutlined,
   DiffOutlined,
 } from "@ant-design/icons";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
@@ -91,9 +92,11 @@ function buildTree(entries: FileEntry[]): DataNode[] {
 export default function RenderedFilesView({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const dark = useUI((s) => s.mode === "dark");
-  const [instanceSel, setInstanceSel] = useState<string>(DEFAULT);
+  const [instanceSel, setInstanceSel] = useState<string>(ALL);
   const [envFilter, setEnvFilter] = useState<string | undefined>(undefined);
   const [filter, setFilter] = useState("");
+  const [findQuery, setFindQuery] = useState("");
+  const [revealLine, setRevealLine] = useState<number | undefined>(undefined);
   const [selected, setSelected] = useState<string | null>(null);
   const [favs, setFavs] = useState<string[]>(loadFavs);
 
@@ -179,6 +182,23 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   const committed = committedQ.data?.files.find((f) => f.path === current?.path)?.content;
   const hasDiff = current !== undefined && committed !== undefined && committed !== current.content;
 
+  // Find in files: scan every loaded file's content for the term.
+  const hits = useMemo(() => {
+    const q = findQuery.trim().toLowerCase();
+    if (!q) return [];
+    const res: { key: string; line: number; text: string }[] = [];
+    for (const e of entries) {
+      const lines = e.content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].toLowerCase().includes(q)) {
+          res.push({ key: e.key, line: i + 1, text: lines[i].trim().slice(0, 120) });
+          if (res.length >= 300) return res;
+        }
+      }
+    }
+    return res;
+  }, [entries, findQuery]);
+
   const favSet = new Set(favs);
   const favEntries = entries.filter((e) => favSet.has(e.key));
   const toggleFav = (key: string) =>
@@ -248,9 +268,12 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
             />
           )}
           <Select
-            style={{ width: 240 }}
+            style={{ width: 260 }}
             value={instanceSel}
             onChange={(v) => setInstanceSel(v)}
+            showSearch
+            optionFilterProp="value"
+            filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
             options={instanceOptions}
           />
         </Space>
@@ -277,6 +300,49 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
               onChange={(e) => setFilter(e.target.value)}
               style={{ marginBottom: 8 }}
             />
+            <Input
+              size="small"
+              allowClear
+              prefix={<FileSearchOutlined style={{ opacity: 0.5 }} />}
+              placeholder="Find in files"
+              value={findQuery}
+              onChange={(e) => setFindQuery(e.target.value)}
+              style={{ marginBottom: 8 }}
+            />
+            {findQuery.trim() ? (
+              <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+                  {hits.length} MATCH{hits.length === 1 ? "" : "ES"}
+                </Typography.Text>
+                <div style={{ marginTop: 4, display: "flex", flexDirection: "column", gap: 1 }}>
+                  {hits.map((h, i) => (
+                    <div
+                      key={`${h.key}:${h.line}:${i}`}
+                      className="card-clickable"
+                      onClick={() => {
+                        setSelected(h.key);
+                        setRevealLine(h.line);
+                      }}
+                      style={{ cursor: "pointer", fontSize: 12, padding: "3px 4px", borderRadius: 4 }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 6 }}>
+                        <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {h.key.split("/").pop()}
+                        </span>
+                        <Typography.Text type="secondary" style={{ fontSize: 11 }}>:{h.line}</Typography.Text>
+                      </div>
+                      <div className="mono" style={{ fontSize: 11, opacity: 0.6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {h.text}
+                      </div>
+                    </div>
+                  ))}
+                  {hits.length === 0 && (
+                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>No matches in the loaded files.</Typography.Text>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <>
             {favEntries.length > 0 && (
               <div style={{ marginBottom: 8 }}>
                 <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
@@ -310,10 +376,15 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
                 selectedKeys={selected ? [selected] : []}
                 onSelect={(keys) => {
                   const k = keys[0] as string | undefined;
-                  if (k && !k.endsWith("/")) setSelected(k);
+                  if (k && !k.endsWith("/")) {
+                    setSelected(k);
+                    setRevealLine(undefined);
+                  }
                 }}
               />
             </div>
+              </>
+            )}
           </div>
 
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -362,6 +433,7 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
                       content={current.content}
                       original={hasDiff ? committed : undefined}
                       dark={dark}
+                      revealLine={revealLine}
                     />
                   </Suspense>
                 </div>

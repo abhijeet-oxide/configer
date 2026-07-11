@@ -29,6 +29,7 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import DashboardView from "./components/DashboardView";
+import InstancesView from "./components/InstancesView";
 import SettingsView from "./components/SettingsView";
 import AppTabs, { isAppSection } from "./components/AppTabs";
 import MobileParamList from "./components/MobileParamList";
@@ -290,6 +291,12 @@ export default function App() {
       return (
         <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
           <DashboardView grid={grid} />
+        </div>
+      );
+    if (section === "instances")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <InstancesView grid={grid} />
         </div>
       );
     if (section === "settings")

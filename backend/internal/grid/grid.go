@@ -70,17 +70,26 @@ type CategoryNode struct {
 func Build(p *project.Project) Grid {
 	r := &resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}
 
+	// Archived instances are kept in the registry (and shown in the Instances
+	// view) but drop out of the active grid so archiving declutters editing.
+	active := make([]model.Instance, 0, len(p.Registry.Instances))
+	for _, inst := range p.Registry.Instances {
+		if inst.Status != "archived" {
+			active = append(active, inst)
+		}
+	}
+
 	g := Grid{
 		Project:   p.Catalog.Metadata.Project,
-		Instances: p.Registry.Instances,
+		Instances: active,
 	}
 
 	for _, param := range p.Catalog.Parameters {
 		if isIgnored(param, p.Ignore) {
 			continue
 		}
-		row := Row{Param: param, Cells: make(map[string]Cell, len(p.Registry.Instances))}
-		for _, inst := range p.Registry.Instances {
+		row := Row{Param: param, Cells: make(map[string]Cell, len(active))}
+		for _, inst := range active {
 			state := cellState(param, inst)
 			res := r.Resolve(param, inst)
 			cell := Cell{

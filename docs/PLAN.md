@@ -1,5 +1,201 @@
 # Configer - Git-Native Configuration Management Platform: Detailed Plan
 
+> This document leads with the **product vision, current state, gaps, and phases** (the sections
+> immediately below). The original deep technical design is preserved verbatim under
+> **"Reference: technical design"** near the end. For a file-level routing index that lets you work
+> on one area without reading the whole codebase, see **`docs/ARCHITECTURE_MAP.md`**.
+
+## Vision
+
+Configer should feel less like a collection of pages and more like an integrated **Application
+Workspace**, in the spirit of GitHub, Azure DevOps, Datadog, and Backstage, where everything
+revolves around one central object and every page is another view of it.
+
+- **Applications are the primary object.** A user opens an application (IMS, Kafka, Elasticsearch,
+  Oracle) and lands in a complete workspace for it.
+- **Git is an implementation detail.** Repositories, branches, commits, and PRs are how the
+  workspace persists, not the entry point users navigate through.
+- **Every page carries context:** which application, which version, which environment, which
+  instance, always visible.
+- **The dashboard is an operational command center,** not an empty landing page.
+- **Configuration and rendered files stay in sync,** ultimately bidirectionally and live, so users
+  trust that what they edit is exactly what gets committed and deployed.
+- **The editor is immersive and professional;** information density is high without feeling
+  cluttered; the design language is consistent across every surface.
+
+The live bidirectional synchronization between the spreadsheet and the rendered artifacts is the
+feature that can truly differentiate Configer: it removes the black box between parameter editing
+and generated files.
+
+```
+Git -> Artifacts -> Canonical Parameter Model
+                       /            \
+              Spreadsheet  <->  Monaco File Editor
+                       \            /
+                Live Render & Semantic Diff
+                          |
+                Git Commit / Pull Request
+```
+
+## Information architecture (target)
+
+```
+Workspace
+  └── Applications
+        ├── IMS
+        ├── Kafka
+        ├── Elasticsearch
+        └── Oracle
+```
+
+Opening an application reveals its workspace. Per-application views (nouns, not modules):
+
+`Overview · Configuration · Rendered Files · Change Requests · Repository Changes · Compare ·
+Deployments · Validation · History · Repositories · Settings`
+
+Actions (import, compare, submit) become buttons inside these views, not top-level destinations.
+Every page answers *which application / which version / which environment / which instance* through
+a persistent breadcrumb, e.g. `Workspace › IMS › 24.4 › Production › Configuration`.
+
+**Modeling decision (A1):** one connected repository = one Application for now (maps 1:1 to today's
+`workspace.Entry`); multiple applications per repo via subpaths is a later phase. Version /
+environment / instance are data within an application (they live on `Instance` in the catalog), and
+become first-class context selectors in the breadcrumb.
+
+## Current implementation (condensed)
+
+What is live end to end today (see the preserved §0 for the full running list):
+
+- Ingest -> catalog -> grid: scan YAML/JSON/XML, resolve scope precedence, serve `GET /api/grid`,
+  render virtualized with typed editors, validation, cell actions.
+- Git-native change-request pipeline: draft -> `configer/cr-N` branch -> commit (attribution
+  trailer) -> GitHub PR -> merge; state machine Draft -> Under Review -> Approved ->
+  Published/Rejected.
+- Multi-repository workspace (Hub), local and no-clone remote backends behind a `repobackend` seam.
+- Import wizard (scan -> choose -> initialize), Repository Changes inbox, Rendered Files explorer,
+  Compare, Approvals, Plugins, offline resilience, responsive shell, theming.
+
+Honest gaps versus the vision (the reason for this re-architecture):
+
+- The app is **Git-centric, not application-centric:** navigation is a flat `section` string in
+  `frontend/src/store.ts`; Editor / Import / Compare / Approvals read as peer modules and users lose
+  context between them.
+- **`DashboardView.tsx` exists but is not wired to any route** (the "disconnected dashboard"); the
+  workspace does not yet feel operational.
+- **View synchronization is one-way only** (tree -> grid via `store.setJump`); grid -> tree and
+  file -> grid do not exist; there is no live re-render on edit and no bidirectional editing.
+- **Rendered Files is a plain `<pre>`** (no Monaco, no branch selector, no file search); a
+  duplicate-file rendering bug is reported.
+- Several pages (Approvals, Repository Changes, Import) have large empty areas instead of
+  stats / summaries / activity.
+
+## Gap analysis (the 20 review points -> where they change)
+
+Each point maps to the primary file(s) that change and the phase that delivers it. This table is the
+bridge into `docs/ARCHITECTURE_MAP.md`, which explains how those files connect.
+
+| # | Review point | Primary file(s) | Phase |
+|---|---|---|---|
+| 1 | Application-centric mental model | `NavRail.tsx`, `App.tsx`, `store.ts` | 0 |
+| 2 | Context breadcrumb (app/version/env/instance) | `TopBar.tsx`, `store.ts` | 0 |
+| 3 | Dashboard = command center | `DashboardView.tsx` (wire it), `WorkspaceView.tsx` | 1 |
+| 4 | Better use of space | `DashboardView.tsx`, `RepoChangesView.tsx`, `ApprovalsView.tsx`, `ImportWizard.tsx` | 1 |
+| 5 | Consistent design language | `index.css`, `theme.ts`, shared card/section components | 1-2 |
+| 6 | Rename Editor -> Configuration | `NavRail.tsx`, `App.tsx`, `store.ts` | 0 |
+| 7 | Import -> Application onboarding | `ImportWizard.tsx`, `internal/api/hub.go` | 4 |
+| 8 | Repository Changes belongs to app, richer | `RepoChangesView.tsx`, `internal/api/reconcile.go` | 4 |
+| 9 | Change Requests as primary PR-like object | `ChangeRequestsView.tsx`, `CrSteps.tsx` | 4 |
+| 10a | Monaco file viewer | `RenderedFilesView.tsx` (+ dep) | 3 |
+| 10b | Searchable file explorer | `RenderedFilesView.tsx` | 3 |
+| 10c | Duplicate files bug | `render.go` / `RenderedFilesView.tsx` keying | 3 |
+| 10d | Branch/commit/tag selection | `RenderedFilesView.tsx`, `api.ts`, render route | 3 |
+| 10e | Instance selection (default/all/filter) | `RenderedFilesView.tsx` | 3 |
+| 10f | Live rendering | `RenderedFilesView.tsx`, `ParameterGrid.tsx`, `api.ts` | 3 |
+| 11-12 | Bidirectional + all-views sync | reverse-render (new), `ParameterGrid.tsx`, `RenderedFilesView.tsx`, `CategoryTree.tsx`, `DetailsPanel.tsx`, `store.ts` (`jump`) | 2 (highlight) / 5 (edit) |
+| 13 | Resizable/synchronized Systems + Params | `CategoryTree.tsx`, `App.tsx` `editorLayout()` | 2 |
+| 14 | Full-screen scoped to Configuration only | `App.tsx`, `TopBar.tsx` | 2 |
+| 15 | Move Group Overview out of grid | `ParameterGrid.tsx` -> `DashboardView.tsx` | 2 |
+| 16 | Inspector multi-tab knowledge center | `DetailsPanel.tsx` | 2 |
+| 17 | Better empty states | `ApprovalsView.tsx`, `RepoChangesView.tsx`, `ImportWizard.tsx` | 1 |
+| 18 | Nav = nouns | `NavRail.tsx` | 0 |
+| 19 | Workspace feels operational | `DashboardView.tsx` | 1 |
+| 20 | Live bidirectional as differentiator | reverse-render (new) + Monaco editable | 5 |
+
+## Phases (product-sequenced, incremental, no big-bang)
+
+**Phase 0 - Nomenclature and application-centric shell** (cheap, unblocks everything). Rename
+Editor to **Configuration**; nav items become nouns; introduce the per-application view set and the
+persistent context breadcrumb. Files: `NavRail.tsx` (`buildItems`), `App.tsx` (`body()` switch and
+`editorLayout()`), `store.ts` (`section` values plus new version/environment context fields),
+`TopBar.tsx` (breadcrumb). No backend change.
+
+**Phase 1 - Workspace command center and empty states.** Wire the orphaned `DashboardView.tsx` as
+the application **Overview** (health, drafts, approvals, repo events, drift, validation, upgrades,
+recently modified instances). Replace dead whitespace on Approvals / Repository Changes / Import
+with stat, summary, and activity blocks. Files: `DashboardView.tsx`, `WorkspaceView.tsx`,
+`ApprovalsView.tsx`, `RepoChangesView.tsx`, `charts.tsx` (reuse existing SVG tiles).
+
+**Phase 2 - Immersive Configuration workspace.** Resizable, width-remembering, collapsible
+Systems / Parameter panels; **full-screen scoped to the Configuration workspace only** (not the
+whole app); move Group Overview out of the grid into Overview/Analytics; expand the Parameter
+Inspector into tabs (Overview / Description / History / Dependencies / Validation / Usage / Git /
+AI / Version History); complete **cross-view highlight sync** (add grid -> tree, and later
+file -> grid, to the existing tree -> grid `setJump`). Files: `App.tsx` `editorLayout()`,
+`CategoryTree.tsx`, `ParameterGrid.tsx`, `DetailsPanel.tsx`, `store.ts` (`jump`), `TopBar.tsx`.
+
+**Phase 3 - Rendered Files pro editor and live one-way render.** Monaco (syntax highlight, folding,
+minimap, search, outline); searchable, filterable, favoritable file explorer; **fix the
+duplicate-file bug**; branch / commit / tag selector; instance selector (Default / All / filter by
+environment); **live rendering** (grid edit -> re-render -> diff visible, no manual step). Files:
+`RenderedFilesView.tsx` (single integration point), new Monaco dependency, `api.ts` (`render/{instance}`
+exists; add a branch parameter and a debounced live-render query), backend `internal/api` render
+route (accept branch/ref), `internal/render` (reuse `Instance`). Investigate duplicate rendering in
+`render.Instance` and the explorer keying.
+
+**Phase 4 - Application onboarding and Change Requests as first-class.** Rework Import into **Add
+Application** (Connect Git -> Authenticate -> Select Repository -> Discover Artifacts -> Review ->
+Import); make Change Requests a GitHub-PR-style object; scope Repository Changes richly under the
+application with Compare / Ignore / Accept / Create-CR per event. Files: `ImportWizard.tsx`,
+`ChangeRequestsView.tsx`, `RepoChangesView.tsx`, `CrSteps.tsx`; backend `internal/api/hub.go`
+connect flow, `internal/api/reconcile.go` findings.
+
+**Phase 5 - Bidirectional live sync (flagship) and Deployments/Validation views.** New backend
+**reverse-render**: parse an edited rendered file back into parameter deltas and stage a draft CR
+(the round-trip inverse of `internal/render`; reuse `internal/parsers`, `internal/resolver`,
+`internal/writer`). Editable Monaco writing back into the spreadsheet with no save step. Add the
+Deployments and Validation top-level views (Deployments is a new surface; today output is committed
+`generated/` consumed by external GitOps). Files: new `backend/internal/reverse/` (or extend
+`render`), new `POST /api/render/{instance}/apply`, `RenderedFilesView.tsx`, `ParameterGrid.tsx`,
+`store.ts` (shared canonical model channel).
+
+## Verification (per phase)
+
+Backend stays green (`go build/vet/test`), frontend stays green (`tsc --noEmit && vite build`)
+after every phase. Then drive the specific flow in the browser (Chromium/Playwright is preinstalled):
+
+- **Phase 0:** nav shows nouns; opening an application shows its view set; breadcrumb reflects
+  app/version/env/instance and updates on selection.
+- **Phase 1:** Overview renders live health/drafts/approvals/drift/validation with no dead
+  whitespace; empty states show stats, not "nothing here".
+- **Phase 2:** panels resize and remember width; full-screen affects only the Configuration
+  workspace; clicking a grid row highlights the tree node; Inspector tabs populate.
+- **Phase 3:** rendered file opens in Monaco with highlighting/folding/search; branch and instance
+  selectors work; editing a parameter re-renders the file and shows a diff with no manual step; no
+  duplicate files.
+- **Phase 4:** Add Application walks Connect -> Authenticate -> Select -> Discover -> Review ->
+  Import; a CR reads like a PR; a repository-change event offers Compare/Ignore/Accept/Create-CR.
+- **Phase 5:** editing `values.yaml` in Monaco updates the spreadsheet row and stages a draft;
+  editing the spreadsheet updates the file; both round-trip through the canonical model.
+
+---
+
+# Reference: technical design (original plan, preserved)
+
+The sections below are the original detailed design, kept verbatim. The product sections above
+supersede them where they disagree on sequencing or naming, but the technical detail (data model,
+Git workflow, plugin architecture, remote backend, and so on) remains the authority for
+implementation specifics.
+
 ## Context
 
 **Problem.** Teams that operate at scale (telco, platform, infra) manage hundreds of config

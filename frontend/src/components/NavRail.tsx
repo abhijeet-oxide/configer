@@ -5,27 +5,26 @@ import { api } from "../api";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
 
-// The far-left navigation rail. It is application-centric: Workspace is the
-// portfolio of applications, and everything below it is a view OF the active
-// application (nouns, not modules), grouped so the primary views sit up top
-// and the less-frequent or admin surfaces sit under "More". Badges sit on the
-// icons so the collapsed rail stays clean and readable.
+// The far-left navigation rail is deliberately thin: it holds only
+// application-level and global destinations, GitHub-style. Everything that
+// belongs to a single application (its configuration, instances, changes,
+// compare, history) lives in the in-application tab bar (AppTabs), not here, so
+// the rail never scrolls or repeats per-app views. Approvals is global so a
+// reviewer can clear change requests across every application in one place.
 
 // SECTION_LABELS is the single source of truth for view names, shared with the
-// TopBar breadcrumb and the placeholder screens so a view is named once.
+// TopBar breadcrumb, AppTabs, and the placeholder screens so a view is named
+// once.
 export const SECTION_LABELS: Record<string, string> = {
-  workspace: "Workspace",
+  workspace: "Applications",
   overview: "Overview",
   config: "Configuration",
-  files: "Rendered Files",
   changes: "Change Requests",
   approvals: "Approvals",
   drift: "Repository Changes",
   compare: "Compare",
-  deployments: "Deployments",
-  validation: "Validation",
+  instances: "Instances",
   history: "History",
-  repositories: "Repositories",
   import: "Import",
   plugins: "Plugins",
   settings: "Settings",
@@ -44,52 +43,27 @@ function ic(icon: (typeof icons)[keyof typeof icons]) {
   return <span className="nav-ic"><Ic icon={icon} /></span>;
 }
 
-function buildItems(appName: string | undefined, approvalsCount: number, findingsCount: number): MenuProps["items"] {
+function buildItems(approvalsCount: number): MenuProps["items"] {
   return [
-    { key: "workspace", icon: ic(icons.workspace), label: "Workspace" },
-    {
-      type: "group",
-      // The group header names the application being worked on, so the rail
-      // reads "these views belong to <app>", reinforcing the mental model.
-      label: appName ?? "Application",
-      children: [
-        { key: "overview", icon: ic(icons.home), label: "Overview" },
-        { key: "config", icon: ic(icons.editor), label: "Configuration" },
-        { key: "files", icon: ic(icons.files), label: "Rendered Files" },
-        { key: "changes", icon: ic(icons.changes), label: "Change Requests" },
-        { key: "approvals", icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount), label: "Approvals" },
-        {
-          key: "drift",
-          icon: iconWithBadge(<Ic icon={icons.drift} />, findingsCount, "orange"),
-          label: "Repository Changes",
-        },
-        { key: "compare", icon: ic(icons.compare), label: "Compare" },
-      ],
-    },
-    {
-      type: "group",
-      label: "More",
-      children: [
-        { key: "deployments", icon: ic(icons.deployments), label: "Deployments" },
-        { key: "validation", icon: ic(icons.schemas), label: "Validation" },
-        { key: "history", icon: ic(icons.history), label: "History" },
-        { key: "repositories", icon: ic(icons.systems), label: "Repositories" },
-        { key: "import", icon: ic(icons.import), label: "Import" },
-        { key: "plugins", icon: ic(icons.plugins), label: "Plugins (admin)" },
-        { key: "settings", icon: ic(icons.settings), label: "Settings" },
-      ],
-    },
+    { key: "workspace", icon: ic(icons.workspace), label: "Applications" },
+    { key: "approvals", icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount), label: "Approvals" },
+    { key: "settings", icon: ic(icons.settings), label: "Settings" },
   ];
 }
 
+// The global side rail highlights an application-level destination. When the
+// user is inside an application view (a tab), the rail keeps Applications lit as
+// the current context.
+function railKey(section: string): string {
+  if (section === "approvals" || section === "settings" || section === "plugins" || section === "import") return section === "plugins" ? "settings" : section;
+  return "workspace";
+}
+
 export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
-  const { section, setSection, repoId } = useUI();
+  const { section, setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
-  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const appName = wsQ.data?.repos?.find((r) => r.id === repoId)?.name;
   const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const items = buildItems(appName, approvalsCount, findingsQ.data?.findings?.length ?? 0);
+  const items = buildItems(approvalsCount);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
@@ -113,7 +87,7 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         className="nav-rail"
         mode="inline"
         inlineCollapsed={collapsed}
-        selectedKeys={[section]}
+        selectedKeys={[railKey(section)]}
         onClick={({ key }) => setSection(key)}
         items={items}
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}

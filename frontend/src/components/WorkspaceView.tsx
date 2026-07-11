@@ -31,15 +31,14 @@ import {
 } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type RepoSummary } from "../api";
+import { api, type RepoSummary } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import DashboardView from "./DashboardView";
 
-// WorkspaceView is the single landing page: every connected configuration as
-// a card (favorites pinned first), and right below, the overview of the one
-// currently selected: pick a configuration, read its health, press Edit to
-// open the editor. One seamless flow instead of separate Workspace and Home.
+// WorkspaceView is the Applications portfolio: every connected application as a
+// card (favorites pinned first). It is a launcher, not a dashboard: opening a
+// card takes you into the application (its Configuration), where the per-app
+// Overview, Instances, Change Requests, Compare and History live as tabs.
 
 const FAV_KEY = "configer.favRepos";
 
@@ -106,9 +105,8 @@ function RepoCard({
     <Card
         hoverable
         onClick={() => {
-          // Selecting a card switches the overview below to this
-          // configuration; it does not yank the user to another page.
-          if (!active) switchRepo(r.id);
+          // Opening a card takes you into the application (Configuration).
+          open("config");
         }}
         style={{
           width: 330,
@@ -311,7 +309,7 @@ export function ConnectForm({
   );
 }
 
-export default function WorkspaceView({ grid }: { grid?: Grid }) {
+export default function WorkspaceView() {
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const [connectOpen, setConnectOpen] = useState(false);
@@ -329,21 +327,45 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
     });
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
+      <div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Workspace
+              Applications
             </Typography.Title>
             <Typography.Text type="secondary">
-              Pick a configuration to see its overview below; everything stays in Git.
+              Every application you manage. Open one to configure it; everything stays in Git.
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-            Connect repository
+            Add application
           </Button>
         </div>
+
+        {repos.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
+            {[
+              { label: "Applications", value: repos.length, accent: "#1677ff" },
+              { label: "Instances", value: repos.reduce((a, r) => a + (r.instances ?? 0), 0), accent: "#6c3df4" },
+              { label: "Parameters", value: repos.reduce((a, r) => a + (r.params ?? 0), 0), accent: "#0ca30c" },
+              {
+                label: "Open change requests",
+                value: repos.reduce((a, r) => a + (r.openChanges ?? 0), 0),
+                accent: "#fa8c16",
+              },
+            ].map((s) => (
+              <Card
+                key={s.label}
+                size="small"
+                className="stat-accent"
+                style={{ "--accent": s.accent, minWidth: 170, flex: "1 1 170px", maxWidth: 260 } as React.CSSProperties}
+              >
+                <Statistic title={s.label} value={s.value} valueStyle={{ fontSize: 22 }} />
+              </Card>
+            ))}
+          </div>
+        )}
 
         {repos.length === 0 && !wsQ.isLoading ? (
           <Card style={{ marginTop: 20 }}>
@@ -395,12 +417,6 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
           bring the repository's settings under management. <DisconnectOutlined style={{ marginInlineStart: 10 }} />{" "}
           Disconnecting never deletes anything on Git.
         </Typography.Paragraph>
-
-        {grid && repoId && (
-          <div style={{ marginTop: 4, borderTop: "1px solid rgba(128,128,128,0.2)" }}>
-            <DashboardView grid={grid} embedded />
-          </div>
-        )}
       </div>
 
       <Modal

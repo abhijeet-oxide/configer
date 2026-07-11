@@ -165,8 +165,9 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        <Button size="small" icon={<EditOutlined />} onClick={startEdit}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>METADATA</Typography.Text>
+        <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={startEdit}>
           Edit
         </Button>
       </div>

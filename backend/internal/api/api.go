@@ -342,7 +342,16 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request) {
-	p, _, err := s.loadWithDraft()
+	// ?draft=false renders the committed state (the baseline for the live
+	// diff); the default applies the current draft so the preview shows exactly
+	// what a publish would write, including unpublished edits.
+	var p *project.Project
+	var err error
+	if r.URL.Query().Get("draft") == "false" {
+		p, err = s.load()
+	} else {
+		p, _, err = s.loadWithDraft()
+	}
 	if err != nil {
 		writeErr(w, err)
 		return

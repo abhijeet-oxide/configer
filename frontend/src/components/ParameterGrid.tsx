@@ -558,6 +558,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
   // body: the area the virtualized table body may occupy (auto-fits height/width)
@@ -570,6 +571,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
     },
     onError: (e: Error, vars) => {
       if (e instanceof OfflineError) {

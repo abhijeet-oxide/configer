@@ -76,7 +76,7 @@ export default function RepoChangesView() {
   const findings = data?.findings ?? [];
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 24px", maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1 }}>

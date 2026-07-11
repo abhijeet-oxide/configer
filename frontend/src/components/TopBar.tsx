@@ -118,7 +118,7 @@ export default function TopBar({ project, instances }: { project?: string; insta
   const workspaceCrumb = {
     title: (
       <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
-        Workspace
+        Applications
       </a>
     ),
   };

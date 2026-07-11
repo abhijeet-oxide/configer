@@ -1,4 +1,4 @@
-import { Layout, Result, Drawer, Button, Alert, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Result, Drawer, Button, Alert, Segmented, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   HomeOutlined,
@@ -7,6 +7,7 @@ import {
   CheckCircleOutlined,
   CloudSyncOutlined,
   FullscreenExitOutlined,
+  FolderOpenOutlined,
 } from "@ant-design/icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,8 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import DashboardView from "./components/DashboardView";
+import SettingsView from "./components/SettingsView";
+import AppTabs, { isAppSection } from "./components/AppTabs";
 import MobileParamList from "./components/MobileParamList";
 import { GridSkeleton, ListSkeleton } from "./components/Skeletons";
 import { SECTION_LABELS } from "./components/NavRail";
@@ -115,7 +118,7 @@ function OfflineReplay() {
 
 export default function App() {
   const { section, setSection, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo,
-    editorFocus, setEditorFocus } = useUI();
+    editorFocus, setEditorFocus, configView, setConfigView } = useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
@@ -174,9 +177,29 @@ export default function App() {
         </div>
       );
     }
-    if (!wide) {
+    // Configuration hosts an inline view toggle: the spreadsheet Table, or the
+    // Exported files (the rendered artifacts + live diff). Rendered files is no
+    // longer a separate nav destination.
+    const viewToggle = (
+      <div style={{ padding: "8px 12px 0", flexShrink: 0 }}>
+        <Segmented
+          size="small"
+          value={configView}
+          onChange={(v) => setConfigView(v as "table" | "exported")}
+          options={[
+            { value: "table", label: "Table", icon: <TableOutlined /> },
+            { value: "exported", label: "Exported files", icon: <FolderOpenOutlined /> },
+          ]}
+        />
+      </div>
+    );
+
+    let content: React.ReactNode;
+    if (configView === "exported") {
+      content = <RenderedFilesView grid={grid} />;
+    } else if (!wide) {
       // Small screens: full-width grid; groups + details slide in as drawers.
-      return (
+      content = (
         <div style={{ display: "flex", flexDirection: "column", height: "100%", ...panelBg }}>
           <div style={{ padding: "6px 12px 0" }}>
             <TreeDrawerButton grid={grid} />
@@ -195,21 +218,29 @@ export default function App() {
           </Drawer>
         </div>
       );
+    } else {
+      content = (
+        <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
+          <Panel defaultSize={16} minSize={11} maxSize={30} style={{ ...panelBg }}>
+            <CategoryTree grid={grid} />
+          </Panel>
+          <ResizeHandleV />
+          <Panel defaultSize={62} minSize={40} style={{ minWidth: 0, ...panelBg }}>
+            <ParameterGrid grid={grid} />
+          </Panel>
+          <ResizeHandleV />
+          <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
+            <DetailsPanel grid={grid} />
+          </Panel>
+        </PanelGroup>
+      );
     }
+
     return (
-      <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
-        <Panel defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
-          <CategoryTree grid={grid} />
-        </Panel>
-        <ResizeHandleV />
-        <Panel defaultSize={63} minSize={40} style={{ minWidth: 0, ...panelBg }}>
-          <ParameterGrid grid={grid} />
-        </Panel>
-        <ResizeHandleV />
-        <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
-          <DetailsPanel grid={grid} />
-        </Panel>
-      </PanelGroup>
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", ...panelBg }}>
+        {viewToggle}
+        <div style={{ flex: 1, minHeight: 0 }}>{content}</div>
+      </div>
     );
   }
 
@@ -221,7 +252,7 @@ export default function App() {
     if (section === "workspace" || section === "home")
       return (
         <div style={{ height: "100%", ...panelBg }}>
-          <WorkspaceView grid={grid} />
+          <WorkspaceView />
         </div>
       );
     if (gridQ.isLoading) {
@@ -261,6 +292,12 @@ export default function App() {
           <DashboardView grid={grid} />
         </div>
       );
+    if (section === "settings")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <SettingsView />
+        </div>
+      );
     if (section === "plugins") return <PluginsView />;
     if (section === "import")
       return (
@@ -292,23 +329,16 @@ export default function App() {
           <ComparePanel grid={grid} />
         </div>
       );
-    if (section === "files")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <RenderedFilesView grid={grid} />
-        </div>
-      );
     if (section === "config") return editorLayout();
-    // Named-but-not-yet-built application views (Deployments, Validation,
-    // History, Repositories, Settings). Named here so the shell is complete
-    // even while the view itself is on the roadmap.
+    // Named-but-not-yet-built application views (Instances, History). Named here
+    // so the shell is complete even while the view itself is on the roadmap.
     return (
       <Result
         icon={<CloudSyncOutlined style={{ color: token.colorPrimary }} />}
         title={SECTION_LABELS[section] ?? section}
-        subTitle={`${SECTION_LABELS[section] ?? "This view"} is part of the application workspace and lands in a later phase (see docs/PLAN.md).`}
+        subTitle={`${SECTION_LABELS[section] ?? "This view"} lands in a later phase (see docs/PLAN.md).`}
         extra={
-          <Button onClick={() => setSection("overview")}>Back to Overview</Button>
+          <Button onClick={() => setSection("config")}>Go to Configuration</Button>
         }
       />
     );
@@ -337,8 +367,8 @@ export default function App() {
   // Phone tier: single column with a bottom tab bar, no side rail, no tabs row.
   if (phone) {
     const tabs = [
-      { key: "workspace", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Settings" },
+      { key: "workspace", icon: <HomeOutlined />, label: "Apps" },
+      { key: "config", icon: <TableOutlined />, label: "Config" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
     ];
@@ -390,6 +420,11 @@ export default function App() {
         <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
           <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
         </Header>
+        {isAppSection(section) && repoId && (
+          <div style={{ borderBottom: border, background: token.colorBgContainer, flexShrink: 0 }}>
+            <AppTabs />
+          </div>
+        )}
         <OfflineReplay />
         <ConnectionBanner />
         <Content style={{ overflow: "hidden" }}>{body()}</Content>

@@ -62,6 +62,9 @@ interface UIState {
   /** focus mode: maximize just the Configuration workspace (hide the nav rail
    *  and header), an in-app "editor fullscreen" scoped to the editor only */
   editorFocus: boolean;
+  /** inside the Configuration tab: the spreadsheet table, or the exported
+   *  (rendered) files view. Rendered files is no longer a nav destination. */
+  configView: "table" | "exported";
   /** file or folder prefix the Import wizard should focus on (set by the
    *  Repository Changes inbox when jumping into an import) */
   importFocus: string | null;
@@ -82,6 +85,7 @@ interface UIState {
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
   setEditorFocus: (f: boolean) => void;
+  setConfigView: (v: "table" | "exported") => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance", id: string) => void;
 }
@@ -102,6 +106,7 @@ export const useUI = create<UIState>((set) => ({
   prefs: loadPrefs(),
   navCollapsed: false,
   editorFocus: false,
+  configView: "table",
   importFocus: null,
   jump: null,
   setMode: (mode) => {
@@ -148,6 +153,7 @@ export const useUI = create<UIState>((set) => ({
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
   setEditorFocus: (editorFocus) => set({ editorFocus }),
+  setConfigView: (configView) => set({ configView }),
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
 }));

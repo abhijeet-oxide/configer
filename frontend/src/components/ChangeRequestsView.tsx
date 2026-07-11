@@ -17,8 +17,10 @@ import {
   ReloadOutlined,
   LinkOutlined,
 } from "@ant-design/icons";
+import { EditOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
+import { useUI } from "../store";
 import CrSteps, { StateTag } from "./CrSteps";
 
 // ChangeRequestsView is the workflow home: every draft, in-review, published
@@ -69,6 +71,7 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
 export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { setSection, setConfigView } = useUI();
   const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
 
   const invalidate = () => qc.invalidateQueries();
@@ -201,9 +204,19 @@ export default function ChangeRequestsView() {
               if (cr.state === "draft") {
                 return (
                   <Space size={4}>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                      Submit from the header button
-                    </Typography.Text>
+                    <Tooltip title="Review the pending edits and submit for approval in the Configuration editor">
+                      <Button
+                        size="small"
+                        type="primary"
+                        icon={<EditOutlined />}
+                        onClick={() => {
+                          setConfigView("table");
+                          setSection("config");
+                        }}
+                      >
+                        Review &amp; submit
+                      </Button>
+                    </Tooltip>
                     <Popconfirm title="Discard this draft and all pending edits?" onConfirm={() => reject.mutate(cr.id)}>
                       <Button size="small" danger icon={<CloseCircleOutlined />}>Discard</Button>
                     </Popconfirm>

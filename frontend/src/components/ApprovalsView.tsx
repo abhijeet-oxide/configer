@@ -75,7 +75,7 @@ export default function ApprovalsView() {
   );
 
   return (
-    <div style={{ padding: 20, height: "100%", overflow: "auto", maxWidth: 1040, margin: "0 auto" }}>
+    <div style={{ padding: "20px 28px", height: "100%", overflow: "auto" }}>
       <Typography.Title level={4} style={{ marginTop: 0 }}>
         Approvals
       </Typography.Title>

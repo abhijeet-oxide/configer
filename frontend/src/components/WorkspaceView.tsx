@@ -87,6 +87,18 @@ function RepoCard({
   const { setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const qc = useQueryClient();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameVal, setRenameVal] = useState(r.name);
+
+  const rename = useMutation({
+    mutationFn: (name: string) => api.renameRepo(r.id, name),
+    onSuccess: (s) => {
+      message.success(`Renamed to "${s.name}"`);
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+      setRenameOpen(false);
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   const open = (section: string) => {
     if (!active) switchRepo(r.id);
@@ -141,14 +153,21 @@ function RepoCard({
               trigger={["click"]}
               menu={{
                 items: [
-                  { key: "editor", label: "Open Config Editor" },
+                  { key: "overview", label: "Open overview" },
+                  { key: "editor", label: "Open configuration" },
+                  { key: "rename", icon: <EditOutlined />, label: "Rename application…" },
                   { key: "import", label: "Import parameters" },
                   { type: "divider" },
                   { key: "disconnect", danger: true, label: "Disconnect from workspace" },
                 ],
                 onClick: ({ key, domEvent }) => {
                   domEvent.stopPropagation();
+                  if (key === "overview") open("overview");
                   if (key === "editor") open("config");
+                  if (key === "rename") {
+                    setRenameVal(r.name);
+                    setRenameOpen(true);
+                  }
                   if (key === "import") open("import");
                   if (key === "disconnect")
                     Modal.confirm({
@@ -225,6 +244,30 @@ function RepoCard({
             </Button>
           )}
         </div>
+      <span onClick={(e) => e.stopPropagation()}>
+        <Modal
+          title="Rename application"
+          open={renameOpen}
+          onCancel={() => setRenameOpen(false)}
+          onOk={() => rename.mutate(renameVal.trim())}
+          okText="Rename"
+          okButtonProps={{ disabled: !renameVal.trim() || renameVal.trim() === r.name, loading: rename.isPending }}
+          destroyOnClose
+        >
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            This changes the display name only. The Git repository, its history and any shared links
+            stay exactly as they are.
+          </Typography.Paragraph>
+          <Input
+            value={renameVal}
+            maxLength={80}
+            autoFocus
+            onChange={(e) => setRenameVal(e.target.value)}
+            onPressEnter={() => renameVal.trim() && renameVal.trim() !== r.name && rename.mutate(renameVal.trim())}
+            placeholder="Application name"
+          />
+        </Modal>
+      </span>
       </Card>
   );
 }

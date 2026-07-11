@@ -351,6 +351,8 @@ export const api = {
   workspace: () => get<Workspace>("/workspace"),
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),
+  renameRepo: (id: string, name: string) =>
+    send<RepoSummary>("PATCH", `/repos/${encodeURIComponent(id)}`, { name }),
   removeRepo: (id: string) =>
     send<{ ok: boolean; removed: string }>("DELETE", `/repos/${encodeURIComponent(id)}`),
 

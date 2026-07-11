@@ -42,11 +42,12 @@ export default function AppTabs() {
 
   return (
     <Menu
+      className="app-tabs"
       mode="horizontal"
       selectedKeys={[section]}
       onClick={({ key }) => setSection(key)}
       items={items}
-      style={{ paddingInline: 12, lineHeight: "40px", minHeight: 40 }}
+      style={{ paddingInline: 8, borderBottom: "none" }}
     />
   );
 }

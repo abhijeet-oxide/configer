@@ -1,6 +1,6 @@
-import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
+import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
 import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
@@ -47,10 +47,21 @@ function coerceDefault(raw: string | undefined, type: string): unknown {
   }
 }
 
-function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[]; grid: Grid }) {
+function DetailsTab({
+  p,
+  categories,
+  grid,
+  editing,
+  setEditing,
+}: {
+  p: Parameter;
+  categories: string[];
+  grid: Grid;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+}) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
   const design = !p.source.file;
@@ -66,7 +77,10 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
     onError: (e: Error) => message.error(e.message),
   });
 
-  const startEdit = () => {
+  // The Edit action now lives in the panel header (see DetailsPanel); when it
+  // flips `editing` on, populate the form from the current parameter.
+  useEffect(() => {
+    if (!editing) return;
     form.setFieldsValue({
       displayName: p.displayName,
       description: p.description,
@@ -76,8 +90,7 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
       secret: p.secret,
       default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
     });
-    setEditing(true);
-  };
+  }, [editing, p, form]);
 
   const save = (v: EditValues) => {
     const d = coerceDefault(v.default, v.type);
@@ -165,12 +178,6 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>METADATA</Typography.Text>
-        <Button size="small" type="primary" ghost icon={<EditOutlined />} onClick={startEdit}>
-          Edit
-        </Button>
-      </div>
       <Descriptions column={1} size="small" bordered items={[
         { key: "display", label: "Display Name", children: p.displayName || <span style={{ opacity: 0.45 }}>-</span> },
         {
@@ -312,22 +319,60 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
   const nameOf = (id: string) => grid.rows.find((r) => r.param.id === id)?.param.name ?? id;
   const requiredBy = grid.rows.filter((r) => r.param.dependsOn?.includes(p.id)).map((r) => r.param);
   const chip = (id: string, label: string) => (
-    <Tag key={id} className="mono" style={{ cursor: "pointer" }} onClick={() => onSelect(id)}>
+    <Tag key={id} className="mono" style={{ cursor: "pointer", margin: 0 }} onClick={() => onSelect(id)}>
       {label}
     </Tag>
   );
+  // A small centered dependency graph: what this parameter depends on flows down
+  // into it, and what it is required by flows out below. Reads top-to-bottom and
+  // stays centered instead of hugging the left edge.
+  const label = (t: string) => (
+    <Typography.Text type="secondary" style={{ fontSize: 10, letterSpacing: 0.5 }}>
+      {t}
+    </Typography.Text>
+  );
+  const chipRow = (children: React.ReactNode) => (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", maxWidth: "100%" }}>
+      {children}
+    </div>
+  );
+  const arrow = <span style={{ opacity: 0.35, fontSize: 16, lineHeight: 1 }}>↓</span>;
   return (
-    <div>
-      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>DEPENDS ON</Typography.Text>
-      <div style={{ margin: "6px 0 14px", display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {p.dependsOn?.length ? p.dependsOn.map((d) => chip(d, nameOf(d))) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No dependencies" />}
-      </div>
-      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>REQUIRED BY</Typography.Text>
-      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {requiredBy.length
-          ? requiredBy.map((rp) => chip(rp.id, rp.name))
-          : <Typography.Text type="secondary" style={{ fontSize: 12 }}>Nothing depends on this parameter.</Typography.Text>}
-      </div>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 8,
+        textAlign: "center",
+        padding: "6px 0",
+      }}
+    >
+      {label("DEPENDS ON")}
+      {p.dependsOn?.length ? (
+        chipRow(p.dependsOn.map((d) => chip(d, nameOf(d))))
+      ) : (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          nothing
+        </Typography.Text>
+      )}
+      {arrow}
+      <Tag
+        color="blue"
+        className="mono"
+        style={{ margin: 0, fontSize: 12, padding: "3px 12px", fontWeight: 600 }}
+      >
+        {p.name}
+      </Tag>
+      {arrow}
+      {label("REQUIRED BY")}
+      {requiredBy.length ? (
+        chipRow(requiredBy.map((rp) => chip(rp.id, rp.name)))
+      ) : (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          nothing
+        </Typography.Text>
+      )}
     </div>
   );
 }
@@ -374,6 +419,10 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   const qc = useQueryClient();
   const { selectedParamId, selectParam } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
+  const [tab, setTab] = useState("overview");
+  const [editing, setEditing] = useState(false);
+  // A newly selected parameter always opens read-only.
+  useEffect(() => setEditing(false), [selectedParamId]);
 
   const retire = useMutation({
     mutationFn: (id: string) => api.deleteParameter(id, "demo-user"),
@@ -391,16 +440,36 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
 
   return (
     <div style={{ padding: 12, height: "100%", overflow: "auto" }}>
-      <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
-      <Tag color="geekblue">{p.type}</Tag>
-      {p.secret && <Tag color="gold">secret</Tag>}
-      {!p.source.file && <Tag color="purple">design</Tag>}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
+          <div style={{ marginTop: 4 }}>
+            <Tag color="geekblue">{p.type}</Tag>
+            {p.secret && <Tag color="gold">secret</Tag>}
+            {!p.source.file && <Tag color="purple">design</Tag>}
+          </div>
+        </div>
+        <Button
+          size="small"
+          type={editing ? "primary" : "text"}
+          icon={<EditOutlined />}
+          onClick={() => {
+            setTab("details");
+            setEditing(true);
+          }}
+          style={{ flexShrink: 0 }}
+        >
+          Edit
+        </Button>
+      </div>
       <Divider style={{ margin: "10px 0" }} />
       <Tabs
         size="small"
+        activeKey={tab}
+        onChange={setTab}
         items={[
           { key: "overview", label: "Overview", children: <OverviewTab row={row} grid={grid} /> },
-          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} /> },
+          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} editing={editing} setEditing={setEditing} /> },
           { key: "validation", label: "Validation", children: <RuleEditor param={p} /> },
           { key: "depends", label: "Dependencies", children: <DependenciesTab p={p} grid={grid} onSelect={selectParam} /> },
           { key: "versions", label: "Versions", children: <VersionsTab row={row} grid={grid} /> },

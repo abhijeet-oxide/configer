@@ -331,3 +331,93 @@ body {
 .nav-rail .ant-menu-submenu-title .ant-badge {
   color: inherit;
 }
+
+/* -------------------------------------------------- application tab bar */
+
+/* GitHub/VS-Code-style tabs: each tab is a flex box so the icon and label are
+   centered together both horizontally and vertically, with real breathing
+   room around the icon (the antd default crowds them and sits the icon high). */
+.app-tabs.ant-menu-horizontal {
+  line-height: normal;
+  border-bottom: none;
+}
+.app-tabs.ant-menu-horizontal > .ant-menu-item,
+.app-tabs.ant-menu-horizontal > .ant-menu-submenu {
+  height: 46px;
+  padding-inline: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  top: 0;
+}
+.app-tabs.ant-menu-horizontal > .ant-menu-item::after,
+.app-tabs.ant-menu-horizontal > .ant-menu-submenu::after {
+  inset-inline: 12px;
+}
+.app-tabs .ant-menu-title-content {
+  display: inline-flex;
+  align-items: center;
+}
+.app-tabs .ant-menu-item .anticon,
+.app-tabs .ant-menu-item .iconify,
+.app-tabs .ant-menu-submenu-title .anticon,
+.app-tabs .ant-menu-submenu-title .iconify {
+  font-size: 17px;
+  margin-inline-end: 9px;
+  vertical-align: 0 !important;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* --------------------------------------------------- modern scrollbars */
+
+/* One consistent, modern scrollbar everywhere (the Parameters tree looked
+   right while the grid and Systems used the OS default). Thin, rounded,
+   translucent, and it fades to a stronger thumb on hover. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 150, 170, 0.45) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(140, 150, 170, 0.4);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(120, 132, 156, 0.7);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+[data-theme="dark"] * {
+  scrollbar-color: rgba(120, 132, 160, 0.5) transparent;
+}
+
+/* -------------------------------------------------- selection highlight */
+
+/* Clicking a parameter in the tree must land as an obviously selected row.
+   The prior 10% tint was too faint on a busy grid; add a colored left marker
+   and a firmer tint so the eye catches it immediately. */
+.param-grid .ant-table-row.row-selected .ant-table-cell {
+  background-image: linear-gradient(rgba(47, 107, 255, 0.16), rgba(47, 107, 255, 0.16)) !important;
+}
+.param-grid .ant-table-row.row-selected .ant-table-cell-fix-left:first-child {
+  box-shadow: inset 3px 0 0 0 #2f6bff;
+}
+/* The selected leaf in the Parameters tree, made unmistakable. */
+.cat-tree .ant-tree .ant-tree-node-selected,
+.cat-tree .ant-tree .ant-tree-treenode-selected .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: rgba(47, 107, 255, 0.16) !important;
+  outline: 1px solid rgba(47, 107, 255, 0.4);
+  border-radius: 4px;
+}

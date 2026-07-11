@@ -26,8 +26,10 @@ import ImportWizard from "./components/ImportWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
+import DashboardView from "./components/DashboardView";
 import MobileParamList from "./components/MobileParamList";
 import { GridSkeleton, ListSkeleton } from "./components/Skeletons";
+import { SECTION_LABELS } from "./components/NavRail";
 
 const { Header, Sider, Content } = Layout;
 
@@ -240,6 +242,12 @@ export default function App() {
       );
     }
 
+    if (section === "overview")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <DashboardView grid={grid} />
+        </div>
+      );
     if (section === "plugins") return <PluginsView />;
     if (section === "import")
       return (
@@ -278,10 +286,17 @@ export default function App() {
         </div>
       );
     if (section === "config") return editorLayout();
+    // Named-but-not-yet-built application views (Deployments, Validation,
+    // History, Repositories, Settings). Named here so the shell is complete
+    // even while the view itself is on the roadmap.
     return (
       <Result
-        title={section}
-        subTitle="This section is part of the roadmap (see docs/PLAN.md)."
+        icon={<CloudSyncOutlined style={{ color: token.colorPrimary }} />}
+        title={SECTION_LABELS[section] ?? section}
+        subTitle={`${SECTION_LABELS[section] ?? "This view"} is part of the application workspace and lands in a later phase (see docs/PLAN.md).`}
+        extra={
+          <Button onClick={() => setSection("overview")}>Back to Overview</Button>
+        }
       />
     );
   }

@@ -111,6 +111,27 @@ export default function RepoChangesView() {
           </Space>
         </div>
 
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Tag color={findings.length ? "orange" : "green"} style={{ fontWeight: 500 }}>
+            {findings.length ? `${findings.length} pending event${findings.length === 1 ? "" : "s"}` : "No pending events"}
+          </Tag>
+          {Object.entries(
+            findings.reduce((m, f) => ({ ...m, [f.type]: (m[f.type] ?? 0) + 1 }), {} as Record<string, number>),
+          ).map(([t, n]) => {
+            const meta = findingMeta[t as Finding["type"]];
+            return (
+              <Tag key={t} color={meta.color}>
+                {meta.label}: {n}
+              </Tag>
+            );
+          })}
+          {data && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Last checked at commit <code>{data.headSha.slice(0, 7)}</code>
+            </Typography.Text>
+          )}
+        </div>
+
         {findingsQ.isError && (
           <Alert
             type="warning"

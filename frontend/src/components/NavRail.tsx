@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
+import { envHex } from "../theme";
 
 // The far-left navigation rail is deliberately thin: it holds only
 // application-level and global destinations, GitHub-style. Everything that
@@ -103,13 +104,12 @@ function DeploymentChip() {
   const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const m = metaQ.data;
   if (!m) return null;
-  const envColor: Record<string, string> = { production: "#f5222d", staging: "#fa8c16" };
   return (
     <div style={{ margin: "0 10px 10px", fontSize: 10.5, opacity: 0.75, display: "flex", alignItems: "center", gap: 6 }}>
       <span
         style={{
           width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-          background: envColor[m.environment] ?? "#52c41a",
+          background: envHex(m.environment),
         }}
       />
       {m.name} {m.version} · {m.environment}

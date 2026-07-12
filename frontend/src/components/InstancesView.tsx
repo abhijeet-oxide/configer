@@ -8,6 +8,7 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
+import { envHex } from "../theme";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Add, edit, clone, archive and delete instances; every change is a direct,
@@ -15,7 +16,9 @@ import { api, type Grid, type Instance, type InstanceInput } from "../api";
 // a grid column right away. Archived instances stay in Git but drop out of the
 // active configuration grid.
 
-const envColor: Record<string, string> = { production: "red", staging: "orange", development: "green" };
+// Status colors carry meaning (green = active, gold = deprecated, etc.); red is
+// reserved for errors/destructive actions only. Environment identity colors come
+// from the shared envHex source of truth (production indigo, not danger-red).
 const statusColor: Record<string, string> = { active: "green", archived: "default", draft: "blue", deprecated: "gold" };
 
 function parseLabels(s: string): Record<string, string> {
@@ -167,7 +170,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           {
             title: "Environment",
             dataIndex: "environment",
-            render: (e: string) => (e ? <Tag color={envColor[e] ?? "default"}>{e}</Tag> : <span style={{ opacity: 0.4 }}>-</span>),
+            render: (e: string) => (e ? <Tag color={envHex(e)}>{e}</Tag> : <span style={{ opacity: 0.4 }}>-</span>),
           },
           { title: "Region", dataIndex: "region", render: (v) => v || <span style={{ opacity: 0.4 }}>-</span> },
           {

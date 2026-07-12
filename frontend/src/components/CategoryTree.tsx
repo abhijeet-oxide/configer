@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryNode, Grid } from "../api";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
+import { envHex } from "../theme";
 
 // Left panel: two linked trees in resizable, collapsible panes (sizes are
 // remembered across sessions).
@@ -20,12 +21,6 @@ interface TreeItem {
   isLeaf?: boolean;
   children?: TreeItem[];
 }
-
-const envDot: Record<string, string> = {
-  production: "#f5222d",
-  staging: "#fa8c16",
-  development: "#52c41a",
-};
 
 // All ancestor category keys of a slash-delimited category path, so revealing a
 // leaf can expand exactly the branches that contain it.
@@ -138,7 +133,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
       selectable: false,
       title: (
         <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ width: 7, height: 7, borderRadius: 4, background: envDot[env] ?? "#8c8c8c" }} />
+          <span style={{ width: 7, height: 7, borderRadius: 4, background: envHex(env) }} />
           <span style={{ textTransform: "capitalize" }}>{env}</span>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>{insts.length}</Typography.Text>
         </span>

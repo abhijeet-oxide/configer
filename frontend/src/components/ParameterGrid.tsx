@@ -913,45 +913,50 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
-        <Space.Compact size="small">
-          <Select
-            size="small"
-            value={searchScope}
-            onChange={(v) => setSearchScope(v)}
-            style={{ width: 116 }}
-            options={[
-              { value: "all", label: "All fields" },
-              { value: "param", label: "Parameter" },
-              { value: "desc", label: "Description" },
-              { value: "value", label: "Values" },
-            ]}
-          />
-          <Input
-            size="small"
-            allowClear
-            prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-            placeholder="Search parameters…"
-            value={localQ}
-            onChange={(e) => setLocalQ(e.target.value)}
-            style={{ width: "clamp(170px, 18vw, 280px)" }}
-          />
-        </Space.Compact>
-        {hlq && (
-          <Space size={2}>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {rows.length} match{rows.length === 1 ? "" : "es"}
-            </Typography.Text>
-            <Tooltip title="Previous match">
-              <Button size="small" type="text" icon={<UpOutlined />} disabled={!rows.length} onClick={() => gotoMatch(-1)} />
-            </Tooltip>
-            <Tooltip title="Next match">
-              <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
-            </Tooltip>
-          </Space>
-        )}
-        <Tag style={{ marginInlineEnd: 0 }} title={`${title}: ${rows.length} parameter${rows.length === 1 ? "" : "s"}`}>
-          {title} · {rows.length}
-        </Tag>
+        {/* The search grows to fill the row so the toolbar reads as one balanced
+            band: scope + search on the left, actions on the right. The live
+            parameter count sits quietly inside the field (as a suffix) instead
+            of a floating tag. */}
+        <div style={{ display: "flex", flex: "1 1 300px", minWidth: 150, maxWidth: 820, alignItems: "center", gap: 8 }}>
+          <Space.Compact size="small" style={{ width: "100%" }}>
+            <Select
+              size="small"
+              value={searchScope}
+              onChange={(v) => setSearchScope(v)}
+              style={{ width: 90, flexShrink: 0 }}
+              title="Search in"
+              options={[
+                { value: "all", label: "All" },
+                { value: "param", label: "Name" },
+                { value: "desc", label: "Desc" },
+                { value: "value", label: "Value" },
+              ]}
+            />
+            <Input
+              size="small"
+              allowClear
+              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+              suffix={!localQ && !hlq ? <span style={{ fontSize: 11, opacity: 0.4 }} title={`${rows.length} parameters`}>{rows.length}</span> : undefined}
+              placeholder={categoryKey ? `Search in ${title}…` : "Search parameters…"}
+              value={localQ}
+              onChange={(e) => setLocalQ(e.target.value)}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+          </Space.Compact>
+          {hlq && (
+            <Space size={2} style={{ flexShrink: 0 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {rows.length} match{rows.length === 1 ? "" : "es"}
+              </Typography.Text>
+              <Tooltip title="Previous match">
+                <Button size="small" type="text" icon={<UpOutlined />} disabled={!rows.length} onClick={() => gotoMatch(-1)} />
+              </Tooltip>
+              <Tooltip title="Next match">
+                <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
+              </Tooltip>
+            </Space>
+          )}
+        </div>
         {q && (
           <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
             ⌘K: “{search.trim()}”
@@ -983,7 +988,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </div>
             }
           >
-            <Button size="small" type="text" icon={<QuestionCircleOutlined />}>Legend</Button>
+            <Button size="small" type="text" icon={<QuestionCircleOutlined />} aria-label="Legend" title="Legend: what the cell marks mean" />
           </Popover>
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add Parameter
@@ -1000,8 +1005,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>),
             }}
           >
-            <Button size="small" icon={<FilterOutlined />}>
-              Filter{activeFilters ? ` (${activeFilters})` : ""}
+            <Button size="small" icon={<FilterOutlined />} aria-label="Filter" title="Filter rows">
+              {activeFilters ? activeFilters : ""}
             </Button>
           </Dropdown>
           <Popover
@@ -1033,7 +1038,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </div>
             }
           >
-            <Button size="small" icon={<SettingOutlined />}>View</Button>
+            <Button size="small" icon={<SettingOutlined />} aria-label="View options" title="View: density & columns" />
           </Popover>
           <Tooltip title={editorFocus ? "Exit focus mode (Esc)" : "Focus mode: maximize the editor"}>
             <Button

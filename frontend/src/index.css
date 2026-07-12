@@ -344,29 +344,42 @@ body {
 .app-tabs.ant-menu-horizontal > .ant-menu-item,
 .app-tabs.ant-menu-horizontal > .ant-menu-submenu {
   height: 46px;
-  padding-inline: 16px;
+  padding-inline: 18px;
+  margin-inline: 2px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   top: 0;
+  border-radius: 8px 8px 0 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+/* a quiet hover so tabs feel interactive without shouting */
+.app-tabs.ant-menu-horizontal > .ant-menu-item:hover,
+.app-tabs.ant-menu-horizontal > .ant-menu-submenu:hover {
+  background: rgba(127, 137, 160, 0.09);
 }
 .app-tabs.ant-menu-horizontal > .ant-menu-item::after,
 .app-tabs.ant-menu-horizontal > .ant-menu-submenu::after {
-  inset-inline: 12px;
+  inset-inline: 14px;
 }
+/* the label + icon are one centered unit with real space between them */
 .app-tabs .ant-menu-title-content {
   display: inline-flex;
   align-items: center;
+  line-height: 1;
 }
 .app-tabs .ant-menu-item .anticon,
 .app-tabs .ant-menu-item .iconify,
 .app-tabs .ant-menu-submenu-title .anticon,
 .app-tabs .ant-menu-submenu-title .iconify {
-  font-size: 17px;
-  margin-inline-end: 9px;
+  font-size: 18px;
+  margin-inline-end: 10px;
   vertical-align: 0 !important;
   display: inline-flex;
   align-items: center;
+  line-height: 1;
+  position: relative;
+  top: 0;
 }
 
 /* --------------------------------------------------- modern scrollbars */

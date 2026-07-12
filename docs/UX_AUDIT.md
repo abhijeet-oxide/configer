@@ -13,7 +13,7 @@ Configer is a **genuinely strong, thoughtfully built product** that is already w
 It is **not yet at world-class enterprise polish**, and the gaps are concentrated in a small number of high-leverage areas:
 
 1. **Dark mode is broken on the primary working surface** (the Configuration editor renders on white while the rest of the app is dark). This is the single most damaging first impression for a product that ships dark mode as a headline feature.
-2. **The grid under-uses laptop-class screens** — the surface where users spend 90% of their time shows only 2 of 6 instance columns at 1440px because metadata columns dominate the width.
+2. **The grid under-uses laptop-class screens** — the surface where users spend 90% of their time shows only 2 of 6 instance columns at 1440px because metadata columns dominate the width, and its **toolbar wraps into two unbalanced, half-empty rows** with inconsistent (left/right/panel) action placement.
 3. **Accessibility is below WCAG AA** on the custom grid (no ARIA grid semantics, no keyboard cell navigation, editing is mouse-only) and on a few key controls.
 4. **The identity/account layer is absent** — the avatar is decorative, there is no user menu, no notification center, and no in-app help.
 5. **"Search everything (⌘K)" over-promises** — it is a parameter filter, not the command palette its label implies.
@@ -93,6 +93,23 @@ Each finding uses: **Severity · Category · Problem · Why it hurts · Recommen
 - **User benefit:** One keystroke to anywhere/anything; power-user velocity; fulfills the ⌘K promise.
 - **Effort:** Medium
 - **Screens:** Global (top bar), all views.
+
+#### H-6 · The Configuration toolbar wraps into two unbalanced rows with wasted space; action placement is inconsistent
+- **Severity:** High
+- **Category:** Layout & screen utilization / interaction design / visual hierarchy
+- **Source:** Stakeholder/product-owner feedback, validated in this review.
+- **Current problem:** The grid toolbar is built as a **single `flex-wrap` row with a `flex:1` spacer** — left group (field selector, search box, "All Parameters" title, count tag) then spacer then right group (Legend, Add Parameter, Filter, View, Focus toggle, Create Change Request). Because the three-panel editor squeezes the center to the point where this doesn't fit (see **H-2**), it **wraps into two ragged rows**: row 1 holds the search on the left and the count pinned to the right with a large empty gap between them; row 2 holds the action buttons on the left with more empty space before the change-request button on the right. The result is *two half-used bars stacked* — neither row is full, both have dead space, and the eye has to scan two levels to find controls. It also costs a full row of vertical height that the grid could use. On top of the wasted space, the **actions are not placed by a consistent rule** — some controls sit far left, some far right, and cell/detail actions live in yet another place — so there is no single, predictable "where do I act" location.
+- **Why it hurts:** The toolbar sits directly above the primary work surface and is used constantly. Two unbalanced rows read as unfinished, waste vertical space, and increase scan cost every time the user reaches for a control. Inconsistent action placement (left vs. right vs. panel) forces users to re-learn the layout instead of building muscle memory. The problem gets *worse* on smaller screens, exactly when space is scarcest.
+- **Recommendation:**
+  1. **Make it one row, deterministically.** Left: field-scope + search (the one thing that should stay visible). Far right: the emphasized primary CTA (**Create Change Request**). Everything in between is right-aligned as a tight cluster.
+  2. **Overflow, don't wrap.** When width is tight, collapse low-frequency controls (Legend, View, Filter, Focus, Add Parameter) into a single right-aligned **"⋯ Tools"** overflow menu instead of spilling to a second ragged row. This keeps one clean bar at every width and never leaves two half-empty rows.
+  3. **If a second row is ever justified, make it full-width and contextual** — an active-filters / search-summary / bulk-selection strip that spans the whole width — never a mirror of the first bar with a gap in the middle.
+  4. **Adopt one action-placement rule and hold it everywhere:** toolbar actions right-aligned; the single primary CTA pinned far right; and **all detail/entity actions housed in the right-hand details panel that slides open** (Edit, Retire, cell actions, copy-to, reset-to-inherited), so "act on a thing" always means "look right," never "hunt on the left." Content and controls align center or right per that rule, consistently.
+  5. Fixing the width budget in **H-2** (reclaiming space from metadata columns/panels) removes the pressure that causes the wrap in the first place — H-2 and H-6 should be done together.
+- **Reference:** Linear's single, right-clustered toolbar with an overflow menu; GitHub's one-line repo toolbar (search left, actions right, primary button far right); Airtable's single view bar that overflows into menus rather than wrapping; Figma/VS Code right-side inspector/detail panels holding all object actions.
+- **User benefit:** One clean toolbar at every screen size, more vertical room for data, and a predictable "act on the right" model that lowers cognitive load and builds muscle memory.
+- **Effort:** Medium
+- **Screens:** Configuration (grid toolbar + details panel); apply the same action-placement rule across Instances, Compare, and other action bars.
 
 ---
 
@@ -223,7 +240,7 @@ Each finding uses: **Severity · Category · Problem · Why it hurts · Recommen
 |---|----------|-----------|----------------|
 | 1 | Overall product quality | **Good**, dragged down by dark-mode breakage & sparse shells | H-1, H-4 |
 | 2 | Design-system consistency | Good in light; **broken in dark editor** | H-1 |
-| 3 | Layout & screen utilization | Under-uses laptop/ultrawide; instance columns crowded | H-2, M-3 |
+| 3 | Layout & screen utilization | Under-uses laptop/ultrawide; instance columns crowded; **toolbar wraps into two unbalanced rows** | H-2, H-6, M-3 |
 | 4 | Navigation | Deep-linking good; **Back button broken**; solid IA | M-4 |
 | 5 | Information architecture | GitHub-style rail+tabs is strong; Settings thin; breadcrumb slip | M-2 |
 | 6 | Forms | **Strong** (autofocus, required markers, validation, file choice) | L-3 |
@@ -232,7 +249,7 @@ Each finding uses: **Severity · Category · Problem · Why it hurts · Recommen
 | 9 | User feedback | **Excellent** (pending cells, CR modal, toasts, skeletons) | — |
 | 10 | Semantic color | Mostly good; **production=red** overloads danger | M-1 |
 | 11 | Icons | Consistent Phosphor set; labels/SR names thin | L-2 |
-| 12 | Visual hierarchy | Clear primary CTAs; good emphasis | — |
+| 12 | Visual hierarchy | Clear primary CTAs; **toolbar action placement inconsistent (left/right/panel)** | H-6 |
 | 13 | Responsiveness | **4 real tiers**; laptop density is the weak point | H-2 |
 | 14 | Accessibility | **Below AA** on grid & search focus | H-3 |
 | 15 | Performance | Virtualized grid smooth; console noise only | L-5 |
@@ -253,7 +270,7 @@ Each finding uses: **Severity · Category · Problem · Why it hurts · Recommen
 
 **Phase 1 — "Looks finished" (days):** H-1 (dark-mode editor), M-4 (Back button), L-5 (console), L-1/L-3 (empty-state CTA, modal overflow), M-1 (production color). Highest perceived-quality gain per unit effort.
 
-**Phase 2 — "Feels enterprise" (1–2 sprints):** H-2 (grid column allocation), H-4 (avatar menu + notifications + help shell), M-2 (Settings hub), H-5 (command palette v1).
+**Phase 2 — "Feels enterprise" (1–2 sprints):** H-2 (grid column allocation) **+ H-6 (single, right-clustered toolbar with overflow, done together with H-2)**, H-4 (avatar menu + notifications + help shell), M-2 (Settings hub), H-5 (command palette v1).
 
 **Phase 3 — "Procurement-ready & power-user" (2–4 sprints):** H-3 (grid a11y + keyboard), M-6 (saved views/favorites/bulk/export), M-5 (N-way compare), E-3 (audit log), E-1 (onboarding).
 

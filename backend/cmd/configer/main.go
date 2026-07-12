@@ -34,11 +34,10 @@ func LoadConfig() Config {
 		GitUserName:  getEnv("GIT_USER_NAME", "Configer Bot"),
 		GitUserEmail: getEnv("GIT_USER_EMAIL", "bot@configer.local"),
 		Features: map[string]bool{
-			"swagger_docs":  getEnvBool("FEATURE_SWAGGER_DOCS", true),
-			"offline_mode":  getEnvBool("FEATURE_OFFLINE_MODE", true),
-			"ai_module":     getEnvBool("FEATURE_AI_MODULE", false),
-			"rbac":          getEnvBool("FEATURE_RBAC", false),
-			"sso":           getEnvBool("FEATURE_SSO", false),
+			"offline_mode": getEnvBool("FEATURE_OFFLINE_MODE", true),
+			"ai_module":    getEnvBool("FEATURE_AI_MODULE", false),
+			"rbac":         getEnvBool("FEATURE_RBAC", false),
+			"sso":          getEnvBool("FEATURE_SSO", false),
 		},
 	}
 }
@@ -107,18 +106,6 @@ func main() {
 		fmt.Fprintf(w, `{"name":"Configer (%s)","version":"%s","environment":"%s","features":{%s}}`, cfg.Env, cfg.Version, cfg.Env, featureJSON)
 	})
 
-	// Swagger UI endpoint (if enabled)
-	if cfg.Features["swagger_docs"] {
-		mux.HandleFunc("/api/docs", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			fmt.Fprint(w, swaggerUIHTML)
-		})
-		mux.HandleFunc("/api/swagger.json", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, getSwaggerSpec(cfg))
-		})
-	}
-
 	// Placeholder for grid endpoint
 	mux.HandleFunc("/api/grid", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -137,113 +124,3 @@ func main() {
 		log.Fatalf("Server error: %v", err)
 	}
 }
-
-func getSwaggerSpec(cfg Config) string {
-	return `{
-  "openapi": "3.0.0",
-  "info": {
-    "title": "Configer API",
-    "description": "Enterprise-grade configuration management platform REST API",
-    "version": "` + cfg.Version + `"
-  },
-  "servers": [
-    {
-      "url": "http://localhost` + cfg.Addr + `",
-      "description": "Local development"
-    }
-  ],
-  "paths": {
-    "/api/health": {
-      "get": {
-        "tags": ["System"],
-        "summary": "Health check",
-        "responses": {
-          "200": {
-            "description": "Server is healthy"
-          }
-        }
-      }
-    },
-    "/api/meta": {
-      "get": {
-        "tags": ["System"],
-        "summary": "Get deployment metadata",
-        "description": "Returns deployment name, version, environment, and enabled features",
-        "responses": {
-          "200": {
-            "description": "Deployment metadata",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "name": {"type": "string"},
-                    "version": {"type": "string"},
-                    "environment": {"type": "string"},
-                    "features": {"type": "object"}
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/grid": {
-      "get": {
-        "tags": ["Grid"],
-        "summary": "Get parameter×instance grid",
-        "description": "Returns full parameter×instance matrix with cell states and validation",
-        "responses": {
-          "200": {
-            "description": "Grid data"
-          }
-        }
-      }
-    }
-  }
-}`
-}
-
-const swaggerUIHTML = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Configer API Docs</title>
-    <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.css">
-    <style>
-      html{
-        box-sizing: border-box;
-        overflow: y-scroll;
-      }
-      *,
-      *:before,
-      *:after {
-        box-sizing: inherit;
-      }
-      body {
-        margin:0;
-        background: #fafafa;
-      }
-    </style>
-  </head>
-  <body>
-    <div id="swagger-ui"></div>
-    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@3/swagger-ui.js"></script>
-    <script>
-    const ui = SwaggerUIBundle({
-        url: "/api/swagger.json",
-        dom_id: '#swagger-ui',
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIBundle.SwaggerUIStandalonePreset
-        ],
-        layout: "StandaloneLayout"
-      })
-      window.ui = ui
-    </script>
-  </body>
-</html>
-`

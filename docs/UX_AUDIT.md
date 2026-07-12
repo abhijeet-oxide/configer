@@ -32,6 +32,24 @@ None of these are architectural; all are addressable in a focused polish pass. T
 
 ---
 
+## 1a. Implementation Log (this pass)
+
+A first implementation pass shipped the top priorities. Each change was verified in a real browser (light + dark, multiple widths) with a clean console.
+
+| Finding | What shipped | Status |
+|--------|--------------|--------|
+| **H-6** | Config toolbar consolidated: redundant title folded into the count tag; all actions in one right-aligned cluster (`margin-left:auto`) that stays flush-right whether it shares row one or wraps, so it's never two half-empty bars. | ✅ Done |
+| **H-2** | Instance columns widened: metadata columns tightened (Parameter/Type/Scope/Description) and the details panel default shrunk 22%→19% with the grid growing 62%→66%. A **third** instance column now shows at 1440px (was two), with no loss of sort/filter. Deeper Type/Scope-into-Parameter folding remains a follow-up. | ✅ Partial |
+| **H-4** | Account menu on the avatar (identity + deployment, Settings, Keyboard shortcuts, Help, About, Sign-out stub); the bell is now a notification center (approvals / repo changes / drafts, each deep-linked) with a calm caught-up state. | ✅ Done |
+| **M-1** | Environment colors moved to a single source of truth (`theme.ts`); production is now indigo, not danger-red. Red is reserved for errors/destructive actions. | ✅ Done |
+| **M-4** | Browser Back/Forward now traverse in-app views (`pushState` on app/view change, `replaceState` for granular refinements). | ✅ Done |
+| **L-5** | Console cleaned: inline SVG favicon (no `/favicon.ico` 404) and `destroyOnClose`→`destroyOnHidden`. | ✅ Done |
+| **H-1** | Re-tested: the "dark editor" bug **did not reproduce** (transient cold-load flash, not a defect). Downgraded to Low and hardened (`--grid-bg` defined at document root). | ✅ Corrected |
+
+Still open (next): H-3 (grid accessibility / keyboard + ARIA), H-5 (true command palette), M-2/M-3/M-5/M-6 and the enhancement set.
+
+---
+
 ## 2. Prioritized Findings
 
 Each finding uses: **Severity · Category · Problem · Why it hurts · Recommendation · Reference · User benefit · Effort · Screens.**

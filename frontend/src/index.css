@@ -373,7 +373,7 @@ body {
 .app-tabs .ant-menu-submenu-title .anticon,
 .app-tabs .ant-menu-submenu-title .iconify {
   font-size: 18px;
-  margin-inline-end: 10px;
+  margin-inline-end: 13px;
   vertical-align: 0 !important;
   display: inline-flex;
   align-items: center;

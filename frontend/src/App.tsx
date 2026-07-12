@@ -30,6 +30,7 @@ import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import DashboardView from "./components/DashboardView";
 import InstancesView from "./components/InstancesView";
+import HistoryView from "./components/HistoryView";
 import SettingsView from "./components/SettingsView";
 import AppTabs, { isAppSection } from "./components/AppTabs";
 import MobileParamList from "./components/MobileParamList";
@@ -319,6 +320,12 @@ export default function App() {
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <ComparePanel grid={grid} />
+        </div>
+      );
+    if (section === "history")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <HistoryView />
         </div>
       );
     if (section === "config") return editorLayout();

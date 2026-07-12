@@ -177,6 +177,23 @@ export interface DiffResult {
   };
 }
 
+// A commit in the application history.
+export interface Commit {
+  sha: string;
+  short: string;
+  author: string;
+  email?: string;
+  date: string;
+  message: string;
+}
+
+// One point on a parameter's value timeline.
+export interface ParamHistoryEntry extends Commit {
+  value: string;
+  present: boolean;
+  changed: boolean;
+}
+
 // Git-liveness snapshot: the managed tree vs its origin remote.
 export interface RepoStatus {
   branch: string;
@@ -366,6 +383,17 @@ export const api = {
     return get<DiffResult>(rp(`/compare?${qs.toString()}`));
   },
   refs: () => get<{ current: string; branches: string[] | null; tags: string[] | null }>(rp("/repo/refs")),
+  history: (limit?: number) =>
+    get<{ commits: Commit[] | null; supported: boolean }>(rp(`/history${limit ? `?limit=${limit}` : ""}`)),
+  parameterHistory: (id: string, opts?: { instance?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.instance) qs.set("instance", opts.instance);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ parameter: string; instance: string; entries: ParamHistoryEntry[] | null; supported: boolean }>(
+      rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`),
+    );
+  },
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>

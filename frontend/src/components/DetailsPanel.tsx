@@ -1,12 +1,13 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
 import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
+import { relTime } from "./DashboardView";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
 // value summary across instances. One overall Edit button turns every major
@@ -414,6 +415,78 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
   );
 }
 
+// HISTORY tab: how this parameter's value changed over time, drawn as a small
+// git-graph timeline (VS-Code / GitHub style). Commits where the value actually
+// changed are emphasized; unchanged commits are dimmed. When an instance is
+// selected the timeline resolves that instance's effective value, otherwise the
+// catalog default (base value).
+function ParamHistoryTab({ paramId }: { paramId: string }) {
+  const { selectedInstance } = useUI();
+  const q = useQuery({
+    queryKey: ["paramHistory", paramId, selectedInstance],
+    queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
+  });
+  const entries = q.data?.entries ?? [];
+  const supported = q.data?.supported ?? true;
+
+  if (q.isLoading) return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Loading history…</Typography.Text>;
+  if (!supported)
+    return (
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        History is available for repositories cloned or opened on the server.
+      </Typography.Text>
+    );
+  if (entries.length === 0)
+    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>No recorded changes for this parameter.</Typography.Text>;
+
+  return (
+    <div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+        VALUE OVER TIME{selectedInstance ? ` · ${selectedInstance}` : " · default"}
+      </Typography.Text>
+      <div style={{ marginTop: 10 }}>
+        {entries.map((e, i) => {
+          const last = i === entries.length - 1;
+          const dim = !e.changed;
+          return (
+            <div key={e.sha} style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14 }}>
+                <span
+                  style={{
+                    width: e.changed ? 11 : 8,
+                    height: e.changed ? 11 : 8,
+                    borderRadius: "50%",
+                    background: e.changed ? "#2f6bff" : "rgba(127,137,160,0.6)",
+                    marginTop: 4,
+                    flexShrink: 0,
+                  }}
+                />
+                {!last && <span style={{ flex: 1, width: 2, background: "rgba(127,137,160,0.3)", marginTop: 2 }} />}
+              </div>
+              <div style={{ paddingBottom: 14, minWidth: 0, flex: 1, opacity: dim ? 0.6 : 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span className="mono" style={{ fontSize: 12.5, fontWeight: e.changed ? 600 : 400 }}>
+                    {e.present ? (e.value === "" ? "(empty)" : e.value) : "(not defined)"}
+                  </span>
+                  {e.changed && i !== entries.length - 1 && (
+                    <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>changed</Tag>
+                  )}
+                </div>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  {e.short} · {e.author} · {relTime(e.date)}
+                </Typography.Text>
+                <div style={{ fontSize: 11, opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.message}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DetailsPanel({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -473,6 +546,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
           { key: "validation", label: "Validation", children: <RuleEditor param={p} /> },
           { key: "depends", label: "Dependencies", children: <DependenciesTab p={p} grid={grid} onSelect={selectParam} /> },
           { key: "versions", label: "Versions", children: <VersionsTab row={row} grid={grid} /> },
+          { key: "history", label: "History", children: <ParamHistoryTab paramId={p.id} /> },
         ]}
       />
       <Divider style={{ margin: "10px 0" }} />

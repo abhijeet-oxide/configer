@@ -138,6 +138,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/grid", s.grid)
 	mux.HandleFunc("GET /api/instances", s.instances)
 	mux.HandleFunc("GET /api/parameters/{id}", s.parameter)
+	mux.HandleFunc("GET /api/parameters/{id}/history", s.parameterHistory)
 	mux.HandleFunc("GET /api/compare", s.compare)
 	mux.HandleFunc("GET /api/render/{instance}", s.render)
 	mux.HandleFunc("POST /api/scan", s.scan)
@@ -158,6 +159,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/reject", s.rejectChange)
 	mux.HandleFunc("GET /api/repo/status", s.repoStatus)
 	mux.HandleFunc("GET /api/repo/refs", s.repoRefs)
+	mux.HandleFunc("GET /api/history", s.history)
 	mux.HandleFunc("POST /api/repo/sync", s.repoSync)
 	mux.HandleFunc("GET /api/meta", s.meta)
 	mux.HandleFunc("GET /api/repo/findings", s.findings)
@@ -410,6 +412,116 @@ func (s *Server) repoRefs(w http.ResponseWriter, _ *http.Request) {
 	}
 	current, _ := s.Backend.DefaultBranch(context.Background())
 	writeJSON(w, http.StatusOK, map[string]any{"current": current, "branches": branches, "tags": tags})
+}
+
+// history returns the application's recent config-change commits (those that
+// touched the canonical model under .configer/), newest first. This backs the
+// app-level History tab.
+func (s *Server) history(w http.ResponseWriter, r *http.Request) {
+	limit := 40
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 200 {
+		limit = n
+	}
+	commits, err := s.Backend.Log(context.Background(), ".configer", limit)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"commits": commits, "supported": s.Backend.Kind() == "local"})
+}
+
+// paramHistoryEntry is one point on a parameter's value timeline.
+type paramHistoryEntry struct {
+	repobackend.Commit
+	Value   string `json:"value"`   // effective value at this commit
+	Present bool   `json:"present"` // whether the parameter existed then
+	Changed bool   `json:"changed"` // value differs from the next-older commit
+}
+
+// valueString renders a resolved value for the history timeline: strings as-is,
+// everything else as compact JSON so lists/numbers/bools are unambiguous.
+func valueString(v any) string {
+	switch x := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return x
+	default:
+		b, err := json.Marshal(v)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
+}
+
+// parameterHistory walks recent config commits and resolves one parameter's
+// effective value at each, so the inspector can show how a value changed over
+// time (VS-Code / GitHub git-graph style). An optional ?instance= resolves the
+// value for that instance; otherwise the catalog default (base value) is used.
+func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	instance := r.URL.Query().Get("instance")
+	limit := 12
+	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 40 {
+		limit = n
+	}
+	commits, err := s.Backend.Log(context.Background(), ".configer", limit)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	// Resolve the parameter's value in one materialized project.
+	resolveAt := func(p *project.Project) (string, bool) {
+		var param *model.Parameter
+		for i := range p.Catalog.Parameters {
+			if p.Catalog.Parameters[i].ID == id {
+				param = &p.Catalog.Parameters[i]
+				break
+			}
+		}
+		if param == nil {
+			return "", false
+		}
+		if instance != "" {
+			for _, inst := range p.Registry.Instances {
+				if inst.Name == instance {
+					res := (&resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}).Resolve(*param, inst)
+					return valueString(res.Value), true
+				}
+			}
+		}
+		return valueString(param.Default), true
+	}
+
+	entries := make([]paramHistoryEntry, 0, len(commits))
+	for _, c := range commits {
+		p, cleanup, perr := s.projectAtRef(c.SHA)
+		if perr != nil {
+			// A commit we cannot materialize (shallow/gone) is skipped rather
+			// than failing the whole timeline.
+			continue
+		}
+		val, present := resolveAt(p)
+		cleanup()
+		entries = append(entries, paramHistoryEntry{Commit: c, Value: val, Present: present})
+	}
+	// Mark where the value actually changed (compared to the next-older entry).
+	for i := range entries {
+		older := i + 1
+		if older >= len(entries) {
+			entries[i].Changed = entries[i].Present // oldest known point: changed if it exists
+			continue
+		}
+		entries[i].Changed = entries[i].Value != entries[older].Value || entries[i].Present != entries[older].Present
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"parameter": id,
+		"instance":  instance,
+		"entries":   entries,
+		"supported": s.Backend.Kind() == "local",
+	})
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request) {

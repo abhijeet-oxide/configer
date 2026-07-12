@@ -349,9 +349,19 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 18px; /* space between the (unclassed) icon svg and the label */
   top: 0;
   border-radius: 8px 8px 0 0;
   transition: background 0.15s ease, color 0.15s ease;
+}
+/* the icon is a bare <svg> (no .anticon/.iconify class), so size it directly
+   and let the flex gap above own the icon-to-label spacing */
+.app-tabs.ant-menu-horizontal > .ant-menu-item > svg,
+.app-tabs.ant-menu-horizontal > .ant-menu-submenu-title > svg {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  vertical-align: 0 !important;
 }
 /* a quiet hover so tabs feel interactive without shouting */
 .app-tabs.ant-menu-horizontal > .ant-menu-item:hover,
@@ -362,24 +372,13 @@ body {
 .app-tabs.ant-menu-horizontal > .ant-menu-submenu::after {
   inset-inline: 14px;
 }
-/* the label + icon are one centered unit with real space between them */
+/* the label + icon are one centered unit; spacing comes from the flex gap
+   on the item above (the icon is a bare <svg> with no class to margin) */
 .app-tabs .ant-menu-title-content {
   display: inline-flex;
   align-items: center;
   line-height: 1;
-}
-.app-tabs .ant-menu-item .anticon,
-.app-tabs .ant-menu-item .iconify,
-.app-tabs .ant-menu-submenu-title .anticon,
-.app-tabs .ant-menu-submenu-title .iconify {
-  font-size: 18px;
-  margin-inline-end: 13px;
-  vertical-align: 0 !important;
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-  position: relative;
-  top: 0;
+  margin-inline-start: 0 !important;
 }
 
 /* --------------------------------------------------- modern scrollbars */

@@ -16,6 +16,16 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 )
 
+// Commit is one entry in the repository history (identity + subject).
+type Commit struct {
+	SHA     string `json:"sha"`
+	Short   string `json:"short"`
+	Author  string `json:"author"`
+	Email   string `json:"email,omitempty"`
+	Date    string `json:"date"`
+	Message string `json:"message"`
+}
+
 // FileChange is one path changed between two commits (reconcile input).
 type FileChange struct {
 	Status  string // A(dded) M(odified) D(eleted) R(enamed)
@@ -82,6 +92,10 @@ type Backend interface {
 	MaterializeRef(ctx context.Context, ref, dir string) (cleanup func(), err error)
 	// ListRefs lists selectable branches and tags.
 	ListRefs(ctx context.Context) (branches, tags []string, err error)
+
+	// Log returns the most recent commits, newest first, optionally restricted
+	// to a repo-relative path. Remote backends may degrade to an empty list.
+	Log(ctx context.Context, path string, limit int) ([]Commit, error)
 
 	// Sync brings the read cache / working tree up to date with the remote
 	// and reports the resulting status. No-op-safe when there is no remote.

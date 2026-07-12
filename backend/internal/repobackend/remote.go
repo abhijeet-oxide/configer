@@ -86,6 +86,12 @@ func (b *RemoteBackend) ListRefs(_ context.Context) ([]string, []string, error) 
 	return []string{b.branch}, nil, nil
 }
 
+// Log degrades to an empty history for remote repos (a GitHub commits-API
+// fast-follow); the History views render an informative empty state instead.
+func (b *RemoteBackend) Log(_ context.Context, _ string, _ int) ([]Commit, error) {
+	return nil, nil
+}
+
 // remoteWorkspace is a materialized checkout of a base branch in a temp dir,
 // with the file hashes captured at checkout so Commit can compute the exact
 // changed + deleted paths for a single Git-data-API partial commit.

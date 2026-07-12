@@ -30,6 +30,7 @@ import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import DashboardView from "./components/DashboardView";
 import InstancesView from "./components/InstancesView";
+import HistoryView from "./components/HistoryView";
 import SettingsView from "./components/SettingsView";
 import AppTabs, { isAppSection } from "./components/AppTabs";
 import MobileParamList from "./components/MobileParamList";
@@ -178,23 +179,9 @@ export default function App() {
         </div>
       );
     }
-    // Configuration hosts an inline view toggle: the spreadsheet Table, or the
-    // Exported files (the rendered artifacts + live diff). Rendered files is no
-    // longer a separate nav destination.
-    const viewToggle = (
-      <div style={{ padding: "8px 12px 0", flexShrink: 0 }}>
-        <Segmented
-          size="small"
-          value={configView}
-          onChange={(v) => setConfigView(v as "table" | "exported")}
-          options={[
-            { value: "table", label: "Table", icon: <TableOutlined /> },
-            { value: "exported", label: "Exported files", icon: <FolderOpenOutlined /> },
-          ]}
-        />
-      </div>
-    );
-
+    // Configuration hosts an inline view toggle (the spreadsheet Table, or the
+    // rendered Files + live diff). The toggle now lives on the app tab row so it
+    // shares a single row with the tabs instead of adding a second strip.
     let content: React.ReactNode;
     if (configView === "exported") {
       content = <RenderedFilesView grid={grid} />;
@@ -239,7 +226,6 @@ export default function App() {
 
     return (
       <div style={{ display: "flex", flexDirection: "column", height: "100%", ...panelBg }}>
-        {viewToggle}
         <div style={{ flex: 1, minHeight: 0 }}>{content}</div>
       </div>
     );
@@ -336,6 +322,12 @@ export default function App() {
           <ComparePanel grid={grid} />
         </div>
       );
+    if (section === "history")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <HistoryView />
+        </div>
+      );
     if (section === "config") return editorLayout();
     // Named-but-not-yet-built application views (Instances, History). Named here
     // so the shell is complete even while the view itself is on the roadmap.
@@ -425,11 +417,34 @@ export default function App() {
       </Sider>
       <Layout style={{ minWidth: 0 }}>
         <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
-          <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
+          <TopBar project={grid?.project ?? meta?.project} />
         </Header>
         {isAppSection(section) && repoId && (
-          <div style={{ borderBottom: border, background: token.colorBgContainer, flexShrink: 0 }}>
-            <AppTabs />
+          <div
+            style={{
+              borderBottom: border,
+              background: token.colorBgContainer,
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <AppTabs />
+            </div>
+            {section === "config" && (
+              <Segmented
+                size="small"
+                value={configView}
+                onChange={(v) => setConfigView(v as "table" | "exported")}
+                options={[
+                  { value: "table", label: "Table", icon: <TableOutlined /> },
+                  { value: "exported", label: "Files", icon: <FolderOpenOutlined /> },
+                ]}
+                style={{ marginRight: 12, flexShrink: 0 }}
+              />
+            )}
           </div>
         )}
         <OfflineReplay />
@@ -449,7 +464,7 @@ function TreeDrawerButton({ grid }: { grid: GridData }) {
       <Button size="small" icon={<ApartmentOutlined />} onClick={() => setOpen(true)}>
         {categoryKey ? categoryKey.split("/").pop() : "All Parameters"}
       </Button>
-      <Drawer title="Parameter Groups" placement="left" width={280} open={open} onClose={() => setOpen(false)}>
+      <Drawer title="Parameters" placement="left" width={280} open={open} onClose={() => setOpen(false)}>
         <CategoryTree grid={grid} />
       </Drawer>
     </>

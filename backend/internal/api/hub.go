@@ -177,6 +177,7 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)
+	mux.HandleFunc("PATCH /api/repos/{id}", h.rename)
 	mux.HandleFunc("DELETE /api/repos/{id}", h.disconnect)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
@@ -383,6 +384,35 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("workspace: connected repository %s (%s)", e.ID, gitengine.Redact(e.Origin))
+	writeJSON(w, http.StatusOK, h.summarize(e))
+}
+
+// rename changes an application's display name. Only the human label changes;
+// the registry id (and therefore every per-repo route and shared deep link)
+// stays stable, and the Git repository is untouched.
+func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		return
+	}
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name cannot be empty"})
+		return
+	}
+	if len(name) > 80 {
+		name = name[:80]
+	}
+	e, ok := h.registry.Rename(id, name)
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown repository: " + id})
+		return
+	}
+	log.Printf("workspace: renamed repository %s to %q", id, name)
 	writeJSON(w, http.StatusOK, h.summarize(e))
 }
 

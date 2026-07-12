@@ -1,10 +1,9 @@
-import { Card, Col, Row, Statistic, Typography, Space, Button, Popconfirm, Empty, Tag, List, App as AntApp } from "antd";
+import { Card, Col, Row, Statistic, Typography, Space, Button, Popconfirm, Tag, List, App as AntApp } from "antd";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   LinkOutlined,
   BranchesOutlined,
-  SmileOutlined,
   InboxOutlined,
   ClockCircleOutlined,
   HistoryOutlined,
@@ -92,11 +91,34 @@ export default function ApprovalsView() {
       </Row>
 
       {waiting.length === 0 && (
-        <Empty
-          image={<SmileOutlined style={{ fontSize: 48, color: "#52c41a" }} />}
-          description="Nothing is waiting for approval. All caught up!"
-          style={{ margin: "12px 0 24px" }}
-        />
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            padding: "36px 0 30px",
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(82,196,26,0.12)",
+              border: "1px solid rgba(82,196,26,0.35)",
+            }}
+          >
+            <CheckCircleOutlined style={{ fontSize: 30, color: "#52c41a" }} />
+          </div>
+          <Typography.Text strong>Inbox zero</Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+            No change requests are waiting for a decision.
+          </Typography.Text>
+        </div>
       )}
 
       <Space direction="vertical" size={14} style={{ width: "100%" }}>

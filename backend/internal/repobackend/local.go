@@ -133,6 +133,22 @@ func (b *LocalBackend) ListRefs(_ context.Context) ([]string, []string, error) {
 	return branches, tags, nil
 }
 
+func (b *LocalBackend) Log(_ context.Context, path string, limit int) ([]Commit, error) {
+	entries, err := b.repo.Log(path, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Commit, len(entries))
+	for i, e := range entries {
+		short := e.SHA
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		out[i] = Commit{SHA: e.SHA, Short: short, Author: e.Author, Email: e.Email, Date: e.Date, Message: e.Subject}
+	}
+	return out, nil
+}
+
 func (b *LocalBackend) Diff(_ context.Context, from, to string) ([]FileChange, error) {
 	fcs, err := b.repo.DiffNameStatus(from, to)
 	if err != nil {

@@ -62,11 +62,12 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	managedPath := map[string]bool{}   // "file|path" -> already in the catalog
 	if p != nil {
 		for _, param := range p.Catalog.Parameters {
-			if param.Source.File == "" {
-				continue // design-phase parameters have no file to watch
+			// A parameter can be mapped to several files; every location it
+			// touches counts as managed.
+			for _, src := range param.AllSources() {
+				managedBy[src.File] = append(managedBy[src.File], param.ID)
+				managedPath[src.File+"|"+src.Path] = true
 			}
-			managedBy[param.Source.File] = append(managedBy[param.Source.File], param.ID)
-			managedPath[param.Source.File+"|"+param.Source.Path] = true
 		}
 	}
 
@@ -209,6 +210,10 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
+	// Collapse candidates that describe the same value in multiple files into
+	// one multi-source parameter (the "one parameter, many locations" case).
+	req.Parameters = mergeMultiSource(req.Parameters)
+
 	imported := 0
 	var skipped []string
 	for _, pm := range req.Parameters {
@@ -251,6 +256,44 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, title, req.Author, map[string]any{
 		"ok": true, "imported": imported, "skipped": skipped, "ignored": len(req.IgnoreFiles),
 	})
+}
+
+// mergeMultiSource collapses imported candidates that describe the SAME logical
+// parameter appearing in multiple files (same name AND same value) into one
+// parameter with multiple Sources, so a single edit renders into every
+// location. Same-named candidates with DIFFERENT values are left separate (a
+// genuine conflict, handled as before by the add step).
+func mergeMultiSource(params []model.Parameter) []model.Parameter {
+	type key struct{ name, val string }
+	index := map[key]int{} // key -> position in out
+	var out []model.Parameter
+	for _, pm := range params {
+		if pm.Name == "" || pm.Source.File == "" {
+			out = append(out, pm)
+			continue
+		}
+		k := key{name: pm.Name, val: valueString(pm.Default)}
+		if i, ok := index[k]; ok {
+			exist := &out[i]
+			dup := exist.Source.File == pm.Source.File && exist.Source.Path == pm.Source.Path
+			for _, s := range exist.Sources {
+				if s.File == pm.Source.File && s.Path == pm.Source.Path {
+					dup = true
+				}
+			}
+			if !dup {
+				src := pm.Source
+				if src.Format == "" {
+					src.Format = formatForFile(src.File)
+				}
+				exist.Sources = append(exist.Sources, src)
+			}
+			continue
+		}
+		index[k] = len(out)
+		out = append(out, pm)
+	}
+	return out
 }
 
 // retireFile retires every parameter sourced from one (typically deleted)

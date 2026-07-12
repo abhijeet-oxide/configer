@@ -180,6 +180,42 @@ func (r *Repo) Tags() ([]string, error) {
 	return nonEmptyLines(out), nil
 }
 
+// LogEntry is one commit from git log (identity + subject, ISO date).
+type LogEntry struct {
+	SHA     string
+	Author  string
+	Email   string
+	Date    string // ISO-8601 (author date)
+	Subject string
+}
+
+// Log returns the most recent commits, optionally restricted to a path
+// (relative to the repo). limit <= 0 means no cap. Fields are separated by
+// the unit separator (0x1f) so subjects can safely contain any punctuation.
+func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
+	args := []string{"log"}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("--max-count=%d", limit))
+	}
+	args = append(args, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s")
+	if path != "" {
+		args = append(args, "--", path)
+	}
+	out, err := r.git(r.Dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	var entries []LogEntry
+	for _, line := range nonEmptyLines(out) {
+		f := strings.Split(line, "\x1f")
+		if len(f) < 5 {
+			continue
+		}
+		entries = append(entries, LogEntry{SHA: f[0], Author: f[1], Email: f[2], Date: f[3], Subject: f[4]})
+	}
+	return entries, nil
+}
+
 func nonEmptyLines(s string) []string {
 	var out []string
 	for _, ln := range strings.Split(s, "\n") {

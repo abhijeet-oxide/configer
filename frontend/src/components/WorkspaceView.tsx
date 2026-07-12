@@ -87,11 +87,25 @@ function RepoCard({
   const { setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const qc = useQueryClient();
+  const [renameOpen, setRenameOpen] = useState(false);
+  const [renameVal, setRenameVal] = useState(r.name);
+
+  const rename = useMutation({
+    mutationFn: (name: string) => api.renameRepo(r.id, name),
+    onSuccess: (s) => {
+      message.success(`Renamed to "${s.name}"`);
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+      setRenameOpen(false);
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   const open = (section: string) => {
     if (!active) switchRepo(r.id);
     setSection(section);
   };
+  // A normal click opens the application at its Overview (its command center);
+  // the primary button below still jumps straight to editing the configuration.
   const remove = useMutation({
     mutationFn: () => api.removeRepo(r.id),
     onSuccess: () => {
@@ -104,10 +118,7 @@ function RepoCard({
   return (
     <Card
         hoverable
-        onClick={() => {
-          // Opening a card takes you into the application (Configuration).
-          open("config");
-        }}
+        onClick={() => open("overview")}
         style={{
           width: 330,
           height: "100%",
@@ -142,14 +153,21 @@ function RepoCard({
               trigger={["click"]}
               menu={{
                 items: [
-                  { key: "editor", label: "Open Config Editor" },
+                  { key: "overview", label: "Open overview" },
+                  { key: "editor", label: "Open configuration" },
+                  { key: "rename", icon: <EditOutlined />, label: "Rename application…" },
                   { key: "import", label: "Import parameters" },
                   { type: "divider" },
                   { key: "disconnect", danger: true, label: "Disconnect from workspace" },
                 ],
                 onClick: ({ key, domEvent }) => {
                   domEvent.stopPropagation();
+                  if (key === "overview") open("overview");
                   if (key === "editor") open("config");
+                  if (key === "rename") {
+                    setRenameVal(r.name);
+                    setRenameOpen(true);
+                  }
                   if (key === "import") open("import");
                   if (key === "disconnect")
                     Modal.confirm({
@@ -226,6 +244,30 @@ function RepoCard({
             </Button>
           )}
         </div>
+      <span onClick={(e) => e.stopPropagation()}>
+        <Modal
+          title="Rename application"
+          open={renameOpen}
+          onCancel={() => setRenameOpen(false)}
+          onOk={() => rename.mutate(renameVal.trim())}
+          okText="Rename"
+          okButtonProps={{ disabled: !renameVal.trim() || renameVal.trim() === r.name, loading: rename.isPending }}
+          destroyOnClose
+        >
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            This changes the display name only. The Git repository, its history and any shared links
+            stay exactly as they are.
+          </Typography.Paragraph>
+          <Input
+            value={renameVal}
+            maxLength={80}
+            autoFocus
+            onChange={(e) => setRenameVal(e.target.value)}
+            onPressEnter={() => renameVal.trim() && renameVal.trim() !== r.name && rename.mutate(renameVal.trim())}
+            placeholder="Application name"
+          />
+        </Modal>
+      </span>
       </Card>
   );
 }
@@ -309,6 +351,79 @@ export function ConnectForm({
   );
 }
 
+// PortfolioSignals leads with what actually needs a human at the portfolio
+// level, not vanity totals. Counting applications, instances or parameters
+// tells an operator nothing actionable; what matters across a fleet is what is
+// waiting on a decision and what is unhealthy.
+function needsAttention(r: RepoSummary): boolean {
+  return !!r.error || !!r.syncError || (r.behind ?? 0) > 0;
+}
+
+function PortfolioSignals({ repos, onReview }: { repos: RepoSummary[]; onReview: () => void }) {
+  const awaiting = repos.reduce((a, r) => a + (r.openChanges ?? 0), 0);
+  const awaitingApps = repos.filter((r) => (r.openChanges ?? 0) > 0).length;
+  const attention = repos.filter(needsAttention);
+  const production = repos.reduce((a, r) => a + (r.environments?.production ?? 0), 0);
+
+  const cards: {
+    label: string;
+    value: React.ReactNode;
+    caption: string;
+    accent: string;
+    color?: string;
+    onClick?: () => void;
+  }[] = [
+    {
+      label: "Awaiting approval",
+      value: awaiting,
+      caption: awaiting
+        ? `across ${awaitingApps} application${awaitingApps === 1 ? "" : "s"}`
+        : "no changes in review",
+      accent: "#fa8c16",
+      color: awaiting ? "#d48806" : undefined,
+      onClick: awaiting ? onReview : undefined,
+    },
+    {
+      label: "Needs attention",
+      value: attention.length,
+      caption: attention.length
+        ? attention
+            .slice(0, 2)
+            .map((r) => r.name)
+            .join(", ") + (attention.length > 2 ? "…" : "")
+        : "all applications healthy",
+      accent: attention.length ? "#f5222d" : "#0ca30c",
+      color: attention.length ? "#cf1322" : "#389e0d",
+    },
+    {
+      label: "Production systems",
+      value: production,
+      caption: "live deployments under management",
+      accent: "#6c3df4",
+    },
+  ];
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
+      {cards.map((s) => (
+        <Card
+          key={s.label}
+          size="small"
+          className="stat-accent"
+          hoverable={!!s.onClick}
+          onClick={s.onClick}
+          style={{ "--accent": s.accent, minWidth: 210, flex: "1 1 210px", maxWidth: 300, cursor: s.onClick ? "pointer" : "default" } as React.CSSProperties}
+        >
+          <Statistic title={s.label} value={s.value as string | number} valueStyle={{ fontSize: 22, color: s.color }} />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {s.caption}
+          </Typography.Text>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export default function WorkspaceView() {
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
@@ -343,29 +458,7 @@ export default function WorkspaceView() {
           </Button>
         </div>
 
-        {repos.length > 0 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
-            {[
-              { label: "Applications", value: repos.length, accent: "#1677ff" },
-              { label: "Instances", value: repos.reduce((a, r) => a + (r.instances ?? 0), 0), accent: "#6c3df4" },
-              { label: "Parameters", value: repos.reduce((a, r) => a + (r.params ?? 0), 0), accent: "#0ca30c" },
-              {
-                label: "Open change requests",
-                value: repos.reduce((a, r) => a + (r.openChanges ?? 0), 0),
-                accent: "#fa8c16",
-              },
-            ].map((s) => (
-              <Card
-                key={s.label}
-                size="small"
-                className="stat-accent"
-                style={{ "--accent": s.accent, minWidth: 170, flex: "1 1 170px", maxWidth: 260 } as React.CSSProperties}
-              >
-                <Statistic title={s.label} value={s.value} valueStyle={{ fontSize: 22 }} />
-              </Card>
-            ))}
-          </div>
-        )}
+        {repos.length > 0 && <PortfolioSignals repos={repos} onReview={() => setSection("approvals")} />}
 
         {repos.length === 0 && !wsQ.isLoading ? (
           <Card style={{ marginTop: 20 }}>

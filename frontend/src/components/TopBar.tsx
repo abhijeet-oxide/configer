@@ -25,11 +25,10 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Instance } from "../api";
+import { api } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { brands, type BrandKey } from "../theme";
-import { SECTION_LABELS } from "./NavRail";
 
 // Application header, kept deliberately light: an ellipsized breadcrumb that
 // can never wrap the layout, the global search, appearance controls, the
@@ -47,10 +46,10 @@ function ellipsis(maxWidth: number): React.CSSProperties {
   };
 }
 
-export default function TopBar({ project, instances }: { project?: string; instances?: Instance[] }) {
+export default function TopBar({ project }: { project?: string }) {
   const {
     mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch,
-    setSection, repoId, section, selectedInstance, selectInstance, setJump,
+    setSection, repoId, section,
   } = useUI();
   const switchRepo = useSwitchRepo();
   const searchRef = useRef<InputRef>(null);
@@ -91,29 +90,6 @@ export default function TopBar({ project, instances }: { project?: string; insta
 
   const st = statusQ.data;
   const appName = activeRepo?.name ?? project;
-  // Version and environment are derived from the selected instance (the
-  // instances registry is their single source of truth), so the breadcrumb
-  // never carries state that could disagree with the catalog.
-  const selInst = instances?.find((i) => i.name === selectedInstance);
-
-  // Instance context selector, grouped by environment with an "All instances"
-  // default. Picking one sets the app-level instance context and, in the
-  // Configuration view, scrolls the grid to that column.
-  const instItems = (() => {
-    const byEnv: Record<string, Instance[]> = {};
-    for (const i of instances ?? []) (byEnv[i.environment || "other"] ??= []).push(i);
-    return [
-      { key: "__all", label: "All instances" },
-      ...(instances && instances.length ? [{ type: "divider" as const }] : []),
-      ...Object.entries(byEnv)
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([env, list]) => ({
-          type: "group" as const,
-          label: env,
-          children: list.map((i) => ({ key: i.name, label: i.name })),
-        })),
-    ];
-  })();
 
   const workspaceCrumb = {
     title: (
@@ -160,46 +136,10 @@ export default function TopBar({ project, instances }: { project?: string; insta
       </Dropdown>
     ),
   };
-  const instanceCrumb = {
-    title: (
-      <Dropdown
-        trigger={["click"]}
-        menu={{
-          selectedKeys: [selectedInstance ?? "__all"],
-          items: instItems,
-          onClick: ({ key }) => {
-            if (key === "__all") selectInstance(null);
-            else {
-              selectInstance(key);
-              if (section === "config") setJump("instance", key);
-            }
-          },
-        }}
-      >
-        <a style={{ cursor: "pointer" }} title={selectedInstance ?? "All instances"}>
-          <span style={ellipsis(150)}>{selectedInstance ?? "All instances"}</span>{" "}
-          <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
-        </a>
-      </Dropdown>
-    ),
-  };
-  const viewCrumb = { title: <span style={ellipsis(150)}>{SECTION_LABELS[section] ?? section}</span> };
-
-  const crumbItems =
-    section === "workspace"
-      ? [workspaceCrumb]
-      : [
-          workspaceCrumb,
-          appCrumb,
-          ...(selInst?.softwareVersion
-            ? [{ title: <span className="mono" style={{ fontSize: 12, opacity: 0.85 }}>{selInst.softwareVersion}</span> }]
-            : []),
-          ...(selInst?.environment
-            ? [{ title: <span style={{ textTransform: "capitalize" }}>{selInst.environment}</span> }]
-            : []),
-          instanceCrumb,
-          viewCrumb,
-        ];
+  // The breadcrumb stays deliberately short: Applications / <application>.
+  // The current view is already obvious from the highlighted app tab, and the
+  // instance context is chosen in the Systems tree, so neither belongs here.
+  const crumbItems = section === "workspace" ? [workspaceCrumb] : [workspaceCrumb, appCrumb];
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>

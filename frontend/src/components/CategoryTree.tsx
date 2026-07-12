@@ -162,7 +162,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
       <PanelGroup direction="vertical" autoSaveId="configer-cattree-v2" style={{ height: "100%" }}>
         <Panel defaultSize={72} minSize={15} collapsible collapsedSize={6}>
           <div style={{ padding: "8px 8px 0", height: "100%", display: "flex", flexDirection: "column" }}>
-            <Typography.Text strong style={{ padding: "0 4px" }}>Parameter Groups</Typography.Text>
+            <Typography.Text strong style={{ padding: "0 4px" }}>Parameters</Typography.Text>
             <Input.Search
               placeholder="Filter groups and parameters"
               size="small"

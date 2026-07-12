@@ -23,6 +23,7 @@ import { api, type Grid, type Finding } from "../api";
 import { StateTag } from "./CrSteps";
 import { ActivitySparkline, CategoryDonut, HealthTiles, STATUS, type TileDatum } from "./charts";
 import { useUI } from "../store";
+import { envHex } from "../theme";
 
 // DashboardView is the application Overview: an operational command center that
 // answers, without navigating anywhere, is it healthy, is anything waiting,
@@ -388,7 +389,7 @@ export default function DashboardView({ grid, embedded }: { grid: Grid; embedded
                     <span
                       style={{
                         width: 8, height: 8, borderRadius: 4, display: "inline-block",
-                        background: i.environment === "production" ? "#f5222d" : i.environment === "staging" ? "#fa8c16" : "#52c41a",
+                        background: envHex(i.environment),
                       }}
                     />
                     {i.name}

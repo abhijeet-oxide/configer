@@ -252,7 +252,7 @@ function RepoCard({
           onOk={() => rename.mutate(renameVal.trim())}
           okText="Rename"
           okButtonProps={{ disabled: !renameVal.trim() || renameVal.trim() === r.name, loading: rename.isPending }}
-          destroyOnClose
+          destroyOnHidden
         >
           <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
             This changes the display name only. The Git repository, its history and any shared links
@@ -517,7 +517,7 @@ export default function WorkspaceView() {
         open={connectOpen}
         onCancel={() => setConnectOpen(false)}
         footer={null}
-        destroyOnClose
+        destroyOnHidden
       >
         <ConnectForm
           onDone={(r) => {

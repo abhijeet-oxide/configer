@@ -184,13 +184,28 @@ function queryFor(s: UIState): string {
   return q.toString();
 }
 
+// A "navigation" (a distinct Back/Forward stop) is a change of application or
+// view. Selecting a parameter/instance or toggling the files view refines the
+// current view in place, so those update the URL without pushing a history
+// entry, otherwise Back would step through every row click instead of returning
+// to the previous view.
+function navKey(s: UIState): string {
+  return `${s.repoId ?? ""}|${s.section}`;
+}
 let lastQuery = queryFor(useUI.getState());
+let lastNavKey = navKey(useUI.getState());
 useUI.subscribe((s) => {
   const q = queryFor(s);
   if (q === lastQuery) return;
   lastQuery = q;
   const next = q ? `${window.location.pathname}?${q}` : window.location.pathname;
-  window.history.replaceState(null, "", next);
+  const nk = navKey(s);
+  if (nk !== lastNavKey) {
+    lastNavKey = nk;
+    window.history.pushState(null, "", next); // real navigation: Back returns here
+  } else {
+    window.history.replaceState(null, "", next); // in-view refinement: no history noise
+  }
 });
 
 // Browser back/forward: re-read the URL and apply it to the store. Switching
@@ -203,6 +218,7 @@ window.addEventListener("popstate", () => {
   const selectedInstance = p.get("inst");
   const configView: "table" | "exported" = p.get("files") === "1" ? "exported" : "table";
   lastQuery = p.toString();
+  lastNavKey = `${repoId ?? ""}|${section}`;
   if (repoId !== useUI.getState().repoId) {
     setApiRepo(repoId);
     if (repoId) localStorage.setItem("configer.repoId", repoId);

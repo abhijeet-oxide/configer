@@ -9,6 +9,10 @@ import {
   Dropdown,
   Tag,
   Typography,
+  Popover,
+  List,
+  Modal,
+  Empty,
   type InputRef,
 } from "antd";
 import {
@@ -22,6 +26,15 @@ import {
   FontSizeOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
+  CheckCircleOutlined,
+  PullRequestOutlined,
+  InboxOutlined,
+  EditOutlined,
+  QuestionCircleOutlined,
+  InfoCircleOutlined,
+  LogoutOutlined,
+  SettingOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -62,10 +75,49 @@ export default function TopBar({ project }: { project?: string }) {
     enabled: section === "config",
   });
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
   const activeRepo = repos.find((r) => r.id === repoId);
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
+  const drafts = changesQ.data?.filter((c) => c.state === "draft").length ?? 0;
+  const findings = findingsQ.data?.findings?.length ?? 0;
+  // Notifications aggregate the things that need a human: approvals waiting,
+  // external repository changes, and your own unsent drafts. The badge counts
+  // the first two (actionable by you now); drafts show as a gentle reminder.
+  const notifCount = awaiting + findings;
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const meta = metaQ.data;
+
+  // One notification per actionable pile, each deep-linking to where it is
+  // resolved. Built from queries the header already runs, so no new endpoint.
+  const go = (s: string) => {
+    setSection(s);
+    setNotifOpen(false);
+  };
+  const notifItems = [
+    awaiting > 0 && {
+      icon: <PullRequestOutlined style={{ color: "#1677ff" }} />,
+      title: `${awaiting} change request${awaiting === 1 ? "" : "s"} awaiting approval`,
+      desc: "Review and publish, or send back.",
+      onClick: () => go("approvals"),
+    },
+    findings > 0 && {
+      icon: <InboxOutlined style={{ color: "#fa8c16" }} />,
+      title: `${findings} repository change${findings === 1 ? "" : "s"} detected`,
+      desc: "Someone committed directly on Git; import or retire.",
+      onClick: () => go("drift"),
+    },
+    drafts > 0 && {
+      icon: <EditOutlined style={{ color: "#0ca30c" }} />,
+      title: `${drafts} draft${drafts === 1 ? "" : "s"} not yet sent`,
+      desc: "Your staged edits are saved but not in review.",
+      onClick: () => go("changes"),
+    },
+  ].filter(Boolean) as { icon: React.ReactNode; title: string; desc: string; onClick: () => void }[];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -225,13 +277,149 @@ export default function TopBar({ project }: { project?: string }) {
             onClick={toggleFullscreen}
           />
         </Tooltip>
-        <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
-          <Badge count={awaiting} size="small">
-            <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
-          </Badge>
-        </Tooltip>
-        <Avatar size={26} style={{ background: "#7c3aed", flexShrink: 0 }}>DU</Avatar>
+        <Popover
+          open={notifOpen}
+          onOpenChange={setNotifOpen}
+          trigger="click"
+          placement="bottomRight"
+          title={
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Notifications</span>
+              {notifItems.length > 0 && (
+                <Button type="link" size="small" style={{ padding: 0 }} onClick={() => go("approvals")}>
+                  Open Approvals
+                </Button>
+              )}
+            </div>
+          }
+          content={
+            <div style={{ width: 320 }}>
+              {notifItems.length === 0 ? (
+                <Empty
+                  image={<CheckCircleOutlined style={{ fontSize: 28, color: "#52c41a" }} />}
+                  styles={{ image: { height: 34 } }}
+                  description="You're all caught up"
+                />
+              ) : (
+                <List
+                  size="small"
+                  dataSource={notifItems}
+                  renderItem={(n) => (
+                    <List.Item style={{ cursor: "pointer", paddingInline: 4 }} onClick={n.onClick}>
+                      <List.Item.Meta
+                        avatar={n.icon}
+                        title={<span style={{ fontSize: 13 }}>{n.title}</span>}
+                        description={<span style={{ fontSize: 11.5 }}>{n.desc}</span>}
+                      />
+                    </List.Item>
+                  )}
+                />
+              )}
+            </div>
+          }
+        >
+          <Tooltip title="Notifications">
+            <Badge count={notifCount} size="small">
+              <Button size="small" type="text" icon={<BellOutlined />} aria-label="Notifications" />
+            </Badge>
+          </Tooltip>
+        </Popover>
+        <Dropdown
+          trigger={["click"]}
+          menu={{
+            items: [
+              {
+                key: "__who",
+                label: (
+                  <div style={{ lineHeight: 1.3, paddingBlock: 2 }}>
+                    <div style={{ fontWeight: 600 }}>You</div>
+                    {meta && (
+                      <div style={{ fontSize: 11, opacity: 0.65 }}>
+                        {meta.name} {meta.version} · {meta.environment}
+                      </div>
+                    )}
+                  </div>
+                ),
+                disabled: true,
+              },
+              { type: "divider" as const },
+              { key: "settings", icon: <SettingOutlined />, label: "Settings" },
+              { key: "shortcuts", icon: <ThunderboltOutlined />, label: "Keyboard shortcuts" },
+              { key: "help", icon: <QuestionCircleOutlined />, label: "Help & documentation" },
+              { key: "about", icon: <InfoCircleOutlined />, label: "About Configer" },
+              { type: "divider" as const },
+              {
+                key: "signout",
+                icon: <LogoutOutlined />,
+                label: "Sign out",
+                disabled: true,
+              },
+            ],
+            onClick: ({ key }) => {
+              if (key === "settings") setSection("settings");
+              else if (key === "shortcuts") setShortcutsOpen(true);
+              else if (key === "about") setAboutOpen(true);
+              else if (key === "help") window.open("https://github.com/abhijeet-oxide/configer#readme", "_blank", "noopener");
+            },
+          }}
+        >
+          <Tooltip title="Account">
+            <Avatar
+              size={26}
+              style={{ background: "#7c3aed", flexShrink: 0, cursor: "pointer" }}
+              aria-label="Account menu"
+            >
+              DU
+            </Avatar>
+          </Tooltip>
+        </Dropdown>
       </Space>
+      <Modal
+        open={shortcutsOpen}
+        onCancel={() => setShortcutsOpen(false)}
+        footer={null}
+        title="Keyboard shortcuts"
+        width={440}
+      >
+        <List
+          size="small"
+          dataSource={[
+            ["⌘K / Ctrl+K", "Focus global search"],
+            ["Double-click a cell", "Edit its value"],
+            ["Enter", "Commit the edit"],
+            ["Esc", "Cancel the edit / close a dialog"],
+            ["Right-click a cell", "Cell actions (reset, exclude, copy to…)"],
+            ["Browser Back / Forward", "Move between views you've visited"],
+          ]}
+          renderItem={([keys, what]) => (
+            <List.Item>
+              <span style={{ fontSize: 12.5 }}>{what}</span>
+              <Tag className="mono" style={{ marginInlineEnd: 0 }}>{keys}</Tag>
+            </List.Item>
+          )}
+        />
+      </Modal>
+      <Modal
+        open={aboutOpen}
+        onCancel={() => setAboutOpen(false)}
+        footer={null}
+        title="About Configer"
+        width={420}
+      >
+        <Space direction="vertical" size={8} style={{ width: "100%" }}>
+          <Typography.Paragraph type="secondary" style={{ marginBottom: 4 }}>
+            Git-native configuration lifecycle management. Every change is an ordinary Git commit;
+            Git stays the single source of truth.
+          </Typography.Paragraph>
+          {meta && (
+            <div style={{ fontSize: 13 }}>
+              <div><b>Deployment:</b> {meta.name}</div>
+              <div><b>Version:</b> {meta.version}</div>
+              <div><b>Environment:</b> {meta.environment}</div>
+            </div>
+          )}
+        </Space>
+      </Modal>
     </div>
   );
 }

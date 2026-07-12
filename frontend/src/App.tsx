@@ -162,6 +162,13 @@ export default function App() {
 
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
+  // Expose the themed container background as a global CSS variable so the
+  // grid's opaque sticky-column rules (index.css var(--grid-bg)) always resolve
+  // to the current theme, even for cells that mount before the grid root's own
+  // inline variable applies. Prevents any white flash of sticky cells in dark.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--grid-bg", token.colorBgContainer);
+  }, [token.colorBgContainer]);
   // Focus mode only makes sense for the three-pane editor on a wide screen.
   const focus = editorFocus && section === "config" && wide;
 
@@ -209,15 +216,15 @@ export default function App() {
     } else {
       content = (
         <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
-          <Panel defaultSize={16} minSize={11} maxSize={30} style={{ ...panelBg }}>
+          <Panel defaultSize={15} minSize={11} maxSize={30} style={{ ...panelBg }}>
             <CategoryTree grid={grid} />
           </Panel>
           <ResizeHandleV />
-          <Panel defaultSize={62} minSize={40} style={{ minWidth: 0, ...panelBg }}>
+          <Panel defaultSize={66} minSize={40} style={{ minWidth: 0, ...panelBg }}>
             <ParameterGrid grid={grid} />
           </Panel>
           <ResizeHandleV />
-          <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
+          <Panel defaultSize={19} minSize={15} maxSize={35} style={{ ...panelBg }}>
             <DetailsPanel grid={grid} />
           </Panel>
         </PanelGroup>

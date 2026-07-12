@@ -5,6 +5,8 @@ frontend/dist/
 
 # Go
 backend/bin/
+backend/configer
+backend/configer-data/
 *.out
 
 # Editor / OS

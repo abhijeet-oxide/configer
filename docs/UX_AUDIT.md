@@ -12,11 +12,12 @@ Configer is a **genuinely strong, thoughtfully built product** that is already w
 
 It is **not yet at world-class enterprise polish**, and the gaps are concentrated in a small number of high-leverage areas:
 
-1. **Dark mode is broken on the primary working surface** (the Configuration editor renders on white while the rest of the app is dark). This is the single most damaging first impression for a product that ships dark mode as a headline feature.
-2. **The grid under-uses laptop-class screens** — the surface where users spend 90% of their time shows only 2 of 6 instance columns at 1440px because metadata columns dominate the width, and its **toolbar wraps into two unbalanced, half-empty rows** with inconsistent (left/right/panel) action placement.
-3. **Accessibility is below WCAG AA** on the custom grid (no ARIA grid semantics, no keyboard cell navigation, editing is mouse-only) and on a few key controls.
-4. **The identity/account layer is absent** — the avatar is decorative, there is no user menu, no notification center, and no in-app help.
-5. **"Search everything (⌘K)" over-promises** — it is a parameter filter, not the command palette its label implies.
+1. **The grid under-uses laptop-class screens** — the surface where users spend 90% of their time shows only 2 of 6 instance columns at 1440px because metadata columns dominate the width, and its **toolbar wraps into two unbalanced, half-empty rows** with inconsistent (left/right/panel) action placement.
+2. **Accessibility is below WCAG AA** on the custom grid (no ARIA grid semantics, no keyboard cell navigation, editing is mouse-only) and on a few key controls.
+3. **The identity/account layer is absent** — the avatar is decorative, there is no user menu, no notification center, and no in-app help.
+4. **"Search everything (⌘K)" over-promises** — it is a parameter filter, not the command palette its label implies.
+
+> **Note (post-audit engineer re-test):** The originally-flagged "dark mode broken on the Configuration editor" (H-1) **did not reproduce** on re-testing — it was a transient cold-load rendering flash, not a persistent defect. It has been downgraded to Low and hardened defensively. See H-1 for the evidence.
 
 None of these are architectural; all are addressable in a focused polish pass. The recommendations below are ordered by impact.
 
@@ -39,16 +40,14 @@ Each finding uses: **Severity · Category · Problem · Why it hurts · Recommen
 
 ### CRITICAL / HIGH
 
-#### H-1 · Dark mode does not apply to the Configuration editor
-- **Severity:** High
+#### H-1 · Dark mode on the Configuration editor — transient cold-load flash (RE-TESTED: not a persistent bug)
+- **Severity:** Low (downgraded from High after re-test) · **Status:** Hardened
 - **Category:** Design system consistency / theming
-- **Current problem:** With dark mode active (nav rail and top bar correctly dark, Overview fully dark), navigating to **Configuration** renders the category tree, the parameter grid, and the details panel on **white** backgrounds with dark text. Verified in a single session: `Overview` is fully themed dark while `Configuration` stays light. The AntD dark algorithm *is* applied (the Sider computes `#17181a`), so this is a surface-specific override — the custom grid CSS falls back to `var(--grid-bg, #fff)` and the editor panels do not pick up the token background.
-- **Why it hurts:** Dark mode is a headline feature (README, top-bar toggle). The editor is where users spend the vast majority of their time. A white grid inside a dark shell reads as *broken*, not as a theme — it undermines trust in the whole product on first try.
-- **Recommendation:** Drive every editor surface from theme tokens: set `--grid-bg` (and any zebra/fixed-column fallbacks) from `token.colorBgContainer` / `colorFillAlter`, remove `#fff` literal fallbacks, and audit `index.css` for hardcoded light values (`#fff`, light zebra tints). Add a visual-regression screenshot test that loads `view=config` in dark mode and asserts a dark cell background so this can't regress.
-- **Reference:** GitHub, Linear, Datadog — a single theme applies uniformly to every surface including data grids.
-- **User benefit:** A coherent, trustworthy dark experience; reduced eye strain for the long editing sessions this tool is built for.
-- **Effort:** Small–Medium
-- **Screens:** Configuration (Table + tree + details); verify Import, Compare, Instances, History, Change Requests tables in dark too.
+- **Original observation:** During the audit, dark-mode screenshots of the **Configuration** editor showed the tree/grid/details on **white** while the shell and Overview were dark.
+- **Re-test (engineer pass):** The persistent white-grid bug **does not reproduce** under any path — pre-setting `mode=dark` before boot, clicking the top-bar toggle, or first-load on a **cold** Vite server all render the editor fully dark. Computed style of `.ant-table-cell` is `rgb(23,24,26)` within ~300 ms; no white blocks remain. The original captures were almost certainly a **cold-start CSS-in-JS injection flash** (AntD v5 injects themed styles at runtime; virtualized cells inject on first mount) caught while many parallel headless browser contexts hammered a freshly restarted dev server — not a defect users would hit on the static production build.
+- **Residual risk addressed:** The grid's sticky-column CSS used `background: var(--grid-bg, #fff)` — a hardcoded **white** fallback. If that variable were ever momentarily undefined in dark mode, sticky cells could flash white. Fixed by defining `--grid-bg` at the document root from `token.colorBgContainer` (`App.tsx`), so the white fallback can never trigger.
+- **Recommendation (residual):** Add a visual-regression screenshot test that loads `view=config` in dark mode and asserts a dark cell background, to catch any real regression; consider enabling AntD `cssVar` so theme values are plain CSS variables (removes the runtime-injection window entirely).
+- **Effort:** Small (done) · **Screens:** Configuration.
 
 #### H-2 · The grid wastes laptop width; instance columns (the whole point) are crowded out
 - **Severity:** High

@@ -162,6 +162,13 @@ export default function App() {
 
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
+  // Expose the themed container background as a global CSS variable so the
+  // grid's opaque sticky-column rules (index.css var(--grid-bg)) always resolve
+  // to the current theme, even for cells that mount before the grid root's own
+  // inline variable applies. Prevents any white flash of sticky cells in dark.
+  useEffect(() => {
+    document.documentElement.style.setProperty("--grid-bg", token.colorBgContainer);
+  }, [token.colorBgContainer]);
   // Focus mode only makes sense for the three-pane editor on a wide screen.
   const focus = editorFocus && section === "config" && wide;
 

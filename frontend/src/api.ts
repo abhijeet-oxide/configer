@@ -78,6 +78,8 @@ export interface Parameter {
   scope: Scope;
   secret: boolean;
   source: { file: string; path: string; format: string };
+  /** additional locations this parameter's value maps to, beyond source */
+  sources?: { file: string; path: string; format: string }[];
   validation?: Validation;
   default?: unknown;
   versionIntroduced?: string;

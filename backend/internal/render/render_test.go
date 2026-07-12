@@ -130,6 +130,48 @@ func TestYAMLCardinalityAndOmission(t *testing.T) {
 	}
 }
 
+// A parameter mapped to several files writes its value into every one of them.
+func TestMultiSourceRendersEverywhere(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, content string) {
+		p := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("base/a.yaml", "app:\n  name: old\n")
+	write("base/b.yaml", "service:\n  app: old\n")
+
+	p := &project.Project{
+		Root: root,
+		Catalog: model.Catalog{Parameters: []model.Parameter{
+			{ID: "appname", Name: "app.name", Category: "App", Type: model.TypeString,
+				Scope:   model.ScopeGlobal,
+				Default: "myapp",
+				Source:  model.Source{File: "base/a.yaml", Path: "$.app.name", Format: "yaml"},
+				Sources: []model.Source{{File: "base/b.yaml", Path: "$.service.app", Format: "yaml"}}},
+		}},
+		Registry: model.InstanceRegistry{Instances: []model.Instance{{Name: "prod"}}},
+		Overlays: map[string]model.Overlay{},
+	}
+
+	files, err := Instance(p, "prod", plugin.NewRegistry())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := fileByPath(t, files, "a.yaml")
+	b := fileByPath(t, files, "b.yaml")
+	if !strings.Contains(a, "myapp") {
+		t.Errorf("primary source a.yaml missing the value:\n%s", a)
+	}
+	if !strings.Contains(b, "myapp") {
+		t.Errorf("secondary source b.yaml missing the value:\n%s", b)
+	}
+}
+
 func TestXMLRepetitionAndRemoval(t *testing.T) {
 	p := fixture(t)
 	reg := plugin.NewRegistry()

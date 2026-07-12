@@ -65,7 +65,10 @@ function DetailsTab({
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
-  const design = !p.source.file;
+  // A parameter can map to several locations; the primary source plus any
+  // extras. It is in the design phase only when it maps to none.
+  const allSources = [p.source, ...(p.sources ?? [])].filter((s) => s.file);
+  const design = allSources.length === 0;
 
   const patch = useMutation({
     mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
@@ -117,9 +120,21 @@ function DetailsTab({
       </Button>
     </Space>
   ) : (
-    <Space direction="vertical" size={2}>
-      <span className="mono" style={{ fontSize: 12 }}>{p.source.file}</span>
-      <span className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{p.source.path}</span>
+    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+      {allSources.length > 1 && (
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          Mapped to {allSources.length} locations · one edit updates all
+        </Typography.Text>
+      )}
+      {allSources.map((s, i) => (
+        <div key={`${s.file}|${s.path}`}>
+          <span className="mono" style={{ fontSize: 12 }}>{s.file}</span>
+          {i === 0 && allSources.length > 1 && (
+            <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
+          )}
+          <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
+        </div>
+      ))}
       <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
         Re-map…
       </Button>

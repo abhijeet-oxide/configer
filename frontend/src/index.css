@@ -349,7 +349,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 18px; /* space between the (unclassed) icon svg and the label */
+  gap: 12px; /* space between the (unclassed) icon svg and the label */
   top: 0;
   border-radius: 8px 8px 0 0;
   transition: background 0.15s ease, color 0.15s ease;

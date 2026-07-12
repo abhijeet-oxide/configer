@@ -650,10 +650,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // Auto-fit: each instance column gets at least what its longest visible
   // value needs (so "staging.example.internal" never truncates), and any
   // remaining container width is distributed evenly so wide screens fill up.
-  const PARAM_W = 230;
-  const TYPE_W = prefs.showTypeCol ? 86 : 0;
-  const SCOPE_W = prefs.showScopeCol ? 108 : 0;
-  const DESC_W = prefs.showDescCol ? 170 : 0;
+  // Metadata columns are kept tight so the instance columns (the point of the
+  // grid) get the width budget. Type/Scope hold short tags; Description is a
+  // supporting hint (the full text is always in the details panel), so it stays
+  // narrow and truncates.
+  const PARAM_W = 206;
+  const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
+  const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
+  const DESC_W = prefs.showDescCol ? 140 : 0;
   const instWidths = useMemo(() => {
     const px = (s: string) => Math.round(s.length * 7.4) + 46; // approx mono glyphs + padding/badge
     const need: Record<string, number> = {};
@@ -908,7 +912,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
         <Space.Compact size="small">
           <Select
             size="small"
@@ -945,15 +949,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             </Tooltip>
           </Space>
         )}
-        <Typography.Text strong>{title}</Typography.Text>
-        <Tag>{rows.length} parameters</Tag>
+        <Tag style={{ marginInlineEnd: 0 }} title={`${title}: ${rows.length} parameter${rows.length === 1 ? "" : "s"}`}>
+          {title} · {rows.length}
+        </Tag>
         {q && (
           <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
             ⌘K: “{search.trim()}”
           </Tag>
         )}
-        <div style={{ flex: 1 }} />
-        <Space size={4}>
+        {/* All grid actions live in one right-aligned cluster. marginLeft:auto
+            keeps it flush-right whether it shares the first row or wraps to a
+            second one, so the toolbar is never two half-empty bars. */}
+        <Space size={4} style={{ marginLeft: "auto", flexShrink: 0 }}>
           <Popover
             trigger="click"
             placement="bottomRight"

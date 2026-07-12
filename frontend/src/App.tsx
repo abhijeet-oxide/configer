@@ -216,15 +216,15 @@ export default function App() {
     } else {
       content = (
         <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
-          <Panel defaultSize={16} minSize={11} maxSize={30} style={{ ...panelBg }}>
+          <Panel defaultSize={15} minSize={11} maxSize={30} style={{ ...panelBg }}>
             <CategoryTree grid={grid} />
           </Panel>
           <ResizeHandleV />
-          <Panel defaultSize={62} minSize={40} style={{ minWidth: 0, ...panelBg }}>
+          <Panel defaultSize={66} minSize={40} style={{ minWidth: 0, ...panelBg }}>
             <ParameterGrid grid={grid} />
           </Panel>
           <ResizeHandleV />
-          <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
+          <Panel defaultSize={19} minSize={15} maxSize={35} style={{ ...panelBg }}>
             <DetailsPanel grid={grid} />
           </Panel>
         </PanelGroup>

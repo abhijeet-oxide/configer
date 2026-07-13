@@ -179,6 +179,10 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/healthz", h.health)
 	mux.HandleFunc("GET /api/readyz", h.ready)
+	// API documentation: raw spec + interactive (embedded, offline) Swagger UI.
+	mux.HandleFunc("GET /api/openapi.yaml", serveOpenAPISpec)
+	mux.Handle("/api/docs", swaggerHandler)
+	mux.Handle("/api/docs/", swaggerHandler)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)

@@ -1,0 +1,13 @@
+// Runtime configuration for the built SPA. Copy to `config.js`, mount/serve it
+// next to index.html, and reference it once in index.html BEFORE the app script:
+//
+//   <script src="/config.js"></script>
+//
+// This is read at page load, so operators can repoint the frontend at a
+// different backend without rebuilding the bundle (12-factor style). In a
+// container you can generate this file from env at startup (e.g. an entrypoint
+// that runs `envsubst`).
+window.__CONFIGER__ = {
+  // Base URL the SPA calls. Leave undefined to use the same-origin "/api".
+  // apiBaseUrl: "https://api.configer.example.com/api",
+};

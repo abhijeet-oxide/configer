@@ -2,9 +2,13 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/api"
@@ -34,9 +38,25 @@ func main() {
 		slog.String("dataDir", cfg.DataDir),
 		slog.Any("config", cfg),
 	)
-	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Error("server error", slog.Any("error", err))
-		os.Exit(1)
+
+	// Serve until a termination signal, then drain in-flight requests instead of
+	// dropping them (clean rollouts, no truncated responses).
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", slog.Any("error", err))
+			os.Exit(1)
+		}
+	}()
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
+
+	logger.Info("shutting down, draining in-flight requests")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", slog.Any("error", err))
 	}
 }
 

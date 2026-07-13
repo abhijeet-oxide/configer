@@ -2,42 +2,54 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/api"
+	"github.com/abhijeet-oxide/configer/backend/internal/config"
 )
 
 func main() {
-	// CONFIGER_DATA holds server-side operational state: the workspace
-	// registry and the clones of remotely connected repositories.
-	dataDir := getenv("CONFIGER_DATA", "./configer-data")
-	// CONFIGER_REPO seeds the workspace with one local repository when the
-	// registry is empty (the original single-repo mode keeps working).
-	seed := getenv("CONFIGER_REPO", "../sample-repo")
-	addr := getenv("CONFIGER_ADDR", ":8080")
+	cfg := config.Load()
+	logger := newLogger(cfg)
+	slog.SetDefault(logger)
 
-	hub, err := api.NewHub(dataDir, seed, api.SyncIntervalFromEnv())
+	hub, err := api.NewHub(cfg.DataDir, cfg.Repo, cfg.SyncInterval)
 	if err != nil {
-		log.Fatalf("init: %v", err)
+		logger.Error("init failed", slog.Any("error", err))
+		os.Exit(1)
 	}
+	hub.Logger = logger
+
 	httpServer := &http.Server{
-		Addr:              addr,
+		Addr:              cfg.Addr,
 		Handler:           hub.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	log.Printf("configer backend listening on %s (%d repositories, data=%s)", addr, hub.Count(), dataDir)
+	logger.Info("configer backend starting",
+		slog.Int("repositories", hub.Count()),
+		slog.String("dataDir", cfg.DataDir),
+		slog.Any("config", cfg),
+	)
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("server error: %v", err)
+		logger.Error("server error", slog.Any("error", err))
+		os.Exit(1)
 	}
 }
 
-func getenv(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
+// newLogger builds the structured logger. Text is friendlier in a dev terminal;
+// JSON is what log aggregators (Loki, ELK, Datadog, CloudWatch) expect, so
+// production deployments set CONFIGER_LOG_FORMAT=json.
+func newLogger(cfg config.Config) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: cfg.LogLevel}
+	var h slog.Handler
+	if cfg.LogFormat == "json" {
+		h = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stdout, opts)
 	}
-	return def
+	return slog.New(h)
 }

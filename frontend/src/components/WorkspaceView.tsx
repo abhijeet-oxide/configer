@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   Modal,
-  Radio,
   Space,
   Statistic,
   Tag,
@@ -35,6 +34,7 @@ import { api, type Grid, type RepoSummary } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import DashboardView from "./DashboardView";
+import { WorkspaceSkeleton } from "./Skeletons";
 
 // WorkspaceView is the single landing page: every connected configuration as
 // a card (favorites pinned first), and right below, the overview of the one
@@ -244,13 +244,12 @@ export function ConnectForm({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [form] = Form.useForm<{ url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }>();
+  const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
   const connect = useMutation({
-    mutationFn: (v: { url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }) =>
-      api.connectRepo({ ...v, mode: v.mode === "remote" ? "remote" : undefined }),
+    mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) => api.connectRepo(v),
     onSuccess: (r) => {
-      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API (no clone)" : "cloned on the server";
-      message.success(`Connected "${r.name}" (${how}).`);
+      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
+      message.success(`Application "${r.name}" created (${how}).`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
       form.resetFields();
       onDone(r);
@@ -258,29 +257,25 @@ export function ConnectForm({
     onError: (e: Error) => message.error(e.message, 6),
   });
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      onFinish={(v) => connect.mutate(v)}
-      requiredMark={false}
-      initialValues={{ mode: "clone" }}
-    >
+    <Form form={form} layout="vertical" onFinish={(v) => connect.mutate(v)} requiredMark={false}>
+      <Form.Item
+        name="name"
+        label="Application name"
+        rules={[{ required: true, message: "Give the application a name" }]}
+      >
+        <Input placeholder="e.g. Network Platform" maxLength={60} autoFocus />
+      </Form.Item>
       <Form.Item
         name="url"
         label="Repository"
         rules={[{ required: true, message: "Give a git URL or a path on the server" }]}
-        extra={compact ? undefined : "A GitHub/https git URL is cloned and kept in sync on the server; a directory path is opened in place."}
+        extra={compact ? undefined : "The GitHub repository whose configuration this application manages."}
       >
-        <Input placeholder="https://github.com/acme/network-config.git" className="mono" autoFocus />
+        <Input placeholder="https://github.com/acme/network-config.git" className="mono" />
       </Form.Item>
-      <div style={{ display: "flex", gap: 10 }}>
-        <Form.Item name="name" label="Display name (optional)" style={{ flex: 1 }}>
-          <Input placeholder="e.g. Network Platform" maxLength={60} />
-        </Form.Item>
-        <Form.Item name="branch" label="Branch (optional)" style={{ flex: 1 }}>
-          <Input placeholder="default branch" className="mono" maxLength={80} />
-        </Form.Item>
-      </div>
+      <Form.Item name="branch" label="Branch (optional)">
+        <Input placeholder="default branch" className="mono" maxLength={80} />
+      </Form.Item>
       <Form.Item
         name="token"
         label="Access token (private repositories)"
@@ -288,23 +283,9 @@ export function ConnectForm({
       >
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
       </Form.Item>
-      <Form.Item
-        name="mode"
-        label="How should the server manage it?"
-        extra={
-          compact
-            ? undefined
-            : "Clone keeps a working copy on the server. Remote uses the GitHub API for partial checkouts and commits with nothing cloned (a GitHub https URL and token are required)."
-        }
-      >
-        <Radio.Group>
-          <Radio.Button value="clone">Clone on server</Radio.Button>
-          <Radio.Button value="remote">Remote via GitHub API (no clone)</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-          Connect repository
+          Create application
         </Button>
       </div>
     </Form>
@@ -334,33 +315,38 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Workspace
+              Applications
             </Typography.Title>
             <Typography.Text type="secondary">
-              Pick a configuration to see its overview below; everything stays in Git.
+              Pick an application to see its overview below; everything stays in Git.
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-            Connect repository
+            Create application
           </Button>
         </div>
 
-        {repos.length === 0 && !wsQ.isLoading ? (
+        {wsQ.isLoading && repos.length === 0 ? (
+          // Loading: stand in with the exact card shape so the empty state never
+          // flashes for connected workspaces (the reported "connect repository →
+          // no repositories" flicker).
+          <WorkspaceSkeleton />
+        ) : repos.length === 0 ? (
           <Card style={{ marginTop: 20 }}>
             <Empty
               description={
                 <>
                   <Typography.Paragraph style={{ marginBottom: 4 }}>
-                    No repositories are connected yet.
+                    No applications yet.
                   </Typography.Paragraph>
                   <Typography.Text type="secondary">
-                    Connect a Git repository to start managing its configuration.
+                    Create an application to start managing its configuration in Git.
                   </Typography.Text>
                 </>
               }
             >
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-                Connect repository
+                Create application
               </Button>
             </Empty>
           </Card>
@@ -382,18 +368,18 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
               onClick={() => setConnectOpen(true)}
             >
               <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
-              <div style={{ marginTop: 8, fontWeight: 500 }}>Connect repository</div>
+              <div style={{ marginTop: 8, fontWeight: 500 }}>Create application</div>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                GitHub URL or a path on the server
+                Connect a GitHub repository
               </Typography.Text>
             </Card>
           </div>
         )}
 
         <Typography.Paragraph type="secondary" style={{ marginTop: 14, fontSize: 12 }}>
-          <DownloadOutlined /> Tip: after connecting, use <a onClick={() => setSection("import")}>Import</a> to
+          <DownloadOutlined /> Tip: after creating an application, use <a onClick={() => setSection("import")}>Import</a> to
           bring the repository's settings under management. <DisconnectOutlined style={{ marginInlineStart: 10 }} />{" "}
-          Disconnecting never deletes anything on Git.
+          Removing an application never deletes anything on Git.
         </Typography.Paragraph>
 
         {grid && repoId && (
@@ -404,7 +390,7 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
       </div>
 
       <Modal
-        title="Connect a repository"
+        title="Create an application"
         open={connectOpen}
         onCancel={() => setConnectOpen(false)}
         footer={null}

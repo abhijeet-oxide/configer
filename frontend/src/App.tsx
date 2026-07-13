@@ -27,7 +27,7 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import MobileParamList from "./components/MobileParamList";
-import { GridSkeleton, ListSkeleton } from "./components/Skeletons";
+import { GridSkeleton, TableSkeleton, ApprovalsSkeleton, FilesSkeleton } from "./components/Skeletons";
 
 const { Header, Sider, Content } = Layout;
 
@@ -210,8 +210,15 @@ export default function App() {
         </div>
       );
     if (gridQ.isLoading) {
-      // state-aware skeletons: mirror the layout the user is waiting for
-      if (section === "approvals" || section === "changes") return <ListSkeleton />;
+      // state-aware skeletons: mirror the exact layout the user is waiting for
+      if (section === "approvals") return <ApprovalsSkeleton />;
+      if (section === "changes" || section === "drafts") return <TableSkeleton />;
+      if (section === "files")
+        return (
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px", gap: 12, ...panelBg }}>
+            <FilesSkeleton />
+          </div>
+        );
       return <GridSkeleton />;
     }
     if (!grid) {

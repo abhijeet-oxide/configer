@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { Card, List, Tag, Typography, Spin } from "antd";
+import { Card, List, Tag, Typography } from "antd";
 import { ApiOutlined } from "@ant-design/icons";
 import { api } from "../api";
+import { PluginsSkeleton } from "./Skeletons";
 
 const kindColor: Record<string, string> = {
   "ingest-parser": "blue",
@@ -15,7 +16,7 @@ const kindColor: Record<string, string> = {
 // etc.) to make the plug-and-play architecture visible and configurable.
 export default function PluginsView() {
   const q = useQuery({ queryKey: ["plugins"], queryFn: api.plugins });
-  if (q.isLoading) return <Spin style={{ margin: 40 }} />;
+  if (q.isLoading) return <PluginsSkeleton />;
   return (
     <div style={{ padding: 24, overflow: "auto", height: "100%" }}>
       <Typography.Title level={4}><ApiOutlined /> Plugins</Typography.Title>

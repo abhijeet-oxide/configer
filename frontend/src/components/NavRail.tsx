@@ -22,7 +22,7 @@ function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
 
 function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
   return [
-    { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Workspace" },
+    { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Applications" },
     { key: "config", icon: <span className="nav-ic"><Ic icon={icons.editor} /></span>, label: "Editor" },
     { key: "import", icon: <span className="nav-ic"><Ic icon={icons.import} /></span>, label: "Import" },
     {

@@ -1,4 +1,4 @@
-import { Button, Empty, Select, Spin, Tag, Tree, Typography, App as AntApp } from "antd";
+import { Button, Empty, Select, Tag, Tree, Typography, App as AntApp } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
   FolderOpenOutlined,
@@ -10,6 +10,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
+import { FilesSkeleton } from "./Skeletons";
 
 // RenderedFilesView is the visualization of truth: for one instance, a file
 // explorer of exactly what Configer writes to generated/<instance>/ on Git
@@ -151,9 +152,7 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
       </div>
 
       {renderQ.isLoading ? (
-        <div style={{ flex: 1, display: "grid", placeItems: "center" }}>
-          <Spin />
-        </div>
+        <FilesSkeleton />
       ) : files.length === 0 ? (
         <Empty
           style={{ marginTop: 60 }}

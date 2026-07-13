@@ -96,7 +96,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             {
               title: (
                 <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
-                  Workspace
+                  Applications
                 </a>
               ),
             },
@@ -121,7 +121,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                         ),
                       })),
                       { type: "divider" as const },
-                      { key: "__workspace", label: "Connect or manage repositories…" },
+                      { key: "__workspace", label: "Manage applications…" },
                     ],
                     onClick: ({ key }) => {
                       if (key === "__workspace") setSection("workspace");

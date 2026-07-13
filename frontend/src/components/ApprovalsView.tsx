@@ -11,6 +11,7 @@ import { api } from "../api";
 import CrSteps from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
 import { relTime } from "./DashboardView";
+import { ApprovalsSkeleton } from "./Skeletons";
 
 // ApprovalsView is the approver's inbox: every change request waiting for a
 // decision, shown as a human before→after summary with one-click actions.
@@ -37,6 +38,10 @@ export default function ApprovalsView() {
     },
     onError: (e: Error) => message.error(e.message),
   });
+
+  // First load: match the review-card layout instead of flashing the empty
+  // "all caught up" state before the data has arrived.
+  if (q.isLoading) return <ApprovalsSkeleton />;
 
   return (
     <div style={{ padding: 20, height: "100%", overflow: "auto", maxWidth: 980 }}>

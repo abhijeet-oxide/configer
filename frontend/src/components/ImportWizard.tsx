@@ -127,8 +127,9 @@ function foldFile(cands: ScanCandidate[]): FoldedCand[] {
 
 // Switching repositories inside the wizard clears the query cache, which
 // remounts the wizard; this one-shot flag carries "land on the scan step"
-// across that remount.
-const STEP_HANDOFF = "configer.importStep";
+// across that remount. It is also how creating an application from the
+// Applications page hands straight into the scan step of this wizard.
+export const STEP_HANDOFF = "configer.importStep";
 
 export default function ImportWizard({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
@@ -137,6 +138,10 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   const [step, setStep] = useState(() =>
     sessionStorage.getItem(STEP_HANDOFF) ? 1 : 0,
   );
+  // A handoff from "Create application" (or a repo switch inside the wizard)
+  // lands on the scan step; when it does, kick the scan off immediately so the
+  // repository is parsed automatically instead of waiting on another click.
+  const handoffScan = useRef(sessionStorage.getItem(STEP_HANDOFF) !== null);
   useEffect(() => {
     sessionStorage.removeItem(STEP_HANDOFF);
   }, []);
@@ -214,6 +219,15 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importFocus]);
+
+  // Arriving on the scan step via a create/switch handoff: scan once, right
+  // away, so a new application is parsed the moment the user reaches this step.
+  useEffect(() => {
+    if (!handoffScan.current || autoScanStarted.current) return;
+    autoScanStarted.current = true;
+    doScan.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Per-file counts after list folding: how many settings are news vs
   // already in the catalog.

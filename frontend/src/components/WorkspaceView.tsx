@@ -35,6 +35,7 @@ import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import DashboardView from "./DashboardView";
 import { WorkspaceSkeleton } from "./Skeletons";
+import { STEP_HANDOFF } from "./ImportWizard";
 
 // WorkspaceView is the single landing page: every connected configuration as
 // a card (favorites pinned first), and right below, the overview of the one
@@ -399,7 +400,13 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
         <ConnectForm
           onDone={(r) => {
             setConnectOpen(false);
+            // Creating an application flows straight into the scan/import step,
+            // so the repository is parsed and its settings offered for
+            // management right away — the "import is the next step of creating
+            // an application" flow.
+            sessionStorage.setItem(STEP_HANDOFF, "1");
             switchRepo(r.id);
+            setSection("import");
           }}
         />
       </Modal>

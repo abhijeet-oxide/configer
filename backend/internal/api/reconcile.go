@@ -278,7 +278,7 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	if imported > 0 {
 		title = "Import " + itoa(imported) + " parameter(s) into the catalog"
 	}
-	s.commitCatalogChange(w, title, req.Author, map[string]any{
+	s.commitCatalogChange(w, title, author(r, req.Author), map[string]any{
 		"ok": true, "imported": imported, "skipped": skipped, "ignored": len(req.IgnoreFiles),
 	})
 }
@@ -394,7 +394,7 @@ func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	s.commitCatalogChange(w, "Retire "+itoa(len(ids))+" parameter(s) from removed file "+req.File, req.Author,
+	s.commitCatalogChange(w, "Retire "+itoa(len(ids))+" parameter(s) from removed file "+req.File, author(r, req.Author),
 		map[string]any{"ok": true, "retired": ids})
 }
 

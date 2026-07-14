@@ -75,7 +75,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	if req.Bindings != nil && len(param.Bindings) > 0 {
 		title = "Attach parameter " + param.Name + " to " + param.Bindings[0].File
 	}
-	s.commitCatalogChange(w, title, req.Author, param)
+	s.commitCatalogChange(w, title, author(r, req.Author), param)
 }
 
 // addParameter creates a new catalog parameter from the GUI (e.g. an optional
@@ -126,7 +126,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}
-	s.commitCatalogChange(w, "Add parameter "+pm.Name, req.Author, pm)
+	s.commitCatalogChange(w, "Add parameter "+pm.Name, author(r, req.Author), pm)
 }
 
 // deleteParameter retires a parameter everywhere: the catalog entry is
@@ -168,5 +168,5 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 	}
-	s.commitCatalogChange(w, "Retire parameter "+param.Name, req.Author, map[string]any{"ok": true, "retired": id})
+	s.commitCatalogChange(w, "Retire parameter "+param.Name, author(r, req.Author), map[string]any{"ok": true, "retired": id})
 }

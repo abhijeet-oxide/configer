@@ -29,11 +29,18 @@ Never commit `.env` to version control—use `.env.example` as the template.
 | `CONFIGER_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `CONFIGER_SYNC_SECONDS` | `30` | Git sync interval (seconds); 0 = disabled |
 
-### Database (Phase 1+)
+### Platform (users, sessions, roles, audit)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | *(unset)* | Postgres connection string; if set, enables grid cache and metadata storage |
+| `DATABASE_URL` | *(unset)* | Postgres connection string for the platform database; unset = embedded SQLite under `CONFIGER_DATA` |
+| `GITHUB_OAUTH_CLIENT_ID` | *(unset)* | GitHub OAuth app client id; unset = single-user mode (no login) |
+| `GITHUB_OAUTH_CLIENT_SECRET` | *(unset)* | GitHub OAuth app client secret |
+| `CONFIGER_OAUTH_CALLBACK` | *(unset)* | Public `/api/auth/callback` URL (needed behind a proxy) |
+| `GITHUB_WEB_URL` | `https://github.com` | GitHub web base (GitHub Enterprise) |
+| `CONFIGER_ADMINS` | *(unset)* | Comma-separated GitHub logins allowed to assign roles |
+| `CONFIGER_DEFAULT_ROLE` | `editor` | Role where no explicit assignment exists: viewer / editor / approver |
+| `CONFIGER_CORS_ORIGIN` | *(unset)* | One extra browser origin allowed to call the API |
 
 ### Git Integration
 

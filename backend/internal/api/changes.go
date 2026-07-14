@@ -50,7 +50,7 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, req.Author, req.Reference, req.Category)
+	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, author(r, req.Author), req.Reference, req.Category)
 	if err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return

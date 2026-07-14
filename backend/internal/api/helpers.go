@@ -7,8 +7,30 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strings"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/auth"
 )
+
+// author resolves who is making a change: the authenticated session user
+// always wins (never trust a body field when login is enabled); the request
+// body's author is the single-user-mode fallback.
+func author(r *http.Request, fallback string) string {
+	if u, ok := auth.UserFrom(r.Context()); ok {
+		if u.Name != "" && u.Email != "" {
+			return u.Name + " <" + u.Email + ">"
+		}
+		if u.Name != "" {
+			return u.Name + " (" + u.Login + ")"
+		}
+		return u.Login
+	}
+	if fallback == "" {
+		return "anonymous"
+	}
+	return fallback
+}
 
 // commitCatalogChange commits a .configer metadata operation (and any
 // accompanying real-file edits, e.g. a retired parameter's keys) directly
@@ -64,15 +86,23 @@ func writeErr(w http.ResponseWriter, err error) {
 	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 }
 
-// withCORS allows the Vite dev server (different port) to call the API.
+// withCORS emits CORS headers only for an explicitly allowed origin
+// (CONFIGER_CORS_ORIGIN). The frontend is same-origin in every supported
+// setup — nginx serves it beside the API in production and the Vite dev
+// server proxies /api — so by default no cross-origin access exists, which
+// is also what cookie sessions require.
 func withCORS(next http.Handler) http.Handler {
+	allowed := os.Getenv("CONFIGER_CORS_ORIGIN")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
+		if allowed != "" && r.Header.Get("Origin") == allowed {
+			w.Header().Set("Access-Control-Allow-Origin", allowed)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

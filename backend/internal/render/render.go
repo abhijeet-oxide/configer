@@ -136,6 +136,28 @@ func outputPath(src string) string {
 	return strings.TrimPrefix(filepath.ToSlash(src), "base/")
 }
 
+// ApplyOne applies a single value (or a removal) at one path into a base
+// document of the given format ("yaml"|"json"|"xml"), returning the new
+// document. It is the in-place write-back primitive shared with the writeback
+// package: read a file, ApplyOne, write it back — reusing the same
+// presence/list/prune semantics as full rendering. Unmanaged content in the
+// base is preserved.
+func ApplyOne(base []byte, format, path string, ptype model.ParamType, value any, remove bool) (string, error) {
+	a := application{
+		param:  model.Parameter{Type: ptype, Source: model.Source{Path: path, Format: format}},
+		value:  value,
+		remove: remove,
+	}
+	switch format {
+	case "xml":
+		return renderXML(base, []application{a})
+	case "json":
+		return renderTree(base, []application{a}, "json")
+	default:
+		return renderTree(base, []application{a}, "yaml")
+	}
+}
+
 // --- YAML / JSON -----------------------------------------------------------
 
 // renderTree loads the base document (YAML or JSON), applies managed

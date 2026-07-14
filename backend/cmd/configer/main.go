@@ -58,6 +58,9 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		logger.Error("graceful shutdown failed", slog.Any("error", err))
 	}
+	if err := hub.Close(); err != nil {
+		logger.Error("platform store close failed", slog.Any("error", err))
+	}
 }
 
 // newLogger builds the structured logger. Text is friendlier in a dev terminal;

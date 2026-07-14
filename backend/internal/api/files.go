@@ -256,11 +256,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	author := req.Author
-	if author == "" {
-		author = "anonymous"
-	}
-	draft, err := s.Store.Draft(author, s.branch())
+	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return

@@ -1,6 +1,7 @@
-# Self-hosted Configer stack: Go backend + SPA (nginx) + Postgres (metadata
-# cache, wired in a later phase). The backend serves the grid from a mounted
-# Git working tree; Git remains the single source of truth.
+# Self-hosted Configer stack: Go backend + SPA (nginx) + Postgres (the
+# platform database: users, sessions, roles, audit). The backend serves the
+# grid from a mounted Git working tree; Git remains the single source of
+# truth for all configuration.
 
 version: '3.8'
 
@@ -21,15 +22,17 @@ services:
       CONFIGER_GIT_NAME: Configer Bot
       CONFIGER_GIT_EMAIL: bot@configer.local
       
-      # Feature flags
-      FEATURE_SWAGGER_DOCS: "true"
-      FEATURE_OFFLINE_MODE: "true"
-      FEATURE_AI_MODULE: "false"
-      FEATURE_RBAC: "false"
-      FEATURE_SSO: "false"
-      
-      # Database (future use)
-      # DATABASE_URL: postgres://configer:configer@postgres:5432/configer
+      # Platform database: Postgres in this stack (an embedded SQLite file is
+      # the default when unset — fine for single-node deployments).
+      DATABASE_URL: postgres://configer:configer@postgres:5432/configer
+
+      # GitHub OAuth login (fill in to enable multi-user mode; the callback is
+      # <public-url>/api/auth/callback).
+      # GITHUB_OAUTH_CLIENT_ID: ...
+      # GITHUB_OAUTH_CLIENT_SECRET: ...
+      # CONFIGER_OAUTH_CALLBACK: https://configer.example.com/api/auth/callback
+      # CONFIGER_ADMINS: your-github-login
+      # CONFIGER_DEFAULT_ROLE: editor
     volumes:
       # Read-write: Configer commits edits into the repo's real files
       # (write-back-native model).
@@ -66,7 +69,7 @@ services:
       retries: 3
       start_period: 10s
 
-  # Metadata / grid-cache database (used from Phase 1 onward per the design)
+  # Platform database: users, sessions, per-app roles, audit trail.
   postgres:
     image: postgres:16-alpine
     environment:

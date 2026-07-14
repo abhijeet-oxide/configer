@@ -6,7 +6,7 @@ import type { BrandKey, FontScale, Mode } from "./theme";
 // every repo-scoped call goes to the selected configuration.
 //
 // Views are deep-linked in the URL query string so any state is shareable:
-//   ?app=<repoId>&view=<section>&param=<id>&inst=<name>&files=1
+//   ?app=<repoId>&view=<section>&param=<id>&inst=<name>
 // The URL takes precedence over the remembered repo on first load, and the
 // store keeps the URL in sync as the user navigates (back/forward work too).
 const url = new URLSearchParams(window.location.search);
@@ -16,7 +16,6 @@ setApiRepo(initialRepo);
 const initialSection = url.get("view") || (urlRepo ? "overview" : "workspace");
 const initialParam = url.get("param");
 const initialInstance = url.get("inst");
-const initialConfigView: "table" | "exported" = url.get("files") === "1" ? "exported" : "table";
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -73,9 +72,6 @@ interface UIState {
   /** focus mode: maximize just the Configuration workspace (hide the nav rail
    *  and header), an in-app "editor fullscreen" scoped to the editor only */
   editorFocus: boolean;
-  /** inside the Configuration tab: the spreadsheet table, or the exported
-   *  (rendered) files view. Rendered files is no longer a nav destination. */
-  configView: "table" | "exported";
   /** file or folder prefix the Import wizard should focus on (set by the
    *  Repository Changes inbox when jumping into an import) */
   importFocus: string | null;
@@ -96,7 +92,6 @@ interface UIState {
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
   setEditorFocus: (f: boolean) => void;
-  setConfigView: (v: "table" | "exported") => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance", id: string) => void;
 }
@@ -117,7 +112,6 @@ export const useUI = create<UIState>((set) => ({
   prefs: loadPrefs(),
   navCollapsed: false,
   editorFocus: false,
-  configView: initialConfigView,
   importFocus: null,
   jump: null,
   setMode: (mode) => {
@@ -164,7 +158,6 @@ export const useUI = create<UIState>((set) => ({
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
   setEditorFocus: (editorFocus) => set({ editorFocus }),
-  setConfigView: (configView) => set({ configView }),
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
 }));
@@ -180,7 +173,6 @@ function queryFor(s: UIState): string {
   if (s.section && s.section !== "workspace") q.set("view", s.section);
   if (s.selectedParamId) q.set("param", s.selectedParamId);
   if (s.selectedInstance) q.set("inst", s.selectedInstance);
-  if (s.configView === "exported") q.set("files", "1");
   return q.toString();
 }
 
@@ -216,12 +208,11 @@ window.addEventListener("popstate", () => {
   const section = p.get("view") || (repoId ? "overview" : "workspace");
   const selectedParamId = p.get("param");
   const selectedInstance = p.get("inst");
-  const configView: "table" | "exported" = p.get("files") === "1" ? "exported" : "table";
   lastQuery = p.toString();
   lastNavKey = `${repoId ?? ""}|${section}`;
   if (repoId !== useUI.getState().repoId) {
     setApiRepo(repoId);
     if (repoId) localStorage.setItem("configer.repoId", repoId);
   }
-  useUI.setState({ repoId, section, selectedParamId, selectedInstance, configView });
+  useUI.setState({ repoId, section, selectedParamId, selectedInstance });
 });

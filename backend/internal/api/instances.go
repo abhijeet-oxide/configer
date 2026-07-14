@@ -87,7 +87,7 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
 		Status: str(req.Status), Labels: derefLabels(req.Labels),
 	}
-	s.stageStructural(w, req.Author, change.Item{
+	s.stageStructural(w, author(r, req.Author), change.Item{
 		Instance: name,
 		Action:   change.ActionAddInstance,
 		Old:      req.CloneFrom,
@@ -138,7 +138,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
-	s.commitCatalogChange(w, "Update instance "+inst.Name, req.Author, inst)
+	s.commitCatalogChange(w, "Update instance "+inst.Name, author(r, req.Author), inst)
 }
 
 // deleteInstance stages the retirement of an instance (registry entry +
@@ -159,7 +159,7 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance " + name + " not found"})
 		return
 	}
-	s.stageStructural(w, req.Author, change.Item{
+	s.stageStructural(w, author(r, req.Author), change.Item{
 		Instance: name,
 		Action:   change.ActionRemoveInstance,
 	})

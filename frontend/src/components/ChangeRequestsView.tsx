@@ -72,7 +72,7 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
 export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const { setSection, setConfigView } = useUI();
+  const { setSection } = useUI();
   const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
 
   const invalidate = () => qc.invalidateQueries();
@@ -214,7 +214,6 @@ export default function ChangeRequestsView() {
                         type="primary"
                         icon={<EditOutlined />}
                         onClick={() => {
-                          setConfigView("table");
                           setSection("config");
                         }}
                       >

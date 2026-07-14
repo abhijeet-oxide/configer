@@ -327,7 +327,7 @@ export default function App() {
     return (
       <Result
         title={section}
-        subTitle="This section is part of the roadmap (see docs/PLAN.md)."
+        subTitle="This section does not exist. Use the navigation rail on the left."
       />
     );
   }

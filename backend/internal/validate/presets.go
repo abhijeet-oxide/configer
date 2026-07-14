@@ -5,9 +5,9 @@ package validate
 // preset via Validation.Preset; explicit fields on the parameter's Validation
 // apply in addition to the preset.
 type PresetRule struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
 	// Example is shown in error messages and editors so non-technical users
 	// see what a valid value looks like instead of a regex.
 	Example   string   `json:"example,omitempty"`

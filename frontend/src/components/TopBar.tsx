@@ -24,11 +24,12 @@ import {
   FullscreenExitOutlined,
 } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { brands, type BrandKey } from "../theme";
+import MembersModal from "./MembersModal";
 
 // Application header, kept deliberately light: an ellipsized breadcrumb that
 // can never wrap the layout, the global search, appearance controls, the
@@ -228,8 +229,59 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
           </Badge>
         </Tooltip>
-        <Avatar size={26} style={{ background: "#7c3aed", flexShrink: 0 }}>DU</Avatar>
+        <IdentityControl repoId={repoId} />
       </Space>
     </div>
+  );
+}
+
+// IdentityControl is the sign-in surface. Single-user deployments (no OAuth
+// configured) show nothing; multi-user ones show a Sign-in button or the
+// user's avatar menu (people & roles for admins, sign out).
+function IdentityControl({ repoId }: { repoId: string | null }) {
+  const qc = useQueryClient();
+  const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
+  const [membersOpen, setMembersOpen] = useState(false);
+  const logout = useMutation({
+    mutationFn: api.logout,
+    onSuccess: () => qc.invalidateQueries(),
+  });
+
+  const me = meQ.data;
+  if (!me?.enabled) return null;
+  if (!me.user) {
+    return (
+      <Button size="small" type="primary" href="/api/auth/login">
+        Sign in with GitHub
+      </Button>
+    );
+  }
+  const u = me.user;
+  const initials = (u.name || u.login).slice(0, 2).toUpperCase();
+  return (
+    <>
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          items: [
+            { key: "who", label: <b>{u.name || u.login}</b>, disabled: true },
+            ...(u.admin && repoId
+              ? [{ key: "members", label: "People & roles…" }]
+              : []),
+            { type: "divider" as const },
+            { key: "logout", label: "Sign out" },
+          ],
+          onClick: ({ key }) => {
+            if (key === "logout") logout.mutate();
+            if (key === "members") setMembersOpen(true);
+          },
+        }}
+      >
+        <Avatar size={26} src={u.avatarUrl || undefined} style={{ background: "#7c3aed", flexShrink: 0, cursor: "pointer" }}>
+          {initials}
+        </Avatar>
+      </Dropdown>
+      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
+    </>
   );
 }

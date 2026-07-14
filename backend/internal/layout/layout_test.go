@@ -128,4 +128,3 @@ func TestScaffoldKpt(t *testing.T) {
 		t.Errorf("Kptfile not renamed:\n%s", b)
 	}
 }
-

@@ -29,11 +29,18 @@ Never commit `.env` to version control—use `.env.example` as the template.
 | `CONFIGER_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `CONFIGER_SYNC_SECONDS` | `30` | Git sync interval (seconds); 0 = disabled |
 
-### Database (Phase 1+)
+### Platform (users, sessions, roles, audit)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | *(unset)* | Postgres connection string; if set, enables grid cache and metadata storage |
+| `DATABASE_URL` | *(unset)* | Postgres connection string for the platform database; unset = embedded SQLite under `CONFIGER_DATA` |
+| `GITHUB_OAUTH_CLIENT_ID` | *(unset)* | GitHub OAuth app client id; unset = single-user mode (no login) |
+| `GITHUB_OAUTH_CLIENT_SECRET` | *(unset)* | GitHub OAuth app client secret |
+| `CONFIGER_OAUTH_CALLBACK` | *(unset)* | Public `/api/auth/callback` URL (needed behind a proxy) |
+| `GITHUB_WEB_URL` | `https://github.com` | GitHub web base (GitHub Enterprise) |
+| `CONFIGER_ADMINS` | *(unset)* | Comma-separated GitHub logins allowed to assign roles |
+| `CONFIGER_DEFAULT_ROLE` | `editor` | Role where no explicit assignment exists: viewer / editor / approver |
+| `CONFIGER_CORS_ORIGIN` | *(unset)* | One extra browser origin allowed to call the API |
 
 ### Git Integration
 
@@ -46,15 +53,10 @@ Never commit `.env` to version control—use `.env.example` as the template.
 
 ## Feature Flags
 
-Enable/disable upcoming features:
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `FEATURE_SWAGGER_DOCS` | `true` | Enable auto-generated Swagger UI at `/api/docs` |
-| `FEATURE_OFFLINE_MODE` | `true` | Enable offline resilience (localStorage snapshots) |
-| `FEATURE_AI_MODULE` | `false` | Enable AI-powered intent → change request feature |
-| `FEATURE_RBAC` | `false` | Enable role-based access control |
-| `FEATURE_SSO` | `false` | Enable OIDC/SAML single sign-on |
+Generic boolean flags: any `CONFIGER_FLAG_<NAME>=true` becomes flag `<name>`,
+readable in code via `cfg.Flags.Enabled("<name>")`. There are no built-in
+flags today — Swagger docs and offline resilience are always on, and access
+control is configured through the Platform variables above.
 
 ## Frontend Configuration
 
@@ -85,9 +87,6 @@ CONFIGER_REPO=./sample-repo
 CONFIGER_ADDR=:8080
 CONFIGER_ENV=development
 CONFIGER_LOG_LEVEL=debug
-VITE_API_URL=http://localhost:8080
-FEATURE_SWAGGER_DOCS=true
-FEATURE_AI_MODULE=false
 ```
 
 ### Docker Compose (Self-Hosted)
@@ -109,8 +108,9 @@ CONFIGER_ENV=production
 CONFIGER_LOG_LEVEL=warn
 DATABASE_URL=postgres://user:pass@db.example.com/configer
 GITHUB_TOKEN=ghp_xxxx...  # Keep in secrets manager
-FEATURE_RBAC=true
-FEATURE_SSO=true
+GITHUB_OAUTH_CLIENT_ID=...
+GITHUB_OAUTH_CLIENT_SECRET=...
+CONFIGER_ADMINS=platform-lead
 ```
 
 ## Runtime Configuration
@@ -121,27 +121,6 @@ The frontend can be reconfigured to point to a different backend without rebuild
 
 1. **During development**: Edit `.env` and restart frontend dev server
 2. **In production**: Set `VITE_API_URL` during the Docker build or serve from env-aware config
-
-### Feature Flags at Runtime
-
-Backend feature flags are reported via `GET /api/meta`:
-
-```json
-{
-  "name": "Configer (Dev)",
-  "version": "0.1.0",
-  "environment": "development",
-  "features": {
-    "swagger_docs": true,
-    "offline_mode": true,
-    "ai_module": false,
-    "rbac": false,
-    "sso": false
-  }
-}
-```
-
-The frontend reads this to conditionally show UI elements.
 
 ## Quick Start
 
@@ -179,12 +158,6 @@ npm run docker:up
 1. Check `VITE_API_URL` is set correctly
 2. Ensure backend is running on the configured address
 3. Check CORS headers in browser console
-
-### Feature flags not taking effect
-
-1. Backend flags are read at startup—restart after changing `.env`
-2. Frontend flags are fetched from `/api/meta`—refresh the browser
-3. Built-in flags (like AI module) may have code conditionals that also need enabling
 
 ### Git sync not working
 

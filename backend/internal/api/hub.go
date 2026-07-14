@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/auth"
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
@@ -20,6 +21,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/remoterepo"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/store"
 	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
 
@@ -38,6 +40,8 @@ type Hub struct {
 	dataDir  string
 	interval time.Duration
 	registry *workspace.Registry
+	platform *store.Store
+	auth     *auth.Service
 
 	mu       sync.Mutex
 	servers  map[string]*Server
@@ -54,15 +58,26 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
+	platform, authSvc, err := newPlatform(dataDir)
+	if err != nil {
+		return nil, err
+	}
 	h := &Hub{
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
 		dataDir:     dataDir,
 		interval:    interval,
 		registry:    reg,
+		platform:    platform,
+		auth:        authSvc,
 		servers:     map[string]*Server{},
 		handlers:    map[string]http.Handler{},
 		errs:        map[string]string{},
+	}
+	if authSvc.Enabled() {
+		log.Printf("auth: GitHub OAuth enabled (store: %s)", platform.Dialect())
+	} else {
+		log.Printf("auth: disabled, single-user mode (store: %s)", platform.Dialect())
 	}
 	if len(reg.List()) == 0 && seed != "" {
 		if st, serr := os.Stat(seed); serr == nil && st.IsDir() {
@@ -181,14 +196,27 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/openapi.yaml", serveOpenAPISpec)
 	mux.Handle("/api/docs", swaggerHandler)
 	mux.Handle("/api/docs/", swaggerHandler)
+	h.auth.Routes(mux)
+	mux.HandleFunc("GET /api/audit", h.auditLog)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)
 	mux.HandleFunc("PATCH /api/repos/{id}", h.rename)
 	mux.HandleFunc("DELETE /api/repos/{id}", h.disconnect)
+	mux.HandleFunc("GET /api/repos/{id}/members", h.members)
+	mux.HandleFunc("PUT /api/repos/{id}/members", h.setMember)
+	mux.HandleFunc("DELETE /api/repos/{id}/members/{login}", h.removeMember)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
-	return withObservability(withCORS(mux), h.log())
+	return withObservability(withCORS(h.auth.Middleware(mux)), h.log())
+}
+
+// Close releases the platform database.
+func (h *Hub) Close() error {
+	if h.platform != nil {
+		return h.platform.Close()
+	}
+	return nil
 }
 
 func (h *Hub) log() *slog.Logger {
@@ -213,6 +241,7 @@ func (h *Hub) ready(w http.ResponseWriter, _ *http.Request) {
 
 // dispatch rewrites /api/repos/{id}/<rest> to /api/<rest> and serves it with
 // that repository's own handler, so every existing endpoint works per repo.
+// Requests pass role enforcement first and land in the audit trail after.
 func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	_, hd := h.server(id)
@@ -227,10 +256,15 @@ func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": msg})
 		return
 	}
+	if !h.authorize(w, r, id) {
+		return
+	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/repos/"+id)
 	r2 := r.Clone(r.Context())
 	r2.URL.Path = "/api" + rest
-	hd.ServeHTTP(w, r2)
+	rec := &statusRecorder{ResponseWriter: w}
+	hd.ServeHTTP(rec, r2)
+	h.audit(r, id, rec.status)
 }
 
 func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
@@ -240,7 +274,17 @@ func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"error": "no repository is connected yet; connect one via POST /api/repos"})
 		return
 	}
-	hd.ServeHTTP(w, r)
+	// The unscoped routes serve the default repository: same enforcement.
+	defaultID := ""
+	if list := h.registry.List(); len(list) > 0 {
+		defaultID = list[0].ID
+	}
+	if !h.authorize(w, r, defaultID) {
+		return
+	}
+	rec := &statusRecorder{ResponseWriter: w}
+	hd.ServeHTTP(rec, r)
+	h.audit(r, defaultID, rec.status)
 }
 
 // RepoSummary is the portfolio card for one repository: identity plus enough

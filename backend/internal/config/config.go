@@ -38,7 +38,7 @@ type Config struct {
 }
 
 // Flags is a small env-driven feature-flag set. For anything richer (targeting,
-// gradual rollout, a management UI) adopt OpenFeature; see docs/BACKEND_TECH.md.
+// gradual rollout, a management UI) adopt OpenFeature.
 type Flags map[string]bool
 
 // Enabled reports whether a named flag is on. Names are lower-cased.

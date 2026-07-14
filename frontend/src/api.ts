@@ -280,6 +280,39 @@ export interface Discovery {
   skipped?: string[];
 }
 
+// --- platform: identity, roles, audit -------------------------------------
+
+export type RoleName = "viewer" | "editor" | "approver";
+
+export interface AuthUser {
+  login: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  admin: boolean;
+}
+
+/** /auth/me: whether login is configured, and who is signed in. */
+export interface AuthState {
+  enabled: boolean;
+  user?: AuthUser | null;
+}
+
+export interface Member {
+  repo: string;
+  login: string;
+  role: RoleName;
+}
+
+export interface AuditEvent {
+  id: number;
+  at: string;
+  login: string;
+  repo?: string;
+  action: string;
+  detail?: string;
+}
+
 // Deployment identity for professional, environment-aware messaging.
 export interface Meta {
   name: string;
@@ -447,6 +480,22 @@ const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
 export const api = {
   // --- workspace level (not repo-scoped) ---
   health: () => get<{ status: string }>("/health"),
+  me: () => get<AuthState>("/auth/me"),
+  logout: () => send<{ ok: boolean }>("POST", "/auth/logout"),
+  members: (repoId: string) =>
+    get<{ members: Member[]; users: AuthUser[]; defaultRole: RoleName; enabled: boolean }>(
+      `/repos/${encodeURIComponent(repoId)}/members`),
+  setMember: (repoId: string, login: string, role: RoleName) =>
+    put<{ ok: boolean }>(`/repos/${encodeURIComponent(repoId)}/members`, { login, role }),
+  removeMember: (repoId: string, login: string) =>
+    send<{ ok: boolean }>("DELETE", `/repos/${encodeURIComponent(repoId)}/members/${encodeURIComponent(login)}`),
+  audit: (opts?: { repo?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.repo) qs.set("repo", opts.repo);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{ events: AuditEvent[] | null }>(`/audit${suffix}`);
+  },
   workspace: () => get<Workspace>("/workspace"),
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),

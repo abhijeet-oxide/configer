@@ -101,12 +101,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	branch := s.branch()
-	author := req.Author
-	if author == "" {
-		author = "anonymous"
-	}
-	draft, err := s.Store.Draft(author, branch)
+	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return

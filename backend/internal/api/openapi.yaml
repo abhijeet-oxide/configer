@@ -3,9 +3,11 @@ info:
   title: Configer API
   version: "1.0"
   description: >
-    Git-native configuration management. Configer scans a repository and exposes
-    a parameter x instance grid; every edit flows back to Git as commits,
-    branches, pull requests, and merges.
+    Write-back-native configuration management. Configer discovers an existing
+    repository's layout, exposes a parameter x instance grid over the
+    repository's OWN files, and surgically edits them; every change flows to
+    Git as commits, branches, pull requests, and merges. .configer/ holds
+    metadata only.
 
 
     Endpoints exist in two shapes: the unscoped `/api/...` routes act on the
@@ -17,10 +19,14 @@ servers:
 tags:
   - name: Health
   - name: Workspace
+  - name: Onboarding
   - name: Grid & parameters
+  - name: Instances
   - name: Editing & change requests
+  - name: Files
   - name: Import & reconcile
   - name: Plugins & validation
+  - name: Platform
 
 paths:
   /api/health:
@@ -150,20 +156,127 @@ paths:
   /api/compare:
     get:
       tags: [Grid & parameters]
-      summary: Semantic parameter-level diff between two instances
+      summary: Semantic parameter-level diff between two instances, optionally at git refs
       parameters:
         - { name: left, in: query, required: true, schema: { type: string } }
         - { name: right, in: query, required: true, schema: { type: string } }
+        - { name: leftRef, in: query, schema: { type: string }, description: "git ref for the left side (branch/tag/commit)" }
+        - { name: rightRef, in: query, schema: { type: string }, description: "git ref for the right side" }
       responses:
         "200": { description: Diff }
   /api/render/{instance}:
     get:
-      tags: [Grid & parameters]
-      summary: Rendered generated/ artifacts for an instance
+      tags: [Files]
+      summary: The instance's REAL repository files, with the current draft applied in memory
       parameters:
         - { name: instance, in: path, required: true, schema: { type: string } }
+        - { name: draft, in: query, schema: { type: string, enum: ["false"] }, description: "false = committed content (diff baseline)" }
+        - { name: ref, in: query, schema: { type: string }, description: "serve the files at a git ref instead" }
       responses:
-        "200": { description: Rendered files }
+        "200": { description: Files (path + content) }
+  /api/files/draft:
+    put:
+      tags: [Files]
+      summary: Stage a direct file edit (file mode save) into the draft
+      description: >
+        Changes to managed values become ordinary validated cell edits (fan-out
+        preserved); edits to unmanaged content stage as one whole-file item.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [path, content]
+              properties:
+                instance: { type: string }
+                path: { type: string }
+                content: { type: string }
+                author: { type: string }
+      responses:
+        "200": { description: Staged (kind = values | file) }
+        "422": { description: A managed value failed validation, or the file does not parse }
+  /api/discover:
+    post:
+      tags: [Onboarding]
+      summary: Read-only proposal — detected layout, instances from folders, deduplicated parameters with schema validation
+      responses:
+        "200": { description: Discovery proposal }
+  /api/init:
+    post:
+      tags: [Onboarding]
+      summary: Initialize the application — ONE attributed commit writing .configer/
+      responses:
+        "200": { description: Initialized }
+        "409": { description: Already initialized }
+  /api/instances:
+    get:
+      tags: [Instances]
+      summary: Instance registry (metadata + folder bindings)
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Instances]
+      summary: Stage a new instance (optionally cloned) into the draft; submit scaffolds its folder on the CR branch
+      responses:
+        "200": { description: Staged }
+        "409": { description: Name taken }
+  /api/instances/{name}:
+    put:
+      tags: [Instances]
+      summary: Update instance metadata (attributed direct commit)
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Updated }
+    delete:
+      tags: [Instances]
+      summary: Stage the instance's retirement (folder + registry entry) into the draft
+      parameters:
+        - { name: name, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Staged }
+  /api/auth/me:
+    get:
+      tags: [Platform]
+      summary: Whether login is configured, and who is signed in
+      responses:
+        "200": { description: OK }
+  /api/auth/login:
+    get:
+      tags: [Platform]
+      summary: Redirect into GitHub OAuth (501 when login is not configured)
+      responses:
+        "302": { description: Redirect to GitHub }
+  /api/auth/logout:
+    post:
+      tags: [Platform]
+      summary: End the session
+      responses:
+        "200": { description: OK }
+  /api/repos/{id}/members:
+    get:
+      tags: [Platform]
+      summary: Role assignments for one application (plus known users)
+      parameters: [{ $ref: "#/components/parameters/RepoId" }]
+      responses:
+        "200": { description: OK }
+    put:
+      tags: [Platform]
+      summary: Assign a role (deployment admins only)
+      parameters: [{ $ref: "#/components/parameters/RepoId" }]
+      responses:
+        "200": { description: OK }
+        "403": { description: Not an admin }
+  /api/audit:
+    get:
+      tags: [Platform]
+      summary: Newest audit events (optionally per application)
+      parameters:
+        - { name: repo, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
 
   /api/values:
     put:

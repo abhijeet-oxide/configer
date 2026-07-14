@@ -25,7 +25,7 @@ type RemoteBackend struct {
 	prov   provider.Provider
 
 	mu       sync.Mutex
-	baseSHA  string            // commit the cache currently reflects
+	baseSHA  string                       // commit the cache currently reflects
 	baseline map[string][sha256.Size]byte // path -> content hash at baseSHA
 }
 
@@ -51,9 +51,9 @@ func NewRemote(ctx context.Context, client *remoterepo.Client, branch, rootDir s
 	return b, nil
 }
 
-func (b *RemoteBackend) Kind() string               { return "remote" }
-func (b *RemoteBackend) RootDir() string            { return b.root }
-func (b *RemoteBackend) Origin() string             { return b.client.Origin() }
+func (b *RemoteBackend) Kind() string                { return "remote" }
+func (b *RemoteBackend) RootDir() string             { return b.root }
+func (b *RemoteBackend) Origin() string              { return b.client.Origin() }
 func (b *RemoteBackend) CanPublish() bool            { return true }
 func (b *RemoteBackend) Provider() provider.Provider { return b.prov }
 

@@ -24,10 +24,10 @@ func NewLocal(repo *gitengine.Repo, prov provider.Provider) *LocalBackend {
 	return &LocalBackend{repo: repo, prov: prov}
 }
 
-func (b *LocalBackend) Kind() string             { return "local" }
-func (b *LocalBackend) RootDir() string          { return b.repo.Dir }
-func (b *LocalBackend) Origin() string           { return gitengine.Redact(b.repo.OriginURL()) }
-func (b *LocalBackend) CanPublish() bool          { return b.repo.HasRemote() }
+func (b *LocalBackend) Kind() string                { return "local" }
+func (b *LocalBackend) RootDir() string             { return b.repo.Dir }
+func (b *LocalBackend) Origin() string              { return gitengine.Redact(b.repo.OriginURL()) }
+func (b *LocalBackend) CanPublish() bool            { return b.repo.HasRemote() }
 func (b *LocalBackend) Provider() provider.Provider { return b.prov }
 
 func (b *LocalBackend) DefaultBranch(_ context.Context) (string, error) {

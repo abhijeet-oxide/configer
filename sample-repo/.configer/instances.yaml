@@ -1,50 +1,46 @@
 apiVersion: configer.io/v1
 kind: InstanceRegistry
-metadata:
-  project: telco-platform
 instances:
   - name: prod-us-east
+    folder: instances/prod-us-east
     environment: production
-    region: us-east-1
-    zone: us-east
-    site: dc-1
+    region: us-east
+    zone: zone-a
+    site: ashburn-dc1
     softwareVersion: v24.3.1
     labels: { tier: gold }
     status: active
   - name: prod-eu-west
+    folder: instances/prod-eu-west
     environment: production
-    region: eu-west-1
-    zone: eu-west
-    site: dc-2
+    region: eu-west
+    zone: zone-b
+    site: dublin-dc2
     softwareVersion: v24.3.1
     labels: { tier: gold }
     status: active
   - name: staging
+    folder: instances/staging
     environment: staging
-    region: us-east-1
-    zone: us-east
+    region: us-east
     softwareVersion: v24.3.1
-    labels: { tier: silver }
     status: active
   - name: dr
+    folder: instances/dr
     environment: production
-    region: us-west-2
-    zone: us-west
-    site: dc-3
-    softwareVersion: v24.3.1
-    labels: { tier: gold, role: dr }
+    region: us-west
+    site: reno-dr
+    softwareVersion: v24.2.0
+    labels: { tier: silver }
     status: active
   - name: dev
+    folder: instances/dev
     environment: development
-    region: us-east-1
-    zone: us-east
+    region: us-east
     softwareVersion: v24.3.1
-    labels: { tier: bronze }
     status: active
   - name: sandbox
+    folder: instances/sandbox
     environment: development
-    region: us-east-1
-    zone: us-east
     softwareVersion: v24.2.0
-    labels: { tier: bronze }
     status: active

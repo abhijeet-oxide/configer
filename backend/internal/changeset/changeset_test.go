@@ -12,9 +12,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
-	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
-	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 )
 
 func sh(t *testing.T, dir string, name string, args ...string) string {
@@ -38,39 +36,60 @@ func writeFile(t *testing.T, path, content string) {
 	}
 }
 
-// fixture builds a managed repo with a bare origin, mirroring production:
-// working clone <-> bare remote.
+// stagingValues is the instance's REAL config file: comments and unmanaged
+// keys must survive a write-back byte-for-byte.
+const stagingValues = `# Staging values. Hand-maintained comment.
+app:
+  port: 8080 # the listener
+  name: demo
+unmanaged: keep-me
+`
+
+// fixture builds a write-back-native managed repo with a bare origin,
+// mirroring production: working clone <-> bare remote. Values live in the
+// instances' own files; .configer holds only metadata.
 func fixture(t *testing.T) (workDir string, originDir string, svc *Service) {
 	t.Helper()
 	root := t.TempDir()
 	workDir = filepath.Join(root, "work")
 	originDir = filepath.Join(root, "origin.git")
 
-	writeFile(t, filepath.Join(workDir, ".configer", "catalog.yaml"), `
+	writeFile(t, filepath.Join(workDir, ".configer", "application.yaml"), `
+apiVersion: configer.io/v1
+kind: Application
+name: t
+layout: plain-folders
+`)
+	writeFile(t, filepath.Join(workDir, ".configer", "parameters.yaml"), `
 apiVersion: configer.io/v1
 kind: ParameterCatalog
-metadata: { project: t }
 parameters:
   - id: p1
     name: app.port
     category: General
     type: integer
     scope: instance
-    source: { file: base/values.yaml, path: $.app.port, format: yaml }
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.app.port, format: yaml }
     default: 8080
+  - id: p2
+    name: platform.domain
+    category: General
+    type: string
+    scope: global
+    bindings:
+      - { file: shared/platform.yaml, path: $.platform.domain, format: yaml }
 `)
 	writeFile(t, filepath.Join(workDir, ".configer", "instances.yaml"), `
 apiVersion: configer.io/v1
 kind: InstanceRegistry
-metadata: { project: t }
 instances:
-  - { name: staging, environment: staging, softwareVersion: v1.0.0 }
+  - { name: staging, folder: instances/staging, environment: staging, softwareVersion: v1.0.0 }
+  - { name: prod, folder: instances/prod, environment: production, softwareVersion: v1.0.0 }
 `)
-	writeFile(t, filepath.Join(workDir, ".configer", "instances", "staging", "overlay.yaml"), `
-kind: Overlay
-instance: staging
-values: { p1: 8080 }
-`)
+	writeFile(t, filepath.Join(workDir, "instances", "staging", "values.yaml"), stagingValues)
+	writeFile(t, filepath.Join(workDir, "instances", "prod", "values.yaml"), "app:\n  port: 8443\n  name: demo\n")
+	writeFile(t, filepath.Join(workDir, "shared", "platform.yaml"), "platform:\n  domain: example.com\n")
 
 	repo, err := gitengine.EnsureRepo(workDir, "Configer Bot", "bot@configer.local")
 	if err != nil {
@@ -84,24 +103,23 @@ values: { p1: 8080 }
 	if err != nil {
 		t.Fatal(err)
 	}
-	reg := plugin.NewRegistry()
-	transposers.Register(reg)
 	backend := repobackend.NewLocal(repo, nil)
-	return workDir, originDir, &Service{Backend: backend, Store: store, Registry: reg}
+	return workDir, originDir, &Service{Backend: backend, Store: store}
 }
 
 func TestSubmitAndMergePipeline(t *testing.T) {
 	workDir, originDir, svc := fixture(t)
 	ctx := context.Background()
 
-	// Stage a draft with one edit.
+	// Stage a draft with one per-instance edit and one global edit.
 	cr, err := svc.Store.Draft("alice@example.com", "main")
 	if err != nil {
 		t.Fatal(err)
 	}
 	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
+	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()})
 
-	// Submit: branch + commit + push.
+	// Submit: branch + write-back + commit + push.
 	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature")
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +131,8 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 		t.Fatalf("missing git metadata: %+v", got)
 	}
 
-	// The CR branch must exist on the origin with the overlay change and the
-	// commit must carry the Changed-by trailer.
+	// The CR branch must exist on the origin, with the REAL file edited
+	// surgically and the commit carrying the Changed-by trailer.
 	names := sh(t, originDir, "git", "branch", "--list")
 	if !strings.Contains(names, got.Branch) {
 		t.Fatalf("branch %s not on origin: %s", got.Branch, names)
@@ -123,18 +141,33 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	if !strings.Contains(msg, "Changed-by: alice@example.com") {
 		t.Errorf("commit message missing attribution:\n%s", msg)
 	}
-	overlay := sh(t, originDir, "git", "show", got.Branch+":.configer/instances/staging/overlay.yaml")
-	if !strings.Contains(overlay, "9443") {
-		t.Errorf("overlay on CR branch missing new value:\n%s", overlay)
+	values := sh(t, originDir, "git", "show", got.Branch+":instances/staging/values.yaml")
+	want := `# Staging values. Hand-maintained comment.
+app:
+  port: 9443 # the listener
+  name: demo
+unmanaged: keep-me`
+	if strings.TrimSpace(values) != want {
+		t.Errorf("write-back not surgical:\n--- got ---\n%s\n--- want ---\n%s", values, want)
 	}
-	// generated/ must be rendered on the branch (flux transposer output).
-	gen := sh(t, originDir, "git", "show", got.Branch+":generated/staging/flux/helmrelease.yaml")
-	if !strings.Contains(gen, "app.port: 9443") {
-		t.Errorf("generated flux artifact not rendered:\n%s", gen)
+	// The other instance's file must be untouched.
+	prod := sh(t, originDir, "git", "show", got.Branch+":instances/prod/values.yaml")
+	if !strings.Contains(prod, "port: 8443") {
+		t.Errorf("prod file must not change:\n%s", prod)
+	}
+	// The global edit lands in the shared file once.
+	shared := sh(t, originDir, "git", "show", got.Branch+":shared/platform.yaml")
+	if !strings.Contains(shared, "domain: corp.example.com") {
+		t.Errorf("shared file missing global edit:\n%s", shared)
+	}
+	// Nothing may be generated: the repository's own files are the output.
+	tree := sh(t, originDir, "git", "ls-tree", "-r", "--name-only", got.Branch)
+	if strings.Contains(tree, "generated/") {
+		t.Errorf("generated/ artifacts must not exist:\n%s", tree)
 	}
 
 	// The primary tree must be untouched until publish.
-	work, _ := os.ReadFile(filepath.Join(workDir, ".configer", "instances", "staging", "overlay.yaml"))
+	work, _ := os.ReadFile(filepath.Join(workDir, "instances", "staging", "values.yaml"))
 	if strings.Contains(string(work), "9443") {
 		t.Error("primary tree changed before publish")
 	}
@@ -147,13 +180,36 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	if pub.State != change.StatePublished {
 		t.Fatalf("state = %s, want published", pub.State)
 	}
-	mainOverlay := sh(t, originDir, "git", "show", "main:.configer/instances/staging/overlay.yaml")
-	if !strings.Contains(mainOverlay, "9443") {
-		t.Errorf("origin main missing published value:\n%s", mainOverlay)
+	mainValues := sh(t, originDir, "git", "show", "main:instances/staging/values.yaml")
+	if !strings.Contains(mainValues, "9443") {
+		t.Errorf("origin main missing published value:\n%s", mainValues)
 	}
-	work2, _ := os.ReadFile(filepath.Join(workDir, ".configer", "instances", "staging", "overlay.yaml"))
+	work2, _ := os.ReadFile(filepath.Join(workDir, "instances", "staging", "values.yaml"))
 	if !strings.Contains(string(work2), "9443") {
 		t.Error("primary tree not updated after publish")
+	}
+}
+
+func TestSubmitResetRemovesKey(t *testing.T) {
+	_, originDir, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("bob", "main")
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
+
+	got, err := svc.Submit(ctx, cr.ID, "Drop staging port override", "", "bob", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := sh(t, originDir, "git", "show", got.Branch+":instances/staging/values.yaml")
+	if strings.Contains(values, "port:") {
+		t.Errorf("reset must remove the key:\n%s", values)
+	}
+	// Unmanaged content and siblings survive.
+	for _, keep := range []string{"name: demo", "unmanaged: keep-me", "# Staging values."} {
+		if !strings.Contains(values, keep) {
+			t.Errorf("lost %q on reset:\n%s", keep, values)
+		}
 	}
 }
 

@@ -1,33 +1,53 @@
-// Package model defines the core domain types for Configer. These types map
-// 1:1 to the YAML artifacts stored in a managed Git repository:
+// Package model defines the core domain types for Configer's write-back-native
+// model: the repository's own configuration files are the single source of
+// truth for VALUES, and the .configer/ folder holds METADATA ONLY. The types
+// map 1:1 to the YAML artifacts stored in a managed repository:
 //
-//	.configer/catalog.yaml    -> Catalog       (the parameter model)
-//	.configer/instances.yaml  -> InstanceRegistry
-//	.configer/instances/<name>/overlay.yaml -> Overlay (sparse per-instance values)
+//	.configer/application.yaml -> Application (name, layout, description)
+//	.configer/parameters.yaml  -> Catalog     (parameter metadata + file bindings)
+//	.configer/instances.yaml   -> InstanceRegistry (instance metadata + folder binding)
 //
-// Git remains the single source of truth; these structs are the in-memory
-// representation the API and services operate on.
+// Editing a value in the UI writes back into the bound real file; no value is
+// ever stored under .configer/ and no artifact is generated.
 package model
 
-// Scope identifies the level at which a parameter value is defined. Later
-// scopes in ResolutionOrder override earlier ones when computing the effective
-// value shown in a grid cell.
+import "strings"
+
+// Application identifies a managed application within a repository
+// (.configer/application.yaml): its display name, the detected repository
+// layout, and a human description.
+type Application struct {
+	APIVersion  string `yaml:"apiVersion" json:"apiVersion"`
+	Kind        string `yaml:"kind" json:"kind"`
+	Name        string `yaml:"name" json:"name"`
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
+	// Layout names the repository convention the layout adapter interprets:
+	// "plain-folders", "kustomize", or "kpt".
+	Layout string `yaml:"layout,omitempty" json:"layout,omitempty"`
+}
+
+// Scope declares how widely an edit to a parameter lands. An instance-scoped
+// parameter is bound inside each instance's own folder, so a cell edit touches
+// one instance. A global parameter is bound in a shared (base-layer) file every
+// instance reads, so an edit applies to all of them.
 type Scope string
 
 const (
-	ScopeDefault     Scope = "default"
-	ScopeGlobal      Scope = "global"
-	ScopeEnvironment Scope = "environment"
-	ScopeSite        Scope = "site"
-	ScopeZone        Scope = "zone"
-	ScopeInstance    Scope = "instance"
+	ScopeInstance Scope = "instance"
+	ScopeGlobal   Scope = "global"
 )
 
-// ResolutionOrder is the precedence order (lowest to highest) used by the
-// resolver to compute a cell's effective value.
-var ResolutionOrder = []Scope{
-	ScopeDefault, ScopeGlobal, ScopeEnvironment, ScopeSite, ScopeZone, ScopeInstance,
-}
+// Layer identifies which precedence layer supplied a resolved value: the
+// parameter's declared default (metadata), a shared base file, or the
+// instance's own files. Later layers win.
+const (
+	LayerDefault  = "default"
+	LayerBase     = "base"
+	LayerInstance = "instance"
+)
+
+// LayerOrder is the read precedence, lowest to highest.
+var LayerOrder = []string{LayerBase, LayerInstance}
 
 // ParamType is the logical type of a parameter value, used for validation and
 // for rendering the correct editor in the UI.
@@ -43,82 +63,90 @@ const (
 	TypeCIDR    ParamType = "cidr"
 	// TypeList holds an ordered collection; ItemType declares the element
 	// type. Instances may hold different lengths: this is how one instance
-	// renders 1 NTP server and another renders 10.
+	// carries 1 NTP server and another 10.
 	TypeList ParamType = "list"
 )
 
-// Catalog is the parameter model (.configer/catalog.yaml). It is the single
-// source describing every managed parameter: where it comes from, its type,
-// validation rules, and lifecycle metadata.
+// Catalog is the parameter metadata model (.configer/parameters.yaml). It
+// describes every managed parameter — where it lives in the real files, its
+// type, validation rules, and lifecycle — but never its values.
 type Catalog struct {
-	APIVersion string          `yaml:"apiVersion" json:"apiVersion"`
-	Kind       string          `yaml:"kind" json:"kind"`
-	Metadata   CatalogMeta     `yaml:"metadata" json:"metadata"`
-	Parameters []Parameter     `yaml:"parameters" json:"parameters"`
-}
-
-type CatalogMeta struct {
-	Project string `yaml:"project" json:"project"`
+	APIVersion string      `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string      `yaml:"kind" json:"kind"`
+	Parameters []Parameter `yaml:"parameters" json:"parameters"`
 }
 
 // Parameter describes a single managed configuration parameter.
 type Parameter struct {
-	ID          string      `yaml:"id" json:"id"`
-	Name        string      `yaml:"name" json:"name"`
-	DisplayName string      `yaml:"displayName,omitempty" json:"displayName,omitempty"`
-	Description string      `yaml:"description,omitempty" json:"description,omitempty"`
-	Category    string      `yaml:"category" json:"category"`
-	Type        ParamType   `yaml:"type" json:"type"`
+	ID          string    `yaml:"id" json:"id"`
+	Name        string    `yaml:"name" json:"name"`
+	DisplayName string    `yaml:"displayName,omitempty" json:"displayName,omitempty"`
+	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
+	Category    string    `yaml:"category" json:"category"`
+	Type        ParamType `yaml:"type" json:"type"`
 	// ItemType is the element type when Type is "list".
 	ItemType ParamType `yaml:"itemType,omitempty" json:"itemType,omitempty"`
 	Scope    Scope     `yaml:"scope" json:"scope"`
-	Secret      bool        `yaml:"secret" json:"secret"`
-	Source      Source      `yaml:"source" json:"source"`
-	// Sources holds ADDITIONAL locations this parameter's value maps to, beyond
-	// the primary Source. A parameter whose value appears in several files (for
-	// example an application name repeated across configs) carries the extra
-	// file/path entries here, so a single edit renders into every location.
-	// Single-source parameters leave this empty and serialize exactly as before.
-	Sources     []Source    `yaml:"sources,omitempty" json:"sources,omitempty"`
-	Validation  Validation  `yaml:"validation,omitempty" json:"validation,omitempty"`
-	Default     any         `yaml:"default,omitempty" json:"default,omitempty"`
+	Secret   bool      `yaml:"secret" json:"secret"`
+	// Bindings are the real-file locations this parameter's value lives at.
+	// A deduplicated parameter (the same logical setting appearing in several
+	// files) carries one binding per location; an edit fans out to all of
+	// them. A design-phase parameter has no bindings yet.
+	Bindings   []Binding  `yaml:"bindings,omitempty" json:"bindings,omitempty"`
+	Validation Validation `yaml:"validation,omitempty" json:"validation,omitempty"`
+	// Default is metadata: the value shown (and written on first set) when no
+	// bound file carries the key. It is never rendered anywhere by itself.
+	Default any `yaml:"default,omitempty" json:"default,omitempty"`
 	// VersionIntroduced/Deprecated drive version-aware cell state in the grid.
 	VersionIntroduced string   `yaml:"versionIntroduced,omitempty" json:"versionIntroduced,omitempty"`
 	VersionDeprecated string   `yaml:"versionDeprecated,omitempty" json:"versionDeprecated,omitempty"`
 	DependsOn         []string `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
 }
 
-// Source records the origin file and the path within that file (auto-detected
-// during ingestion). Path is a JSONPath-like expression for JSON/YAML and an
-// XPath for XML.
-type Source struct {
+// Binding maps a parameter to one location inside the repository's own files.
+// Path is a dotted path for YAML/JSON ("$.network.service.ip") and an XPath
+// for XML ("/network/service/ip").
+//
+// File may contain the template tokens "{folder}" (the instance's folder,
+// e.g. "instances/prod-us-east") and "{instance}" (the instance name); a
+// templated binding lives on the instance layer, one file per instance. A
+// literal file is shared and lives on the base layer.
+type Binding struct {
 	File   string `yaml:"file" json:"file"`
 	Path   string `yaml:"path" json:"path"`
-	Format string `yaml:"format" json:"format"` // yaml | json | xml
+	Format string `yaml:"format,omitempty" json:"format,omitempty"` // yaml | json | xml
+	// Layer overrides the inferred precedence layer ("base" or "instance").
+	Layer string `yaml:"layer,omitempty" json:"layer,omitempty"`
 }
 
-// AllSources returns every location this parameter maps to: the primary Source
-// first, then any extras in Sources. Empty and duplicate (file,path) entries
-// are dropped, so callers can iterate without special-casing single-source
-// parameters. A design-phase parameter (no primary file) returns its extras
-// only, or nothing.
-func (p Parameter) AllSources() []Source {
-	var out []Source
-	seen := map[string]bool{}
-	add := func(s Source) {
-		if s.File == "" || s.Path == "" {
-			return
-		}
-		k := s.File + "|" + s.Path
-		if seen[k] {
-			return
-		}
-		seen[k] = true
-		out = append(out, s)
+// EffectiveLayer returns the binding's precedence layer: an explicit Layer
+// wins; otherwise a templated file is instance-layer and a literal file base.
+func (b Binding) EffectiveLayer() string {
+	if b.Layer != "" {
+		return b.Layer
 	}
-	add(p.Source)
-	for _, s := range p.Sources {
-		add(s)
+	if strings.Contains(b.File, "{folder}") || strings.Contains(b.File, "{instance}") {
+		return LayerInstance
+	}
+	return LayerBase
+}
+
+// ForInstance expands the binding's file template for one instance.
+func (b Binding) ForInstance(inst Instance) Binding {
+	out := b
+	out.File = strings.ReplaceAll(out.File, "{folder}", inst.FolderOrDefault())
+	out.File = strings.ReplaceAll(out.File, "{instance}", inst.Name)
+	return out
+}
+
+// BindingsOn returns the parameter's bindings on one precedence layer,
+// expanded for the given instance, in declaration order.
+func (p Parameter) BindingsOn(layer string, inst Instance) []Binding {
+	var out []Binding
+	for _, b := range p.Bindings {
+		if b.EffectiveLayer() == layer {
+			out = append(out, b.ForInstance(inst))
+		}
 	}
 	return out
 }
@@ -141,54 +169,36 @@ type Validation struct {
 }
 
 // InstanceRegistry is the central instance catalog (.configer/instances.yaml).
-// It answers "which instance is at which version, in which region/zone/env".
+// It answers "which instance is at which version, in which region/zone/env,
+// and which folder in the repository is it bound to".
 type InstanceRegistry struct {
-	APIVersion string      `yaml:"apiVersion" json:"apiVersion"`
-	Kind       string      `yaml:"kind" json:"kind"`
-	Metadata   CatalogMeta `yaml:"metadata" json:"metadata"`
-	Instances  []Instance  `yaml:"instances" json:"instances"`
+	APIVersion string     `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string     `yaml:"kind" json:"kind"`
+	Instances  []Instance `yaml:"instances" json:"instances"`
 }
 
-// Instance is a deployment target: one column in the grid.
+// Instance is a deployment target: one column in the grid, bound to one
+// folder in the repository (its files hold the instance's values).
 type Instance struct {
-	Name            string            `yaml:"name" json:"name"`
+	Name string `yaml:"name" json:"name"`
+	// Folder is the instance's directory in the repository, relative to the
+	// root (e.g. "instances/prod-us-east" or "overlays/prod"). Template
+	// bindings expand "{folder}" to this value.
+	Folder          string            `yaml:"folder,omitempty" json:"folder,omitempty"`
 	Environment     string            `yaml:"environment,omitempty" json:"environment,omitempty"`
 	Region          string            `yaml:"region,omitempty" json:"region,omitempty"`
 	Zone            string            `yaml:"zone,omitempty" json:"zone,omitempty"`
 	Site            string            `yaml:"site,omitempty" json:"site,omitempty"`
 	SoftwareVersion string            `yaml:"softwareVersion,omitempty" json:"softwareVersion,omitempty"`
 	Labels          map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
-	Status          string            `yaml:"status,omitempty" json:"status,omitempty"` // active | draft | deprecated
+	Status          string            `yaml:"status,omitempty" json:"status,omitempty"` // active | draft | archived
 }
 
-// Overlay holds the sparse, per-instance value overrides keyed by parameter ID
-// (.configer/instances/<name>/overlay.yaml). Exclude lists parameter IDs this
-// instance explicitly omits: even when a default/global value exists, an
-// excluded parameter renders NOTHING in this instance's generated files (the
-// key / line / element is absent entirely).
-type Overlay struct {
-	Kind     string         `yaml:"kind" json:"kind"`
-	Instance string         `yaml:"instance,omitempty" json:"instance,omitempty"`
-	Values   map[string]any `yaml:"values" json:"values"`
-	Exclude  []string       `yaml:"exclude,omitempty" json:"exclude,omitempty"`
-}
-
-// Excludes reports whether the overlay tombstones the given parameter.
-func (o Overlay) Excludes(paramID string) bool {
-	for _, id := range o.Exclude {
-		if id == paramID {
-			return true
-		}
+// FolderOrDefault returns the instance's bound folder, defaulting to the
+// plain-folders convention instances/<name>.
+func (i Instance) FolderOrDefault() string {
+	if i.Folder != "" {
+		return i.Folder
 	}
-	return false
-}
-
-// ScopeOverlays holds the non-instance overlay levels (global/environment/
-// site/zone). Each maps a key (e.g. environment name) to parameter values.
-// The "global" level uses the single well-known key "global".
-type ScopeOverlays struct {
-	Global      map[string]any            `yaml:"global,omitempty" json:"global,omitempty"`
-	Environment map[string]map[string]any `yaml:"environment,omitempty" json:"environment,omitempty"`
-	Site        map[string]map[string]any `yaml:"site,omitempty" json:"site,omitempty"`
-	Zone        map[string]map[string]any `yaml:"zone,omitempty" json:"zone,omitempty"`
+	return "instances/" + i.Name
 }

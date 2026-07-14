@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeItem, type Grid } from "../api";
+import { api, expandBinding, primaryBinding, type ChangeItem, type Grid } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -45,18 +45,27 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   const st = statusQ.data;
 
-  // Map every parameter to the file it comes from, so changes group the way a
-  // developer would see them in a diff: by file.
+  // Map every draft item to the file its write-back lands in, so changes
+  // group the way a developer would see them in a diff: by file.
   const fileOf = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of grid.rows) m.set(r.param.id, r.param.source?.file || "(unmapped)");
-    return m;
-  }, [grid.rows]);
+    const rows = new Map(grid.rows.map((r) => [r.param.id, r]));
+    const insts = new Map(grid.instances.map((i) => [i.name, i]));
+    return (it: ChangeItem): string => {
+      const row = rows.get(it.paramId);
+      if (!row) return "(unmapped)";
+      if (it.scope === "global") return primaryBinding(row.param).file || "(unmapped)";
+      return (
+        row.cells[it.instance]?.file ||
+        expandBinding(primaryBinding(row.param), insts.get(it.instance)) ||
+        "(unmapped)"
+      );
+    };
+  }, [grid.rows, grid.instances]);
 
   const byFile = useMemo<FileChanges[]>(() => {
     const groups = new Map<string, ChangeItem[]>();
     for (const it of items) {
-      const f = fileOf.get(it.paramId) ?? "(unmapped)";
+      const f = fileOf(it) ?? "(unmapped)";
       const arr = groups.get(f) ?? [];
       arr.push(it);
       groups.set(f, arr);

@@ -102,7 +102,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, "Update instance "+inst.Name, req.Author, inst)
 }
 
-// deleteInstance removes an instance, its overlay, and its generated files.
+// deleteInstance removes an instance from the registry and deletes its folder.
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author"`

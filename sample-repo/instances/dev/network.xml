@@ -1,0 +1,6 @@
+<network namespace="telco-dev">
+  <tls minVersion="1.2"/>
+  <syslog>
+    <collector>10.50.9.1</collector>
+  </syslog>
+</network>

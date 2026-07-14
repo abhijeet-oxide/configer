@@ -58,15 +58,25 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p, _ := s.load()
-	managedBy := map[string][]string{} // file -> param IDs
+	managedBy := map[string][]string{} // concrete file -> param IDs
 	managedPath := map[string]bool{}   // "file|path" -> already in the catalog
 	if p != nil {
+		add := func(b model.Binding, id string) {
+			managedBy[b.File] = append(managedBy[b.File], id)
+			managedPath[b.File+"|"+b.Path] = true
+		}
 		for _, param := range p.Catalog.Parameters {
 			// A parameter can be mapped to several files; every location it
-			// touches counts as managed.
-			for _, src := range param.AllSources() {
-				managedBy[src.File] = append(managedBy[src.File], param.ID)
-				managedPath[src.File+"|"+src.Path] = true
+			// touches counts as managed. Templated (instance-layer) bindings
+			// expand to one concrete file per instance.
+			for _, b := range param.Bindings {
+				if b.EffectiveLayer() == model.LayerBase {
+					add(b, param.ID)
+					continue
+				}
+				for _, inst := range p.Registry.Instances {
+					add(b.ForInstance(inst), param.ID)
+				}
 			}
 		}
 	}
@@ -76,7 +86,7 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	reportedGone := map[string]bool{}
 	for _, c := range changes {
 		path := filepath.ToSlash(c.Path)
-		if strings.HasPrefix(path, ".configer/") || strings.HasPrefix(path, "generated/") {
+		if strings.HasPrefix(path, ".configer/") {
 			continue // Configer's own artifacts are not "external" news
 		}
 		switch c.Status {
@@ -210,14 +220,24 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 
-	// Collapse candidates that describe the same value in multiple files into
-	// one multi-source parameter (the "one parameter, many locations" case).
-	req.Parameters = mergeMultiSource(req.Parameters)
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	// Template-ize bindings (a file inside an instance folder becomes a
+	// {folder}/… instance-layer binding) and collapse candidates that describe
+	// the same value in multiple locations into one multi-binding parameter.
+	for i := range req.Parameters {
+		req.Parameters[i].Bindings = templateBindings(req.Parameters[i].Bindings, p.Registry.Instances)
+	}
+	req.Parameters = mergeBindings(req.Parameters)
 
 	imported := 0
 	var skipped []string
 	for _, pm := range req.Parameters {
-		if pm.Name == "" || pm.Source.File == "" || pm.Source.Path == "" {
+		if pm.Name == "" || len(pm.Bindings) == 0 || pm.Bindings[0].File == "" || pm.Bindings[0].Path == "" {
 			skipped = append(skipped, pm.Name+" (incomplete)")
 			continue
 		}
@@ -229,12 +249,17 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 		}
 		if pm.Scope == "" {
 			pm.Scope = model.ScopeInstance
+			if len(pm.BindingsOn(model.LayerInstance, model.Instance{Name: "-"})) == 0 {
+				pm.Scope = model.ScopeGlobal // only shared bindings: edits apply to all
+			}
 		}
 		if pm.Category == "" {
 			pm.Category = "Uncategorized"
 		}
-		if pm.Source.Format == "" {
-			pm.Source.Format = formatForFile(pm.Source.File)
+		for i := range pm.Bindings {
+			if pm.Bindings[i].Format == "" {
+				pm.Bindings[i].Format = formatForFile(pm.Bindings[i].File)
+			}
 		}
 		if err := writer.AddParameter(s.RepoPath, pm); err != nil {
 			skipped = append(skipped, pm.Name)
@@ -258,35 +283,61 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// mergeMultiSource collapses imported candidates that describe the SAME logical
-// parameter appearing in multiple files (same name AND same value) into one
-// parameter with multiple Sources, so a single edit renders into every
-// location. Same-named candidates with DIFFERENT values are left separate (a
-// genuine conflict, handled as before by the add step).
-func mergeMultiSource(params []model.Parameter) []model.Parameter {
+// templateBindings rewrites concrete files that live inside a registered
+// instance's folder into {folder}/… templates, so ONE binding covers every
+// instance (the write-back dedup foundation). Files outside every instance
+// folder stay literal (shared, base layer).
+func templateBindings(bindings []model.Binding, instances []model.Instance) []model.Binding {
+	out := make([]model.Binding, 0, len(bindings))
+	seen := map[string]bool{}
+	for _, b := range bindings {
+		for _, inst := range instances {
+			prefix := inst.FolderOrDefault() + "/"
+			if strings.HasPrefix(b.File, prefix) {
+				b.File = "{folder}/" + strings.TrimPrefix(b.File, prefix)
+				break
+			}
+		}
+		key := b.File + "|" + b.Path
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// mergeBindings collapses imported candidates that describe the SAME logical
+// parameter appearing in multiple locations (same name AND same value) into
+// one parameter with multiple bindings, so a single edit writes back into
+// every location. Same-named candidates with DIFFERENT values are left
+// separate (a genuine conflict, handled as before by the add step).
+func mergeBindings(params []model.Parameter) []model.Parameter {
 	type key struct{ name, val string }
 	index := map[key]int{} // key -> position in out
 	var out []model.Parameter
 	for _, pm := range params {
-		if pm.Name == "" || pm.Source.File == "" {
+		if pm.Name == "" || len(pm.Bindings) == 0 {
 			out = append(out, pm)
 			continue
 		}
 		k := key{name: pm.Name, val: valueString(pm.Default)}
 		if i, ok := index[k]; ok {
 			exist := &out[i]
-			dup := exist.Source.File == pm.Source.File && exist.Source.Path == pm.Source.Path
-			for _, s := range exist.Sources {
-				if s.File == pm.Source.File && s.Path == pm.Source.Path {
-					dup = true
+			for _, nb := range pm.Bindings {
+				dup := false
+				for _, eb := range exist.Bindings {
+					if eb.File == nb.File && eb.Path == nb.Path {
+						dup = true
+						break
+					}
 				}
-			}
-			if !dup {
-				src := pm.Source
-				if src.Format == "" {
-					src.Format = formatForFile(src.File)
+				if !dup {
+					if nb.Format == "" {
+						nb.Format = formatForFile(nb.File)
+					}
+					exist.Bindings = append(exist.Bindings, nb)
 				}
-				exist.Sources = append(exist.Sources, src)
 			}
 			continue
 		}
@@ -312,14 +363,22 @@ func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	names := make([]string, len(p.Registry.Instances))
-	for i, inst := range p.Registry.Instances {
-		names[i] = inst.Name
-	}
 	var ids []string
 	for _, param := range p.Catalog.Parameters {
-		if param.Source.File == req.File {
-			ids = append(ids, param.ID)
+		for _, b := range param.Bindings {
+			concrete := b.File == req.File
+			if !concrete && b.EffectiveLayer() == model.LayerInstance {
+				for _, inst := range p.Registry.Instances {
+					if b.ForInstance(inst).File == req.File {
+						concrete = true
+						break
+					}
+				}
+			}
+			if concrete {
+				ids = append(ids, param.ID)
+				break
+			}
 		}
 	}
 	if len(ids) == 0 {
@@ -330,7 +389,7 @@ func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	for _, id := range ids {
-		if err := writer.DeleteParameter(s.RepoPath, id, names); err != nil {
+		if err := writer.DeleteParameter(s.RepoPath, id, p.Registry.Instances); err != nil {
 			writeErr(w, err)
 			return
 		}

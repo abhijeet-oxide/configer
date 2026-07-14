@@ -1,9 +1,9 @@
 // Package changeset orchestrates the git-native change request lifecycle.
 //
 // Submit turns a draft's pending items into a real change on Git: an isolated
-// worktree on branch configer/cr-<id>, sparse overlay updates, re-rendered
-// generated/ artifacts, one commit (machine committer + Changed-by trailer for
-// the human author), a push when a remote exists, and a hosted PR when a
+// worktree on branch configer/cr-<id>, surgical write-back edits into the
+// repository's own files, one commit (machine committer + Changed-by trailer
+// for the human author), a push when a remote exists, and a hosted PR when a
 // provider is configured. Merge publishes (provider PR merge or local git
 // merge); Reject closes.
 package changeset
@@ -11,26 +11,22 @@ package changeset
 import (
 	"context"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
-	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
+	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
-	"github.com/abhijeet-oxide/configer/backend/internal/render"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
-	"github.com/abhijeet-oxide/configer/backend/internal/writer"
+	"github.com/abhijeet-oxide/configer/backend/internal/writeback"
 )
 
 // Service wires the pieces of the CR pipeline together. The Backend seam
 // makes the pipeline identical whether the repository is a local git working
 // tree or a remote repository managed through the Git data API (no clone).
 type Service struct {
-	Backend  repobackend.Backend
-	Store    *crstore.Store
-	Registry *plugin.Registry
+	Backend repobackend.Backend
+	Store   *crstore.Store
 }
 
 func branchName(id int) string { return fmt.Sprintf("configer/cr-%d", id) }
@@ -104,73 +100,28 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	defer ws.Close()
 	wt := ws.Dir()
 
-	// 1) Apply updates: sparse instance overlays, or the global scope overlay
-	//    for scope-level items ("change it for everyone").
-	globalTouched := false
-	for _, it := range cr.Items {
-		var aerr error
-		if it.Scope == "global" {
-			globalTouched = true
-			if it.Act() == change.ActionSet {
-				aerr = writer.SetGlobalValue(wt, it.ParamID, it.New)
-			} else {
-				aerr = writer.ResetGlobalValue(wt, it.ParamID)
-			}
-		} else {
-			switch it.Act() {
-			case change.ActionReset:
-				aerr = writer.ResetValue(wt, it.Instance, it.ParamID)
-			case change.ActionExclude:
-				aerr = writer.ExcludeValue(wt, it.Instance, it.ParamID)
-			default:
-				aerr = writer.SetValue(wt, it.Instance, it.ParamID, it.New)
-			}
-		}
-		if aerr != nil {
-			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, aerr)
-		}
-	}
-
-	// 2) Re-render generated/ for every touched instance (deterministic).
-	//    A global item touches every instance.
+	// 1) Apply every item by editing the repository's OWN files in the
+	//    isolated worktree — the write-back-native model. Each edit is
+	//    surgical (comments, order and unmanaged content preserved), exactly
+	//    the diff a careful engineer would have produced by hand.
 	proj, err := project.Load(wt)
 	if err != nil {
 		return nil, fmt.Errorf("load project from worktree: %w", err)
 	}
-	touched := cr.Instances()
-	if globalTouched {
-		touched = touched[:0]
-		for _, inst := range proj.Registry.Instances {
-			touched = append(touched, inst.Name)
-		}
-	}
-	for _, inst := range touched {
-		if inst == "" {
-			continue // scope-level pseudo-instance
-		}
-		files, err := render.Instance(proj, inst, s.Registry)
-		if err != nil {
-			return nil, fmt.Errorf("render %s: %w", inst, err)
-		}
-		for _, f := range files {
-			out := filepath.Join(wt, "generated", inst, f.Path)
-			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-				return nil, err
-			}
-			if err := os.WriteFile(out, []byte(f.Content), 0o644); err != nil {
-				return nil, err
-			}
+	for _, it := range cr.Items {
+		if err := applyItem(wt, proj, it); err != nil {
+			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
 		}
 	}
 
-	// 3) One commit for the whole CR (worktree commit+push locally, a
+	// 2) One commit for the whole CR (worktree commit+push locally, a
 	//    Git-data-API partial commit remotely). The branch ref is created.
 	sha, err := ws.Commit(ctx, commitMessage(cr))
 	if err != nil {
 		return nil, err
 	}
 
-	// 4) Open a hosted PR when a provider is configured; otherwise the
+	// 3) Open a hosted PR when a provider is configured; otherwise the
 	//    branch alone is the reviewable artifact (pure-git / no provider).
 	prNum, prURL := 0, ""
 	if s.Backend.CanPublish() && s.Backend.Provider() != nil {
@@ -192,6 +143,64 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		c.State = change.StateUnderReview
 		return nil
 	})
+}
+
+// applyItem writes one draft item into the repository files inside root.
+//
+//   - A global-scope item edits the parameter's base-layer (shared) bindings:
+//     one edit, every instance follows.
+//   - An instance item edits the parameter's instance-layer bindings expanded
+//     for that instance, fanning out to every mapped file (a deduplicated
+//     parameter lives in several).
+//   - "reset" and "exclude" remove the key from the instance's files: the
+//     value falls back to whatever the base layer supplies, or becomes truly
+//     absent — exactly what deleting the line by hand would mean.
+func applyItem(root string, proj *project.Project, it change.Item) error {
+	param, ok := proj.ParamByID(it.ParamID)
+	if !ok {
+		return fmt.Errorf("parameter %q not found", it.ParamID)
+	}
+
+	if it.Scope == "global" {
+		bindings := param.BindingsOn(model.LayerBase, model.Instance{})
+		if len(bindings) == 0 {
+			return fmt.Errorf("parameter %q has no shared (base-layer) binding for a global edit", it.ParamID)
+		}
+		for _, b := range bindings {
+			var err error
+			if it.Act() == change.ActionSet {
+				err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
+			} else {
+				err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	inst, ok := proj.InstanceByName(it.Instance)
+	if !ok {
+		return fmt.Errorf("instance %q not found", it.Instance)
+	}
+	bindings := param.BindingsOn(model.LayerInstance, inst)
+	if len(bindings) == 0 {
+		return fmt.Errorf("parameter %q has no instance-layer binding; edit it globally", it.ParamID)
+	}
+	for _, b := range bindings {
+		var err error
+		switch it.Act() {
+		case change.ActionReset, change.ActionExclude:
+			err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
+		default:
+			err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func prBody(cr *change.ChangeRequest) string {

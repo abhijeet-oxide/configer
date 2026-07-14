@@ -27,7 +27,7 @@ const (
 	// cell falls back to the scope chain (zone/site/env/global/default).
 	ActionReset Action = "reset"
 	// ActionExclude tombstones the parameter for this instance: nothing is
-	// rendered in its generated files, even when a default exists.
+	// present in its files, even when a default exists.
 	ActionExclude Action = "exclude"
 )
 

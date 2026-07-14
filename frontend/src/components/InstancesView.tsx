@@ -225,7 +225,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
                   )}
                   <Popconfirm
                     title={`Delete instance "${i.name}"?`}
-                    description="Removes it and its generated files from Git. This cannot be undone from here."
+                    description="Removes it from the registry and deletes its folder from Git. This cannot be undone from here."
                     okText="Delete"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => remove.mutate(i.name)}

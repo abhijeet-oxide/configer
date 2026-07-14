@@ -41,6 +41,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type Cell,
+  bindingsOf,
   type ChangeItem,
   type Grid,
   type Instance,
@@ -53,24 +54,18 @@ import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
-// Short abbreviations for the scope source badge on each cell, with plain
+// Short abbreviations for the layer source badge on each cell, with plain
 // explanations surfaced on hover (and in the Legend).
 const scopeAbbrev: Record<string, string> = {
   default: "def",
-  global: "glb",
-  environment: "env",
-  site: "site",
-  zone: "zone",
+  base: "base",
   instance: "inst",
 };
 
 const scopeExplain: Record<string, string> = {
-    default: "Built-in default value: applies unless something more specific is set",
-  global: "Set once for ALL instances",
-  environment: "Set for every instance in this environment",
-  site: "Set for every instance at this site",
-  zone: "Set for every instance in this zone",
-  instance: "Set specifically on this instance",
+  default: "Declared default: applies while no file carries the key",
+  base: "From a shared file every instance reads; one edit applies to all",
+  instance: "Set in this instance's own files",
 };
 
 const envColor: Record<string, string> = {
@@ -82,17 +77,14 @@ const envColor: Record<string, string> = {
 // Tag colors for the declared parameter scope column.
 const scopeColor: Record<string, string> = {
   global: "purple",
-  environment: "blue",
-  site: "cyan",
-  zone: "geekblue",
   instance: "default",
   default: "default",
 };
 
 function SourceBadge({ cell }: { cell: Cell }) {
-  // No badge for instance values (the norm) nor for global ones: the Scope
-  // column already says "global", repeating it on every cell is noise.
-  if (!cell.set || cell.source === "instance" || cell.source === "global") return null;
+  // No badge for instance values (the norm): a badge marks values inherited
+  // from the shared base layer or the declared default.
+  if (!cell.set || cell.source === "instance") return null;
   return (
     <Tooltip title={scopeExplain[cell.source]}>
       <span className="source-badge">{scopeAbbrev[cell.source]}</span>
@@ -133,10 +125,10 @@ function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem 
       }   (pending, not yet sent for review)`
     : undefined;
 
-  if (cell.excluded) {
+  if (!cell.set) {
     return (
-    <Tooltip title={pendingTip ?? "Excluded on this instance: nothing is rendered in its generated files"}>
-        <span className={"cell-excluded" + (cell.pending ? " cell-pending" : "")}>∅ excluded</span>
+      <Tooltip title={pendingTip ?? "Absent on this instance: no file carries this key here"}>
+        <span className={"cell-excluded" + (cell.pending ? " cell-pending" : "")}>∅ absent</span>
       </Tooltip>
     );
   }
@@ -431,14 +423,13 @@ function EditableCell({
   const menuItems = [
     ...(cell.pending ? [{ key: "undo", label: "Undo pending change" }] : []),
     ...(cell.editable ? [{ key: "edit", label: "Edit value" }] : []),
-    ...(cell.editable && cell.source === "instance" && !cell.excluded
-      ? [{ key: "reset", label: "Reset to inherited (remove override)" }]
+    ...(cell.editable && cell.source === "instance"
+      ? [{ key: "reset", label: "Reset to inherited (remove from this instance's files)" }]
       : []),
-    ...(cell.editable && !cell.excluded
-      ? [{ key: "exclude", label: "Exclude from this instance (render nothing)" }]
+    ...(cell.editable && cell.set
+      ? [{ key: "exclude", label: "Remove from this instance (delete the key)" }]
       : []),
-    ...(cell.excluded ? [{ key: "reset", label: "Include again (remove exclusion)" }] : []),
-    ...(cell.set && !cell.excluded && allInstances.length > 1
+    ...(cell.set && allInstances.length > 1
       ? [{
           key: "copy",
           label: "Copy value to…",
@@ -450,7 +441,7 @@ function EditableCell({
   ];
 
   const body =
-    param.type === "boolean" && cell.editable && !cell.excluded ? (
+    param.type === "boolean" && cell.editable && cell.set ? (
       <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined}>
         <Switch size="small" checked={!!cell.value} onChange={(v) => onCommit(v)} />
         <SourceBadge cell={cell} />
@@ -507,7 +498,10 @@ function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
     return [p.description, p.displayName].filter(Boolean).join(" ").toLowerCase().includes(q);
   }
   if (scope === "value") return matchesValue(r, q);
-  const hay = [p.name, p.displayName, p.description, p.category, p.id, p.source.file, p.source.path]
+  const hay = [
+    p.name, p.displayName, p.description, p.category, p.id,
+    ...bindingsOf(p).flatMap((b) => [b.file, b.path]),
+  ]
     .filter(Boolean)
     .join(" ")
     .toLowerCase();
@@ -685,13 +679,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   }, [grid.instances, grid.rows, bodyW, TYPE_W, SCOPE_W, DESC_W]);
 
   // routeCommit: a value for a global-scope parameter that is still fed by
-  // the global/default chain asks the user what they mean before staging.
+  // the shared/default chain asks the user what they mean before staging.
   const routeCommit = (param: Parameter, instName: string, cell: Cell | undefined, value: unknown) => {
     if (
       param.scope === "global" &&
       cell &&
-      !cell.excluded &&
-      (cell.source === "global" || cell.source === "default")
+      (cell.source === "base" || cell.source === "default")
     ) {
       setGlobalAsk({ param, instance: instName, value });
       return;
@@ -764,8 +757,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <Space size={4}>
             {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
             <span>{hl(r.param.name, hlParam)}</span>
-            {!r.param.source.file && (
-              <Tooltip title="Design phase: not attached to a configuration file yet. Values work as usual and start rendering once attached (details panel).">
+            {bindingsOf(r.param).length === 0 && (
+              <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
                 <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2 }}>
                   design
                 </Tag>
@@ -849,7 +842,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         // a pending global edit surfaces on every cell it would affect
         const pendingItem =
           pendingMap.get(key) ??
-          (cell && (cell.source === "global" || cell.source === "default")
+          (cell && (cell.source === "base" || cell.source === "default")
             ? pendingMap.get(`${r.param.id}|`)
             : undefined);
         return (

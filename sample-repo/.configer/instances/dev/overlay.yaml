@@ -1,9 +1,0 @@
-kind: Overlay
-instance: dev
-values:
-  net-service-ip: 10.50.10.10
-  net-admin-ip: 10.50.10.11
-  net-admin-port: 8443
-  net-vip-enabled: true
-  net-vip-ip: 10.50.10.100
-  net-vip-netmask: 255.255.255.0

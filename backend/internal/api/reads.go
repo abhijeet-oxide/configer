@@ -10,24 +10,27 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/diff"
 	"github.com/abhijeet-oxide/configer/backend/internal/grid"
 	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
-	"github.com/abhijeet-oxide/configer/backend/internal/render"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
 
 func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
-	p, _, err := s.loadWithDraft()
+	p, draft, err := s.loadWithDraft()
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
 	g := grid.Build(p)
+	if draft != nil {
+		grid.ApplyDraft(&g, draft.Items)
+	}
 	branch := s.branch()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"project":    g.Project,
@@ -47,32 +50,7 @@ func (s *Server) grid(w http.ResponseWriter, _ *http.Request) {
 	}
 	g := grid.Build(p)
 	if draft != nil {
-		pending := map[string]map[string]bool{}
-		globalPending := map[string]bool{}
-		for _, it := range draft.Items {
-			if it.Scope == "global" {
-				globalPending[it.ParamID] = true
-				continue
-			}
-			if pending[it.ParamID] == nil {
-				pending[it.ParamID] = map[string]bool{}
-			}
-			pending[it.ParamID][it.Instance] = true
-		}
-		for i := range g.Rows {
-			id := g.Rows[i].Param.ID
-			for name, c := range g.Rows[i].Cells {
-				if pending[id][name] {
-					c.Pending = true
-				}
-				// A pending global edit shows on every cell that would take
-				// it (i.e. not overridden at a more specific level).
-				if globalPending[id] && (c.Source == model.ScopeGlobal || c.Source == model.ScopeDefault) {
-					c.Pending = true
-				}
-				g.Rows[i].Cells[name] = c
-			}
-		}
+		grid.ApplyDraft(&g, draft.Items)
 	}
 	writeJSON(w, http.StatusOK, g)
 }
@@ -226,7 +204,7 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 		if instance != "" {
 			for _, inst := range p.Registry.Instances {
 				if inst.Name == instance {
-					res := (&resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}).Resolve(*param, inst)
+					res := resolver.New(p.Root).Resolve(*param, inst)
 					return valueString(res.Value), true
 				}
 			}
@@ -264,12 +242,13 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) render(w http.ResponseWriter, r *http.Request) {
-	// ?ref renders a specific git ref (branch/tag/commit). Otherwise ?draft=false
-	// renders the committed state (the baseline for the live diff) and the default
-	// applies the current draft, so the preview shows exactly what a publish would
-	// write, including unpublished edits.
+	// The instance's REAL repository files (write-back-native: nothing is
+	// generated). ?ref serves them at a git ref; ?draft=false serves the
+	// working tree as committed; the default applies the current draft
+	// in memory, so the preview shows exactly what a publish would write.
 	var p *project.Project
 	var err error
+	var draft *change.ChangeRequest
 	q := r.URL.Query()
 	if ref := q.Get("ref"); ref != "" {
 		var cleanup func()
@@ -282,13 +261,17 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 	} else if q.Get("draft") == "false" {
 		p, err = s.load()
 	} else {
-		p, _, err = s.loadWithDraft()
+		p, draft, err = s.loadWithDraft()
 	}
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	files, err := render.Instance(p, r.PathValue("instance"), s.Registry)
+	var items []change.Item
+	if draft != nil {
+		items = draft.Items
+	}
+	files, err := instanceFiles(p, r.PathValue("instance"), items)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

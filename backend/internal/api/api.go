@@ -24,13 +24,11 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/changeset"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
-	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/parsers"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
-	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 )
 
 // Server holds the wired services behind the HTTP surface.
@@ -69,7 +67,6 @@ func getenv(k, def string) string {
 func New(repoPath string) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
-	transposers.Register(reg)
 
 	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
@@ -113,7 +110,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *cr
 		Registry:    reg,
 		Backend:     backend,
 		Store:       store,
-		Changes:     &changeset.Service{Backend: backend, Store: store, Registry: reg},
+		Changes:     &changeset.Service{Backend: backend, Store: store},
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
 	}
@@ -166,53 +163,15 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) load() (*project.Project, error) { return project.Load(s.RepoPath) }
 
-// loadWithDraft loads the project and overlays the current draft's pending
-// values so the grid reflects what the user will submit.
+// loadWithDraft loads the project alongside the current draft; grid builders
+// preview the draft's pending items on top via grid.ApplyDraft, so the UI
+// shows exactly what submitting would write.
 func (s *Server) loadWithDraft() (*project.Project, *change.ChangeRequest, error) {
 	p, err := s.load()
 	if err != nil {
 		return nil, nil, err
 	}
-	draft := s.Store.CurrentDraft()
-	if draft == nil {
-		return p, nil, nil
-	}
-	for _, it := range draft.Items {
-		if it.Scope == "global" {
-			// Scope-level pending edit: preview it in the global overlay.
-			if p.Scopes.Global == nil {
-				p.Scopes.Global = map[string]any{}
-			}
-			if it.Act() == change.ActionSet {
-				p.Scopes.Global[it.ParamID] = it.New
-			} else {
-				delete(p.Scopes.Global, it.ParamID)
-			}
-			continue
-		}
-		ov, ok := p.Overlays[it.Instance]
-		if !ok {
-			ov = model.Overlay{Kind: "Overlay", Instance: it.Instance, Values: map[string]any{}}
-		}
-		if ov.Values == nil {
-			ov.Values = map[string]any{}
-		}
-		switch it.Act() {
-		case change.ActionReset:
-			delete(ov.Values, it.ParamID)
-			dropExcl(&ov, it.ParamID)
-		case change.ActionExclude:
-			delete(ov.Values, it.ParamID)
-			if !ov.Excludes(it.ParamID) {
-				ov.Exclude = append(ov.Exclude, it.ParamID)
-			}
-		default:
-			ov.Values[it.ParamID] = it.New
-			dropExcl(&ov, it.ParamID)
-		}
-		p.Overlays[it.Instance] = ov
-	}
-	return p, draft, nil
+	return p, s.Store.CurrentDraft(), nil
 }
 
 // projectAtRef loads the project at a git ref for read-only compare/render.
@@ -243,15 +202,6 @@ func (s *Server) projectAtRef(ref string) (*project.Project, func(), error) {
 	return p, func() { cleanup(); _ = os.RemoveAll(base) }, nil
 }
 
-func dropExcl(ov *model.Overlay, paramID string) {
-	for i, id := range ov.Exclude {
-		if id == paramID {
-			ov.Exclude = append(ov.Exclude[:i], ov.Exclude[i+1:]...)
-			return
-		}
-	}
-}
-
 func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
@@ -262,7 +212,7 @@ func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
 	branch := s.branch()
 	project := ""
 	if p, err := s.load(); err == nil {
-		project = p.Catalog.Metadata.Project
+		project = p.Name()
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
 		"name":        "Configer",

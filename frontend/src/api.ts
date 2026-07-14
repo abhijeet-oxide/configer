@@ -1,18 +1,47 @@
 // Typed client for the Configer backend REST API.
 import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 
-export type Scope =
-  | "default"
-  | "global"
-  | "environment"
-  | "site"
-  | "zone"
-  | "instance";
+/** How widely an edit to a parameter lands: an instance-scoped parameter is
+ *  bound inside each instance's own folder; a global one lives in a shared
+ *  file every instance reads, so one edit applies to all. */
+export type Scope = "instance" | "global";
+
+/** Which precedence layer supplied a cell's value. */
+export type CellSource = "default" | "base" | "instance" | "";
+
+/** One real-file location a parameter's value lives at. File may contain
+ *  "{folder}" / "{instance}" templates expanded per instance. */
+export interface Binding {
+  file: string;
+  path: string;
+  format?: string;
+  layer?: string;
+}
+
+/** The parameter's bindings ([] for a design-phase parameter). */
+export const bindingsOf = (p: Parameter): Binding[] => p.bindings ?? [];
+
+/** The parameter's first binding (display convenience). */
+export const primaryBinding = (p: Parameter): Binding =>
+  p.bindings?.[0] ?? { file: "", path: "", format: "" };
+
+/** Expand a binding's file template for one instance. */
+export const expandBinding = (
+  b: Binding,
+  inst?: { name: string; folder?: string } | null,
+): string =>
+  !inst
+    ? b.file
+    : b.file
+        .replace(/\{folder\}/g, inst.folder || `instances/${inst.name}`)
+        .replace(/\{instance\}/g, inst.name);
 
 export type CellState = "normal" | "new" | "deprecated" | "na";
 
 export interface Instance {
   name: string;
+  /** the instance's directory in the repository (e.g. "instances/prod") */
+  folder?: string;
   environment?: string;
   region?: string;
   zone?: string;
@@ -77,9 +106,9 @@ export interface Parameter {
   itemType?: string;
   scope: Scope;
   secret: boolean;
-  source: { file: string; path: string; format: string };
-  /** additional locations this parameter's value maps to, beyond source */
-  sources?: { file: string; path: string; format: string }[];
+  /** real-file locations this parameter's value lives at; a deduplicated
+   *  parameter carries several, and an edit fans out to all of them */
+  bindings?: Binding[];
   validation?: Validation;
   default?: unknown;
   versionIntroduced?: string;
@@ -89,7 +118,10 @@ export interface Parameter {
 
 export interface Cell {
   value: unknown;
-  source: Scope;
+  source: CellSource;
+  /** repository file/path that supplied the value (when from a file) */
+  file?: string;
+  path?: string;
   set: boolean;
   state: CellState;
   valid: boolean;
@@ -97,8 +129,6 @@ export interface Cell {
   editable: boolean;
   /** staged in the current draft change request, not yet on Git */
   pending?: boolean;
-  /** instance-level tombstone: nothing renders for this cell */
-  excluded?: boolean;
 }
 
 export type CellAction = "set" | "reset" | "exclude";
@@ -454,7 +484,7 @@ export const api = {
       secret?: boolean;
       default?: unknown;
       /** attach or re-map: always produced by the interactive picker */
-      source?: { file: string; path: string; format?: string };
+      bindings?: Binding[];
       author?: string;
     },
   ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),

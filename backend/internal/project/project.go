@@ -1,6 +1,8 @@
 // Package project loads and represents a Configer-managed Git working tree:
-// the catalog, the instance registry, scope overlays, per-instance overlays,
-// and ignore rules found under .configer/.
+// the application identity, parameter metadata (with real-file bindings), the
+// instance registry, and ignore rules found under .configer/. Values are never
+// loaded from .configer/ — they live in the repository's own files and are
+// read through the resolver.
 package project
 
 import (
@@ -20,44 +22,38 @@ type Ignore struct {
 
 // Project is the in-memory view of a managed repository.
 type Project struct {
-	Root     string                    `json:"root"`
-	Catalog  model.Catalog             `json:"catalog"`
-	Registry model.InstanceRegistry    `json:"registry"`
-	Scopes   model.ScopeOverlays       `json:"scopes"`
-	Overlays map[string]model.Overlay  `json:"overlays"` // instance name -> overlay
-	Ignore   Ignore                    `json:"ignore"`
+	Root     string                 `json:"root"`
+	App      model.Application      `json:"app"`
+	Catalog  model.Catalog          `json:"catalog"`
+	Registry model.InstanceRegistry `json:"registry"`
+	Ignore   Ignore                 `json:"ignore"`
 }
 
 func configerDir(root string) string { return filepath.Join(root, ".configer") }
 
 // Load reads a project from a repository working tree rooted at root.
 func Load(root string) (*Project, error) {
-	p := &Project{Root: root, Overlays: map[string]model.Overlay{}}
+	p := &Project{Root: root}
 	cdir := configerDir(root)
 
-	if err := readYAML(filepath.Join(cdir, "catalog.yaml"), &p.Catalog); err != nil {
+	if err := readYAML(filepath.Join(cdir, "parameters.yaml"), &p.Catalog); err != nil {
 		return nil, err
 	}
 	if err := readYAML(filepath.Join(cdir, "instances.yaml"), &p.Registry); err != nil {
 		return nil, err
 	}
-	// scopes.yaml and ignore.yaml are optional.
-	_ = readYAMLOptional(filepath.Join(cdir, "scopes.yaml"), &p.Scopes)
+	// application.yaml and ignore.yaml are optional (older projects may miss
+	// the application file; the folder name then names the application).
+	_ = readYAMLOptional(filepath.Join(cdir, "application.yaml"), &p.App)
 	_ = readYAMLOptional(filepath.Join(cdir, "ignore.yaml"), &p.Ignore)
-
-	for _, inst := range p.Registry.Instances {
-		var ov model.Overlay
-		f := filepath.Join(cdir, "instances", inst.Name, "overlay.yaml")
-		if err := readYAMLOptional(f, &ov); err != nil {
-			return nil, err
-		}
-		if ov.Values == nil {
-			ov.Values = map[string]any{}
-		}
-		p.Overlays[inst.Name] = ov
+	if p.App.Name == "" {
+		p.App.Name = filepath.Base(root)
 	}
 	return p, nil
 }
+
+// Name returns the application's display name.
+func (p *Project) Name() string { return p.App.Name }
 
 // ParamByID returns a parameter and whether it exists.
 func (p *Project) ParamByID(id string) (model.Parameter, bool) {

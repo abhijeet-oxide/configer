@@ -2,7 +2,7 @@ import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as
 import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { api, bindingsOf, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
@@ -16,7 +16,7 @@ import { relTime } from "./DashboardView";
 // text. A parameter without a source is in the design phase: fully editable
 // and valued, rendered nowhere until attached.
 
-const scopeOptions: Scope[] = ["global", "environment", "site", "zone", "instance"];
+const scopeOptions: Scope[] = ["global", "instance"];
 const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
 
 interface EditValues {
@@ -65,9 +65,9 @@ function DetailsTab({
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
-  // A parameter can map to several locations; the primary source plus any
-  // extras. It is in the design phase only when it maps to none.
-  const allSources = [p.source, ...(p.sources ?? [])].filter((s) => s.file);
+  // A parameter can map to several locations (its bindings). It is in the
+  // design phase only when it maps to none.
+  const allSources = bindingsOf(p).filter((b) => b.file);
   const design = allSources.length === 0;
 
   const patch = useMutation({
@@ -285,12 +285,12 @@ function ProjectOverview({ grid }: { grid: Grid }) {
   );
 }
 
-// One instance's effective value, shown compactly with a scope hint. Excluded
+// One instance's effective value, shown compactly with a layer hint. Absent
 // and not-applicable cells are called out rather than shown as blanks.
 function CellValue({ cell }: { cell?: Cell }) {
   if (!cell) return <span style={{ opacity: 0.4 }}>-</span>;
   if (cell.state === "na") return <Tag style={{ marginInlineEnd: 0 }}>n/a</Tag>;
-  if (cell.excluded) return <Tag color="default" style={{ marginInlineEnd: 0 }}>excluded</Tag>;
+  if (!cell.set) return <Tag color="default" style={{ marginInlineEnd: 0 }}>absent</Tag>;
   return (
     <Space size={4}>
       <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : "#cf1322" }}>
@@ -515,7 +515,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   const retire = useMutation({
     mutationFn: (id: string) => api.deleteParameter(id, "demo-user"),
     onSuccess: () => {
-      message.success("Parameter retired: removed from the catalog, all overlays, and every generated file");
+      message.success("Parameter retired: removed from the catalog and deleted from every file it lived in");
       selectParam(null);
       qc.invalidateQueries();
     },
@@ -534,7 +534,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
           <div style={{ marginTop: 4 }}>
             <Tag color="geekblue">{p.type}</Tag>
             {p.secret && <Tag color="gold">secret</Tag>}
-            {!p.source.file && <Tag color="purple">design</Tag>}
+            {bindingsOf(p).length === 0 && <Tag color="purple">design</Tag>}
           </div>
         </div>
         <Button
@@ -567,7 +567,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
       <Divider style={{ margin: "10px 0" }} />
       <Popconfirm
         title={`Retire ${p.name}?`}
-        description="Removes it from the catalog and every overlay; the key/element disappears from all generated files. Committed to Git with attribution."
+        description="Removes it from the catalog and deletes the key/element from every file it lives in, across all instances. Committed to Git with attribution."
         okText="Retire"
         okButtonProps={{ danger: true }}
         onConfirm={() => retire.mutate(p.id)}

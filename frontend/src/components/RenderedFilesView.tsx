@@ -9,13 +9,13 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Grid } from "../api";
+import { api, expandBinding, primaryBinding, type Grid } from "../api";
 import { FilesSkeleton } from "./Skeletons";
 
 // RenderedFilesView is the visualization of truth: for one instance, a file
-// explorer of exactly what Configer writes to generated/<instance>/ on Git
-// after publish, byte for byte, including transposer-generated artifacts.
-// Users see the final configuration as their systems will consume it.
+// explorer of the REAL repository files that make up its configuration (its
+// own folder plus shared files), with pending draft edits applied, byte for
+// byte. Users see the configuration exactly as Git holds it.
 
 interface RFile {
   path: string;
@@ -110,21 +110,23 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   // pending change to the source file of its parameter. Global-scope edits
   // affect every instance, so they count for whichever instance is shown.
   const changedFiles = useMemo(() => {
-    const fileOf = new Map(grid.rows.map((r) => [r.param.id, r.param.source?.file ?? ""]));
+    const instObj = grid.instances.find((i) => i.name === instance);
+    const fileOf = new Map(
+      grid.rows.map((r) => [
+        r.param.id,
+        r.cells[instance ?? ""]?.file || expandBinding(primaryBinding(r.param), instObj),
+      ]),
+    );
     const s = new Set<string>();
     for (const it of draftQ.data?.draft?.items ?? []) {
       if (it.scope === "global" || it.instance === instance) {
         const f = fileOf.get(it.paramId);
         if (!f) continue;
-        // Rendered paths (e.g. "values.yaml") are the basenames of source
-        // paths (e.g. "base/values.yaml"); record both so the tree marker
-        // matches regardless of which form a node carries.
         s.add(f);
-        s.add(f.split("/").pop() ?? f);
       }
     }
     return s;
-  }, [draftQ.data, grid.rows, instance]);
+  }, [draftQ.data, grid.rows, grid.instances, instance]);
   const changeCount = useMemo(
     () =>
       (draftQ.data?.draft?.items ?? []).filter((it) => it.scope === "global" || it.instance === instance).length,
@@ -132,7 +134,13 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
   );
   // Distinct source files touched by this instance's active changes.
   const modifiedFileCount = useMemo(() => {
-    const fileOf = new Map(grid.rows.map((r) => [r.param.id, r.param.source?.file ?? ""]));
+    const instObj = grid.instances.find((i) => i.name === instance);
+    const fileOf = new Map(
+      grid.rows.map((r) => [
+        r.param.id,
+        r.cells[instance ?? ""]?.file || expandBinding(primaryBinding(r.param), instObj),
+      ]),
+    );
     const s = new Set<string>();
     for (const it of draftQ.data?.draft?.items ?? []) {
       if (it.scope === "global" || it.instance === instance) {
@@ -141,7 +149,7 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
       }
     }
     return s.size;
-  }, [draftQ.data, grid.rows, instance]);
+  }, [draftQ.data, grid.rows, grid.instances, instance]);
   const tree = useMemo(() => buildTree(files, changedFiles), [files, changedFiles]);
 
   // Keep a sensible selection when the instance changes or files load.
@@ -187,11 +195,11 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div style={{ flex: 1, minWidth: 260 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Rendered Files
+            Files
           </Typography.Title>
           <Typography.Text type="secondary">
-            The exact files written to <code>generated/&lt;instance&gt;/</code> on Git when changes
-            publish: what your systems will actually consume.
+            This instance's real repository files (its folder plus shared config), with your
+            pending edits applied: exactly what publishing will commit.
           </Typography.Text>
         </div>
         <Select
@@ -275,7 +283,7 @@ export default function RenderedFilesView({ grid }: { grid: Grid }) {
               <>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <Tag icon={<BranchesOutlined />} className="mono">
-                    generated/{instance}/{current.path}
+                    {current.path}
                   </Tag>
                   <Tag>{langOf(current.path)}</Tag>
                   <Tag>{current.content.split("\n").length} lines</Tag>

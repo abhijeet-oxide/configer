@@ -7,36 +7,16 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
-
-	"github.com/abhijeet-oxide/configer/backend/internal/render"
 )
 
-// commitCatalogChange regenerates every instance's generated/ files, commits
-// the catalog operation with attribution, pushes, and writes the response.
+// commitCatalogChange commits a .configer metadata operation (and any
+// accompanying real-file edits, e.g. a retired parameter's keys) directly
+// onto the working branch with attribution, then writes the response.
 func (s *Server) commitCatalogChange(w http.ResponseWriter, title, author string, response any) {
 	if author == "" {
 		author = "anonymous"
 	}
-	if p, err := s.load(); err == nil {
-		for _, inst := range p.Registry.Instances {
-			files, rerr := render.Instance(p, inst.Name, s.Registry)
-			if rerr != nil {
-				continue // a broken instance must not block the catalog op
-			}
-			for _, f := range files {
-				out := filepath.Join(s.RepoPath, "generated", inst.Name, f.Path)
-				if err := os.MkdirAll(filepath.Dir(out), 0o755); err == nil {
-					_ = os.WriteFile(out, []byte(f.Content), 0o644)
-				}
-			}
-		}
-	}
-	// Catalog metadata is committed directly onto the working branch, with
-	// attribution (a working-tree commit locally, a Git-data-API partial
-	// commit remotely).
 	msg := title + "\n\nChanged-by: " + author + "\n"
 	if _, _, err := s.Backend.CommitWorking(context.Background(), msg); err != nil {
 		writeErr(w, err)

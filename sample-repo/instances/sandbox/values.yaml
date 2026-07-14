@@ -1,0 +1,14 @@
+# sandbox — experimentation, previous software train (v24.2.0).
+namespace: telco-sandbox
+network:
+  service:
+    ip: 10.60.10.10
+  admin:
+    ip: 10.60.10.11
+    port: 8443
+  mtu: 1500
+  ntp:
+    servers:
+      - 10.60.0.1
+  legacy:
+    enabled: false

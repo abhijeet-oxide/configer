@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
@@ -17,8 +18,7 @@ import (
 //   - set (default): coerce to the declared type (lists per item), validate,
 //     stage the override;
 //   - reset: stage removal of the instance override (fall back to the chain);
-//   - exclude: stage a tombstone; the parameter renders NOTHING in this
-//     instance's generated files.
+//   - exclude: stage removal of the key from the instance's files entirely.
 //
 // Nothing touches Git until the draft is submitted.
 func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
@@ -73,23 +73,29 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Baseline = the currently committed effective value.
+	// Baseline = the currently committed effective value, read from the
+	// repository's real files.
 	var oldVal any
 	instance := req.Instance
 	if req.Scope == "global" {
 		instance = ""
-		if v, ok := p.Scopes.Global[req.ParamID]; ok {
-			oldVal = v
-		} else {
-			oldVal = param.Default
+		if len(param.BindingsOn(model.LayerBase, model.Instance{})) == 0 {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "this parameter has no shared file location; edit it per instance"})
+			return
 		}
+		res := resolver.New(p.Root).Resolve(param, model.Instance{})
+		oldVal = res.Value
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
 		if !found {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance not found"})
 			return
 		}
-		res := (&resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}).Resolve(param, inst)
+		if action == change.ActionSet && len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
+			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "this parameter lives only in a shared file; use a global edit to change it for everyone"})
+			return
+		}
+		res := resolver.New(p.Root).Resolve(param, inst)
 		oldVal = res.Value
 	}
 

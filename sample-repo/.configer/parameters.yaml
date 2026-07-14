@@ -1,0 +1,146 @@
+apiVersion: configer.io/v1
+kind: ParameterCatalog
+parameters:
+  # --- Networking / IP Configuration --------------------------------------
+  - id: net-service-ip
+    name: network.service.ip
+    displayName: Service IP address
+    description: Primary service IP the platform listens on.
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.service.ip, format: yaml }
+    validation: { required: true, preset: ipv4 }
+    versionIntroduced: v1.0.0
+  - id: net-admin-ip
+    name: network.admin.ip
+    displayName: Admin IP address
+    description: Management-plane IP for operator access.
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.admin.ip, format: yaml }
+    validation: { required: true, preset: ipv4 }
+  - id: net-admin-port
+    name: network.admin.port
+    displayName: Admin port
+    description: TCP port of the management interface.
+    category: Networking/IP Configuration
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.admin.port, format: yaml }
+    validation: { required: true, preset: port }
+    default: 8443
+  - id: net-vip-ip
+    name: network.vip.ip
+    displayName: Virtual IP
+    description: Floating VIP fronting the service pair.
+    category: Networking/IP Configuration
+    type: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.vip.ip, format: yaml }
+    validation: { preset: ipv4 }
+  - id: net-mtu
+    name: network.mtu
+    displayName: Interface MTU
+    description: MTU on the data-plane interfaces.
+    category: Networking/IP Configuration
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.mtu, format: yaml }
+    validation: { min: 1280, max: 9216 }
+    default: 1500
+
+  # --- Networking / Services ------------------------------------------------
+  - id: net-ntp-servers
+    name: network.ntp.servers
+    displayName: NTP servers
+    description: Time sources; instances may carry different counts.
+    category: Networking/Services
+    type: list
+    itemType: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.ntp.servers, format: yaml }
+    validation: { minItems: 1 }
+  - id: net-syslog-collectors
+    name: network.syslog.collectors
+    displayName: Syslog collectors
+    description: Remote syslog endpoints (one XML element per collector).
+    category: Networking/Services
+    type: list
+    itemType: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: /network/syslog/collector, format: xml }
+
+  # --- Networking / TLS -------------------------------------------------------
+  - id: net-tls-min-version
+    name: network.tls.minVersion
+    displayName: Minimum TLS version
+    description: Lowest TLS version the platform accepts (introduced in v24.3.1).
+    category: Networking/TLS
+    type: enum
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: /network/tls/@minVersion, format: xml }
+    validation:
+      enum: ["1.2", "1.3"]
+    versionIntroduced: v24.3.1
+  - id: net-legacy-mode
+    name: network.legacy.enabled
+    displayName: Legacy compatibility mode
+    description: Pre-24.3 compatibility shims (deprecated in v24.3.0).
+    category: Advanced
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.network.legacy.enabled, format: yaml }
+    versionIntroduced: v1.0.0
+    versionDeprecated: v24.3.0
+
+  # --- Platform (shared: one edit applies to every instance) ---------------
+  - id: platform-domain
+    name: platform.domain
+    displayName: Platform domain
+    description: DNS domain every instance advertises. Shared across the fleet.
+    category: Platform
+    type: string
+    scope: global
+    bindings:
+      - { file: shared/platform.yaml, path: $.platform.domain, format: yaml }
+    validation: { required: true, preset: fqdn }
+  - id: platform-log-level
+    name: platform.log.level
+    displayName: Log level
+    description: Fleet-wide default log level.
+    category: Platform
+    type: enum
+    scope: global
+    bindings:
+      - { file: shared/platform.yaml, path: $.platform.log.level, format: yaml }
+    validation:
+      enum: [debug, info, warn, error]
+    default: info
+
+  # --- Deduplicated parameter: ONE row, TWO files per instance -------------
+  - id: namespace
+    name: namespace
+    displayName: Namespace
+    description: >-
+      Deployment namespace. The same logical setting appears in values.yaml
+      AND network.xml; editing the cell writes back into both files.
+    category: Platform
+    type: string
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.namespace, format: yaml }
+      - { file: "{folder}/network.xml", path: /network/@namespace, format: xml }
+    validation:
+      required: true
+      pattern: "^[a-z0-9-]+$"

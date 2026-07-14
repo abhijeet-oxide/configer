@@ -67,7 +67,7 @@ func snapshot(p *project.Project, instanceName string) (map[string]resolvedValue
 	if !ok {
 		return nil, fmt.Errorf("instance %q not found", instanceName)
 	}
-	r := &resolver.Resolver{Scopes: p.Scopes, Instance: p.Overlays}
+	r := resolver.New(p.Root)
 	out := make(map[string]resolvedValue, len(p.Catalog.Parameters))
 	for _, param := range p.Catalog.Parameters {
 		v := r.Resolve(param, inst)

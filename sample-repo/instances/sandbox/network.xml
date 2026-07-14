@@ -1,0 +1,5 @@
+<network namespace="telco-sandbox">
+  <syslog>
+    <collector>10.60.9.1</collector>
+  </syslog>
+</network>

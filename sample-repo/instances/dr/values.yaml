@@ -1,0 +1,18 @@
+# dr — disaster-recovery site, Reno. Runs the previous software train
+# (v24.2.0), so 24.3-only parameters do not apply here yet.
+namespace: telco-dr
+network:
+  service:
+    ip: 10.40.10.10
+  admin:
+    ip: 10.40.10.11
+    port: 8443
+  vip:
+    ip: 10.40.10.100
+  mtu: 9000
+  ntp:
+    servers:
+      - 10.40.0.1
+      - 10.40.0.2
+  legacy:
+    enabled: true # still needed on the 24.2 train

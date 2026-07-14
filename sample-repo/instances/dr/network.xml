@@ -1,0 +1,6 @@
+<network namespace="telco-dr">
+  <syslog>
+    <collector>10.40.9.1</collector>
+    <collector>10.40.9.2</collector>
+  </syslog>
+</network>

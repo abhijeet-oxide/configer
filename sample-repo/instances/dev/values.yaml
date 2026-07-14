@@ -1,0 +1,12 @@
+# dev — shared development instance.
+namespace: telco-dev
+network:
+  service:
+    ip: 10.50.10.10
+  admin:
+    ip: 10.50.10.11
+    port: 9443 # dev runs the admin plane on an alternate port
+  mtu: 1500
+  ntp:
+    servers:
+      - 10.50.0.1

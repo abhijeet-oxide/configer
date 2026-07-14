@@ -1,0 +1,8 @@
+apiVersion: configer.io/v1
+kind: Application
+name: telco-platform
+description: >-
+  Sample telco network platform managed by Configer. Values live in the
+  instances' own files under instances/<name>/ (plus shared/ for
+  platform-wide settings); this folder holds metadata only.
+layout: plain-folders

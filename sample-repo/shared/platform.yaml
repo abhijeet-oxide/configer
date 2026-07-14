@@ -1,0 +1,7 @@
+# Platform-wide settings shared by every instance.
+# One edit here applies to the whole fleet — Configer edits this file when a
+# "global" parameter changes.
+platform:
+  domain: telco.example.com
+  log:
+    level: info

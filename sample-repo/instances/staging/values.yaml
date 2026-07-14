@@ -1,0 +1,15 @@
+# staging — pre-production verification.
+namespace: telco-staging
+network:
+  service:
+    ip: 10.30.10.10
+  admin:
+    ip: 10.30.10.11
+    port: 8443
+  vip:
+    ip: 10.30.10.100
+  mtu: 1500
+  ntp:
+    servers:
+      - 10.30.0.1
+      - 10.30.0.2

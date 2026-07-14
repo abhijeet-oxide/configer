@@ -24,11 +24,11 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Scope       *model.Scope      `json:"scope,omitempty"`
 		Secret      *bool             `json:"secret,omitempty"`
 		Default     *any              `json:"default,omitempty"`
-		// Source attaches a design-phase parameter to a real file/path (or
-		// re-maps an existing one). Always set through the interactive
+		// Bindings attaches a design-phase parameter to real file locations
+		// (or re-maps an existing one). Always set through the interactive
 		// picker, never free text.
-		Source *model.Source `json:"source,omitempty"`
-		Author string        `json:"author,omitempty"`
+		Bindings *[]model.Binding `json:"bindings,omitempty"`
+		Author   string           `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -40,14 +40,18 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if req.Source != nil {
-		if req.Source.File == "" || req.Source.Path == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attaching requires both the file and the path"})
-			return
+	if req.Bindings != nil {
+		bs := *req.Bindings
+		for i := range bs {
+			if bs[i].File == "" || bs[i].Path == "" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attaching requires both the file and the path"})
+				return
+			}
+			if bs[i].Format == "" {
+				bs[i].Format = formatForFile(bs[i].File)
+			}
 		}
-		if req.Source.Format == "" {
-			req.Source.Format = formatForFile(req.Source.File)
-		}
+		req.Bindings = &bs
 	}
 
 	s.writeMu.Lock()
@@ -61,18 +65,16 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Scope:       req.Scope,
 		Secret:      req.Secret,
 		Default:     req.Default,
-		Source:      req.Source,
+		Bindings:    req.Bindings,
 	})
 	if err != nil {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
 		return
 	}
 	title := "Update parameter " + param.Name
-	if req.Source != nil {
-		title = "Attach parameter " + param.Name + " to " + param.Source.File
+	if req.Bindings != nil && len(param.Bindings) > 0 {
+		title = "Attach parameter " + param.Name + " to " + param.Bindings[0].File
 	}
-	// commitCatalogChange re-renders every instance's generated files, which
-	// matters here: attaching a parameter makes its values render for real.
 	s.commitCatalogChange(w, title, req.Author, param)
 }
 
@@ -94,11 +96,16 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A parameter may be created in the design phase, before its
-	// configuration file exists: source stays empty and is attached later.
-	// But a half-specified source is always a mistake.
-	if (pm.Source.File == "") != (pm.Source.Path == "") {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "source.file and source.path go together; leave both empty for a design-phase parameter"})
-		return
+	// configuration file exists: bindings stay empty and are attached later.
+	// But a half-specified binding is always a mistake.
+	for i := range pm.Bindings {
+		if pm.Bindings[i].File == "" || pm.Bindings[i].Path == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "every binding needs both a file and a path; leave bindings empty for a design-phase parameter"})
+			return
+		}
+		if pm.Bindings[i].Format == "" {
+			pm.Bindings[i].Format = formatForFile(pm.Bindings[i].File)
+		}
 	}
 	if pm.ID == "" {
 		pm.ID = slugify(pm.Name)
@@ -112,9 +119,6 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	if pm.Category == "" {
 		pm.Category = "Uncategorized"
 	}
-	if pm.Source.File != "" && pm.Source.Format == "" {
-		pm.Source.Format = formatForFile(pm.Source.File)
-	}
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
@@ -125,9 +129,9 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, "Add parameter "+pm.Name, req.Author, pm)
 }
 
-// deleteParameter retires a parameter everywhere: catalog entry removed,
-// every overlay stripped, and all generated files re-rendered so the key /
-// element disappears from every instance's output.
+// deleteParameter retires a parameter everywhere: the catalog entry is
+// removed and the bound key/element is deleted from every real file it lives
+// in, so the setting disappears from the whole repository.
 func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author"`
@@ -145,14 +149,9 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "parameter not found"})
 		return
 	}
-	names := make([]string, len(p.Registry.Instances))
-	for i, inst := range p.Registry.Instances {
-		names[i] = inst.Name
-	}
-
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	if err := writer.DeleteParameter(s.RepoPath, id, names); err != nil {
+	if err := writer.DeleteParameter(s.RepoPath, id, p.Registry.Instances); err != nil {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 		return
 	}

@@ -276,7 +276,9 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
         // the scanned value becomes the catalog default; per-instance values
         // are edited afterwards in the Config Editor
         default: d.cand.value,
-        source: { file: d.cand.file, path: d.cand.path, format: d.cand.format },
+        // The backend template-izes files inside instance folders into
+        // {folder}/… bindings and merges duplicates.
+        bindings: [{ file: d.cand.file, path: d.cand.path, format: d.cand.format }],
       }));
       return api.importParameters({ parameters, ignoreFiles: ignoredFiles, author: "demo-user" });
     },

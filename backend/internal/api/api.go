@@ -158,6 +158,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/repo/findings/ack", s.ackFindings)
 	mux.HandleFunc("POST /api/import", s.importParameters)
 	mux.HandleFunc("POST /api/parameters/retire-file", s.retireFile)
+	mux.HandleFunc("POST /api/discover", s.discover)
+	mux.HandleFunc("POST /api/init", s.initApp)
 	return mux
 }
 

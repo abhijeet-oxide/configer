@@ -8,6 +8,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"strconv"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
@@ -22,6 +23,17 @@ import (
 )
 
 func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
+	// A connected-but-uninitialized repository is a first-class state: the
+	// UI routes it to onboarding instead of an error page.
+	if !s.initialized() {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"initialized": false,
+			"project":     filepath.Base(s.RepoPath),
+			"branch":      s.branch(),
+			"remote":      s.Backend.Origin(),
+		})
+		return
+	}
 	p, draft, err := s.loadWithDraft()
 	if err != nil {
 		writeErr(w, err)
@@ -33,12 +45,13 @@ func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
 	}
 	branch := s.branch()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"project":    g.Project,
-		"instances":  g.Instances,
-		"categories": g.Categories,
-		"paramCount": len(g.Rows),
-		"branch":     branch,
-		"remote":     s.Backend.Origin(),
+		"initialized": true,
+		"project":     g.Project,
+		"instances":   g.Instances,
+		"categories":  g.Categories,
+		"paramCount":  len(g.Rows),
+		"branch":      branch,
+		"remote":      s.Backend.Origin(),
 	})
 }
 

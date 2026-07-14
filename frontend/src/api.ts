@@ -240,6 +240,32 @@ export interface RepoStatus {
   upstreamGone?: boolean;
 }
 
+// Project summary; initialized=false routes the UI into onboarding.
+export interface ProjectInfo {
+  initialized: boolean;
+  project: string;
+  branch?: string;
+  remote?: string;
+  instances?: Instance[];
+  paramCount?: number;
+}
+
+// The onboarding proposal: detected layout, derived instances, and
+// deduplicated parameters with templated bindings + schema validation.
+export interface Discovery {
+  detection: {
+    layout: string;
+    score: number;
+    instances: { name: string; folder: string; environment?: string }[];
+    baseDirs?: string[];
+    note?: string;
+  };
+  instances: Instance[];
+  parameters: Parameter[];
+  sharedFiles?: string[];
+  skipped?: string[];
+}
+
 // Deployment identity for professional, environment-aware messaging.
 export interface Meta {
   name: string;
@@ -417,6 +443,17 @@ export const api = {
 
   // --- active-repository scoped ---
   meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
+  projectInfo: () => get<ProjectInfo>(rp("/project")),
+  discover: () => send<Discovery>("POST", rp("/discover")),
+  initApp: (p: {
+    name: string;
+    description?: string;
+    layout?: string;
+    instances: Instance[];
+    parameters: Parameter[];
+    ignoreFiles?: string[];
+    author?: string;
+  }) => send<{ ok: boolean; parameters: number; instances: number; skipped?: string[] }>("POST", rp("/init"), p),
   grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
   compare: (left: string, right: string, opts?: { leftRef?: string; rightRef?: string }) => {
     const qs = new URLSearchParams({ left, right });

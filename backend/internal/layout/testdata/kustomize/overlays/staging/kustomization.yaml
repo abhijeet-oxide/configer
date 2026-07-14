@@ -1,0 +1,5 @@
+nameSuffix: -staging
+resources:
+  - ../../base
+patches:
+  - path: patch.yaml

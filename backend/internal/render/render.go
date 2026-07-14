@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
@@ -160,24 +161,13 @@ func outputPath(src string) string {
 
 // ApplyOne applies a single value (or a removal) at one path into a base
 // document of the given format ("yaml"|"json"|"xml"), returning the new
-// document. It is the in-place write-back primitive shared with the writeback
-// package: read a file, ApplyOne, write it back — reusing the same
-// presence/list/prune semantics as full rendering. Unmanaged content in the
-// base is preserved.
+// document. It delegates to the pathedit engine so single-value edits share
+// one implementation everywhere.
 func ApplyOne(base []byte, format, path string, ptype model.ParamType, value any, remove bool) (string, error) {
-	a := application{
-		param:  model.Parameter{Type: ptype, Source: model.Source{Path: path, Format: format}},
-		value:  value,
-		remove: remove,
+	if remove {
+		return pathedit.Remove(base, format, path, ptype)
 	}
-	switch format {
-	case "xml":
-		return renderXML(base, []application{a})
-	case "json":
-		return renderTree(base, []application{a}, "json")
-	default:
-		return renderTree(base, []application{a}, "yaml")
-	}
+	return pathedit.Set(base, format, path, ptype, value)
 }
 
 // --- YAML / JSON -----------------------------------------------------------

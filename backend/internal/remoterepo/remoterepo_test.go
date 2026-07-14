@@ -263,7 +263,9 @@ func TestMaterializeCommitRefresh(t *testing.T) {
 		t.Fatalf("materialize dir2: %v", err)
 	}
 	// commit another change on main directly (simulate an external edit)
-	os.WriteFile(filepath.Join(dir2, "base/values.yaml"), []byte("network:\n  port: 7000\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(dir2, "base/values.yaml"), []byte("network:\n  port: 7000\n"), 0o644); err != nil {
+		t.Fatalf("write values: %v", err)
+	}
 	newBase, _ := c.HeadSHA(ctx, "main")
 	if _, err := c.CommitPaths(ctx, "main", newBase, "external", dir2, []string{"base/values.yaml"}, nil); err != nil {
 		t.Fatalf("external commit: %v", err)

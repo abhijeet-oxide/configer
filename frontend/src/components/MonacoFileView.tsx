@@ -54,7 +54,6 @@ export default function MonacoFileView({
   // Jump to a line when a find-in-files hit is clicked while this file is open.
   useEffect(() => {
     reveal(revealLine);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealLine]);
 
   if (showDiff) {

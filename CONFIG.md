@@ -39,8 +39,8 @@ Never commit `.env` to version control—use `.env.example` as the template.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GIT_USER_NAME` | `Configer Bot` | Commit author name |
-| `GIT_USER_EMAIL` | `bot@configer.local` | Commit author email |
+| `CONFIGER_GIT_NAME` | `Configer Bot` | Commit author name |
+| `CONFIGER_GIT_EMAIL` | `configer-bot@localhost` | Commit author email |
 | `GITHUB_TOKEN` | *(unset)* | GitHub personal access token for PR automation |
 | `GITHUB_API_URL` | `https://api.github.com` | GitHub API endpoint (for GitHub Enterprise) |
 

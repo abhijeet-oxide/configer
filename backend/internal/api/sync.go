@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -113,15 +112,4 @@ func (s *Server) repoStatus(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) repoSync(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.syncOnce())
-}
-
-// SyncIntervalFromEnv reads CONFIGER_SYNC_SECONDS (default 30, 0 disables).
-func SyncIntervalFromEnv() time.Duration {
-	sec := 30
-	if v := getenv("CONFIGER_SYNC_SECONDS", ""); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			sec = n
-		}
-	}
-	return time.Duration(sec) * time.Second
 }

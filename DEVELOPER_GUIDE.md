@@ -462,14 +462,11 @@ CONFIGER_REPO=../sample-repo
 
 # Git
 CONFIGER_SYNC_SECONDS=30
-CONFIGER_AUTHOR="Configer Bot"
-CONFIGER_EMAIL="bot@configer.local"
+CONFIGER_GIT_NAME="Configer Bot"
+CONFIGER_GIT_EMAIL="configer-bot@localhost"
 
 # GitHub (optional)
 GITHUB_TOKEN=your-token-here
-
-# Database
-DATABASE_URL=postgres://user:password@localhost:5432/configer
 ```
 
 ### Frontend Configuration

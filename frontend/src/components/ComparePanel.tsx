@@ -63,7 +63,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
         title: env,
         options: list.map((i) => ({ value: i.name, label: `${i.name}  ·  ${i.softwareVersion || "-"}` })),
       }));
-  }, [grid.instances]);
+  }, [grid]);
 
   const refOptions = useMemo(() => {
     const opts: { label: string; title?: string; value?: string; options?: { value: string; label: string }[] }[] = [

@@ -104,7 +104,7 @@ export default function AddParameterModal({
           label="Parameter name (dotted path style)"
           rules={[
             { required: true, message: "Required" },
-            { pattern: /^[a-zA-Z0-9_.\-\[\]]+$/, message: "Letters, digits, dots, dashes" },
+            { pattern: /^[a-zA-Z0-9_.[\]-]+$/, message: "Letters, digits, dots, dashes" },
           ]}
         >
           <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />

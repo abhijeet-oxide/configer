@@ -19,6 +19,11 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Vet
         run: go vet ./...
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          working-directory: backend
       - name: Test
         run: go test ./...
       - name: Build
@@ -37,5 +42,7 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci || npm install
+      - name: Lint
+        run: npm run lint
       - name: Typecheck & build
         run: npm run build

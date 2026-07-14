@@ -74,6 +74,12 @@ type Parameter struct {
 	Scope    Scope     `yaml:"scope" json:"scope"`
 	Secret      bool        `yaml:"secret" json:"secret"`
 	Source      Source      `yaml:"source" json:"source"`
+	// Sources holds ADDITIONAL locations this parameter's value maps to, beyond
+	// the primary Source. A parameter whose value appears in several files (for
+	// example an application name repeated across configs) carries the extra
+	// file/path entries here, so a single edit renders into every location.
+	// Single-source parameters leave this empty and serialize exactly as before.
+	Sources     []Source    `yaml:"sources,omitempty" json:"sources,omitempty"`
 	Validation  Validation  `yaml:"validation,omitempty" json:"validation,omitempty"`
 	Default     any         `yaml:"default,omitempty" json:"default,omitempty"`
 	// VersionIntroduced/Deprecated drive version-aware cell state in the grid.
@@ -89,6 +95,32 @@ type Source struct {
 	File   string `yaml:"file" json:"file"`
 	Path   string `yaml:"path" json:"path"`
 	Format string `yaml:"format" json:"format"` // yaml | json | xml
+}
+
+// AllSources returns every location this parameter maps to: the primary Source
+// first, then any extras in Sources. Empty and duplicate (file,path) entries
+// are dropped, so callers can iterate without special-casing single-source
+// parameters. A design-phase parameter (no primary file) returns its extras
+// only, or nothing.
+func (p Parameter) AllSources() []Source {
+	var out []Source
+	seen := map[string]bool{}
+	add := func(s Source) {
+		if s.File == "" || s.Path == "" {
+			return
+		}
+		k := s.File + "|" + s.Path
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, s)
+	}
+	add(p.Source)
+	for _, s := range p.Sources {
+		add(s)
+	}
+	return out
 }
 
 // Validation holds the rules derived from imported schemas, chosen from the

@@ -1,11 +1,13 @@
-import { Tabs, Descriptions, Tag, Typography, Empty, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
-import { SafetyOutlined, DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter, type Scope } from "../api";
+import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
+import { relTime } from "./DashboardView";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
 // value summary across instances. One overall Edit button turns every major
@@ -46,13 +48,27 @@ function coerceDefault(raw: string | undefined, type: string): unknown {
   }
 }
 
-function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[]; grid: Grid }) {
+function DetailsTab({
+  p,
+  categories,
+  grid,
+  editing,
+  setEditing,
+}: {
+  p: Parameter;
+  categories: string[];
+  grid: Grid;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+}) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [editing, setEditing] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
-  const design = !p.source.file;
+  // A parameter can map to several locations; the primary source plus any
+  // extras. It is in the design phase only when it maps to none.
+  const allSources = [p.source, ...(p.sources ?? [])].filter((s) => s.file);
+  const design = allSources.length === 0;
 
   const patch = useMutation({
     mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
@@ -65,7 +81,10 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
     onError: (e: Error) => message.error(e.message),
   });
 
-  const startEdit = () => {
+  // The Edit action now lives in the panel header (see DetailsPanel); when it
+  // flips `editing` on, populate the form from the current parameter.
+  useEffect(() => {
+    if (!editing) return;
     form.setFieldsValue({
       displayName: p.displayName,
       description: p.description,
@@ -75,8 +94,7 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
       secret: p.secret,
       default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
     });
-    setEditing(true);
-  };
+  }, [editing, p, form]);
 
   const save = (v: EditValues) => {
     const d = coerceDefault(v.default, v.type);
@@ -102,9 +120,21 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
       </Button>
     </Space>
   ) : (
-    <Space direction="vertical" size={2}>
-      <span className="mono" style={{ fontSize: 12 }}>{p.source.file}</span>
-      <span className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{p.source.path}</span>
+    <Space direction="vertical" size={6} style={{ width: "100%" }}>
+      {allSources.length > 1 && (
+        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          Mapped to {allSources.length} locations · one edit updates all
+        </Typography.Text>
+      )}
+      {allSources.map((s, i) => (
+        <div key={`${s.file}|${s.path}`}>
+          <span className="mono" style={{ fontSize: 12 }}>{s.file}</span>
+          {i === 0 && allSources.length > 1 && (
+            <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
+          )}
+          <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
+        </div>
+      ))}
       <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
         Re-map…
       </Button>
@@ -164,11 +194,6 @@ function DetailsTab({ p, categories, grid }: { p: Parameter; categories: string[
 
   return (
     <>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-        <Button size="small" icon={<EditOutlined />} onClick={startEdit}>
-          Edit
-        </Button>
-      </div>
       <Descriptions column={1} size="small" bordered items={[
         { key: "display", label: "Display Name", children: p.displayName || <span style={{ opacity: 0.45 }}>-</span> },
         {
@@ -260,11 +285,232 @@ function ProjectOverview({ grid }: { grid: Grid }) {
   );
 }
 
+// One instance's effective value, shown compactly with a scope hint. Excluded
+// and not-applicable cells are called out rather than shown as blanks.
+function CellValue({ cell }: { cell?: Cell }) {
+  if (!cell) return <span style={{ opacity: 0.4 }}>-</span>;
+  if (cell.state === "na") return <Tag style={{ marginInlineEnd: 0 }}>n/a</Tag>;
+  if (cell.excluded) return <Tag color="default" style={{ marginInlineEnd: 0 }}>excluded</Tag>;
+  return (
+    <Space size={4}>
+      <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : "#cf1322" }}>
+        {fmtValue(cell.value)}
+      </span>
+      {cell.set && cell.source !== "instance" && (
+        <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>{cell.source}</Tag>
+      )}
+    </Space>
+  );
+}
+
+// OVERVIEW tab: the value story for this parameter across every instance, plus
+// the set/invalid summary that used to sit in the panel footer.
+function OverviewTab({ row, grid }: { row: GridRow; grid: Grid }) {
+  const values = grid.instances.map((i) => ({ inst: i, cell: row.cells[i.name] }));
+  const set = values.filter((v) => v.cell?.set).length;
+  const invalid = values.filter((v) => v.cell && !v.cell.valid).length;
+  return (
+    <div>
+      <ARow gutter={8} style={{ marginBottom: 12 }}>
+        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
+        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
+        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
+      </ARow>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>VALUE PER INSTANCE</Typography.Text>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        {values.map(({ inst, cell }) => (
+          <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 12 }}>{inst.name}</span>
+            <CellValue cell={cell} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// DEPENDENCIES tab: what this parameter depends on, and what depends on it
+// (reverse edges computed from the catalog). Both are click-through.
+function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSelect: (id: string) => void }) {
+  const nameOf = (id: string) => grid.rows.find((r) => r.param.id === id)?.param.name ?? id;
+  const requiredBy = grid.rows.filter((r) => r.param.dependsOn?.includes(p.id)).map((r) => r.param);
+  const chip = (id: string, label: string) => (
+    <Tag key={id} className="mono" style={{ cursor: "pointer", margin: 0 }} onClick={() => onSelect(id)}>
+      {label}
+    </Tag>
+  );
+  // A small centered dependency graph: what this parameter depends on flows down
+  // into it, and what it is required by flows out below. Reads top-to-bottom and
+  // stays centered instead of hugging the left edge.
+  const label = (t: string) => (
+    <Typography.Text type="secondary" style={{ fontSize: 10, letterSpacing: 0.5 }}>
+      {t}
+    </Typography.Text>
+  );
+  const chipRow = (children: React.ReactNode) => (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, justifyContent: "center", maxWidth: "100%" }}>
+      {children}
+    </div>
+  );
+  const arrow = <span style={{ opacity: 0.35, fontSize: 16, lineHeight: 1 }}>↓</span>;
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 8,
+        textAlign: "center",
+        padding: "6px 0",
+      }}
+    >
+      {label("DEPENDS ON")}
+      {p.dependsOn?.length ? (
+        chipRow(p.dependsOn.map((d) => chip(d, nameOf(d))))
+      ) : (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          nothing
+        </Typography.Text>
+      )}
+      {arrow}
+      <Tag
+        color="blue"
+        className="mono"
+        style={{ margin: 0, fontSize: 12, padding: "3px 12px", fontWeight: 600 }}
+      >
+        {p.name}
+      </Tag>
+      {arrow}
+      {label("REQUIRED BY")}
+      {requiredBy.length ? (
+        chipRow(requiredBy.map((rp) => chip(rp.id, rp.name)))
+      ) : (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          nothing
+        </Typography.Text>
+      )}
+    </div>
+  );
+}
+
+// VERSIONS tab: the parameter's lifecycle and how it applies per instance,
+// derived from each cell's version-aware state.
+const applicability: Record<Cell["state"], { label: string; color: string }> = {
+  normal: { label: "active", color: "blue" },
+  new: { label: "new here", color: "green" },
+  deprecated: { label: "deprecated", color: "red" },
+  na: { label: "not in version", color: "default" },
+};
+function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
+  const p = row.param;
+  return (
+    <div>
+      <Descriptions column={1} size="small" bordered items={[
+        { key: "intro", label: "Introduced", children: p.versionIntroduced || "-" },
+        { key: "dep", label: "Deprecated", children: p.versionDeprecated || "-" },
+      ]} />
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4, display: "block", marginTop: 12 }}>
+        APPLICABILITY PER INSTANCE
+      </Typography.Text>
+      <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+        {grid.instances.map((i) => {
+          const a = applicability[row.cells[i.name]?.state ?? "normal"];
+          return (
+            <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 12 }}>{i.name}</span>
+              <Space size={6}>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{i.softwareVersion}</Typography.Text>
+                <Tag color={a.color} style={{ marginInlineEnd: 0 }}>{a.label}</Tag>
+              </Space>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// HISTORY tab: how this parameter's value changed over time, drawn as a small
+// git-graph timeline (VS-Code / GitHub style). Commits where the value actually
+// changed are emphasized; unchanged commits are dimmed. When an instance is
+// selected the timeline resolves that instance's effective value, otherwise the
+// catalog default (base value).
+function ParamHistoryTab({ paramId }: { paramId: string }) {
+  const { selectedInstance } = useUI();
+  const q = useQuery({
+    queryKey: ["paramHistory", paramId, selectedInstance],
+    queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
+  });
+  const entries = q.data?.entries ?? [];
+  const supported = q.data?.supported ?? true;
+
+  if (q.isLoading) return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Loading history…</Typography.Text>;
+  if (!supported)
+    return (
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        History is available for repositories cloned or opened on the server.
+      </Typography.Text>
+    );
+  if (entries.length === 0)
+    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>No recorded changes for this parameter.</Typography.Text>;
+
+  return (
+    <div>
+      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+        VALUE OVER TIME{selectedInstance ? ` · ${selectedInstance}` : " · default"}
+      </Typography.Text>
+      <div style={{ marginTop: 10 }}>
+        {entries.map((e, i) => {
+          const last = i === entries.length - 1;
+          const dim = !e.changed;
+          return (
+            <div key={e.sha} style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14 }}>
+                <span
+                  style={{
+                    width: e.changed ? 11 : 8,
+                    height: e.changed ? 11 : 8,
+                    borderRadius: "50%",
+                    background: e.changed ? "#2f6bff" : "rgba(127,137,160,0.6)",
+                    marginTop: 4,
+                    flexShrink: 0,
+                  }}
+                />
+                {!last && <span style={{ flex: 1, width: 2, background: "rgba(127,137,160,0.3)", marginTop: 2 }} />}
+              </div>
+              <div style={{ paddingBottom: 14, minWidth: 0, flex: 1, opacity: dim ? 0.6 : 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span className="mono" style={{ fontSize: 12.5, fontWeight: e.changed ? 600 : 400 }}>
+                    {e.present ? (e.value === "" ? "(empty)" : e.value) : "(not defined)"}
+                  </span>
+                  {e.changed && i !== entries.length - 1 && (
+                    <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>changed</Tag>
+                  )}
+                </div>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  {e.short} · {e.author} · {relTime(e.date)}
+                </Typography.Text>
+                <div style={{ fontSize: 11, opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {e.message}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 export default function DetailsPanel({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { selectedParamId, selectParam } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
+  const [tab, setTab] = useState("overview");
+  const [editing, setEditing] = useState(false);
+  // A newly selected parameter always opens read-only.
+  useEffect(() => setEditing(false), [selectedParamId]);
 
   const retire = useMutation({
     mutationFn: (id: string) => api.deleteParameter(id, "demo-user"),
@@ -280,35 +526,45 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   const p = row.param;
   const categories = [...new Set(grid.rows.map((r) => r.param.category))].sort();
 
-  // small cross-instance summary
-  const values = grid.instances.map((i) => row.cells[i.name]);
-  const set = values.filter((c) => c?.set).length;
-  const invalid = values.filter((c) => c && !c.valid).length;
-
   return (
     <div style={{ padding: 12, height: "100%", overflow: "auto" }}>
-      <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
-      <Tag color="geekblue">{p.type}</Tag>
-      {p.secret && <Tag color="gold">secret</Tag>}
-      {!p.source.file && <Tag color="purple">design</Tag>}
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
+          <div style={{ marginTop: 4 }}>
+            <Tag color="geekblue">{p.type}</Tag>
+            {p.secret && <Tag color="gold">secret</Tag>}
+            {!p.source.file && <Tag color="purple">design</Tag>}
+          </div>
+        </div>
+        <Button
+          size="small"
+          type={editing ? "primary" : "text"}
+          icon={<EditOutlined />}
+          onClick={() => {
+            setTab("details");
+            setEditing(true);
+          }}
+          style={{ flexShrink: 0 }}
+        >
+          Edit
+        </Button>
+      </div>
       <Divider style={{ margin: "10px 0" }} />
       <Tabs
         size="small"
+        activeKey={tab}
+        onChange={setTab}
         items={[
-          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} /> },
-          { key: "schema", label: "Schema", children: <RuleEditor param={p} /> },
-          { key: "history", label: "History", children: <Empty description="Git history (backend endpoint TODO)" /> },
-          { key: "depends", label: "Depends On", children:
-            (p.dependsOn?.length ? p.dependsOn.map((d) => <Tag key={d}>{d}</Tag>) : <Empty description="No dependencies" />) },
+          { key: "overview", label: "Overview", children: <OverviewTab row={row} grid={grid} /> },
+          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} editing={editing} setEditing={setEditing} /> },
+          { key: "validation", label: "Validation", children: <RuleEditor param={p} /> },
+          { key: "depends", label: "Dependencies", children: <DependenciesTab p={p} grid={grid} onSelect={selectParam} /> },
+          { key: "versions", label: "Versions", children: <VersionsTab row={row} grid={grid} /> },
+          { key: "history", label: "History", children: <ParamHistoryTab paramId={p.id} /> },
         ]}
       />
       <Divider style={{ margin: "10px 0" }} />
-      <ARow gutter={8}>
-        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
-      </ARow>
-      <Button block icon={<SafetyOutlined />} style={{ marginTop: 12 }}>View Parameter Schema</Button>
       <Popconfirm
         title={`Retire ${p.name}?`}
         description="Removes it from the catalog and every overlay; the key/element disappears from all generated files. Committed to Git with attribution."

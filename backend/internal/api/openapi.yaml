@@ -1,0 +1,378 @@
+openapi: 3.0.3
+info:
+  title: Configer API
+  version: "1.0"
+  description: >
+    Git-native configuration management. Configer scans a repository and exposes
+    a parameter x instance grid; every edit flows back to Git as commits,
+    branches, pull requests, and merges.
+
+
+    Endpoints exist in two shapes: the unscoped `/api/...` routes act on the
+    default repository, and the same routes are available per repository under
+    `/api/repos/{id}/...`. Only the unscoped forms are listed here; prefix any
+    repository-scoped call with `/api/repos/{id}`.
+servers:
+  - url: /
+tags:
+  - name: Health
+  - name: Workspace
+  - name: Grid & parameters
+  - name: Editing & change requests
+  - name: Import & reconcile
+  - name: Plugins & validation
+
+paths:
+  /api/health:
+    get:
+      tags: [Health]
+      summary: Liveness probe
+      responses:
+        "200":
+          description: Process is up
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+  /api/healthz:
+    get:
+      tags: [Health]
+      summary: Liveness probe (alias)
+      responses:
+        "200": { description: Process is up }
+  /api/readyz:
+    get:
+      tags: [Health]
+      summary: Readiness probe
+      description: 200 once at least one repository is serving; 503 otherwise.
+      responses:
+        "200": { description: Ready }
+        "503": { description: No repository connected yet }
+  /api/meta:
+    get:
+      tags: [Health]
+      summary: Deployment identity
+      responses:
+        "200":
+          description: Name, version, environment
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Meta" }
+
+  /api/workspace:
+    get:
+      tags: [Workspace]
+      summary: List connected repositories (portfolio)
+      responses:
+        "200":
+          description: Workspace summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Workspace" }
+  /api/repos:
+    get:
+      tags: [Workspace]
+      summary: List repositories
+      responses:
+        "200": { description: OK }
+    post:
+      tags: [Workspace]
+      summary: Connect a repository (clone, open local dir, or remote no-clone)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConnectRequest" }
+      responses:
+        "200": { description: Connected }
+        "400": { description: Missing url }
+        "409": { description: Already connected }
+        "422": { description: Clone/open failed }
+  /api/repos/{id}:
+    patch:
+      tags: [Workspace]
+      summary: Rename an application
+      parameters: [{ $ref: "#/components/parameters/RepoId" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { name: { type: string } }
+      responses:
+        "200": { description: Renamed }
+        "404": { description: Unknown repository }
+    delete:
+      tags: [Workspace]
+      summary: Disconnect a repository
+      parameters: [{ $ref: "#/components/parameters/RepoId" }]
+      responses:
+        "200": { description: Disconnected }
+        "404": { description: Unknown repository }
+
+  /api/grid:
+    get:
+      tags: [Grid & parameters]
+      summary: Full parameter x instance matrix with cell states + validation
+      responses:
+        "200":
+          description: Grid
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Grid" }
+  /api/project:
+    get:
+      tags: [Grid & parameters]
+      summary: Project name, instances, category tree, counts
+      responses:
+        "200": { description: OK }
+  /api/parameters/{paramId}:
+    get:
+      tags: [Grid & parameters]
+      summary: Parameter metadata
+      parameters: [{ $ref: "#/components/parameters/ParamId" }]
+      responses:
+        "200": { description: OK }
+        "404": { description: Unknown parameter }
+    put:
+      tags: [Grid & parameters]
+      summary: Update a parameter's data type / validation rules
+      parameters: [{ $ref: "#/components/parameters/ParamId" }]
+      responses:
+        "200": { description: Updated (committed with attribution) }
+        "422": { description: Invalid rule }
+  /api/parameters/retire-file:
+    post:
+      tags: [Grid & parameters]
+      summary: Retire every parameter sourced from one file
+      responses:
+        "200": { description: Retired }
+  /api/compare:
+    get:
+      tags: [Grid & parameters]
+      summary: Semantic parameter-level diff between two instances
+      parameters:
+        - { name: left, in: query, required: true, schema: { type: string } }
+        - { name: right, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Diff }
+  /api/render/{instance}:
+    get:
+      tags: [Grid & parameters]
+      summary: Rendered generated/ artifacts for an instance
+      parameters:
+        - { name: instance, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Rendered files }
+
+  /api/values:
+    put:
+      tags: [Editing & change requests]
+      summary: Stage a validated edit into the draft change request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ValueEdit" }
+      responses:
+        "200": { description: Staged }
+        "422": { description: Value failed validation }
+    delete:
+      tags: [Editing & change requests]
+      summary: Revert one pending draft edit
+      parameters:
+        - { name: paramId, in: query, required: true, schema: { type: string } }
+        - { name: instance, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Reverted }
+  /api/changes:
+    get:
+      tags: [Editing & change requests]
+      summary: List change requests
+      responses:
+        "200": { description: OK }
+  /api/changes/draft:
+    get:
+      tags: [Editing & change requests]
+      summary: Current draft change request
+      responses:
+        "200": { description: OK }
+  /api/changes/{id}:
+    get:
+      tags: [Editing & change requests]
+      summary: Change request detail (syncs PR state)
+      parameters: [{ $ref: "#/components/parameters/ChangeId" }]
+      responses:
+        "200": { description: OK }
+        "404": { description: Unknown change request }
+  /api/changes/{id}/submit:
+    post:
+      tags: [Editing & change requests]
+      summary: Draft -> branch + commit + push + PR -> Under Review
+      parameters: [{ $ref: "#/components/parameters/ChangeId" }]
+      responses:
+        "200": { description: Submitted }
+  /api/changes/{id}/merge:
+    post:
+      tags: [Editing & change requests]
+      summary: Approve & merge -> Published
+      parameters: [{ $ref: "#/components/parameters/ChangeId" }]
+      responses:
+        "200": { description: Merged }
+  /api/changes/{id}/reject:
+    post:
+      tags: [Editing & change requests]
+      summary: Reject / close (draft = discard)
+      parameters: [{ $ref: "#/components/parameters/ChangeId" }]
+      responses:
+        "200": { description: Rejected }
+
+  /api/scan:
+    post:
+      tags: [Import & reconcile]
+      summary: Ingest scan - detect files, extract candidate parameters (read-only)
+      responses:
+        "200": { description: Scan result }
+  /api/import:
+    post:
+      tags: [Import & reconcile]
+      summary: Promote scanned candidates into the catalog (one Git commit)
+      responses:
+        "200": { description: Imported }
+  /api/repo/status:
+    get:
+      tags: [Import & reconcile]
+      summary: Git-liveness status
+      responses:
+        "200": { description: OK }
+  /api/repo/sync:
+    post:
+      tags: [Import & reconcile]
+      summary: Force a sync now
+      responses:
+        "200": { description: Synced }
+  /api/repo/findings:
+    get:
+      tags: [Import & reconcile]
+      summary: What changed on Git since last acknowledged commit
+      responses:
+        "200": { description: Findings }
+  /api/repo/findings/ack:
+    post:
+      tags: [Import & reconcile]
+      summary: Mark all repository findings as seen
+      responses:
+        "200": { description: Acknowledged }
+
+  /api/plugins:
+    get:
+      tags: [Plugins & validation]
+      summary: Registered plugin manifests
+      responses:
+        "200": { description: OK }
+  /api/validation/presets:
+    get:
+      tags: [Plugins & validation]
+      summary: The predefined validation-rule library
+      responses:
+        "200": { description: OK }
+
+components:
+  parameters:
+    RepoId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: Workspace repository id
+    ParamId:
+      name: paramId
+      in: path
+      required: true
+      schema: { type: string }
+    ChangeId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    Status:
+      type: object
+      properties:
+        status: { type: string, example: ok }
+        version: { type: string, example: dev }
+    Meta:
+      type: object
+      properties:
+        name: { type: string }
+        version: { type: string }
+        environment: { type: string, enum: [development, staging, production] }
+    Workspace:
+      type: object
+      properties:
+        name: { type: string }
+        version: { type: string }
+        environment: { type: string }
+        repos:
+          type: array
+          items: { $ref: "#/components/schemas/RepoSummary" }
+    RepoSummary:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        origin: { type: string }
+        local: { type: boolean }
+        branch: { type: string }
+        project: { type: string }
+        params: { type: integer }
+        instances: { type: integer }
+        environments:
+          type: object
+          additionalProperties: { type: integer }
+        openChanges: { type: integer }
+        drafts: { type: integer }
+    ConnectRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, description: Git URL or local path }
+        name: { type: string }
+        branch: { type: string }
+        token: { type: string, description: Access token for private repos (server-side only) }
+        mode: { type: string, enum: [clone, remote], description: "remote = manage via GitHub API with no clone" }
+    Grid:
+      type: object
+      properties:
+        project: { type: string }
+        instances:
+          type: array
+          items: { $ref: "#/components/schemas/Instance" }
+        rows:
+          type: array
+          items: { type: object }
+    Instance:
+      type: object
+      properties:
+        name: { type: string }
+        environment: { type: string }
+        region: { type: string }
+        zone: { type: string }
+        site: { type: string }
+        softwareVersion: { type: string }
+        status: { type: string }
+        labels:
+          type: object
+          additionalProperties: { type: string }
+    ValueEdit:
+      type: object
+      required: [paramId, instance]
+      properties:
+        paramId: { type: string }
+        instance: { type: string }
+        value: { description: Type-appropriate value; validated server-side }
+        scope: { type: string, enum: [instance, global] }
+    Error:
+      type: object
+      properties:
+        error: { type: string }

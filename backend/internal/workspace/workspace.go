@@ -128,6 +128,21 @@ func (r *Registry) Remove(id string) (Entry, bool) {
 	return Entry{}, false
 }
 
+// Rename changes an entry's display name (its id stays stable, so deep links
+// and per-repo routes keep working) and persists.
+func (r *Registry) Rename(id, name string) (Entry, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := range r.entries {
+		if r.entries[i].ID == id {
+			r.entries[i].Name = name
+			_ = r.save()
+			return r.entries[i], true
+		}
+	}
+	return Entry{}, false
+}
+
 // UniqueID derives an unused registry id from a base slug.
 func (r *Registry) UniqueID(base string) string {
 	if base == "" {

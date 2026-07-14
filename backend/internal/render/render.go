@@ -38,10 +38,12 @@ type OutputFile struct {
 	Content string `json:"content"`
 }
 
-// application is one parameter's effect on a file: write Value at Path, or
-// remove Path entirely.
+// application is one parameter's effect on ONE source location: write Value at
+// source.Path in source.File, or remove that path entirely. A parameter mapped
+// to several locations produces one application per location.
 type application struct {
 	param  model.Parameter
+	source model.Source
 	value  any
 	remove bool
 }
@@ -59,23 +61,27 @@ func Instance(p *project.Project, instanceName string, reg *plugin.Registry) ([]
 	byFile := map[string][]application{}   // source file -> applications
 
 	for _, param := range p.Catalog.Parameters {
-		if param.Source.File == "" {
+		srcs := param.AllSources()
+		if len(srcs) == 0 {
 			// Design-phase parameter: not attached to any file yet, so it
 			// appears in NO generated artifact (source files or transposer
 			// outputs) until attached.
 			continue
 		}
 		res := r.Resolve(param, inst)
-		app := application{param: param}
-		switch {
-		case res.Excluded, !res.Set:
-			app.remove = true // absence: strip the key/element from the template
-		default:
-			app.value = res.Value
+		remove := res.Excluded || !res.Set // absence: strip the key/element
+		if !remove {
 			resolved[param.ID] = res.Value
 			params[param.ID] = param
 		}
-		byFile[param.Source.File] = append(byFile[param.Source.File], app)
+		// Fan the value out to every mapped location.
+		for _, src := range srcs {
+			app := application{param: param, source: src, remove: remove}
+			if !remove {
+				app.value = res.Value
+			}
+			byFile[src.File] = append(byFile[src.File], app)
+		}
 	}
 
 	var out []OutputFile
@@ -88,12 +94,12 @@ func Instance(p *project.Project, instanceName string, reg *plugin.Registry) ([]
 	for _, f := range files {
 		apps := byFile[f]
 		// Deterministic application order.
-		sort.Slice(apps, func(i, j int) bool { return apps[i].param.Source.Path < apps[j].param.Source.Path })
+		sort.Slice(apps, func(i, j int) bool { return apps[i].source.Path < apps[j].source.Path })
 
 		format := ""
 		for _, a := range apps {
-			if a.param.Source.Format != "" {
-				format = a.param.Source.Format
+			if a.source.Format != "" {
+				format = a.source.Format
 				break
 			}
 		}
@@ -128,6 +134,22 @@ func Instance(p *project.Project, instanceName string, reg *plugin.Registry) ([]
 	}
 
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+
+	// Dedupe by output path so a file never appears twice (two source files can
+	// map to the same generated path, e.g. base/x.xml and x.xml). Deterministic:
+	// the first entry for a path wins after sorting.
+	if len(out) > 1 {
+		seen := make(map[string]bool, len(out))
+		uniq := out[:0]
+		for _, o := range out {
+			if seen[o.Path] {
+				continue
+			}
+			seen[o.Path] = true
+			uniq = append(uniq, o)
+		}
+		out = uniq
+	}
 	return out, nil
 }
 
@@ -181,7 +203,7 @@ func renderTree(base []byte, apps []application, format string) (string, error) 
 	}
 
 	for _, a := range apps {
-		segs := pathSegments(a.param.Source.Path)
+		segs := pathSegments(a.source.Path)
 		if len(segs) == 0 {
 			continue
 		}
@@ -292,7 +314,7 @@ func renderXML(base []byte, apps []application) (string, error) {
 	}
 
 	for _, a := range apps {
-		path := a.param.Source.Path
+		path := a.source.Path
 		if a.param.Type == model.TypeList {
 			applyXMLList(doc, path, a)
 			continue

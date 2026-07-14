@@ -28,6 +28,10 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   GlobalOutlined,
+  FullscreenOutlined,
+  FullscreenExitOutlined,
+  UpOutlined,
+  DownOutlined,
 } from "@ant-design/icons";
 import AddParameterModal from "./AddParameterModal";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -483,18 +487,58 @@ function EditableCell({
 
 // --- Search ----------------------------------------------------------------
 // Deep match: name, display name, description, category, id, source file/path
-// and every instance value. Case-insensitive substring.
-function rowMatches(r: Row, q: string): boolean {
-  const p = r.param;
-  const hay = [p.name, p.displayName, p.description, p.category, p.id, p.source.file, p.source.path]
-    .filter(Boolean)
-    .join(" ")
-    .toLowerCase();
-  if (hay.includes(q)) return true;
+// and every instance value. Case-insensitive substring. The scope narrows the
+// match to a single facet so a user can, e.g., search only descriptions.
+type SearchScope = "all" | "param" | "desc" | "value";
+
+function matchesValue(r: Row, q: string): boolean {
   for (const c of Object.values(r.cells)) {
     if (c.value != null && String(c.value).toLowerCase().includes(q)) return true;
   }
   return false;
+}
+
+function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
+  const p = r.param;
+  if (scope === "param") {
+    return [p.name, p.displayName, p.id].filter(Boolean).join(" ").toLowerCase().includes(q);
+  }
+  if (scope === "desc") {
+    return [p.description, p.displayName].filter(Boolean).join(" ").toLowerCase().includes(q);
+  }
+  if (scope === "value") return matchesValue(r, q);
+  const hay = [p.name, p.displayName, p.description, p.category, p.id, p.source.file, p.source.path]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(q) || matchesValue(r, q);
+}
+
+// hl wraps every case-insensitive occurrence of q in text with a highlight mark,
+// so the user sees exactly where a search matched.
+function hl(text: string | undefined, q: string): React.ReactNode {
+  if (!text) return text ?? null;
+  if (!q) return text;
+  const lower = text.toLowerCase();
+  if (!lower.includes(q)) return text;
+  const parts: React.ReactNode[] = [];
+  let idx = 0;
+  let k = 0;
+  for (;;) {
+    const j = lower.indexOf(q, idx);
+    if (j < 0) {
+      parts.push(text.slice(idx));
+      break;
+    }
+    if (j > idx) parts.push(text.slice(idx, j));
+    parts.push(
+      <mark key={k++} style={{ background: "rgba(250,204,21,0.5)", color: "inherit", padding: "0 1px", borderRadius: 2 }}>
+        {text.slice(j, j + q.length)}
+      </mark>,
+    );
+    idx = j + q.length;
+  }
+  return <>{parts}</>;
 }
 
 function instanceHeader(inst: Instance) {
@@ -521,7 +565,7 @@ function instanceHeader(inst: Instance) {
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump } =
+  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus } =
     useUI();
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
@@ -533,6 +577,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [addOpen, setAddOpen] = useState(false);
   // in-view search (the toolbar box), ANDed with the global ⌘K search
   const [localQ, setLocalQ] = useState("");
+  // which facet the search box narrows to (all / parameter / description / value)
+  const [searchScope, setSearchScope] = useState<SearchScope>("all");
+  // match navigation cursor (next/prev through the matching rows)
+  const [matchCursor, setMatchCursor] = useState(0);
   // pending "this is a global setting" question for a just-committed value
   const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
   // one-shot flash highlight after a jump from the left-hand trees
@@ -556,6 +604,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
   // body: the area the virtualized table body may occupy (auto-fits height/width)
@@ -568,6 +617,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
     },
     onError: (e: Error, vars) => {
       if (e instanceof OfflineError) {
@@ -587,29 +637,36 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return grid.rows.filter((r) => {
       if (categoryKey && r.param.category !== categoryKey && !r.param.category.startsWith(categoryKey + "/"))
         return false;
-      if (q && !rowMatches(r, q)) return false;
-      if (lq && !rowMatches(r, lq)) return false;
+      if (q && !rowMatches(r, q, searchScope)) return false;
+      if (lq && !rowMatches(r, lq, searchScope)) return false;
       const cells = Object.values(r.cells);
       if (filters.invalidOnly && !cells.some((c) => !c.valid)) return false;
       if (filters.overriddenOnly && !cells.some((c) => c.set && c.source === "instance")) return false;
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
-  }, [grid.rows, categoryKey, q, lq, filters]);
+  }, [grid.rows, categoryKey, q, lq, filters, searchScope]);
 
   // Auto-fit: each instance column gets at least what its longest visible
   // value needs (so "staging.example.internal" never truncates), and any
   // remaining container width is distributed evenly so wide screens fill up.
-  const PARAM_W = 230;
-  const TYPE_W = prefs.showTypeCol ? 86 : 0;
-  const SCOPE_W = prefs.showScopeCol ? 108 : 0;
-  const DESC_W = prefs.showDescCol ? 170 : 0;
+  // Metadata columns are kept tight so the instance columns (the point of the
+  // grid) get the width budget. Type/Scope hold short tags; Description is a
+  // supporting hint (the full text is always in the details panel), so it stays
+  // narrow and truncates.
+  const PARAM_W = 206;
+  const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
+  const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
+  const DESC_W = prefs.showDescCol ? 140 : 0;
   const instWidths = useMemo(() => {
     const px = (s: string) => Math.round(s.length * 7.4) + 46; // approx mono glyphs + padding/badge
     const need: Record<string, number> = {};
+    // Size from ALL rows, not the filtered set, so column widths are stable:
+    // searching or filtering never re-lays-out the columns (which used to drift
+    // the header out of alignment with the body in the virtual table).
     for (const inst of grid.instances) {
       let w = px(inst.name) + 16; // header text + env dot
-      for (const r of rows) {
+      for (const r of grid.rows) {
         const c = r.cells[inst.name];
         if (!c || c.value == null || Array.isArray(c.value)) continue;
         const s = String(c.value);
@@ -625,7 +682,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       for (const k of Object.keys(need)) need[k] += per;
     }
     return need;
-  }, [grid.instances, rows, bodyW, TYPE_W, SCOPE_W, DESC_W]);
+  }, [grid.instances, grid.rows, bodyW, TYPE_W, SCOPE_W, DESC_W]);
 
   // routeCommit: a value for a global-scope parameter that is still fed by
   // the global/default chain asks the user what they mean before staging.
@@ -661,15 +718,20 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         if (inst.name === jump.id) break;
         left += instWidths[inst.name] ?? 150;
       }
-      // Glide the table's real horizontal scroller (an antd-internal div; it
-      // carries no stable class, so detect it by actual overflow) until the
-      // column lands just after the sticky columns.
+      // antd's virtual table scrolls horizontally via wheel deltas (the body is
+      // transform-positioned, so setting scrollLeft does nothing and desyncs the
+      // header). Dispatching a wheel with the right deltaX moves the body AND
+      // keeps the sticky header aligned. The header's scrollLeft mirrors the
+      // current horizontal position, so we delta from there to the target.
       const root = rootRef.current;
+      const target = Math.max(left - 40, 0);
       if (root) {
-        for (const el of root.querySelectorAll<HTMLElement>(".param-grid div, div")) {
-          if (el.scrollWidth > el.clientWidth + 8 && el.clientHeight > 60) {
-            el.scrollTo({ left: Math.max(left - 40, 0), behavior: "smooth" });
-            break;
+        const holder = root.querySelector<HTMLElement>(".ant-table-tbody-virtual-holder");
+        const header = root.querySelector<HTMLElement>(".ant-table-header");
+        if (holder && header) {
+          const delta = target - header.scrollLeft;
+          if (delta !== 0) {
+            holder.dispatchEvent(new WheelEvent("wheel", { deltaX: delta, bubbles: true, cancelable: true }));
           }
         }
       }
@@ -679,6 +741,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [jump, rows]);
+
+  // Active highlight term (in-grid box wins over the global search), gated by
+  // the search scope so, e.g., a description-scoped search never lights up the
+  // parameter name column.
+  const hlq = lq || q;
+  const hlParam = searchScope === "all" || searchScope === "param" ? hlq : "";
+  const hlDesc = searchScope === "all" || searchScope === "desc" ? hlq : "";
 
   const columns: ColumnsType<Row> = useMemo(() => {
     const types = [...new Set(grid.rows.map((r) => r.param.type))].sort();
@@ -694,7 +763,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         render: (_v, r) => (
           <Space size={4}>
             {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
-            <span>{r.param.name}</span>
+            <span>{hl(r.param.name, hlParam)}</span>
             {!r.param.source.file && (
               <Tooltip title="Design phase: not attached to a configuration file yet. Values work as usual and start rendering once attached (details panel).">
                 <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2 }}>
@@ -743,7 +812,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         ellipsis: true,
         render: (_v, r) => (
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {r.param.displayName || r.param.description}
+            {hl(r.param.displayName || r.param.description, hlDesc)}
           </Typography.Text>
         ),
       });
@@ -817,7 +886,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance]);
+  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W +
@@ -826,60 +895,77 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const title = categoryKey ? categoryKey.split("/").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
 
-  // No dead space: when the rows end well before the panel does, cap the
-  // table to its content height and use the leftover area for a category /
-  // health summary strip instead of blank canvas.
-  const rowH = prefs.density === "compact" ? 39 : 47;
-  const contentH = rows.length * rowH;
+  // The editor stays editing-focused: the table fills the available height.
+  // Category inventory lives in the Overview dashboard, not here.
   const availH = Math.max(bodyH - headerH, 120);
-  const leftover = availH - contentH;
-  const showSummary = leftover > 60;
-  const tableY = showSummary ? contentH + 8 : availH;
+  const tableY = availH;
 
-  const summary = useMemo(() => {
-    if (!showSummary) return [];
-    return grid.categories.map((c) => {
-      let invalid = 0;
-      let pendingN = 0;
-      let count = 0;
-      for (const r of grid.rows) {
-        if (r.param.category !== c.key && !r.param.category.startsWith(c.key + "/")) continue;
-        count++;
-        for (const cell of Object.values(r.cells)) {
-          if (!cell.valid) invalid++;
-          if (cell.pending) pendingN++;
-        }
-      }
-      return { key: c.key, title: c.title, count, invalid, pending: pendingN };
-    });
-  }, [showSummary, grid]);
+  // Step through the matching rows, selecting and scrolling to each.
+  const gotoMatch = (delta: number) => {
+    if (rows.length === 0) return;
+    const next = (((matchCursor + delta) % rows.length) + rows.length) % rows.length;
+    setMatchCursor(next);
+    const r = rows[next];
+    selectParam(r.param.id);
+    setJump("param", r.param.id);
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
-        <Typography.Text strong>{title}</Typography.Text>
-        <Tag>{rows.length} parameters</Tag>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
+        {/* The search grows to fill the row so the toolbar reads as one balanced
+            band: scope + search on the left, actions on the right. The live
+            parameter count sits quietly inside the field (as a suffix) instead
+            of a floating tag. */}
+        <div style={{ display: "flex", flex: "1 1 300px", minWidth: 150, maxWidth: 820, alignItems: "center", gap: 8 }}>
+          <Space.Compact size="small" style={{ width: "100%" }}>
+            <Select
+              size="small"
+              value={searchScope}
+              onChange={(v) => setSearchScope(v)}
+              style={{ width: 90, flexShrink: 0 }}
+              title="Search in"
+              options={[
+                { value: "all", label: "All" },
+                { value: "param", label: "Name" },
+                { value: "desc", label: "Desc" },
+                { value: "value", label: "Value" },
+              ]}
+            />
+            <Input
+              size="small"
+              allowClear
+              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+              suffix={!localQ && !hlq ? <span style={{ fontSize: 11, opacity: 0.4 }} title={`${rows.length} parameters`}>{rows.length}</span> : undefined}
+              placeholder={categoryKey ? `Search in ${title}…` : "Search parameters…"}
+              value={localQ}
+              onChange={(e) => setLocalQ(e.target.value)}
+              style={{ flex: 1, minWidth: 0 }}
+            />
+          </Space.Compact>
+          {hlq && (
+            <Space size={2} style={{ flexShrink: 0 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {rows.length} match{rows.length === 1 ? "" : "es"}
+              </Typography.Text>
+              <Tooltip title="Previous match">
+                <Button size="small" type="text" icon={<UpOutlined />} disabled={!rows.length} onClick={() => gotoMatch(-1)} />
+              </Tooltip>
+              <Tooltip title="Next match">
+                <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
+              </Tooltip>
+            </Space>
+          )}
+        </div>
         {q && (
-          <Tag
-            color="blue"
-            closable
-            closeIcon={<CloseCircleFilled />}
-            onClose={() => setSearch("")}
-          >
-            search: “{search.trim()}”
+          <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
+            ⌘K: “{search.trim()}”
           </Tag>
         )}
-        <div style={{ flex: 1 }} />
-        <Input
-          size="small"
-          allowClear
-          prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-          placeholder={`Search in ${title}…`}
-          value={localQ}
-          onChange={(e) => setLocalQ(e.target.value)}
-          style={{ width: "clamp(150px, 16vw, 240px)" }}
-        />
-        <Space size={4}>
+        {/* All grid actions live in one right-aligned cluster. marginLeft:auto
+            keeps it flush-right whether it shares the first row or wraps to a
+            second one, so the toolbar is never two half-empty bars. */}
+        <Space size={4} style={{ marginLeft: "auto", flexShrink: 0 }}>
           <Popover
             trigger="click"
             placement="bottomRight"
@@ -902,7 +988,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </div>
             }
           >
-            <Button size="small" type="text" icon={<QuestionCircleOutlined />}>Legend</Button>
+            <Button size="small" type="text" icon={<QuestionCircleOutlined />} aria-label="Legend" title="Legend: what the cell marks mean" />
           </Popover>
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
             Add Parameter
@@ -919,8 +1005,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>),
             }}
           >
-            <Button size="small" icon={<FilterOutlined />}>
-              Filter{activeFilters ? ` (${activeFilters})` : ""}
+            <Button size="small" icon={<FilterOutlined />} aria-label="Filter" title="Filter rows">
+              {activeFilters ? activeFilters : ""}
             </Button>
           </Dropdown>
           <Popover
@@ -952,8 +1038,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </div>
             }
           >
-            <Button size="small" icon={<SettingOutlined />}>View</Button>
+            <Button size="small" icon={<SettingOutlined />} aria-label="View options" title="View: density & columns" />
           </Popover>
+          <Tooltip title={editorFocus ? "Exit focus mode (Esc)" : "Focus mode: maximize the editor"}>
+            <Button
+              size="small"
+              type={editorFocus ? "primary" : "default"}
+              ghost={editorFocus}
+              icon={editorFocus ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+              onClick={() => setEditorFocus(!editorFocus)}
+            />
+          </Tooltip>
           <SubmitChangesButton instances={grid.instances} />
         </Space>
       </div>
@@ -1007,38 +1102,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             style: { cursor: "pointer" },
           })}
         />
-        {showSummary && (
-          <div style={{ flex: 1, padding: "14px 12px 10px", overflow: "auto" }}>
-            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-              GROUP OVERVIEW
-            </Typography.Text>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(190px, 1fr))", gap: 8, marginTop: 8 }}>
-              {summary.map((s) => (
-                <div
-                  key={s.key}
-                  className="card-clickable"
-                  onClick={() => useUI.getState().setCategory(s.key)}
-                  style={{
-                    border: "1px solid rgba(127,137,160,0.25)",
-                    borderRadius: 8,
-                    padding: "8px 10px",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 12 }}>{s.title}</div>
-                  <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                    <Tag style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.count} settings</Tag>
-                    {s.invalid > 0 && <Tag color="error" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.invalid} invalid</Tag>}
-                    {s.pending > 0 && <Tag color="warning" style={{ fontSize: 11, marginInlineEnd: 0 }}>{s.pending} pending</Tag>}
-                    {s.invalid === 0 && s.pending === 0 && (
-                      <Tag color="success" style={{ fontSize: 11, marginInlineEnd: 0 }}>healthy</Tag>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
       </div>
     </div>

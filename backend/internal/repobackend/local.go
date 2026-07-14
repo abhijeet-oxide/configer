@@ -117,6 +117,38 @@ func (b *LocalBackend) CommitWorking(_ context.Context, message string) (string,
 	return sha, true, nil
 }
 
+func (b *LocalBackend) MaterializeRef(_ context.Context, ref, dir string) (func(), error) {
+	if err := b.repo.AddWorktreeDetached(dir, ref); err != nil {
+		return nil, err
+	}
+	return func() { b.repo.RemoveWorktree(dir); _ = os.RemoveAll(dir) }, nil
+}
+
+func (b *LocalBackend) ListRefs(_ context.Context) ([]string, []string, error) {
+	branches, err := b.repo.Branches()
+	if err != nil {
+		return nil, nil, err
+	}
+	tags, _ := b.repo.Tags()
+	return branches, tags, nil
+}
+
+func (b *LocalBackend) Log(_ context.Context, path string, limit int) ([]Commit, error) {
+	entries, err := b.repo.Log(path, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Commit, len(entries))
+	for i, e := range entries {
+		short := e.SHA
+		if len(short) > 7 {
+			short = short[:7]
+		}
+		out[i] = Commit{SHA: e.SHA, Short: short, Author: e.Author, Email: e.Email, Date: e.Date, Message: e.Subject}
+	}
+	return out, nil
+}
+
 func (b *LocalBackend) Diff(_ context.Context, from, to string) ([]FileChange, error) {
 	fcs, err := b.repo.DiffNameStatus(from, to)
 	if err != nil {

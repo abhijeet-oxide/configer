@@ -1,27 +1,70 @@
 # Self-hosted Configer stack: Go backend + SPA (nginx) + Postgres (metadata
 # cache, wired in a later phase). The backend serves the grid from a mounted
 # Git working tree; Git remains the single source of truth.
+
+version: '3.8'
+
 services:
   backend:
     build:
       context: ../backend
     environment:
-      CONFIGER_ADDR: ":8080"
-      CONFIGER_REPO: "/repo"
+      # Core settings
+      CONFIGER_ADDR: :8080
+      CONFIGER_REPO: /repo
+      CONFIGER_ENV: production
+      CONFIGER_VERSION: 0.1.0
+      CONFIGER_LOG_LEVEL: info
+      CONFIGER_SYNC_SECONDS: 30
+      
+      # Git configuration
+      GIT_USER_NAME: Configer Bot
+      GIT_USER_EMAIL: bot@configer.local
+      
+      # Feature flags
+      FEATURE_SWAGGER_DOCS: "true"
+      FEATURE_OFFLINE_MODE: "true"
+      FEATURE_AI_MODULE: "false"
+      FEATURE_RBAC: "false"
+      FEATURE_SSO: "false"
+      
+      # Database (future use)
+      # DATABASE_URL: postgres://configer:configer@postgres:5432/configer
     volumes:
       - ../sample-repo:/repo:ro
     ports:
       - "8080:8080"
+    depends_on:
+      - postgres
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build:
       context: ../frontend
+      args:
+        VITE_API_URL: http://backend:8080
+        VITE_APP_NAME: Configer
+        VITE_APP_VERSION: 0.1.0
+    environment:
+      VITE_API_URL: http://backend:8080
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "8088:80"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
-  # Metadata / grid-cache database (used from Phase 1 onward per the design).
+  # Metadata / grid-cache database (used from Phase 1 onward per the design)
   postgres:
     image: postgres:16-alpine
     environment:
@@ -32,6 +75,11 @@ services:
       - pgdata:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U configer"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
   pgdata:

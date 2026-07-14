@@ -204,27 +204,31 @@ drift detection, and the delivery phases).
 
 ## Run it locally
 
-**Backend** (serves the sample repo):
+**One command** (backend `:8080` + frontend `:5173` together, Ctrl-C stops both):
 
 ```bash
-cd backend
-go test ./...
-CONFIGER_REPO=../sample-repo go run ./cmd/configer   # listens on :8080
+make install   # first time: go modules + npm
+make dev       # or: task dev
 ```
 
-**Frontend**:
+`make help` lists every target (build, test, lint, docker, …). Configuration is
+documented in [`.env.example`](.env.example); backend/platform notes and the
+technology roadmap are in [`docs/BACKEND_TECH.md`](docs/BACKEND_TECH.md).
+
+Interactive **API docs** (offline Swagger UI) are served at
+`http://localhost:8080/api/docs`, and the raw OpenAPI spec at `/api/openapi.yaml`.
+
+Prefer to run the pieces by hand, or via Docker:
 
 ```bash
-cd frontend
-npm install
-npm run dev                                           # http://localhost:5173 (proxies /api → :8080)
-```
+# Backend (serves the sample repo)
+cd backend && go test ./... && CONFIGER_REPO=../sample-repo go run ./cmd/configer
 
-**Everything via Docker**:
+# Frontend (proxies /api → :8080)
+cd frontend && npm install && npm run dev
 
-```bash
-cd deploy
-docker compose up --build                             # frontend on :8088, backend on :8080
+# Everything via Docker (frontend :8088, backend :8080)
+cd deploy && docker compose up --build
 ```
 
 ## API (MVP)

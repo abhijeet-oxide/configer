@@ -153,6 +153,79 @@ func (r *Repo) RemoveWorktree(path string) {
 	_, _ = r.git(r.Dir, "worktree", "prune")
 }
 
+// AddWorktreeDetached checks a ref out into path in DETACHED HEAD (no branch),
+// for read-only materialization of an arbitrary ref (compare / render at ref).
+func (r *Repo) AddWorktreeDetached(path, ref string) error {
+	_, _ = r.git(r.Dir, "worktree", "remove", "--force", path)
+	_, _ = r.git(r.Dir, "worktree", "prune")
+	_, err := r.git(r.Dir, "worktree", "add", "--detach", path, ref)
+	return err
+}
+
+// Branches lists local branch names.
+func (r *Repo) Branches() ([]string, error) {
+	out, err := r.git(r.Dir, "for-each-ref", "--format=%(refname:short)", "refs/heads")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
+}
+
+// Tags lists tag names.
+func (r *Repo) Tags() ([]string, error) {
+	out, err := r.git(r.Dir, "tag", "--list")
+	if err != nil {
+		return nil, err
+	}
+	return nonEmptyLines(out), nil
+}
+
+// LogEntry is one commit from git log (identity + subject, ISO date).
+type LogEntry struct {
+	SHA     string
+	Author  string
+	Email   string
+	Date    string // ISO-8601 (author date)
+	Subject string
+}
+
+// Log returns the most recent commits, optionally restricted to a path
+// (relative to the repo). limit <= 0 means no cap. Fields are separated by
+// the unit separator (0x1f) so subjects can safely contain any punctuation.
+func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
+	args := []string{"log"}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("--max-count=%d", limit))
+	}
+	args = append(args, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s")
+	if path != "" {
+		args = append(args, "--", path)
+	}
+	out, err := r.git(r.Dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	var entries []LogEntry
+	for _, line := range nonEmptyLines(out) {
+		f := strings.Split(line, "\x1f")
+		if len(f) < 5 {
+			continue
+		}
+		entries = append(entries, LogEntry{SHA: f[0], Author: f[1], Email: f[2], Date: f[3], Subject: f[4]})
+	}
+	return entries, nil
+}
+
+func nonEmptyLines(s string) []string {
+	var out []string
+	for _, ln := range strings.Split(s, "\n") {
+		if t := strings.TrimSpace(ln); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // CommitAll stages and commits everything in dir (a worktree or the primary
 // tree) and returns the new commit SHA.
 func (r *Repo) CommitAll(dir, message string) (string, error) {

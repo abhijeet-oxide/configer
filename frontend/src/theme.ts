@@ -14,13 +14,27 @@ export const brands: Record<BrandKey, { label: string; colorPrimary: string }> =
 };
 
 // Semantic accents used consistently across the app (also mirrored in CSS):
-// green = live/valid · amber = pending · blue = in review · red = invalid/production.
+// green = live/valid · amber = pending · blue = in review · red = invalid/danger.
+// Red is reserved for errors, failures, and destructive actions ONLY; it never
+// denotes an environment (a healthy production instance is not an error).
 export const semantic = {
   ok: "#0ca30c",
   pending: "#fa8c16",
   review: "#1677ff",
   danger: "#d03b3b",
 };
+
+// Environment identity colors. These label WHICH environment an instance runs
+// in; they are deliberately distinct from the status palette above so color
+// carries one meaning. Production is a serious indigo (not danger-red), staging
+// amber, development green. Single source of truth: import envHex/envColors
+// instead of hardcoding hexes per component.
+export const envColors: Record<string, string> = {
+  production: "#4338ca", // indigo: serious, high-stakes, but not an error
+  staging: "#fa8c16", // amber
+  development: "#0ca30c", // green
+};
+export const envHex = (env: string | undefined): string => (env ? envColors[env] : undefined) ?? "#8c8c8c";
 
 export function buildTheme(mode: Mode, brand: BrandKey, scale: FontScale = "normal"): ThemeConfig {
   const base = scale === "large" ? 15 : 13;

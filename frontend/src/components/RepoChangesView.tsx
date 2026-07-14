@@ -76,7 +76,7 @@ export default function RepoChangesView() {
   const findings = data?.findings ?? [];
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 24px", maxWidth: 1000, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
         <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1 }}>
@@ -109,6 +109,27 @@ export default function RepoChangesView() {
               </Popconfirm>
             )}
           </Space>
+        </div>
+
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <Tag color={findings.length ? "orange" : "green"} style={{ fontWeight: 500 }}>
+            {findings.length ? `${findings.length} pending event${findings.length === 1 ? "" : "s"}` : "No pending events"}
+          </Tag>
+          {Object.entries(
+            findings.reduce((m, f) => ({ ...m, [f.type]: (m[f.type] ?? 0) + 1 }), {} as Record<string, number>),
+          ).map(([t, n]) => {
+            const meta = findingMeta[t as Finding["type"]];
+            return (
+              <Tag key={t} color={meta.color}>
+                {meta.label}: {n}
+              </Tag>
+            );
+          })}
+          {data && (
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Last checked at commit <code>{data.headSha.slice(0, 7)}</code>
+            </Typography.Text>
+          )}
         </div>
 
         {findingsQ.isError && (

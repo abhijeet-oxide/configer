@@ -314,13 +314,23 @@ const rp = (path: string) => (activeRepo ? `/repos/${encodeURIComponent(activeRe
 // configuration is never shown while another is selected.
 export const snapKey = (key: string) => `${activeRepo ?? "default"}:${key}`;
 
+// API base URL, resolved once. Precedence: a runtime override injected before
+// the app boots (window.__CONFIGER__.apiBaseUrl, editable without a rebuild via
+// public/config.js) > the build-time VITE_API_BASE_URL > the same-origin "/api"
+// (nginx/Vite proxy it to the backend). This lets a static SPA point at a
+// separate API host, and lets ops repoint it without rebuilding.
+const API_BASE =
+  (typeof window !== "undefined" && window.__CONFIGER__?.apiBaseUrl) ||
+  import.meta.env.VITE_API_BASE_URL ||
+  "/api";
+
 // request marks the connection online/offline as a side effect, so every API
 // call keeps the resilience layer informed. Network failures become
 // OfflineError (handled gracefully), HTTP errors carry the server's message.
 async function request(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(`/api${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, init);
   } catch {
     markOffline();
     throw new OfflineError();

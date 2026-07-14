@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,6 +34,7 @@ import (
 type Hub struct {
 	Version     string
 	Environment string
+	Logger      *slog.Logger
 
 	dataDir  string
 	interval time.Duration
@@ -168,12 +170,19 @@ func (h *Hub) defaultHandler() http.Handler {
 	return nil
 }
 
-// Routes mounts the workspace surface plus per-repo dispatch.
+// Routes mounts the workspace surface plus per-repo dispatch. The handler chain
+// is: observability (request-id, access log, recovery) -> CORS -> mux.
 func (h *Hub) Routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	// Liveness: the process is up. Readiness: at least one repository is
+	// serving, so a load balancer only routes traffic once we can answer.
+	mux.HandleFunc("GET /api/health", h.health)
+	mux.HandleFunc("GET /api/healthz", h.health)
+	mux.HandleFunc("GET /api/readyz", h.ready)
+	// API documentation: raw spec + interactive (embedded, offline) Swagger UI.
+	mux.HandleFunc("GET /api/openapi.yaml", serveOpenAPISpec)
+	mux.Handle("/api/docs", swaggerHandler)
+	mux.Handle("/api/docs/", swaggerHandler)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)
@@ -181,7 +190,27 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/repos/{id}", h.disconnect)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
-	return withCORS(mux)
+	return withObservability(withCORS(mux), h.log())
+}
+
+func (h *Hub) log() *slog.Logger {
+	if h.Logger != nil {
+		return h.Logger
+	}
+	return slog.Default()
+}
+
+func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": h.Version})
+}
+
+// ready reports 200 only when a repository is available to serve, otherwise 503.
+func (h *Hub) ready(w http.ResponseWriter, _ *http.Request) {
+	if h.defaultHandler() != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+		return
+	}
+	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "no repository connected"})
 }
 
 // dispatch rewrites /api/repos/{id}/<rest> to /api/<rest> and serves it with

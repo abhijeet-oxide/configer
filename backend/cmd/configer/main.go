@@ -1,126 +1,75 @@
+// Command configer runs the Configer backend API server.
 package main
 
 import (
-	"fmt"
-	"log"
+	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"os"
-	"strconv"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/api"
+	"github.com/abhijeet-oxide/configer/backend/internal/config"
 )
 
-// Config holds runtime configuration from environment variables
-type Config struct {
-	Repo         string
-	Addr         string
-	Env          string
-	Version      string
-	LogLevel     string
-	SyncSeconds  int
-	GitUserName  string
-	GitUserEmail string
-	Features     map[string]bool
-}
-
-// LoadConfig reads environment variables with sensible defaults
-func LoadConfig() Config {
-	return Config{
-		Repo:         getEnv("CONFIGER_REPO", "../sample-repo"),
-		Addr:         getEnv("CONFIGER_ADDR", ":8080"),
-		Env:          getEnv("CONFIGER_ENV", "development"),
-		Version:      getEnv("CONFIGER_VERSION", "0.1.0"),
-		LogLevel:     getEnv("CONFIGER_LOG_LEVEL", "info"),
-		SyncSeconds:  getEnvInt("CONFIGER_SYNC_SECONDS", 30),
-		GitUserName:  getEnv("GIT_USER_NAME", "Configer Bot"),
-		GitUserEmail: getEnv("GIT_USER_EMAIL", "bot@configer.local"),
-		Features: map[string]bool{
-			"offline_mode": getEnvBool("FEATURE_OFFLINE_MODE", true),
-			"ai_module":    getEnvBool("FEATURE_AI_MODULE", false),
-			"rbac":         getEnvBool("FEATURE_RBAC", false),
-			"sso":          getEnvBool("FEATURE_SSO", false),
-		},
-	}
-}
-
-func getEnv(key, defaultVal string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultVal
-}
-
-func getEnvInt(key string, defaultVal int) int {
-	valStr := getEnv(key, "")
-	if valStr == "" {
-		return defaultVal
-	}
-	val, err := strconv.Atoi(valStr)
-	if err != nil {
-		log.Printf("Warning: %s is not a valid integer, using default %d\n", key, defaultVal)
-		return defaultVal
-	}
-	return val
-}
-
-func getEnvBool(key string, defaultVal bool) bool {
-	valStr := getEnv(key, "")
-	if valStr == "" {
-		return defaultVal
-	}
-	val, err := strconv.ParseBool(valStr)
-	if err != nil {
-		log.Printf("Warning: %s is not a valid boolean, using default %v\n", key, defaultVal)
-		return defaultVal
-	}
-	return val
-}
-
 func main() {
-	cfg := LoadConfig()
+	cfg := config.Load()
+	logger := newLogger(cfg)
+	slog.SetDefault(logger)
 
-	log.Printf("Starting Configer %s (env: %s)\n", cfg.Version, cfg.Env)
-	log.Printf("Repository: %s\n", cfg.Repo)
-	log.Printf("Listening on %s\n", cfg.Addr)
-	log.Printf("Sync interval: %d seconds\n", cfg.SyncSeconds)
-	log.Printf("Features: %v\n", cfg.Features)
+	hub, err := api.NewHub(cfg.DataDir, cfg.Repo, cfg.SyncInterval)
+	if err != nil {
+		logger.Error("init failed", slog.Any("error", err))
+		os.Exit(1)
+	}
+	hub.Logger = logger
 
-	// Setup HTTP handlers
-	mux := http.NewServeMux()
+	httpServer := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           hub.Routes(),
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
-	// Health check
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"status":"ok","version":"%s"}`, cfg.Version)
-	})
+	logger.Info("configer backend starting",
+		slog.Int("repositories", hub.Count()),
+		slog.String("dataDir", cfg.DataDir),
+		slog.Any("config", cfg),
+	)
 
-	// Meta endpoint - reports config and enabled features
-	mux.HandleFunc("/api/meta", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		featureJSON := ""
-		for k, v := range cfg.Features {
-			if featureJSON != "" {
-				featureJSON += ","
-			}
-			featureJSON += fmt.Sprintf(`"%s":%v`, k, v)
+	// Serve until a termination signal, then drain in-flight requests instead of
+	// dropping them (clean rollouts, no truncated responses).
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("server error", slog.Any("error", err))
+			os.Exit(1)
 		}
-		fmt.Fprintf(w, `{"name":"Configer (%s)","version":"%s","environment":"%s","features":{%s}}`, cfg.Env, cfg.Version, cfg.Env, featureJSON)
-	})
+	}()
 
-	// Placeholder for grid endpoint
-	mux.HandleFunc("/api/grid", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, `{"message":"Grid endpoint - implementation pending"}`)
-	})
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	<-ctx.Done()
 
-	server := &http.Server{
-		Addr:         cfg.Addr,
-		Handler:      mux,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+	logger.Info("shutting down, draining in-flight requests")
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		logger.Error("graceful shutdown failed", slog.Any("error", err))
 	}
+}
 
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Server error: %v", err)
+// newLogger builds the structured logger. Text is friendlier in a dev terminal;
+// JSON is what log aggregators (Loki, ELK, Datadog, CloudWatch) expect, so
+// production deployments set CONFIGER_LOG_FORMAT=json.
+func newLogger(cfg config.Config) *slog.Logger {
+	opts := &slog.HandlerOptions{Level: cfg.LogLevel}
+	var h slog.Handler
+	if cfg.LogFormat == "json" {
+		h = slog.NewJSONHandler(os.Stdout, opts)
+	} else {
+		h = slog.NewTextHandler(os.Stdout, opts)
 	}
+	return slog.New(h)
 }

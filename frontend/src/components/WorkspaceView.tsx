@@ -7,7 +7,6 @@ import {
   Form,
   Input,
   Modal,
-  Radio,
   Space,
   Statistic,
   Tag,
@@ -31,14 +30,17 @@ import {
 } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type RepoSummary } from "../api";
+import { api, type Grid, type RepoSummary } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
+import DashboardView from "./DashboardView";
+import { WorkspaceSkeleton } from "./Skeletons";
+import { STEP_HANDOFF } from "./ImportWizard";
 
-// WorkspaceView is the Applications portfolio: every connected application as a
-// card (favorites pinned first). It is a launcher, not a dashboard: opening a
-// card takes you into the application (its Configuration), where the per-app
-// Overview, Instances, Change Requests, Compare and History live as tabs.
+// WorkspaceView is the single landing page: every connected configuration as
+// a card (favorites pinned first), and right below, the overview of the one
+// currently selected: pick a configuration, read its health, press Edit to
+// open the editor. One seamless flow instead of separate Workspace and Home.
 
 const FAV_KEY = "configer.favRepos";
 
@@ -87,25 +89,11 @@ function RepoCard({
   const { setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const qc = useQueryClient();
-  const [renameOpen, setRenameOpen] = useState(false);
-  const [renameVal, setRenameVal] = useState(r.name);
-
-  const rename = useMutation({
-    mutationFn: (name: string) => api.renameRepo(r.id, name),
-    onSuccess: (s) => {
-      message.success(`Renamed to "${s.name}"`);
-      qc.invalidateQueries({ queryKey: ["workspace"] });
-      setRenameOpen(false);
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
 
   const open = (section: string) => {
     if (!active) switchRepo(r.id);
     setSection(section);
   };
-  // A normal click opens the application at its Overview (its command center);
-  // the primary button below still jumps straight to editing the configuration.
   const remove = useMutation({
     mutationFn: () => api.removeRepo(r.id),
     onSuccess: () => {
@@ -118,7 +106,11 @@ function RepoCard({
   return (
     <Card
         hoverable
-        onClick={() => open("overview")}
+        onClick={() => {
+          // Selecting a card switches the overview below to this
+          // configuration; it does not yank the user to another page.
+          if (!active) switchRepo(r.id);
+        }}
         style={{
           width: 330,
           height: "100%",
@@ -153,21 +145,14 @@ function RepoCard({
               trigger={["click"]}
               menu={{
                 items: [
-                  { key: "overview", label: "Open overview" },
-                  { key: "editor", label: "Open configuration" },
-                  { key: "rename", icon: <EditOutlined />, label: "Rename application…" },
+                  { key: "editor", label: "Open Config Editor" },
                   { key: "import", label: "Import parameters" },
                   { type: "divider" },
                   { key: "disconnect", danger: true, label: "Disconnect from workspace" },
                 ],
                 onClick: ({ key, domEvent }) => {
                   domEvent.stopPropagation();
-                  if (key === "overview") open("overview");
                   if (key === "editor") open("config");
-                  if (key === "rename") {
-                    setRenameVal(r.name);
-                    setRenameOpen(true);
-                  }
                   if (key === "import") open("import");
                   if (key === "disconnect")
                     Modal.confirm({
@@ -244,30 +229,6 @@ function RepoCard({
             </Button>
           )}
         </div>
-      <span onClick={(e) => e.stopPropagation()}>
-        <Modal
-          title="Rename application"
-          open={renameOpen}
-          onCancel={() => setRenameOpen(false)}
-          onOk={() => rename.mutate(renameVal.trim())}
-          okText="Rename"
-          okButtonProps={{ disabled: !renameVal.trim() || renameVal.trim() === r.name, loading: rename.isPending }}
-          destroyOnHidden
-        >
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
-            This changes the display name only. The Git repository, its history and any shared links
-            stay exactly as they are.
-          </Typography.Paragraph>
-          <Input
-            value={renameVal}
-            maxLength={80}
-            autoFocus
-            onChange={(e) => setRenameVal(e.target.value)}
-            onPressEnter={() => renameVal.trim() && renameVal.trim() !== r.name && rename.mutate(renameVal.trim())}
-            placeholder="Application name"
-          />
-        </Modal>
-      </span>
       </Card>
   );
 }
@@ -284,13 +245,12 @@ export function ConnectForm({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [form] = Form.useForm<{ url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }>();
+  const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
   const connect = useMutation({
-    mutationFn: (v: { url: string; name?: string; branch?: string; token?: string; mode?: "clone" | "remote" }) =>
-      api.connectRepo({ ...v, mode: v.mode === "remote" ? "remote" : undefined }),
+    mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) => api.connectRepo(v),
     onSuccess: (r) => {
-      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API (no clone)" : "cloned on the server";
-      message.success(`Connected "${r.name}" (${how}).`);
+      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
+      message.success(`Application "${r.name}" created (${how}).`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
       form.resetFields();
       onDone(r);
@@ -298,29 +258,25 @@ export function ConnectForm({
     onError: (e: Error) => message.error(e.message, 6),
   });
   return (
-    <Form
-      form={form}
-      layout="vertical"
-      onFinish={(v) => connect.mutate(v)}
-      requiredMark={false}
-      initialValues={{ mode: "clone" }}
-    >
+    <Form form={form} layout="vertical" onFinish={(v) => connect.mutate(v)} requiredMark={false}>
+      <Form.Item
+        name="name"
+        label="Application name"
+        rules={[{ required: true, message: "Give the application a name" }]}
+      >
+        <Input placeholder="e.g. Network Platform" maxLength={60} autoFocus />
+      </Form.Item>
       <Form.Item
         name="url"
         label="Repository"
         rules={[{ required: true, message: "Give a git URL or a path on the server" }]}
-        extra={compact ? undefined : "A GitHub/https git URL is cloned and kept in sync on the server; a directory path is opened in place."}
+        extra={compact ? undefined : "The GitHub repository whose configuration this application manages."}
       >
-        <Input placeholder="https://github.com/acme/network-config.git" className="mono" autoFocus />
+        <Input placeholder="https://github.com/acme/network-config.git" className="mono" />
       </Form.Item>
-      <div style={{ display: "flex", gap: 10 }}>
-        <Form.Item name="name" label="Display name (optional)" style={{ flex: 1 }}>
-          <Input placeholder="e.g. Network Platform" maxLength={60} />
-        </Form.Item>
-        <Form.Item name="branch" label="Branch (optional)" style={{ flex: 1 }}>
-          <Input placeholder="default branch" className="mono" maxLength={80} />
-        </Form.Item>
-      </div>
+      <Form.Item name="branch" label="Branch (optional)">
+        <Input placeholder="default branch" className="mono" maxLength={80} />
+      </Form.Item>
       <Form.Item
         name="token"
         label="Access token (private repositories)"
@@ -328,103 +284,16 @@ export function ConnectForm({
       >
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
       </Form.Item>
-      <Form.Item
-        name="mode"
-        label="How should the server manage it?"
-        extra={
-          compact
-            ? undefined
-            : "Clone keeps a working copy on the server. Remote uses the GitHub API for partial checkouts and commits with nothing cloned (a GitHub https URL and token are required)."
-        }
-      >
-        <Radio.Group>
-          <Radio.Button value="clone">Clone on server</Radio.Button>
-          <Radio.Button value="remote">Remote via GitHub API (no clone)</Radio.Button>
-        </Radio.Group>
-      </Form.Item>
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-          Connect repository
+          Create application
         </Button>
       </div>
     </Form>
   );
 }
 
-// PortfolioSignals leads with what actually needs a human at the portfolio
-// level, not vanity totals. Counting applications, instances or parameters
-// tells an operator nothing actionable; what matters across a fleet is what is
-// waiting on a decision and what is unhealthy.
-function needsAttention(r: RepoSummary): boolean {
-  return !!r.error || !!r.syncError || (r.behind ?? 0) > 0;
-}
-
-function PortfolioSignals({ repos, onReview }: { repos: RepoSummary[]; onReview: () => void }) {
-  const awaiting = repos.reduce((a, r) => a + (r.openChanges ?? 0), 0);
-  const awaitingApps = repos.filter((r) => (r.openChanges ?? 0) > 0).length;
-  const attention = repos.filter(needsAttention);
-  const production = repos.reduce((a, r) => a + (r.environments?.production ?? 0), 0);
-
-  const cards: {
-    label: string;
-    value: React.ReactNode;
-    caption: string;
-    accent: string;
-    color?: string;
-    onClick?: () => void;
-  }[] = [
-    {
-      label: "Awaiting approval",
-      value: awaiting,
-      caption: awaiting
-        ? `across ${awaitingApps} application${awaitingApps === 1 ? "" : "s"}`
-        : "no changes in review",
-      accent: "#fa8c16",
-      color: awaiting ? "#d48806" : undefined,
-      onClick: awaiting ? onReview : undefined,
-    },
-    {
-      label: "Needs attention",
-      value: attention.length,
-      caption: attention.length
-        ? attention
-            .slice(0, 2)
-            .map((r) => r.name)
-            .join(", ") + (attention.length > 2 ? "…" : "")
-        : "all applications healthy",
-      accent: attention.length ? "#f5222d" : "#0ca30c",
-      color: attention.length ? "#cf1322" : "#389e0d",
-    },
-    {
-      label: "Production systems",
-      value: production,
-      caption: "live deployments under management",
-      accent: "#6c3df4",
-    },
-  ];
-
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 16 }}>
-      {cards.map((s) => (
-        <Card
-          key={s.label}
-          size="small"
-          className="stat-accent"
-          hoverable={!!s.onClick}
-          onClick={s.onClick}
-          style={{ "--accent": s.accent, minWidth: 210, flex: "1 1 210px", maxWidth: 300, cursor: s.onClick ? "pointer" : "default" } as React.CSSProperties}
-        >
-          <Statistic title={s.label} value={s.value as string | number} valueStyle={{ fontSize: 22, color: s.color }} />
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            {s.caption}
-          </Typography.Text>
-        </Card>
-      ))}
-    </div>
-  );
-}
-
-export default function WorkspaceView() {
+export default function WorkspaceView({ grid }: { grid?: Grid }) {
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const [connectOpen, setConnectOpen] = useState(false);
@@ -442,40 +311,43 @@ export default function WorkspaceView() {
     });
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
-      <div>
+    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
               Applications
             </Typography.Title>
             <Typography.Text type="secondary">
-              Every application you manage. Open one to configure it; everything stays in Git.
+              Pick an application to see its overview below; everything stays in Git.
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-            Add application
+            Create application
           </Button>
         </div>
 
-        {repos.length > 0 && <PortfolioSignals repos={repos} onReview={() => setSection("approvals")} />}
-
-        {repos.length === 0 && !wsQ.isLoading ? (
+        {wsQ.isLoading && repos.length === 0 ? (
+          // Loading: stand in with the exact card shape so the empty state never
+          // flashes for connected workspaces (the reported "connect repository →
+          // no repositories" flicker).
+          <WorkspaceSkeleton />
+        ) : repos.length === 0 ? (
           <Card style={{ marginTop: 20 }}>
             <Empty
               description={
                 <>
                   <Typography.Paragraph style={{ marginBottom: 4 }}>
-                    No repositories are connected yet.
+                    No applications yet.
                   </Typography.Paragraph>
                   <Typography.Text type="secondary">
-                    Connect a Git repository to start managing its configuration.
+                    Create an application to start managing its configuration in Git.
                   </Typography.Text>
                 </>
               }
             >
               <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-                Connect repository
+                Create application
               </Button>
             </Empty>
           </Card>
@@ -497,34 +369,43 @@ export default function WorkspaceView() {
               onClick={() => setConnectOpen(true)}
             >
               <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
-              <div style={{ marginTop: 8, fontWeight: 500 }}>Connect repository</div>
+              <div style={{ marginTop: 8, fontWeight: 500 }}>Create application</div>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                GitHub URL or a path on the server
+                Connect a GitHub repository
               </Typography.Text>
             </Card>
           </div>
         )}
 
         <Typography.Paragraph type="secondary" style={{ marginTop: 14, fontSize: 12 }}>
-          <DownloadOutlined /> Tip: after connecting, use <a onClick={() => setSection("import")}>Import</a> to
+          <DownloadOutlined /> Tip: after creating an application, use <a onClick={() => setSection("import")}>Import</a> to
           bring the repository's settings under management. <DisconnectOutlined style={{ marginInlineStart: 10 }} />{" "}
-          Disconnecting never deletes anything on Git.
+          Removing an application never deletes anything on Git.
         </Typography.Paragraph>
+
+        {grid && repoId && (
+          <div style={{ marginTop: 4, borderTop: "1px solid rgba(128,128,128,0.2)" }}>
+            <DashboardView grid={grid} embedded />
+          </div>
+        )}
       </div>
 
       <Modal
-        title="Connect a repository"
+        title="Create an application"
         open={connectOpen}
         onCancel={() => setConnectOpen(false)}
         footer={null}
-        destroyOnHidden
+        destroyOnClose
       >
         <ConnectForm
           onDone={(r) => {
             setConnectOpen(false);
+            // Creating an application flows straight into the scan/import step,
+            // so the repository is parsed and its settings offered for
+            // management right away — the "import is the next step of creating
+            // an application" flow.
+            sessionStorage.setItem(STEP_HANDOFF, "1");
             switchRepo(r.id);
-            // Onboarding: flow straight from connecting an application into
-            // scanning/importing its configuration.
             setSection("import");
           }}
         />

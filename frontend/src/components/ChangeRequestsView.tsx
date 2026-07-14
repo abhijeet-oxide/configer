@@ -22,6 +22,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StateTag } from "./CrSteps";
+import { TableSkeleton } from "./Skeletons";
 
 // ChangeRequestsView is the workflow home: every draft, in-review, published
 // and rejected change request, with its parameter-level diff and the actions
@@ -97,6 +98,10 @@ export default function ChangeRequestsView() {
     onSuccess: invalidate,
   });
 
+  // First load: a table-shaped skeleton rather than AntD's spinner overlay, so
+  // the layout matches what arrives and stays consistent with the other pages.
+  if (q.isLoading) return <TableSkeleton />;
+
   return (
     <div style={{ padding: 16, height: "100%", overflow: "auto" }}>
       <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
@@ -110,7 +115,6 @@ export default function ChangeRequestsView() {
       <Table<ChangeRequest>
         rowKey="id"
         size="middle"
-        loading={q.isLoading}
         dataSource={q.data}
         pagination={false}
         locale={{ emptyText: <Empty description="No change requests yet. Edit some cells in the Config Editor to start a draft." /> }}

@@ -4,32 +4,12 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
-import { envHex } from "../theme";
 
-// The far-left navigation rail is deliberately thin: it holds only
-// application-level and global destinations, GitHub-style. Everything that
-// belongs to a single application (its configuration, instances, changes,
-// compare, history) lives in the in-application tab bar (AppTabs), not here, so
-// the rail never scrolls or repeats per-app views. Approvals is global so a
-// reviewer can clear change requests across every application in one place.
-
-// SECTION_LABELS is the single source of truth for view names, shared with the
-// TopBar breadcrumb, AppTabs, and the placeholder screens so a view is named
-// once.
-export const SECTION_LABELS: Record<string, string> = {
-  workspace: "Applications",
-  overview: "Overview",
-  config: "Configuration",
-  changes: "Change Requests",
-  approvals: "Approvals",
-  drift: "Repository Changes",
-  compare: "Compare",
-  instances: "Instances",
-  history: "History",
-  import: "Import",
-  plugins: "Plugins",
-  settings: "Settings",
-};
+// The far-left navigation rail, kept to the few things people actually use
+// all day: Workspace (all configurations), Editor, Import, Approvals. Less
+// frequent tools live under More; admin-ish surfaces (Plugins) are tucked at
+// the bottom of More rather than polluting the main flow. Badges sit on the
+// icons so the collapsed rail stays clean and readable.
 
 function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
   if (!count) return <span className="nav-ic">{icon}</span>;
@@ -40,31 +20,47 @@ function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
   );
 }
 
-function ic(icon: (typeof icons)[keyof typeof icons]) {
-  return <span className="nav-ic"><Ic icon={icon} /></span>;
-}
-
-function buildItems(approvalsCount: number): MenuProps["items"] {
+function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
   return [
-    { key: "workspace", icon: ic(icons.workspace), label: "Applications" },
-    { key: "approvals", icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount), label: "Approvals" },
-    { key: "settings", icon: ic(icons.settings), label: "Settings" },
+    { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Applications" },
+    { key: "config", icon: <span className="nav-ic"><Ic icon={icons.editor} /></span>, label: "Editor" },
+    { key: "import", icon: <span className="nav-ic"><Ic icon={icons.import} /></span>, label: "Import" },
+    {
+      key: "approvals",
+      icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount),
+      label: "Approvals",
+    },
+    {
+      key: "more",
+      icon: iconWithBadge(<Ic icon={icons.settings} />, findingsCount, "orange"),
+      label: "More",
+      children: [
+        { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
+        { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
+        { key: "files", icon: <Ic icon={icons.files} />, label: "Rendered Files" },
+        {
+          key: "drift",
+          icon: <Ic icon={icons.drift} />,
+          label: (
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+              Repository Changes
+              <Badge count={findingsCount} size="small" color="orange" />
+            </span>
+          ),
+        },
+        { type: "divider" },
+        { key: "plugins", icon: <Ic icon={icons.plugins} />, label: "Plugins (admin)" },
+      ],
+    },
   ];
-}
-
-// The global side rail highlights an application-level destination. When the
-// user is inside an application view (a tab), the rail keeps Applications lit as
-// the current context.
-function railKey(section: string): string {
-  if (section === "approvals" || section === "settings" || section === "plugins" || section === "import") return section === "plugins" ? "settings" : section;
-  return "workspace";
 }
 
 export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
   const { section, setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const items = buildItems(approvalsCount);
+  const items = buildItems(approvalsCount, findingsQ.data?.findings?.length ?? 0);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
@@ -88,7 +84,7 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         className="nav-rail"
         mode="inline"
         inlineCollapsed={collapsed}
-        selectedKeys={[railKey(section)]}
+        selectedKeys={[section]}
         onClick={({ key }) => setSection(key)}
         items={items}
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}
@@ -104,12 +100,13 @@ function DeploymentChip() {
   const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const m = metaQ.data;
   if (!m) return null;
+  const envColor: Record<string, string> = { production: "#f5222d", staging: "#fa8c16" };
   return (
     <div style={{ margin: "0 10px 10px", fontSize: 10.5, opacity: 0.75, display: "flex", alignItems: "center", gap: 6 }}>
       <span
         style={{
           width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-          background: envHex(m.environment),
+          background: envColor[m.environment] ?? "#52c41a",
         }}
       />
       {m.name} {m.version} · {m.environment}

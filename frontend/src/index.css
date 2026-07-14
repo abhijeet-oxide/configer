@@ -332,104 +332,14 @@ body {
   color: inherit;
 }
 
-/* -------------------------------------------------- application tab bar */
-
-/* GitHub/VS-Code-style tabs: each tab is a flex box so the icon and label are
-   centered together both horizontally and vertically, with real breathing
-   room around the icon (the antd default crowds them and sits the icon high). */
-.app-tabs.ant-menu-horizontal {
-  line-height: normal;
-  border-bottom: none;
+/* Source Control change rows (VS Code-style hover highlight). */
+.scm-change-row:hover {
+  background: rgba(128, 128, 128, 0.1);
 }
-.app-tabs.ant-menu-horizontal > .ant-menu-item,
-.app-tabs.ant-menu-horizontal > .ant-menu-submenu {
-  height: 46px;
-  padding-inline: 18px;
-  margin-inline: 2px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px; /* space between the (unclassed) icon svg and the label */
-  top: 0;
-  border-radius: 8px 8px 0 0;
-  transition: background 0.15s ease, color 0.15s ease;
+.scm-change-row a {
+  color: inherit;
 }
-/* the icon is a bare <svg> (no .anticon/.iconify class), so size it directly
-   and let the flex gap above own the icon-to-label spacing */
-.app-tabs.ant-menu-horizontal > .ant-menu-item > svg,
-.app-tabs.ant-menu-horizontal > .ant-menu-submenu-title > svg {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  vertical-align: 0 !important;
-}
-/* a quiet hover so tabs feel interactive without shouting */
-.app-tabs.ant-menu-horizontal > .ant-menu-item:hover,
-.app-tabs.ant-menu-horizontal > .ant-menu-submenu:hover {
-  background: rgba(127, 137, 160, 0.09);
-}
-.app-tabs.ant-menu-horizontal > .ant-menu-item::after,
-.app-tabs.ant-menu-horizontal > .ant-menu-submenu::after {
-  inset-inline: 14px;
-}
-/* the label + icon are one centered unit; spacing comes from the flex gap
-   on the item above (the icon is a bare <svg> with no class to margin) */
-.app-tabs .ant-menu-title-content {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-  margin-inline-start: 0 !important;
-}
-
-/* --------------------------------------------------- modern scrollbars */
-
-/* One consistent, modern scrollbar everywhere (the Parameters tree looked
-   right while the grid and Systems used the OS default). Thin, rounded,
-   translucent, and it fades to a stronger thumb on hover. */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(140, 150, 170, 0.45) transparent;
-}
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-track {
-  background: transparent;
-}
-*::-webkit-scrollbar-thumb {
-  background: rgba(140, 150, 170, 0.4);
-  border-radius: 8px;
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: rgba(120, 132, 156, 0.7);
-  border: 2px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-corner {
-  background: transparent;
-}
-[data-theme="dark"] * {
-  scrollbar-color: rgba(120, 132, 160, 0.5) transparent;
-}
-
-/* -------------------------------------------------- selection highlight */
-
-/* Clicking a parameter in the tree must land as an obviously selected row.
-   The prior 10% tint was too faint on a busy grid; add a colored left marker
-   and a firmer tint so the eye catches it immediately. */
-.param-grid .ant-table-row.row-selected .ant-table-cell {
-  background-image: linear-gradient(rgba(47, 107, 255, 0.16), rgba(47, 107, 255, 0.16)) !important;
-}
-.param-grid .ant-table-row.row-selected .ant-table-cell-fix-left:first-child {
-  box-shadow: inset 3px 0 0 0 #2f6bff;
-}
-/* The selected leaf in the Parameters tree, made unmistakable. */
-.cat-tree .ant-tree .ant-tree-node-selected,
-.cat-tree .ant-tree .ant-tree-treenode-selected .ant-tree-node-content-wrapper.ant-tree-node-selected {
-  background: rgba(47, 107, 255, 0.16) !important;
-  outline: 1px solid rgba(47, 107, 255, 0.4);
-  border-radius: 4px;
+/* Keep the editor status bar text crisp on the accent background. */
+.editor-statusbar .anticon {
+  vertical-align: -0.12em;
 }

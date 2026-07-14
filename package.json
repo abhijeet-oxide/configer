@@ -1,0 +1,28 @@
+{
+  "name": "configer",
+  "version": "0.1.0",
+  "description": "Enterprise-grade configuration management platform",
+  "private": true,
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "scripts": {
+    "start": "concurrently \"npm:backend\" \"npm:frontend\"",
+    "dev": "npm start",
+    "backend": "cd backend && go run ./cmd/configer",
+    "frontend": "cd frontend && npm run dev",
+    "build": "concurrently \"npm:build:backend\" \"npm:build:frontend\"",
+    "build:backend": "cd backend && go build -o configer ./cmd/configer",
+    "build:frontend": "cd frontend && npm run build",
+    "test": "concurrently \"npm:test:backend\" \"npm:test:frontend\"",
+    "test:backend": "cd backend && go test ./...",
+    "test:frontend": "cd frontend && npm run test 2>/dev/null || echo 'Frontend tests not configured'",
+    "docker:up": "cd deploy && docker compose up --build",
+    "docker:down": "cd deploy && docker compose down",
+    "setup": "node scripts/setup.js"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -134,13 +134,14 @@ export interface Cell {
 export type CellAction = "set" | "reset" | "exclude";
 
 /** All draft item actions: cell edits plus structural instance changes. */
-export type ItemAction = CellAction | "add-instance" | "remove-instance";
+export type ItemAction = CellAction | "add-instance" | "remove-instance" | "edit-file";
 
 /** Human label for a structural item ("" for plain cell edits). */
-export const structuralLabel = (it: { action?: string; instance: string; old?: unknown }): string => {
+export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
   if (it.action === "add-instance")
     return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
   if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
+  if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
   return "";
 };
 
@@ -153,6 +154,8 @@ export interface ChangeItem {
   instance: string;
   /** "global" marks a scope-level edit applying to every instance */
   scope?: string;
+  /** repository path of a direct file edit (action "edit-file") */
+  file?: string;
   action?: ItemAction;
   old: unknown;
   new: unknown;
@@ -501,6 +504,9 @@ export const api = {
       rp(`/render/${encodeURIComponent(instance)}${suffix}`),
     );
   },
+  stageFileEdit: (p: { instance?: string; path: string; content: string; author?: string }) =>
+    put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
+      rp("/files/draft"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),

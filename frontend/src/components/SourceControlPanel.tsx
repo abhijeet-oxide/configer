@@ -53,7 +53,9 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
     const rows = new Map(grid.rows.map((r) => [r.param.id, r]));
     const insts = new Map(grid.instances.map((i) => [i.name, i]));
     return (it: ChangeItem): string => {
-      // Structural items change the instance registry (plus a folder).
+      // A direct file edit groups under its own file; other structural
+      // items change the instance registry (plus a folder).
+      if (it.action === "edit-file") return it.file ?? "(file)";
       if (structuralLabel(it)) return ".configer/instances.yaml";
       const row = rows.get(it.paramId);
       if (!row) return "(unmapped)";
@@ -80,7 +82,8 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   }, [items, fileOf]);
 
   const revert = useMutation({
-    mutationFn: (it: ChangeItem) => api.revertValue(it.paramId, it.instance),
+    mutationFn: (it: ChangeItem) =>
+      api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
     onSuccess: () => qc.invalidateQueries(),
     onError: (e: Error) => message.error(e.message),
   });

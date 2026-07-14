@@ -1,7 +1,9 @@
 // Lazy-loaded Monaco pane: importing this module pulls in Monaco (a separate
-// build chunk) and runs the offline setup side-effect. Shows a read-only editor
-// for a rendered file, or a side-by-side diff when a committed baseline differs
-// from the draft-applied content (the live "what your edits will change" view).
+// build chunk) and runs the offline setup side-effect. Shows an editor for a
+// repository file, or a side-by-side diff when the committed baseline differs
+// from the draft-applied content (the live "what your edits will change"
+// view). When editable, changes report through onDirty and Ctrl/Cmd-S runs
+// onSave — the same save path as the grid: staged into the draft.
 import { Editor, DiffEditor } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import "../monaco";
@@ -13,10 +15,12 @@ interface Revealable {
   revealLineInCenter: (line: number) => void;
   setPosition: (pos: { lineNumber: number; column: number }) => void;
   focus: () => void;
+  getValue: () => string;
+  onDidChangeModelContent: (cb: () => void) => void;
+  addCommand?: (keybinding: number, handler: () => void) => void;
 }
 
 const baseOptions = {
-  readOnly: true,
   minimap: { enabled: true },
   fontSize: 12.5,
   lineNumbers: "on" as const,
@@ -26,23 +30,39 @@ const baseOptions = {
   wordWrap: "off" as const,
 };
 
+// Monaco's KeyMod.CtrlCmd | KeyCode.KeyS without importing monaco eagerly.
+const CTRL_CMD_S = 2048 | 49;
+
 export default function MonacoFileView({
   path,
   content,
   original,
   dark,
   revealLine,
+  editable = false,
+  onDirty,
+  onSave,
 }: {
   path: string;
   content: string;
   original?: string;
   dark: boolean;
   revealLine?: number;
+  /** allow typing; edits report through onDirty, Ctrl/Cmd-S calls onSave */
+  editable?: boolean;
+  onDirty?: (value: string) => void;
+  onSave?: (value: string) => void;
 }) {
   const language = languageFor(path);
   const theme = dark ? "vs-dark" : "light";
   const showDiff = original !== undefined && original !== content;
   const edRef = useRef<Revealable | null>(null);
+  const saveRef = useRef(onSave);
+  const dirtyRef = useRef(onDirty);
+  useEffect(() => {
+    saveRef.current = onSave;
+    dirtyRef.current = onDirty;
+  });
 
   const reveal = (line?: number) => {
     if (!line || !edRef.current) return;
@@ -56,6 +76,13 @@ export default function MonacoFileView({
     reveal(revealLine);
   }, [revealLine]);
 
+  const wire = (editor: Revealable) => {
+    edRef.current = editor;
+    editor.onDidChangeModelContent(() => dirtyRef.current?.(editor.getValue()));
+    editor.addCommand?.(CTRL_CMD_S, () => saveRef.current?.(editor.getValue()));
+    reveal(revealLine);
+  };
+
   if (showDiff) {
     return (
       <DiffEditor
@@ -64,7 +91,17 @@ export default function MonacoFileView({
         modified={content}
         language={language}
         theme={theme}
-        options={{ ...baseOptions, renderSideBySide: true, ignoreTrimWhitespace: false }}
+        options={{
+          ...baseOptions,
+          readOnly: !editable,
+          originalEditable: false,
+          renderSideBySide: true,
+          ignoreTrimWhitespace: false,
+        }}
+        onMount={(diff) => {
+          const modified = diff.getModifiedEditor() as unknown as Revealable;
+          wire(modified);
+        }}
       />
     );
   }
@@ -74,11 +111,8 @@ export default function MonacoFileView({
       value={content}
       language={language}
       theme={theme}
-      options={baseOptions}
-      onMount={(editor) => {
-        edRef.current = editor as unknown as Revealable;
-        reveal(revealLine);
-      }}
+      options={{ ...baseOptions, readOnly: !editable }}
+      onMount={(editor) => wire(editor as unknown as Revealable)}
     />
   );
 }

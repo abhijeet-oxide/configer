@@ -27,7 +27,7 @@ import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
-import RenderedFilesView from "./components/RenderedFilesView";
+import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { GridSkeleton, TableSkeleton, ApprovalsSkeleton, FilesSkeleton } from "./components/Skeletons";
@@ -320,7 +320,7 @@ export default function App() {
     if (section === "files")
       return (
         <div style={{ height: "100%", ...panelBg }}>
-          <RenderedFilesView grid={grid} />
+          <FilesView />
         </div>
       );
     if (section === "config") return editorLayout();

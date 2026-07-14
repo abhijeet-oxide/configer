@@ -12,6 +12,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
@@ -128,8 +130,23 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 			return nil, fmt.Errorf("reload project from worktree: %w", err)
 		}
 	}
+	// Direct file edits (file mode) go next: full-content writes that value
+	// items then refine on top.
 	for _, it := range cr.Items {
-		if it.Structural() {
+		if it.Act() != change.ActionEditFile {
+			continue
+		}
+		content, _ := it.New.(string)
+		full := filepath.Join(wt, filepath.FromSlash(it.File))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("apply file edit %s: %w", it.File, err)
+		}
+	}
+	for _, it := range cr.Items {
+		if it.Structural() || it.Act() == change.ActionEditFile {
 			continue
 		}
 		if err := applyItem(wt, proj, it); err != nil {
@@ -299,6 +316,8 @@ func prBody(cr *change.ChangeRequest) string {
 			fmt.Fprintf(&b, "| add instance | %s | — | %s |\n", inst, src)
 		case change.ActionRemoveInstance:
 			fmt.Fprintf(&b, "| remove instance | %s | — | — |\n", inst)
+		case change.ActionEditFile:
+			fmt.Fprintf(&b, "| edit file `%s` | %s | — | — |\n", it.File, inst)
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 		}

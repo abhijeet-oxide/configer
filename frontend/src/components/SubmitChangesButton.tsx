@@ -48,7 +48,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   );
 
   const revert = useMutation({
-    mutationFn: (it: ChangeItem) => api.revertValue(it.paramId, it.instance),
+    mutationFn: (it: ChangeItem) =>
+      api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
     onSuccess: () => qc.invalidateQueries(),
   });
 

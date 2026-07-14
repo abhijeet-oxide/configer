@@ -331,3 +331,15 @@ body {
 .nav-rail .ant-menu-submenu-title .ant-badge {
   color: inherit;
 }
+
+/* Source Control change rows (VS Code-style hover highlight). */
+.scm-change-row:hover {
+  background: rgba(128, 128, 128, 0.1);
+}
+.scm-change-row a {
+  color: inherit;
+}
+/* Keep the editor status bar text crisp on the accent background. */
+.editor-statusbar .anticon {
+  vertical-align: -0.12em;
+}

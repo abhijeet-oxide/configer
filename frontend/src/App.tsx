@@ -27,6 +27,7 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import RenderedFilesView from "./components/RenderedFilesView";
 import MobileParamList from "./components/MobileParamList";
+import EditorStatusBar from "./components/EditorStatusBar";
 import { GridSkeleton, TableSkeleton, ApprovalsSkeleton, FilesSkeleton } from "./components/Skeletons";
 
 const { Header, Sider, Content } = Layout;
@@ -159,10 +160,18 @@ export default function App() {
         </div>
       );
     }
+    // The editor carries a VS Code-style bottom status bar (branch, pull,
+    // Source Control, validity) beneath whichever panel layout is in use.
+    const withStatusBar = (content: React.ReactNode) => (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%", ...panelBg }}>
+        <div style={{ flex: 1, minHeight: 0 }}>{content}</div>
+        <EditorStatusBar grid={grid} />
+      </div>
+    );
     if (!wide) {
       // Small screens: full-width grid; groups + details slide in as drawers.
-      return (
-        <div style={{ display: "flex", flexDirection: "column", height: "100%", ...panelBg }}>
+      return withStatusBar(
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
           <div style={{ padding: "6px 12px 0" }}>
             <TreeDrawerButton grid={grid} />
           </div>
@@ -178,10 +187,10 @@ export default function App() {
           >
             <DetailsPanel grid={grid} />
           </Drawer>
-        </div>
+        </div>,
       );
     }
-    return (
+    return withStatusBar(
       <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
         <Panel defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
           <CategoryTree grid={grid} />
@@ -194,7 +203,7 @@ export default function App() {
         <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
           <DetailsPanel grid={grid} />
         </Panel>
-      </PanelGroup>
+      </PanelGroup>,
     );
   }
 

@@ -24,12 +24,27 @@ const (
 	// ActionSet writes New as the instance's override.
 	ActionSet Action = "set"
 	// ActionReset removes the instance override (and any exclusion) so the
-	// cell falls back to the scope chain (zone/site/env/global/default).
+	// cell falls back to the scope chain (base/default).
 	ActionReset Action = "reset"
 	// ActionExclude tombstones the parameter for this instance: nothing is
 	// present in its files, even when a default exists.
 	ActionExclude Action = "exclude"
+	// ActionAddInstance scaffolds a new instance: a folder following the
+	// repository's own convention plus a registry entry. Instance carries the
+	// new name; New carries the model.Instance metadata; Old the clone
+	// source's name ("" = start empty).
+	ActionAddInstance Action = "add-instance"
+	// ActionRemoveInstance retires an instance: its folder and registry
+	// entry are removed. Instance carries the name.
+	ActionRemoveInstance Action = "remove-instance"
 )
+
+// Structural reports whether the action changes the instance topology rather
+// than a value; structural items apply before value items on submit.
+func (it Item) Structural() bool {
+	a := it.Act()
+	return a == ActionAddInstance || a == ActionRemoveInstance
+}
 
 // Item is one pending cell edit: a (parameter, instance) change, or a
 // scope-level change when Scope is set (Instance is empty then).

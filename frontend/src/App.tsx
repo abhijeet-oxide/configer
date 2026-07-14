@@ -23,6 +23,7 @@ import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import ImportWizard from "./components/ImportWizard";
+import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
@@ -308,6 +309,12 @@ export default function App() {
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <ComparePanel grid={grid} />
+        </div>
+      );
+    if (section === "instances")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <InstancesView grid={grid} />
         </div>
       );
     if (section === "files")

@@ -1,13 +1,18 @@
 package api
 
-// Instance registry endpoints. Instances are structural metadata (like the
-// catalog): add/edit/archive/delete commit directly onto the working branch
-// with attribution, so a new instance appears as a grid column immediately.
+// Instance registry endpoints. Creating or retiring an instance is a
+// STRUCTURAL change: it stages into the draft change request and, on submit,
+// the CR branch carries the scaffolded folder (per the repository's layout
+// convention) plus the registry entry — reviewable like any other change.
+// Metadata-only updates (version, region, labels, archive) commit directly
+// with attribution, like parameter metadata.
 
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -46,7 +51,10 @@ func derefLabels(p *map[string]string) map[string]string {
 	return *p
 }
 
-// addInstance creates a new deployment target (or clones an existing one).
+// addInstance stages a new deployment target (optionally cloned from an
+// existing one) into the draft change request. Nothing touches Git until the
+// draft is submitted: the branch then carries the scaffolded folder plus the
+// registry entry, reviewable like any other change.
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -58,30 +66,61 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid instance name is required"})
 		return
 	}
-
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-
-	if req.CloneFrom != "" {
-		inst, err := writer.CloneInstance(s.RepoPath, req.CloneFrom, name, req.patch())
-		if err != nil {
-			writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-			return
-		}
-		s.commitCatalogChange(w, "Add instance "+name+" (clone of "+req.CloneFrom+")", req.Author, inst)
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
+	if _, exists := p.InstanceByName(name); exists {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " already exists"})
+		return
+	}
+	if req.CloneFrom != "" {
+		if _, ok := p.InstanceByName(req.CloneFrom); !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "clone source " + req.CloneFrom + " not found"})
+			return
+		}
+	}
 
-	inst := model.Instance{
+	meta := model.Instance{
 		Name: name, Environment: str(req.Environment), Region: str(req.Region),
 		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
 		Status: str(req.Status), Labels: derefLabels(req.Labels),
 	}
-	if err := writer.AddInstance(s.RepoPath, inst); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+	s.stageStructural(w, req.Author, change.Item{
+		Instance: name,
+		Action:   change.ActionAddInstance,
+		Old:      req.CloneFrom,
+		New:      meta,
+	})
+}
+
+// stageStructural puts a topology item into the draft change request.
+func (s *Server) stageStructural(w http.ResponseWriter, author string, it change.Item) {
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	if author == "" {
+		author = "anonymous"
+	}
+	it.UpdatedAt = time.Now().UTC()
+	draft, err := s.Store.Draft(author, s.branch())
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
-	s.commitCatalogChange(w, "Add instance "+name, req.Author, inst)
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		cr.UpsertItem(it)
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+	d := s.Store.CurrentDraft()
+	pending := 0
+	if d != nil {
+		pending = len(d.Items)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": true, "pending": pending, "changeId": draft.ID})
 }
 
 // updateInstance patches an instance's metadata or status (archive = status
@@ -102,7 +141,8 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, "Update instance "+inst.Name, req.Author, inst)
 }
 
-// deleteInstance removes an instance from the registry and deletes its folder.
+// deleteInstance stages the retirement of an instance (registry entry +
+// folder) into the draft change request, reviewable before anything happens.
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author"`
@@ -110,11 +150,17 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewDecoder(r.Body).Decode(&req)
 	name := r.PathValue("name")
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	if err := writer.DeleteInstance(s.RepoPath, name); err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
-	s.commitCatalogChange(w, "Remove instance "+name, req.Author, map[string]any{"ok": true, "removed": name})
+	if _, ok := p.InstanceByName(name); !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance " + name + " not found"})
+		return
+	}
+	s.stageStructural(w, req.Author, change.Item{
+		Instance: name,
+		Action:   change.ActionRemoveInstance,
+	})
 }

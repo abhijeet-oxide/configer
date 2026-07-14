@@ -5,6 +5,7 @@
 package grid
 
 import (
+	"encoding/json"
 	"sort"
 	"strings"
 
@@ -126,7 +127,9 @@ func Build(p *project.Project) Grid {
 // ApplyDraft previews pending draft items on top of a built grid, so the UI
 // shows exactly what submitting would write. A "set" item shows the staged
 // value; "reset" and "exclude" show the cell going absent. A global item
-// previews on every cell not already supplied by the instance layer.
+// previews on every cell not already supplied by the instance layer. A staged
+// add-instance appears as a new "draft" column (cells copied from its clone
+// source, all pending); a staged remove-instance marks the column "retiring".
 func ApplyDraft(g *Grid, items []change.Item) {
 	if len(items) == 0 {
 		return
@@ -135,6 +138,10 @@ func ApplyDraft(g *Grid, items []change.Item) {
 	instItems := map[key]change.Item{}
 	globalItems := map[string]change.Item{}
 	for _, it := range items {
+		if it.Structural() {
+			applyStructuralPreview(g, it)
+			continue
+		}
 		if it.Scope == "global" {
 			globalItems[it.ParamID] = it
 			continue
@@ -162,6 +169,39 @@ func ApplyDraft(g *Grid, items []change.Item) {
 				}
 			}
 			g.Rows[i].Cells[name] = c
+		}
+	}
+}
+
+// applyStructuralPreview mirrors a staged topology change onto the grid.
+func applyStructuralPreview(g *Grid, it change.Item) {
+	switch it.Act() {
+	case change.ActionAddInstance:
+		for _, inst := range g.Instances {
+			if inst.Name == it.Instance {
+				return // already previewed
+			}
+		}
+		var meta model.Instance
+		if b, err := json.Marshal(it.New); err == nil {
+			_ = json.Unmarshal(b, &meta)
+		}
+		meta.Name = it.Instance
+		meta.Status = "draft" // pending: not on Git until the CR publishes
+		g.Instances = append(g.Instances, meta)
+		cloneFrom, _ := it.Old.(string)
+		for i := range g.Rows {
+			cell := Cell{State: StateNormal, Valid: true, Pending: true}
+			if src, ok := g.Rows[i].Cells[cloneFrom]; ok && cloneFrom != "" {
+				cell.Value, cell.Set, cell.Source = src.Value, src.Set, src.Source
+			}
+			g.Rows[i].Cells[it.Instance] = cell
+		}
+	case change.ActionRemoveInstance:
+		for i := range g.Instances {
+			if g.Instances[i].Name == it.Instance {
+				g.Instances[i].Status = "retiring" // pending removal
+			}
 		}
 	}
 }

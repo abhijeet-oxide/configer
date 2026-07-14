@@ -133,6 +133,17 @@ export interface Cell {
 
 export type CellAction = "set" | "reset" | "exclude";
 
+/** All draft item actions: cell edits plus structural instance changes. */
+export type ItemAction = CellAction | "add-instance" | "remove-instance";
+
+/** Human label for a structural item ("" for plain cell edits). */
+export const structuralLabel = (it: { action?: string; instance: string; old?: unknown }): string => {
+  if (it.action === "add-instance")
+    return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
+  if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
+  return "";
+};
+
 // --- change requests -------------------------------------------------------
 
 export type ChangeState = "draft" | "under_review" | "approved" | "published" | "rejected";
@@ -142,7 +153,7 @@ export interface ChangeItem {
   instance: string;
   /** "global" marks a scope-level edit applying to every instance */
   scope?: string;
-  action?: CellAction;
+  action?: ItemAction;
   old: unknown;
   new: unknown;
   updatedAt: string;
@@ -497,11 +508,13 @@ export const api = {
     send<Parameter>("POST", rp("/parameters"), { param, author }),
   // --- instances (registry lifecycle) ---
   instanceRegistry: () => get<{ instances: Instance[] | null }>(rp("/instances")),
-  addInstance: (p: InstanceInput) => send<Instance>("POST", rp("/instances"), p),
+  addInstance: (p: InstanceInput) =>
+    send<{ ok: boolean; staged: boolean; pending: number; changeId: number }>("POST", rp("/instances"), p),
   updateInstance: (name: string, patch: InstanceInput) =>
     put<Instance>(rp(`/instances/${encodeURIComponent(name)}`), patch),
   deleteInstance: (name: string, author?: string) =>
-    send<{ ok: boolean; removed: string }>("DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
+    send<{ ok: boolean; staged: boolean; pending: number; changeId: number }>(
+      "DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
   deleteParameter: (id: string, author?: string) =>
     send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
   revertValue: (paramId: string, instance: string) =>

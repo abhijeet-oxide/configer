@@ -16,7 +16,7 @@ import { PullRequestOutlined, ArrowRightOutlined, DeleteOutlined } from "@ant-de
 import { useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeItem, type Instance } from "../api";
+import { api, structuralLabel, type ChangeItem, type Instance } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 
@@ -25,6 +25,8 @@ import { useUI } from "../store";
 // per-row undo, change type + reference, and the git-native explanation.
 
 function afterValue(it: ChangeItem & { action?: string }) {
+  const structural = structuralLabel(it);
+  if (structural) return structural;
   if (it.action === "exclude") return "∅ removed from this instance";
   if (it.action === "reset") return "(back to inherited value)";
   return fmtValue(it.new);

@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, expandBinding, primaryBinding, type ChangeItem, type Grid } from "../api";
+import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, type Grid } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -24,6 +24,8 @@ import SubmitChangesButton from "./SubmitChangesButton";
 // becomes a branch + pull request behind the scenes.
 
 function afterValue(it: ChangeItem): string {
+  const structural = structuralLabel(it);
+  if (structural) return structural;
   if (it.action === "exclude") return "removed from this instance";
   if (it.action === "reset") return "back to inherited";
   return fmtValue(it.new);
@@ -51,6 +53,8 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
     const rows = new Map(grid.rows.map((r) => [r.param.id, r]));
     const insts = new Map(grid.instances.map((i) => [i.name, i]));
     return (it: ChangeItem): string => {
+      // Structural items change the instance registry (plus a folder).
+      if (structuralLabel(it)) return ".configer/instances.yaml";
       const row = rows.get(it.paramId);
       if (!row) return "(unmapped)";
       if (it.scope === "global") return primaryBinding(row.param).file || "(unmapped)";
@@ -184,27 +188,38 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <a
-                            className="mono"
-                            style={{ fontSize: 12 }}
-                            onClick={() => selectParam(it.paramId)}
-                          >
-                            {it.paramId}
-                          </a>
-                          {it.scope === "global" ? (
-                            <Tag color="purple" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
-                              global
+                        {structuralLabel(it) ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Tag color="blue" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                              structure
                             </Tag>
-                          ) : (
-                            <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{it.instance}</Tag>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 2 }}>
-                          <span className="mono" style={{ opacity: 0.5 }}>{fmtValue(it.old)}</span>
-                          <ArrowRightOutlined style={{ opacity: 0.4, fontSize: 9 }} />
-                          <span className="mono" style={{ color: token.colorSuccessText }}>{afterValue(it)}</span>
-                        </div>
+                            <span style={{ fontSize: 12 }}>{structuralLabel(it)}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <a
+                                className="mono"
+                                style={{ fontSize: 12 }}
+                                onClick={() => selectParam(it.paramId)}
+                              >
+                                {it.paramId}
+                              </a>
+                              {it.scope === "global" ? (
+                                <Tag color="purple" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                                  global
+                                </Tag>
+                              ) : (
+                                <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{it.instance}</Tag>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 2 }}>
+                              <span className="mono" style={{ opacity: 0.5 }}>{fmtValue(it.old)}</span>
+                              <ArrowRightOutlined style={{ opacity: 0.4, fontSize: 9 }} />
+                              <span className="mono" style={{ color: token.colorSuccessText }}>{afterValue(it)}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                       <Tooltip title="Discard this change">
                         <Button

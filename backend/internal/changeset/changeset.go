@@ -10,15 +10,18 @@ package changeset
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
+	"github.com/abhijeet-oxide/configer/backend/internal/layout"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/writeback"
+	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
 // Service wires the pieces of the CR pipeline together. The Backend seam
@@ -103,12 +106,32 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	// 1) Apply every item by editing the repository's OWN files in the
 	//    isolated worktree — the write-back-native model. Each edit is
 	//    surgical (comments, order and unmanaged content preserved), exactly
-	//    the diff a careful engineer would have produced by hand.
+	//    the diff a careful engineer would have produced by hand. Structural
+	//    items (add/remove instance) go first so value edits for a brand-new
+	//    instance land in its freshly scaffolded folder.
 	proj, err := project.Load(wt)
 	if err != nil {
 		return nil, fmt.Errorf("load project from worktree: %w", err)
 	}
+	structuralApplied := false
 	for _, it := range cr.Items {
+		if !it.Structural() {
+			continue
+		}
+		if err := applyStructural(wt, proj, it); err != nil {
+			return nil, fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)
+		}
+		structuralApplied = true
+	}
+	if structuralApplied {
+		if proj, err = project.Load(wt); err != nil {
+			return nil, fmt.Errorf("reload project from worktree: %w", err)
+		}
+	}
+	for _, it := range cr.Items {
+		if it.Structural() {
+			continue
+		}
 		if err := applyItem(wt, proj, it); err != nil {
 			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
 		}
@@ -203,6 +226,49 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 	return nil
 }
 
+// applyStructural performs an instance-topology item in the worktree: a new
+// instance is scaffolded by the layout adapter (following the repository's
+// own convention) or an existing one is retired (folder + registry entry) —
+// exactly what a careful engineer would do by hand.
+func applyStructural(root string, proj *project.Project, it change.Item) error {
+	switch it.Act() {
+	case change.ActionAddInstance:
+		var meta model.Instance
+		if err := decodeInto(it.New, &meta); err != nil {
+			return fmt.Errorf("decode instance metadata: %w", err)
+		}
+		meta.Name = it.Instance
+		cloneFrom, _ := it.Old.(string)
+		if cloneFrom != "" {
+			from, ok := proj.InstanceByName(cloneFrom)
+			if !ok {
+				return fmt.Errorf("clone source %q not found", cloneFrom)
+			}
+			scaffolded, err := layout.ForKind(proj.App.Layout).Scaffold(root, from, it.Instance)
+			if err != nil {
+				return err
+			}
+			meta.Folder = scaffolded.Folder
+			if meta.SoftwareVersion == "" {
+				meta.SoftwareVersion = from.SoftwareVersion
+			}
+		}
+		return writer.AddInstance(root, meta)
+	case change.ActionRemoveInstance:
+		return writer.DeleteInstance(root, it.Instance)
+	}
+	return fmt.Errorf("unknown structural action %q", it.Act())
+}
+
+// decodeInto round-trips a JSON-shaped any into a typed struct.
+func decodeInto(v any, out any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
+}
+
 func prBody(cr *change.ChangeRequest) string {
 	var b strings.Builder
 	if cr.Description != "" {
@@ -218,13 +284,24 @@ func prBody(cr *change.ChangeRequest) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("| Parameter | Instance | Old | New |\n|---|---|---|---|\n")
+	b.WriteString("| Change | Instance | Old | New |\n|---|---|---|---|\n")
 	for _, it := range cr.Items {
 		inst := it.Instance
 		if it.Scope == "global" {
 			inst = "ALL (global)"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
+		switch it.Act() {
+		case change.ActionAddInstance:
+			src := "empty"
+			if from, _ := it.Old.(string); from != "" {
+				src = "clone of " + from
+			}
+			fmt.Fprintf(&b, "| add instance | %s | — | %s |\n", inst, src)
+		case change.ActionRemoveInstance:
+			fmt.Fprintf(&b, "| remove instance | %s | — | — |\n", inst)
+		default:
+			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
+		}
 	}
 	fmt.Fprintf(&b, "\n_Change request #%d, submitted by %s via Configer._\n", cr.ID, cr.Author)
 	return b.String()

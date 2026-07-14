@@ -213,6 +213,63 @@ func TestSubmitResetRemovesKey(t *testing.T) {
 	}
 }
 
+// TestSubmitAddInstance is the git-native instance lifecycle contract: a
+// staged add-instance scaffolds the folder ON THE CR BRANCH (copy of the
+// clone source), registers the instance, and value edits for the brand-new
+// instance land inside the scaffolded folder — one reviewable commit.
+func TestSubmitAddInstance(t *testing.T) {
+	_, originDir, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("carol", "main")
+	cr.UpsertItem(change.Item{
+		Instance: "dr",
+		Action:   change.ActionAddInstance,
+		Old:      "prod", // clone source
+		New:      map[string]any{"environment": "production", "region": "us-west"},
+	})
+	// A value edit for the new instance rides the same CR.
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
+
+	got, err := svc.Submit(ctx, cr.ID, "Add DR instance", "", "carol", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// The scaffolded folder exists on the branch, cloned from prod, with the
+	// value edit applied on top.
+	values := sh(t, originDir, "git", "show", got.Branch+":instances/dr/values.yaml")
+	if !strings.Contains(values, "port: 7443") {
+		t.Errorf("value edit missing in scaffolded instance:\n%s", values)
+	}
+	if !strings.Contains(values, "name: demo") {
+		t.Errorf("clone content missing:\n%s", values)
+	}
+	// The registry entry carries the metadata and the folder binding.
+	reg := sh(t, originDir, "git", "show", got.Branch+":.configer/instances.yaml")
+	for _, want := range []string{"name: dr", "folder: instances/dr", "region: us-west"} {
+		if !strings.Contains(reg, want) {
+			t.Errorf("registry missing %q:\n%s", want, reg)
+		}
+	}
+
+	// Remove-instance CRs retire folder + registry entry.
+	cr2, _ := svc.Store.Draft("carol", "main")
+	cr2.UpsertItem(change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
+	got2, err := svc.Submit(ctx, cr2.ID, "Retire staging", "", "carol", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := sh(t, originDir, "git", "ls-tree", "-r", "--name-only", got2.Branch)
+	if strings.Contains(tree, "instances/staging/") {
+		t.Errorf("retired instance folder still on branch:\n%s", tree)
+	}
+	reg2 := sh(t, originDir, "git", "show", got2.Branch+":.configer/instances.yaml")
+	if strings.Contains(reg2, "name: staging") {
+		t.Errorf("retired instance still registered:\n%s", reg2)
+	}
+}
+
 func TestRejectDraftAndSubmitted(t *testing.T) {
 	_, _, svc := fixture(t)
 	ctx := context.Background()

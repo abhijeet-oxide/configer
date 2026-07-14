@@ -167,29 +167,17 @@ func TestInstanceRegistryLifecycle(t *testing.T) {
 		t.Errorf("folder = %s, want instances/staging", inst.Folder)
 	}
 
-	// clone copies the folder tree
+	// delete removes registry entry and folder
 	if err := os.MkdirAll(filepath.Join(root, "instances/staging"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(root, "instances/staging/values.yaml"), []byte("a: 1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	clone, err := CloneInstance(root, "staging", "dr", InstancePatch{})
-	if err != nil {
+	if err := DeleteInstance(root, "staging"); err != nil {
 		t.Fatal(err)
 	}
-	if clone.Folder != "instances/dr" {
-		t.Errorf("clone folder = %s", clone.Folder)
-	}
-	if b, err := os.ReadFile(filepath.Join(root, "instances/dr/values.yaml")); err != nil || string(b) != "a: 1\n" {
-		t.Errorf("clone files not copied: %v %q", err, b)
-	}
-
-	// delete removes registry entry and folder
-	if err := DeleteInstance(root, "dr"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(filepath.Join(root, "instances/dr")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "instances/staging")); !os.IsNotExist(err) {
 		t.Error("deleted instance folder still exists")
 	}
 }

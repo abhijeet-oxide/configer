@@ -27,7 +27,7 @@ function CardFor({ row, instances }: { row: Row; instances: Grid["instances"] })
         {instances.map((inst) => {
           const c = row.cells[inst.name];
           if (!c) return null;
-          const cls = c.excluded
+          const cls = !c.set
             ? "cell-excluded"
             : !c.valid
               ? "cell-invalid"
@@ -42,7 +42,7 @@ function CardFor({ row, instances }: { row: Row; instances: Grid["instances"] })
             <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>{inst.name}</Typography.Text>
               <span className={`mono ${cls}`}>
-                {c.excluded ? "∅ excluded" : c.state === "na" ? "n/a" : fmtValue(c.value)}
+                {!c.set ? "∅ absent" : c.state === "na" ? "n/a" : fmtValue(c.value)}
               </span>
             </div>
           );

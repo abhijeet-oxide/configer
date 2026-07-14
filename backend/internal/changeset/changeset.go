@@ -1,15 +1,16 @@
 // Package changeset orchestrates the git-native change request lifecycle.
 //
 // Submit turns a draft's pending items into a real change on Git: an isolated
-// worktree on branch configer/cr-<id>, sparse overlay updates, re-rendered
-// generated/ artifacts, one commit (machine committer + Changed-by trailer for
-// the human author), a push when a remote exists, and a hosted PR when a
+// worktree on branch configer/cr-<id>, surgical write-back edits into the
+// repository's own files, one commit (machine committer + Changed-by trailer
+// for the human author), a push when a remote exists, and a hosted PR when a
 // provider is configured. Merge publishes (provider PR merge or local git
 // merge); Reject closes.
 package changeset
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,10 +18,11 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
-	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
+	"github.com/abhijeet-oxide/configer/backend/internal/layout"
+	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
-	"github.com/abhijeet-oxide/configer/backend/internal/render"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/writeback"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
@@ -28,9 +30,8 @@ import (
 // makes the pipeline identical whether the repository is a local git working
 // tree or a remote repository managed through the Git data API (no clone).
 type Service struct {
-	Backend  repobackend.Backend
-	Store    *crstore.Store
-	Registry *plugin.Registry
+	Backend repobackend.Backend
+	Store   *crstore.Store
 }
 
 func branchName(id int) string { return fmt.Sprintf("configer/cr-%d", id) }
@@ -104,73 +105,63 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	defer ws.Close()
 	wt := ws.Dir()
 
-	// 1) Apply updates: sparse instance overlays, or the global scope overlay
-	//    for scope-level items ("change it for everyone").
-	globalTouched := false
-	for _, it := range cr.Items {
-		var aerr error
-		if it.Scope == "global" {
-			globalTouched = true
-			if it.Act() == change.ActionSet {
-				aerr = writer.SetGlobalValue(wt, it.ParamID, it.New)
-			} else {
-				aerr = writer.ResetGlobalValue(wt, it.ParamID)
-			}
-		} else {
-			switch it.Act() {
-			case change.ActionReset:
-				aerr = writer.ResetValue(wt, it.Instance, it.ParamID)
-			case change.ActionExclude:
-				aerr = writer.ExcludeValue(wt, it.Instance, it.ParamID)
-			default:
-				aerr = writer.SetValue(wt, it.Instance, it.ParamID, it.New)
-			}
-		}
-		if aerr != nil {
-			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, aerr)
-		}
-	}
-
-	// 2) Re-render generated/ for every touched instance (deterministic).
-	//    A global item touches every instance.
+	// 1) Apply every item by editing the repository's OWN files in the
+	//    isolated worktree — the write-back-native model. Each edit is
+	//    surgical (comments, order and unmanaged content preserved), exactly
+	//    the diff a careful engineer would have produced by hand. Structural
+	//    items (add/remove instance) go first so value edits for a brand-new
+	//    instance land in its freshly scaffolded folder.
 	proj, err := project.Load(wt)
 	if err != nil {
 		return nil, fmt.Errorf("load project from worktree: %w", err)
 	}
-	touched := cr.Instances()
-	if globalTouched {
-		touched = touched[:0]
-		for _, inst := range proj.Registry.Instances {
-			touched = append(touched, inst.Name)
+	structuralApplied := false
+	for _, it := range cr.Items {
+		if !it.Structural() {
+			continue
+		}
+		if err := applyStructural(wt, proj, it); err != nil {
+			return nil, fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)
+		}
+		structuralApplied = true
+	}
+	if structuralApplied {
+		if proj, err = project.Load(wt); err != nil {
+			return nil, fmt.Errorf("reload project from worktree: %w", err)
 		}
 	}
-	for _, inst := range touched {
-		if inst == "" {
-			continue // scope-level pseudo-instance
+	// Direct file edits (file mode) go next: full-content writes that value
+	// items then refine on top.
+	for _, it := range cr.Items {
+		if it.Act() != change.ActionEditFile {
+			continue
 		}
-		files, err := render.Instance(proj, inst, s.Registry)
-		if err != nil {
-			return nil, fmt.Errorf("render %s: %w", inst, err)
+		content, _ := it.New.(string)
+		full := filepath.Join(wt, filepath.FromSlash(it.File))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return nil, err
 		}
-		for _, f := range files {
-			out := filepath.Join(wt, "generated", inst, f.Path)
-			if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
-				return nil, err
-			}
-			if err := os.WriteFile(out, []byte(f.Content), 0o644); err != nil {
-				return nil, err
-			}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			return nil, fmt.Errorf("apply file edit %s: %w", it.File, err)
+		}
+	}
+	for _, it := range cr.Items {
+		if it.Structural() || it.Act() == change.ActionEditFile {
+			continue
+		}
+		if err := applyItem(wt, proj, it); err != nil {
+			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
 		}
 	}
 
-	// 3) One commit for the whole CR (worktree commit+push locally, a
+	// 2) One commit for the whole CR (worktree commit+push locally, a
 	//    Git-data-API partial commit remotely). The branch ref is created.
 	sha, err := ws.Commit(ctx, commitMessage(cr))
 	if err != nil {
 		return nil, err
 	}
 
-	// 4) Open a hosted PR when a provider is configured; otherwise the
+	// 3) Open a hosted PR when a provider is configured; otherwise the
 	//    branch alone is the reviewable artifact (pure-git / no provider).
 	prNum, prURL := 0, ""
 	if s.Backend.CanPublish() && s.Backend.Provider() != nil {
@@ -194,6 +185,107 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	})
 }
 
+// applyItem writes one draft item into the repository files inside root.
+//
+//   - A global-scope item edits the parameter's base-layer (shared) bindings:
+//     one edit, every instance follows.
+//   - An instance item edits the parameter's instance-layer bindings expanded
+//     for that instance, fanning out to every mapped file (a deduplicated
+//     parameter lives in several).
+//   - "reset" and "exclude" remove the key from the instance's files: the
+//     value falls back to whatever the base layer supplies, or becomes truly
+//     absent — exactly what deleting the line by hand would mean.
+func applyItem(root string, proj *project.Project, it change.Item) error {
+	param, ok := proj.ParamByID(it.ParamID)
+	if !ok {
+		return fmt.Errorf("parameter %q not found", it.ParamID)
+	}
+
+	if it.Scope == "global" {
+		bindings := param.BindingsOn(model.LayerBase, model.Instance{})
+		if len(bindings) == 0 {
+			return fmt.Errorf("parameter %q has no shared (base-layer) binding for a global edit", it.ParamID)
+		}
+		for _, b := range bindings {
+			var err error
+			if it.Act() == change.ActionSet {
+				err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
+			} else {
+				err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
+			}
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	inst, ok := proj.InstanceByName(it.Instance)
+	if !ok {
+		return fmt.Errorf("instance %q not found", it.Instance)
+	}
+	bindings := param.BindingsOn(model.LayerInstance, inst)
+	if len(bindings) == 0 {
+		return fmt.Errorf("parameter %q has no instance-layer binding; edit it globally", it.ParamID)
+	}
+	for _, b := range bindings {
+		var err error
+		switch it.Act() {
+		case change.ActionReset, change.ActionExclude:
+			err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
+		default:
+			err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyStructural performs an instance-topology item in the worktree: a new
+// instance is scaffolded by the layout adapter (following the repository's
+// own convention) or an existing one is retired (folder + registry entry) —
+// exactly what a careful engineer would do by hand.
+func applyStructural(root string, proj *project.Project, it change.Item) error {
+	switch it.Act() {
+	case change.ActionAddInstance:
+		var meta model.Instance
+		if err := decodeInto(it.New, &meta); err != nil {
+			return fmt.Errorf("decode instance metadata: %w", err)
+		}
+		meta.Name = it.Instance
+		cloneFrom, _ := it.Old.(string)
+		if cloneFrom != "" {
+			from, ok := proj.InstanceByName(cloneFrom)
+			if !ok {
+				return fmt.Errorf("clone source %q not found", cloneFrom)
+			}
+			scaffolded, err := layout.ForKind(proj.App.Layout).Scaffold(root, from, it.Instance)
+			if err != nil {
+				return err
+			}
+			meta.Folder = scaffolded.Folder
+			if meta.SoftwareVersion == "" {
+				meta.SoftwareVersion = from.SoftwareVersion
+			}
+		}
+		return writer.AddInstance(root, meta)
+	case change.ActionRemoveInstance:
+		return writer.DeleteInstance(root, it.Instance)
+	}
+	return fmt.Errorf("unknown structural action %q", it.Act())
+}
+
+// decodeInto round-trips a JSON-shaped any into a typed struct.
+func decodeInto(v any, out any) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(b, out)
+}
+
 func prBody(cr *change.ChangeRequest) string {
 	var b strings.Builder
 	if cr.Description != "" {
@@ -209,13 +301,26 @@ func prBody(cr *change.ChangeRequest) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("| Parameter | Instance | Old | New |\n|---|---|---|---|\n")
+	b.WriteString("| Change | Instance | Old | New |\n|---|---|---|---|\n")
 	for _, it := range cr.Items {
 		inst := it.Instance
 		if it.Scope == "global" {
 			inst = "ALL (global)"
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
+		switch it.Act() {
+		case change.ActionAddInstance:
+			src := "empty"
+			if from, _ := it.Old.(string); from != "" {
+				src = "clone of " + from
+			}
+			fmt.Fprintf(&b, "| add instance | %s | — | %s |\n", inst, src)
+		case change.ActionRemoveInstance:
+			fmt.Fprintf(&b, "| remove instance | %s | — | — |\n", inst)
+		case change.ActionEditFile:
+			fmt.Fprintf(&b, "| edit file `%s` | %s | — | — |\n", it.File, inst)
+		default:
+			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
+		}
 	}
 	fmt.Fprintf(&b, "\n_Change request #%d, submitted by %s via Configer._\n", cr.ID, cr.Author)
 	return b.String()

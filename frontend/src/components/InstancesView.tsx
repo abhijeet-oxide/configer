@@ -11,10 +11,11 @@ import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { envHex } from "../theme";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
-// Add, edit, clone, archive and delete instances; every change is a direct,
-// attributed commit to .configer/instances.yaml, so a new instance shows up as
-// a grid column right away. Archived instances stay in Git but drop out of the
-// active configuration grid.
+// Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
+// into the draft change request, and submitting produces a branch where the
+// instance folder is scaffolded (or removed) following the repository's own
+// layout convention — reviewable like any other change. Metadata edits
+// (version, region, labels, archive) commit directly with attribution.
 
 // Status colors carry meaning (green = active, gold = deprecated, etc.); red is
 // reserved for errors/destructive actions only. Environment identity colors come
@@ -76,17 +77,27 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   };
 
   const save = useMutation({
-    mutationFn: (v: { mode: "add" | "edit" | "clone"; orig?: string; input: InstanceInput }) =>
-      v.mode === "edit" ? api.updateInstance(v.orig!, v.input) : api.addInstance(v.input),
+    mutationFn: async (v: { mode: "add" | "edit" | "clone"; orig?: string; input: InstanceInput }) => {
+      if (v.mode === "edit") await api.updateInstance(v.orig!, v.input);
+      else await api.addInstance(v.input);
+    },
     onSuccess: (_r, v) => {
       setModal(null);
-      done(v.mode === "edit" ? "Instance updated" : "Instance created");
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      done(
+        v.mode === "edit"
+          ? "Instance updated (committed with attribution)"
+          : "Instance staged in your draft: its folder is scaffolded when you submit the changes for review",
+      );
     },
     onError: (e: Error) => message.error(e.message),
   });
   const remove = useMutation({
     mutationFn: (name: string) => api.deleteInstance(name, "demo-user"),
-    onSuccess: (r) => done(`Instance "${r.removed}" removed`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      done("Instance retirement staged in your draft: submit the changes to send it for review");
+    },
     onError: (e: Error) => message.error(e.message),
   });
   const setStatus = useMutation({
@@ -224,9 +235,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
                     </Tooltip>
                   )}
                   <Popconfirm
-                    title={`Delete instance "${i.name}"?`}
-                    description="Removes it and its generated files from Git. This cannot be undone from here."
-                    okText="Delete"
+                    title={`Retire instance "${i.name}"?`}
+                    description="Stages the removal of its folder and registry entry into your draft; nothing happens on Git until the change is submitted and approved."
+                    okText="Stage retirement"
                     okButtonProps={{ danger: true }}
                     onConfirm={() => remove.mutate(i.name)}
                   >
@@ -244,7 +255,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         title={modal?.mode === "edit" ? `Edit ${modal.instance?.name}` : modal?.mode === "clone" ? `Clone ${modal.instance?.name}` : "Add instance"}
         onCancel={() => setModal(null)}
         onOk={() => form.submit()}
-        okText={modal?.mode === "edit" ? "Save" : "Create"}
+        okText={modal?.mode === "edit" ? "Save" : "Stage in draft"}
         confirmLoading={save.isPending}
         destroyOnHidden
       >

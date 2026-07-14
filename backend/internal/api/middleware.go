@@ -15,10 +15,6 @@ import (
 // never takes the process down. For traces/metrics see docs/BACKEND_TECH.md
 // (OpenTelemetry + Prometheus are the recommended next step).
 
-type ctxKey int
-
-const requestIDKey ctxKey = 0
-
 // statusRecorder captures the status code and byte count for logging.
 type statusRecorder struct {
 	http.ResponseWriter

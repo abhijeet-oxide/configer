@@ -36,8 +36,9 @@ function buildItems(approvalsCount: number, findingsCount: number): MenuProps["i
       label: "More",
       children: [
         { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
+        { key: "instances", icon: <Ic icon={icons.deployments} />, label: "Instances" },
         { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
-        { key: "files", icon: <Ic icon={icons.files} />, label: "Rendered Files" },
+        { key: "files", icon: <Ic icon={icons.files} />, label: "Files" },
         {
           key: "drift",
           icon: <Ic icon={icons.drift} />,

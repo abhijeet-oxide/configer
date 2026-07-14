@@ -34,7 +34,7 @@ import {
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
+import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
@@ -163,9 +163,15 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   // wizard never proposes importing something twice.
   const managed = useMemo(() => {
     const s = new Set<string>();
-    for (const r of grid.rows) s.add(`${r.param.source.file}|${r.param.source.path}`);
+    for (const r of grid.rows) {
+      for (const b of bindingsOf(r.param)) {
+        s.add(`${b.file}|${b.path}`);
+        // Templated bindings cover one concrete file per instance.
+        for (const inst of grid.instances) s.add(`${expandBinding(b, inst)}|${b.path}`);
+      }
+    }
     return s;
-  }, [grid.rows]);
+  }, [grid.rows, grid.instances]);
 
   const existingCategories = useMemo(
     () => [...new Set(grid.rows.map((r) => r.param.category))].sort(),
@@ -270,7 +276,9 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
         // the scanned value becomes the catalog default; per-instance values
         // are edited afterwards in the Config Editor
         default: d.cand.value,
-        source: { file: d.cand.file, path: d.cand.path, format: d.cand.format },
+        // The backend template-izes files inside instance folders into
+        // {folder}/… bindings and merges duplicates.
+        bindings: [{ file: d.cand.file, path: d.cand.path, format: d.cand.format }],
       }));
       return api.importParameters({ parameters, ignoreFiles: ignoredFiles, author: "demo-user" });
     },

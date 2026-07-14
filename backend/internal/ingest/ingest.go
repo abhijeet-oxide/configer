@@ -1,6 +1,6 @@
 // Package ingest scans a repository working tree, detects configuration files
 // via the registered parser plugins, and extracts candidate parameters. Files
-// matching ignore globs (or living under .configer/.git/generated) are skipped.
+// matching ignore globs (or living under .configer or .git) are skipped.
 package ingest
 
 import (
@@ -30,7 +30,7 @@ type ScanResult struct {
 	Total   int          `json:"total"` // total candidate parameters found
 }
 
-var alwaysSkip = map[string]bool{".git": true, ".configer": true, "generated": true, "node_modules": true}
+var alwaysSkip = map[string]bool{".git": true, ".configer": true, "node_modules": true}
 
 // Scan walks root, applying ignore rules, and extracts candidate parameters.
 func Scan(root string, reg *plugin.Registry, ignore project.Ignore) (ScanResult, error) {

@@ -1,9 +1,0 @@
-kind: Overlay
-instance: prod-eu-west
-values:
-  net-service-ip: 10.20.10.10
-  net-admin-ip: 10.20.10.11
-  net-vip-enabled: true
-  net-vip-ip: 10.20.10.100
-  net-vip-netmask: 255.255.255.0
-  net-vip-gateway: 10.10.10.1

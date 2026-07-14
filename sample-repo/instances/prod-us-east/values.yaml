@@ -1,0 +1,17 @@
+# prod-us-east — gold tier, Ashburn DC1.
+# Managed by Configer; edits arrive as reviewed pull requests.
+namespace: telco-prod-use1
+network:
+  service:
+    ip: 10.10.10.10
+  admin:
+    ip: 10.10.10.11
+    port: 8443 # management plane
+  vip:
+    ip: 10.10.10.100
+  mtu: 9000 # jumbo frames on the prod fabric
+  ntp:
+    servers:
+      - 10.10.0.1
+      - 10.10.0.2
+      - 10.10.0.3

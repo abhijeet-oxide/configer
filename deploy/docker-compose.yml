@@ -18,8 +18,8 @@ services:
       CONFIGER_SYNC_SECONDS: 30
       
       # Git configuration
-      GIT_USER_NAME: Configer Bot
-      GIT_USER_EMAIL: bot@configer.local
+      CONFIGER_GIT_NAME: Configer Bot
+      CONFIGER_GIT_EMAIL: bot@configer.local
       
       # Feature flags
       FEATURE_SWAGGER_DOCS: "true"
@@ -31,7 +31,9 @@ services:
       # Database (future use)
       # DATABASE_URL: postgres://configer:configer@postgres:5432/configer
     volumes:
-      - ../sample-repo:/repo:ro
+      # Read-write: Configer commits edits into the repo's real files
+      # (write-back-native model).
+      - ../sample-repo:/repo
     ports:
       - "8080:8080"
     depends_on:

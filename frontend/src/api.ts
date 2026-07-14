@@ -1,18 +1,47 @@
 // Typed client for the Configer backend REST API.
 import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 
-export type Scope =
-  | "default"
-  | "global"
-  | "environment"
-  | "site"
-  | "zone"
-  | "instance";
+/** How widely an edit to a parameter lands: an instance-scoped parameter is
+ *  bound inside each instance's own folder; a global one lives in a shared
+ *  file every instance reads, so one edit applies to all. */
+export type Scope = "instance" | "global";
+
+/** Which precedence layer supplied a cell's value. */
+export type CellSource = "default" | "base" | "instance" | "";
+
+/** One real-file location a parameter's value lives at. File may contain
+ *  "{folder}" / "{instance}" templates expanded per instance. */
+export interface Binding {
+  file: string;
+  path: string;
+  format?: string;
+  layer?: string;
+}
+
+/** The parameter's bindings ([] for a design-phase parameter). */
+export const bindingsOf = (p: Parameter): Binding[] => p.bindings ?? [];
+
+/** The parameter's first binding (display convenience). */
+export const primaryBinding = (p: Parameter): Binding =>
+  p.bindings?.[0] ?? { file: "", path: "", format: "" };
+
+/** Expand a binding's file template for one instance. */
+export const expandBinding = (
+  b: Binding,
+  inst?: { name: string; folder?: string } | null,
+): string =>
+  !inst
+    ? b.file
+    : b.file
+        .replace(/\{folder\}/g, inst.folder || `instances/${inst.name}`)
+        .replace(/\{instance\}/g, inst.name);
 
 export type CellState = "normal" | "new" | "deprecated" | "na";
 
 export interface Instance {
   name: string;
+  /** the instance's directory in the repository (e.g. "instances/prod") */
+  folder?: string;
   environment?: string;
   region?: string;
   zone?: string;
@@ -77,9 +106,9 @@ export interface Parameter {
   itemType?: string;
   scope: Scope;
   secret: boolean;
-  source: { file: string; path: string; format: string };
-  /** additional locations this parameter's value maps to, beyond source */
-  sources?: { file: string; path: string; format: string }[];
+  /** real-file locations this parameter's value lives at; a deduplicated
+   *  parameter carries several, and an edit fans out to all of them */
+  bindings?: Binding[];
   validation?: Validation;
   default?: unknown;
   versionIntroduced?: string;
@@ -89,7 +118,10 @@ export interface Parameter {
 
 export interface Cell {
   value: unknown;
-  source: Scope;
+  source: CellSource;
+  /** repository file/path that supplied the value (when from a file) */
+  file?: string;
+  path?: string;
   set: boolean;
   state: CellState;
   valid: boolean;
@@ -97,11 +129,21 @@ export interface Cell {
   editable: boolean;
   /** staged in the current draft change request, not yet on Git */
   pending?: boolean;
-  /** instance-level tombstone: nothing renders for this cell */
-  excluded?: boolean;
 }
 
 export type CellAction = "set" | "reset" | "exclude";
+
+/** All draft item actions: cell edits plus structural instance changes. */
+export type ItemAction = CellAction | "add-instance" | "remove-instance" | "edit-file";
+
+/** Human label for a structural item ("" for plain cell edits). */
+export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
+  if (it.action === "add-instance")
+    return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
+  if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
+  if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
+  return "";
+};
 
 // --- change requests -------------------------------------------------------
 
@@ -112,7 +154,9 @@ export interface ChangeItem {
   instance: string;
   /** "global" marks a scope-level edit applying to every instance */
   scope?: string;
-  action?: CellAction;
+  /** repository path of a direct file edit (action "edit-file") */
+  file?: string;
+  action?: ItemAction;
   old: unknown;
   new: unknown;
   updatedAt: string;
@@ -208,6 +252,32 @@ export interface RepoStatus {
   autoSyncMs?: number;
   /** the remote branch was deleted; local work continues safely */
   upstreamGone?: boolean;
+}
+
+// Project summary; initialized=false routes the UI into onboarding.
+export interface ProjectInfo {
+  initialized: boolean;
+  project: string;
+  branch?: string;
+  remote?: string;
+  instances?: Instance[];
+  paramCount?: number;
+}
+
+// The onboarding proposal: detected layout, derived instances, and
+// deduplicated parameters with templated bindings + schema validation.
+export interface Discovery {
+  detection: {
+    layout: string;
+    score: number;
+    instances: { name: string; folder: string; environment?: string }[];
+    baseDirs?: string[];
+    note?: string;
+  };
+  instances: Instance[];
+  parameters: Parameter[];
+  sharedFiles?: string[];
+  skipped?: string[];
 }
 
 // Deployment identity for professional, environment-aware messaging.
@@ -387,6 +457,17 @@ export const api = {
 
   // --- active-repository scoped ---
   meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
+  projectInfo: () => get<ProjectInfo>(rp("/project")),
+  discover: () => send<Discovery>("POST", rp("/discover")),
+  initApp: (p: {
+    name: string;
+    description?: string;
+    layout?: string;
+    instances: Instance[];
+    parameters: Parameter[];
+    ignoreFiles?: string[];
+    author?: string;
+  }) => send<{ ok: boolean; parameters: number; instances: number; skipped?: string[] }>("POST", rp("/init"), p),
   grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
   compare: (left: string, right: string, opts?: { leftRef?: string; rightRef?: string }) => {
     const qs = new URLSearchParams({ left, right });
@@ -423,6 +504,9 @@ export const api = {
       rp(`/render/${encodeURIComponent(instance)}${suffix}`),
     );
   },
+  stageFileEdit: (p: { instance?: string; path: string; content: string; author?: string }) =>
+    put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
+      rp("/files/draft"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
@@ -430,11 +514,13 @@ export const api = {
     send<Parameter>("POST", rp("/parameters"), { param, author }),
   // --- instances (registry lifecycle) ---
   instanceRegistry: () => get<{ instances: Instance[] | null }>(rp("/instances")),
-  addInstance: (p: InstanceInput) => send<Instance>("POST", rp("/instances"), p),
+  addInstance: (p: InstanceInput) =>
+    send<{ ok: boolean; staged: boolean; pending: number; changeId: number }>("POST", rp("/instances"), p),
   updateInstance: (name: string, patch: InstanceInput) =>
     put<Instance>(rp(`/instances/${encodeURIComponent(name)}`), patch),
   deleteInstance: (name: string, author?: string) =>
-    send<{ ok: boolean; removed: string }>("DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
+    send<{ ok: boolean; staged: boolean; pending: number; changeId: number }>(
+      "DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
   deleteParameter: (id: string, author?: string) =>
     send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
   revertValue: (paramId: string, instance: string) =>
@@ -454,7 +540,7 @@ export const api = {
       secret?: boolean;
       default?: unknown;
       /** attach or re-map: always produced by the interactive picker */
-      source?: { file: string; path: string; format?: string };
+      bindings?: Binding[];
       author?: string;
     },
   ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),

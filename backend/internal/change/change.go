@@ -4,7 +4,10 @@
 // with Rejected as the terminal failure state.
 package change
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // State is a change request's lifecycle position.
 type State string
@@ -24,21 +27,43 @@ const (
 	// ActionSet writes New as the instance's override.
 	ActionSet Action = "set"
 	// ActionReset removes the instance override (and any exclusion) so the
-	// cell falls back to the scope chain (zone/site/env/global/default).
+	// cell falls back to the scope chain (base/default).
 	ActionReset Action = "reset"
 	// ActionExclude tombstones the parameter for this instance: nothing is
-	// rendered in its generated files, even when a default exists.
+	// present in its files, even when a default exists.
 	ActionExclude Action = "exclude"
+	// ActionAddInstance scaffolds a new instance: a folder following the
+	// repository's own convention plus a registry entry. Instance carries the
+	// new name; New carries the model.Instance metadata; Old the clone
+	// source's name ("" = start empty).
+	ActionAddInstance Action = "add-instance"
+	// ActionRemoveInstance retires an instance: its folder and registry
+	// entry are removed. Instance carries the name.
+	ActionRemoveInstance Action = "remove-instance"
+	// ActionEditFile stages a direct file edit from file mode: New carries
+	// the full new content, Old the baseline, File the repository path.
+	// Applied before value items, so cell edits refine on top.
+	ActionEditFile Action = "edit-file"
 )
 
-// Item is one pending cell edit: a (parameter, instance) change, or a
-// scope-level change when Scope is set (Instance is empty then).
+// Structural reports whether the action changes the instance topology rather
+// than a value; structural items apply before value items on submit.
+func (it Item) Structural() bool {
+	a := it.Act()
+	return a == ActionAddInstance || a == ActionRemoveInstance
+}
+
+// Item is one pending change: a (parameter, instance) cell edit, a
+// scope-level edit when Scope is set, a structural instance change, or a
+// direct file edit when File is set.
 type Item struct {
 	ParamID  string `json:"paramId"`
 	Instance string `json:"instance"`
 	// Scope marks a scope-level edit ("global" today): the value applies to
 	// every instance that does not override it at a more specific level.
-	Scope     string    `json:"scope,omitempty"`
+	Scope string `json:"scope,omitempty"`
+	// File is the repository path of a direct file edit (ActionEditFile).
+	File      string    `json:"file,omitempty"`
 	Action    Action    `json:"action,omitempty"` // empty == set
 	Old       any       `json:"old"`
 	New       any       `json:"new"`
@@ -78,11 +103,11 @@ type ChangeRequest struct {
 	UpdatedAt    time.Time `json:"updatedAt"`
 }
 
-// UpsertItem adds or replaces the pending edit for (paramID, instance),
+// UpsertItem adds or replaces the pending edit for (paramID, instance, file),
 // preserving the original Old value across successive edits of the same cell.
 func (cr *ChangeRequest) UpsertItem(it Item) {
 	for i := range cr.Items {
-		if cr.Items[i].ParamID == it.ParamID && cr.Items[i].Instance == it.Instance {
+		if cr.Items[i].ParamID == it.ParamID && cr.Items[i].Instance == it.Instance && cr.Items[i].File == it.File {
 			it.Old = cr.Items[i].Old // first observed value stays the baseline
 			cr.Items[i] = it
 			return
@@ -92,10 +117,15 @@ func (cr *ChangeRequest) UpsertItem(it Item) {
 }
 
 // RemoveItem drops the pending edit for (paramID, instance) and reports
-// whether one existed.
+// whether one existed. A direct file edit is addressed by paramID
+// "file:<path>" (its ParamID is empty).
 func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
+	file := ""
+	if strings.HasPrefix(paramID, "file:") {
+		paramID, file = "", strings.TrimPrefix(paramID, "file:")
+	}
 	for i := range cr.Items {
-		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance {
+		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance && cr.Items[i].File == file {
 			cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
 			return true
 		}

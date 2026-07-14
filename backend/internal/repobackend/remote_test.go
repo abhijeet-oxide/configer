@@ -207,9 +207,13 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenCR: %v", err)
 	}
-	os.WriteFile(filepath.Join(ws.Dir(), "base/values.yaml"), []byte("network:\n  port: 9090\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(ws.Dir(), "base/values.yaml"), []byte("network:\n  port: 9090\n"), 0o644); err != nil {
+		t.Fatalf("write values: %v", err)
+	}
 	_ = os.MkdirAll(filepath.Join(ws.Dir(), "generated/prod"), 0o755)
-	os.WriteFile(filepath.Join(ws.Dir(), "generated/prod/out.yaml"), []byte("port: 9090\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(ws.Dir(), "generated/prod/out.yaml"), []byte("port: 9090\n"), 0o644); err != nil {
+		t.Fatalf("write generated: %v", err)
+	}
 	sha, err := ws.Commit(ctx, "CR 1")
 	ws.Close()
 	if err != nil {
@@ -231,7 +235,9 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	}
 
 	// --- catalog write path: mutate the cache, CommitWorking (partial) ---
-	os.WriteFile(filepath.Join(cache, ".configer/catalog.yaml"), []byte("parameters:\n  - id: p1\n"), 0o644)
+	if err := os.WriteFile(filepath.Join(cache, ".configer/catalog.yaml"), []byte("parameters:\n  - id: p1\n"), 0o644); err != nil {
+		t.Fatalf("write catalog: %v", err)
+	}
 	wsha, committed, err := b.CommitWorking(ctx, "Import p1")
 	if err != nil || !committed {
 		t.Fatalf("CommitWorking: sha=%q committed=%v err=%v", wsha, committed, err)

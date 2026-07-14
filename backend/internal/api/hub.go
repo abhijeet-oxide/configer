@@ -20,7 +20,6 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/remoterepo"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
-	"github.com/abhijeet-oxide/configer/backend/internal/transposers"
 	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
 
@@ -129,7 +128,6 @@ func (h *Hub) open(e workspace.Entry) error {
 func (h *Hub) openRemote(e workspace.Entry) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
-	transposers.Register(reg)
 
 	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
@@ -287,7 +285,7 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 	}
 	sum.Branch = s.branch()
 	if p, err := s.load(); err == nil {
-		sum.Project = p.Catalog.Metadata.Project
+		sum.Project = p.Name()
 		sum.Params = len(p.Catalog.Parameters)
 		sum.Instances = len(p.Registry.Instances)
 		envs := map[string]int{}

@@ -1,0 +1,15 @@
+# prod-eu-west — gold tier, Dublin DC2.
+namespace: telco-prod-euw1
+network:
+  service:
+    ip: 10.20.10.10
+  admin:
+    ip: 10.20.10.11
+    port: 8443
+  vip:
+    ip: 10.20.10.100
+  mtu: 9000
+  ntp:
+    servers:
+      - 10.20.0.1
+      - 10.20.0.2

@@ -1,7 +1,7 @@
 import { Modal, Form, Input, Select, Switch, Radio, Typography, App as AntApp, type InputRef } from "antd";
 import { useRef } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid } from "../api";
+import { api, bindingsOf, type Grid } from "../api";
 
 // AddParameterModal creates a new catalog parameter from the GUI. Two modes:
 // attach to a source file right away, or create it in the DESIGN PHASE (no
@@ -42,7 +42,7 @@ export default function AddParameterModal({
   const type = Form.useWatch("type", form);
   const mode = Form.useWatch("mode", form);
 
-  const files = [...new Set(grid.rows.map((r) => r.param.source.file).filter(Boolean))];
+  const files = [...new Set(grid.rows.flatMap((r) => bindingsOf(r.param).map((b) => b.file)).filter(Boolean))];
   const categories = [...new Set(grid.rows.map((r) => r.param.category))];
 
   const create = useMutation({
@@ -57,21 +57,23 @@ export default function AddParameterModal({
           itemType: v.type === "list" ? v.itemType || "string" : undefined,
           scope: v.scope as never,
           secret: !!v.secret,
-          source:
+          bindings:
             v.mode === "design" || !v.file
               ? undefined
-              : {
-                  file: v.file,
-                  // default path: dotted name under root for yaml/json
-                  path: v.path || (v.file.endsWith(".xml") ? "" : `$.${v.name}`),
-                  format: v.file.endsWith(".xml") ? "xml" : v.file.endsWith(".json") ? "json" : "yaml",
-                },
+              : [
+                  {
+                    file: v.file,
+                    // default path: dotted name under root for yaml/json
+                    path: v.path || (v.file.endsWith(".xml") ? "" : `$.${v.name}`),
+                    format: v.file.endsWith(".xml") ? "xml" : v.file.endsWith(".json") ? "json" : "yaml",
+                  },
+                ],
         },
         "demo-user",
       ),
     onSuccess: (p) => {
       message.success(
-        p.source?.file
+        bindingsOf(p).length
           ? `Parameter ${p.name} added to the catalog`
           : `Parameter ${p.name} added in the design phase. Set its values now; attach it to a file from the details panel when the configuration arrives.`,
         6,
@@ -104,7 +106,7 @@ export default function AddParameterModal({
           label="Parameter name (dotted path style)"
           rules={[
             { required: true, message: "Required" },
-            { pattern: /^[a-zA-Z0-9_.\-\[\]]+$/, message: "Letters, digits, dots, dashes" },
+            { pattern: /^[a-zA-Z0-9_.[\]-]+$/, message: "Letters, digits, dots, dashes" },
           ]}
         >
           <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />

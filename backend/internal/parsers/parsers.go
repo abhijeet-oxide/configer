@@ -6,7 +6,6 @@ package parsers
 import (
 	"fmt"
 	"net"
-	"strconv"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
@@ -89,21 +88,3 @@ func flatten(node any, path, file, format string, out *[]plugin.Candidate) {
 		})
 	}
 }
-
-// asFloat is a small helper for validators/tests.
-func asFloat(v any) (float64, bool) {
-	switch t := v.(type) {
-	case float64:
-		return t, true
-	case int:
-		return float64(t), true
-	case int64:
-		return float64(t), true
-	case string:
-		f, err := strconv.ParseFloat(t, 64)
-		return f, err == nil
-	}
-	return 0, false
-}
-
-var _ = asFloat // reserved for validation use

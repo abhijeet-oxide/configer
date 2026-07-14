@@ -1,0 +1,6 @@
+<network namespace="telco-staging">
+  <tls minVersion="1.2"/>
+  <syslog>
+    <collector>10.30.9.1</collector>
+  </syslog>
+</network>

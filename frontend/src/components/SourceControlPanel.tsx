@@ -11,7 +11,7 @@ import {
 } from "@ant-design/icons";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeItem, type Grid } from "../api";
+import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, type Grid } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -24,6 +24,8 @@ import SubmitChangesButton from "./SubmitChangesButton";
 // becomes a branch + pull request behind the scenes.
 
 function afterValue(it: ChangeItem): string {
+  const structural = structuralLabel(it);
+  if (structural) return structural;
   if (it.action === "exclude") return "removed from this instance";
   if (it.action === "reset") return "back to inherited";
   return fmtValue(it.new);
@@ -45,18 +47,31 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   const st = statusQ.data;
 
-  // Map every parameter to the file it comes from, so changes group the way a
-  // developer would see them in a diff: by file.
+  // Map every draft item to the file its write-back lands in, so changes
+  // group the way a developer would see them in a diff: by file.
   const fileOf = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of grid.rows) m.set(r.param.id, r.param.source?.file || "(unmapped)");
-    return m;
-  }, [grid.rows]);
+    const rows = new Map(grid.rows.map((r) => [r.param.id, r]));
+    const insts = new Map(grid.instances.map((i) => [i.name, i]));
+    return (it: ChangeItem): string => {
+      // A direct file edit groups under its own file; other structural
+      // items change the instance registry (plus a folder).
+      if (it.action === "edit-file") return it.file ?? "(file)";
+      if (structuralLabel(it)) return ".configer/instances.yaml";
+      const row = rows.get(it.paramId);
+      if (!row) return "(unmapped)";
+      if (it.scope === "global") return primaryBinding(row.param).file || "(unmapped)";
+      return (
+        row.cells[it.instance]?.file ||
+        expandBinding(primaryBinding(row.param), insts.get(it.instance)) ||
+        "(unmapped)"
+      );
+    };
+  }, [grid.rows, grid.instances]);
 
   const byFile = useMemo<FileChanges[]>(() => {
     const groups = new Map<string, ChangeItem[]>();
     for (const it of items) {
-      const f = fileOf.get(it.paramId) ?? "(unmapped)";
+      const f = fileOf(it) ?? "(unmapped)";
       const arr = groups.get(f) ?? [];
       arr.push(it);
       groups.set(f, arr);
@@ -67,7 +82,8 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   }, [items, fileOf]);
 
   const revert = useMutation({
-    mutationFn: (it: ChangeItem) => api.revertValue(it.paramId, it.instance),
+    mutationFn: (it: ChangeItem) =>
+      api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
     onSuccess: () => qc.invalidateQueries(),
     onError: (e: Error) => message.error(e.message),
   });
@@ -175,27 +191,38 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
                       }}
                     >
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <a
-                            className="mono"
-                            style={{ fontSize: 12 }}
-                            onClick={() => selectParam(it.paramId)}
-                          >
-                            {it.paramId}
-                          </a>
-                          {it.scope === "global" ? (
-                            <Tag color="purple" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
-                              global
+                        {structuralLabel(it) ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <Tag color="blue" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                              structure
                             </Tag>
-                          ) : (
-                            <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{it.instance}</Tag>
-                          )}
-                        </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 2 }}>
-                          <span className="mono" style={{ opacity: 0.5 }}>{fmtValue(it.old)}</span>
-                          <ArrowRightOutlined style={{ opacity: 0.4, fontSize: 9 }} />
-                          <span className="mono" style={{ color: token.colorSuccessText }}>{afterValue(it)}</span>
-                        </div>
+                            <span style={{ fontSize: 12 }}>{structuralLabel(it)}</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <a
+                                className="mono"
+                                style={{ fontSize: 12 }}
+                                onClick={() => selectParam(it.paramId)}
+                              >
+                                {it.paramId}
+                              </a>
+                              {it.scope === "global" ? (
+                                <Tag color="purple" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                                  global
+                                </Tag>
+                              ) : (
+                                <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{it.instance}</Tag>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 2 }}>
+                              <span className="mono" style={{ opacity: 0.5 }}>{fmtValue(it.old)}</span>
+                              <ArrowRightOutlined style={{ opacity: 0.4, fontSize: 9 }} />
+                              <span className="mono" style={{ color: token.colorSuccessText }}>{afterValue(it)}</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                       <Tooltip title="Discard this change">
                         <Button

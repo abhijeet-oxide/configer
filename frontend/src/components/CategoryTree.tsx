@@ -150,7 +150,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         ),
       })),
     }));
-  }, [grid.instances]);
+  }, [grid]);
 
   return (
     <div className="cat-tree" style={{ height: "100%", display: "flex", flexDirection: "column" }}>

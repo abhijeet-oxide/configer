@@ -1,14 +1,11 @@
 // Package plugin defines Configer's extension points and a registry for them.
-// Everything the platform does to a repository is expressed as a plugin so new
-// capabilities can be added without changing the core:
+// Capabilities that interpret repository content are expressed as plugins so
+// new formats can be added without changing the core:
 //
-//   - IngestParser  : source file        -> candidate parameters
-//   - SchemaImporter: schema file         -> validation rules
-//   - Transposer    : resolved parameters -> generated output artifacts
-//   - Validator     : parameter values    -> validation findings
+//   - IngestParser  : source file -> candidate parameters
+//   - SchemaImporter: schema file -> validation rules
 //
-// Built-in plugins register themselves at startup; per-project selection is
-// driven by .configer/plugins.yaml.
+// Built-in plugins register themselves at startup.
 package plugin
 
 import (
@@ -25,9 +22,6 @@ type Kind string
 const (
 	KindIngestParser   Kind = "ingest-parser"
 	KindSchemaImporter Kind = "schema-importer"
-	KindTransposer     Kind = "transposer"
-	KindValidator      Kind = "validator"
-	KindAIProvider     Kind = "ai-provider"
 )
 
 // Manifest is the self-description every plugin exposes so it can be listed and
@@ -44,7 +38,7 @@ type Manifest struct {
 // the user promotes it into the catalog.
 type Candidate struct {
 	Name   string          `json:"name"`   // human/dotted name, e.g. network.service.ip
-	Path   string          `json:"path"`   // JSONPath (json/yaml) or XPath (xml)
+	Path   string          `json:"path"`   // dotted path (json/yaml) or XPath (xml)
 	Type   model.ParamType `json:"type"`   // inferred type
 	Value  any             `json:"value"`  // value found in the source file
 	File   string          `json:"file"`   // repo-relative source file
@@ -60,40 +54,10 @@ type IngestParser interface {
 	Extract(file string, content []byte) ([]Candidate, error)
 }
 
-// GenContext is the input handed to a Transposer when producing generated
-// artifacts for a single instance.
-type GenContext struct {
-	Instance model.Instance
-	// Values is the fully resolved parameter set (paramID -> effective value)
-	// for this instance.
-	Values map[string]any
-	// Params gives access to parameter metadata (paths, source files, types).
-	Params map[string]model.Parameter
-	// Config is the plugin's project-level configuration block.
-	Config map[string]any
-}
-
-// OutputFile is one file a Transposer wants written under generated/<instance>/.
-type OutputFile struct {
-	// Path is relative to generated/<instance>/.
-	Path    string
-	Content []byte
-}
-
-// Transposer turns resolved configuration into arbitrary output artifacts.
-// Example: a Flux generator that synthesizes HelmRelease/Kustomization files
-// that do not exist in the source repo but are produced from the config.
-type Transposer interface {
-	Manifest() Manifest
-	// Generate returns the artifacts to write for this instance.
-	Generate(ctx GenContext) ([]OutputFile, error)
-}
-
 // Registry holds all registered plugins, grouped by kind.
 type Registry struct {
-	mu       sync.RWMutex
-	parsers  []IngestParser
-	transpos []Transposer
+	mu      sync.RWMutex
+	parsers []IngestParser
 }
 
 // NewRegistry returns an empty registry.
@@ -106,28 +70,12 @@ func (r *Registry) RegisterParser(p IngestParser) {
 	r.parsers = append(r.parsers, p)
 }
 
-// RegisterTransposer adds a transposer.
-func (r *Registry) RegisterTransposer(t Transposer) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.transpos = append(r.transpos, t)
-}
-
 // Parsers returns the registered ingest parsers.
 func (r *Registry) Parsers() []IngestParser {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]IngestParser, len(r.parsers))
 	copy(out, r.parsers)
-	return out
-}
-
-// Transposers returns the registered transposers.
-func (r *Registry) Transposers() []Transposer {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]Transposer, len(r.transpos))
-	copy(out, r.transpos)
 	return out
 }
 
@@ -149,9 +97,6 @@ func (r *Registry) Manifests() []Manifest {
 	var ms []Manifest
 	for _, p := range r.parsers {
 		ms = append(ms, p.Manifest())
-	}
-	for _, t := range r.transpos {
-		ms = append(ms, t.Manifest())
 	}
 	sort.Slice(ms, func(i, j int) bool {
 		if ms[i].Kind != ms[j].Kind {

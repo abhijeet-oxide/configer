@@ -1,0 +1,3 @@
+app:
+  replicas: 5 # kpt-set: ${replicas}
+  region: us-east # kpt-set: ${region}

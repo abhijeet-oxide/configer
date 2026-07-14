@@ -23,9 +23,11 @@ import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import ImportWizard from "./components/ImportWizard";
+import InstancesView from "./components/InstancesView";
+import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
-import RenderedFilesView from "./components/RenderedFilesView";
+import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { GridSkeleton, TableSkeleton, ApprovalsSkeleton, FilesSkeleton } from "./components/Skeletons";
@@ -119,7 +121,21 @@ export default function App() {
   const wide = screens.lg !== false; // >= 992px: three-panel layout
   const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const online = useConn((s) => s.online);
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, refetchInterval: online ? false : 10_000 });
+  // Whether the selected repository carries a Configer application at all: a
+  // connected-but-uninitialized repo routes into the onboarding wizard.
+  const projectQ = useQuery({
+    queryKey: ["project-info"],
+    queryFn: api.projectInfo,
+    enabled: !!repoId,
+    staleTime: 30_000,
+  });
+  const uninitialized = projectQ.data?.initialized === false;
+  const gridQ = useQuery({
+    queryKey: ["grid"],
+    queryFn: api.grid,
+    enabled: !uninitialized,
+    refetchInterval: online ? false : 10_000,
+  });
   // lightweight heartbeat: keeps probing while unreachable so recovery is automatic
   useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 8_000, retry: false });
   const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
@@ -218,6 +234,14 @@ export default function App() {
           <WorkspaceView grid={grid} />
         </div>
       );
+    // A repository without a .configer application goes through onboarding
+    // before any other view makes sense.
+    if (uninitialized)
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <OnboardingWizard projectName={projectQ.data?.project ?? "this repository"} />
+        </div>
+      );
     if (gridQ.isLoading) {
       // state-aware skeletons: mirror the exact layout the user is waiting for
       if (section === "approvals") return <ApprovalsSkeleton />;
@@ -287,10 +311,16 @@ export default function App() {
           <ComparePanel grid={grid} />
         </div>
       );
+    if (section === "instances")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <InstancesView grid={grid} />
+        </div>
+      );
     if (section === "files")
       return (
         <div style={{ height: "100%", ...panelBg }}>
-          <RenderedFilesView grid={grid} />
+          <FilesView />
         </div>
       );
     if (section === "config") return editorLayout();

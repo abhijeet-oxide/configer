@@ -1,0 +1,7 @@
+<network namespace="telco-prod-euw1">
+  <tls minVersion="1.3"/>
+  <syslog>
+    <collector>10.20.9.1</collector>
+    <collector>10.20.9.2</collector>
+  </syslog>
+</network>

@@ -1,0 +1,13 @@
+{
+  "type": "object",
+  "required": ["namespace"],
+  "properties": {
+    "namespace": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "app": {
+      "type": "object",
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+      }
+    }
+  }
+}

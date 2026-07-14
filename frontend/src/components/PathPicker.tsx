@@ -12,7 +12,7 @@ import {
 import { SearchOutlined, LinkOutlined, FileTextOutlined } from "@ant-design/icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Parameter, type ScanCandidate } from "../api";
+import { api, bindingsOf, primaryBinding, type Grid, type Parameter, type ScanCandidate } from "../api";
 import { fmtValue } from "../rules";
 
 // PathPicker is the interactive attach flow: the user never hunts for a
@@ -48,15 +48,15 @@ export default function PathPicker({
   const usedBy = useMemo(() => {
     const m = new Map<string, string>();
     for (const r of grid.rows) {
-      if (r.param.id === param.id || !r.param.source.file) continue;
-      m.set(`${r.param.source.file}|${r.param.source.path}`, r.param.name);
+      if (r.param.id === param.id) continue;
+      for (const b of bindingsOf(r.param)) m.set(`${b.file}|${b.path}`, r.param.name);
     }
     return m;
   }, [grid.rows, param.id]);
 
   const files = scanQ.data?.files ?? [];
   // note: a design-phase parameter has an EMPTY source file, so fall through
-  const activeFile = file || param.source.file || files[0]?.file || null;
+  const activeFile = file || primaryBinding(param).file || files[0]?.file || null;
   const current = files.find((f) => f.file === activeFile);
   const needle = q.trim().toLowerCase();
   const cands = (current?.candidates ?? []).filter(
@@ -70,12 +70,12 @@ export default function PathPicker({
   const attach = useMutation({
     mutationFn: (c: ScanCandidate) =>
       api.updateParameter(param.id, {
-        source: { file: c.file, path: c.path, format: c.format },
+        bindings: [{ file: c.file, path: c.path, format: c.format }],
         author: "demo-user",
       }),
     onSuccess: (p) => {
       message.success(
-        `${p.name} is now attached to ${p.source.file}. Its values render into the file from here on (committed to Git).`,
+        `${p.name} is now attached to ${primaryBinding(p).file}. Edits write back into the file from here on (committed to Git).`,
         6,
       );
       qc.invalidateQueries();
@@ -84,7 +84,7 @@ export default function PathPicker({
     onError: (e: Error) => message.error(e.message),
   });
 
-  const isDesign = !param.source.file;
+  const isDesign = !primaryBinding(param).file;
 
   return (
     <Modal
@@ -141,8 +141,8 @@ export default function PathPicker({
           style={{ marginBottom: 10 }}
           message={
             <>
-              Currently attached to <span className="mono">{param.source.file}</span> at{" "}
-              <span className="mono">{param.source.path}</span>. Selecting a new spot re-points it.
+              Currently attached to <span className="mono">{primaryBinding(param).file}</span> at{" "}
+              <span className="mono">{primaryBinding(param).path}</span>. Selecting a new spot re-points it.
             </>
           }
         />
@@ -155,7 +155,7 @@ export default function PathPicker({
         pagination={cands.length > 12 ? { pageSize: 12, size: "small" } : false}
         onRow={(c) => {
           const owner = usedBy.get(`${c.file}|${c.path}`);
-          const isCurrent = c.file === param.source.file && c.path === param.source.path;
+          const isCurrent = c.file === primaryBinding(param).file && c.path === primaryBinding(param).path;
           return {
             onClick: () => {
               if (owner || isCurrent || attach.isPending) return;
@@ -195,7 +195,7 @@ export default function PathPicker({
             width: 150,
             render: (_v, c) => {
               const owner = usedBy.get(`${c.file}|${c.path}`);
-              if (c.file === param.source.file && c.path === param.source.path)
+              if (c.file === primaryBinding(param).file && c.path === primaryBinding(param).path)
                 return <Tag color="blue">current mapping</Tag>;
               if (owner)
                 return (

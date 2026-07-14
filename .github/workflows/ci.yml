@@ -28,6 +28,12 @@ jobs:
         run: go test ./...
       - name: Build
         run: go build ./...
+      - name: Smoke (end-to-end write-back)
+        working-directory: .
+        run: |
+          git config --global user.name ci
+          git config --global user.email ci@example.com
+          ./scripts/smoke.sh
 
   frontend:
     runs-on: ubuntu-latest

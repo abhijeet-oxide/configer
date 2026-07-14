@@ -46,9 +46,9 @@ test: ## Run backend tests + frontend typecheck
 	cd $(FRONTEND) && npx tsc --noEmit
 
 .PHONY: lint
-lint: ## go vet + TypeScript typecheck
+lint: ## go vet + ESLint + TypeScript typecheck
 	cd $(BACKEND) && go vet ./...
-	cd $(FRONTEND) && npx tsc --noEmit
+	cd $(FRONTEND) && npx eslint src && npx tsc --noEmit
 
 .PHONY: fmt
 fmt: ## Format Go code

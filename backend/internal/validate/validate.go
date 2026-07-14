@@ -23,8 +23,8 @@ type Result struct {
 	Message string `json:"message,omitempty"`
 }
 
-func ok() Result                 { return Result{Valid: true} }
-func invalid(msg string) Result  { return Result{Valid: false, Message: msg} }
+func ok() Result                { return Result{Valid: true} }
+func invalid(msg string) Result { return Result{Valid: false, Message: msg} }
 
 var patternCache sync.Map // pattern string -> *regexp.Regexp
 
@@ -95,7 +95,7 @@ func Value(param model.Parameter, v any) Result {
 			if r := applyRules(rules, s); !r.Valid {
 				msg := p.Name + ": " + r.Message
 				if p.Example != "" {
-				msg += ", for example " + p.Example
+					msg += ", for example " + p.Example
 				}
 				return invalid(msg)
 			}

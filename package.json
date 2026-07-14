@@ -1,12 +1,8 @@
 {
   "name": "configer",
   "version": "0.1.0",
-  "description": "Enterprise-grade configuration management platform",
+  "description": "Git-native configuration management: a spreadsheet UI that surgically edits your repository's own files",
   "private": true,
-  "engines": {
-    "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
-  },
   "scripts": {
     "start": "concurrently \"npm:backend\" \"npm:frontend\"",
     "dev": "npm start",
@@ -17,10 +13,11 @@
     "build:frontend": "cd frontend && npm run build",
     "test": "concurrently \"npm:test:backend\" \"npm:test:frontend\"",
     "test:backend": "cd backend && go test ./...",
-    "test:frontend": "cd frontend && npm run test 2>/dev/null || echo 'Frontend tests not configured'",
+    "test:frontend": "cd frontend && npx tsc --noEmit",
     "docker:up": "cd deploy && docker compose up --build",
     "docker:down": "cd deploy && docker compose down",
-    "setup": "node scripts/setup.js"
+    "setup": "node scripts/setup.js",
+    "smoke": "./scripts/smoke.sh"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

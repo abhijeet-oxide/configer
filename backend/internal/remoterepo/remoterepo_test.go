@@ -204,8 +204,8 @@ func newClient(srv *httptest.Server) *Client {
 func TestMaterializeCommitRefresh(t *testing.T) {
 	st := newStub()
 	st.seed(map[string]string{
-		"base/values.yaml":    "network:\n  port: 8080\n",
-		".configer/catalog.yaml": "parameters: []\n",
+		"base/values.yaml":          "network:\n  port: 8080\n",
+		".configer/parameters.yaml": "parameters: []\n",
 	})
 	srv := httptest.NewServer(st.handler(t))
 	defer srv.Close()

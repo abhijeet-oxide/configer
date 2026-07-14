@@ -89,16 +89,16 @@ type ChangeRequest struct {
 	Reference string `json:"reference,omitempty"`
 	// Category classifies the change: hotfix | feature | bugfix |
 	// maintenance | security | other.
-	Category string `json:"category,omitempty"`
-	Author   string `json:"author"`
-	TargetBranch string `json:"targetBranch"`
-	Branch       string `json:"branch,omitempty"`
-	BaseSHA      string `json:"baseSha,omitempty"`
-	CommitSHA    string `json:"commitSha,omitempty"`
-	State        State  `json:"state"`
-	Items        []Item `json:"items"`
-	PRNumber     int    `json:"prNumber,omitempty"`
-	PRURL        string `json:"prUrl,omitempty"`
+	Category     string    `json:"category,omitempty"`
+	Author       string    `json:"author"`
+	TargetBranch string    `json:"targetBranch"`
+	Branch       string    `json:"branch,omitempty"`
+	BaseSHA      string    `json:"baseSha,omitempty"`
+	CommitSHA    string    `json:"commitSha,omitempty"`
+	State        State     `json:"state"`
+	Items        []Item    `json:"items"`
+	PRNumber     int       `json:"prNumber,omitempty"`
+	PRURL        string    `json:"prUrl,omitempty"`
 	CreatedAt    time.Time `json:"createdAt"`
 	UpdatedAt    time.Time `json:"updatedAt"`
 }

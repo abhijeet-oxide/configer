@@ -12,8 +12,8 @@ import (
 // This file adds the baseline HTTP observability every service needs: a request
 // id on every response, one structured access-log line per request (method,
 // path, status, duration), and a panic recovery net so a single bad handler
-// never takes the process down. For traces/metrics see docs/BACKEND_TECH.md
-// (OpenTelemetry + Prometheus are the recommended next step).
+// never takes the process down. For traces/metrics, OpenTelemetry +
+// Prometheus are the recommended next step.
 
 // statusRecorder captures the status code and byte count for logging.
 type statusRecorder struct {

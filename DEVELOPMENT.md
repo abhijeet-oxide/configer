@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - **Node.js** 18+ (for frontend and tooling)
-- **Go** 1.24.7+ (for backend)
+- **Go** 1.25+ (for backend)
 - **npm** or **pnpm** (frontend package manager)
 - **Docker & Docker Compose** (optional, for containerized setup)
 
@@ -225,7 +225,6 @@ configer/
 
 - Read [CONFIG.md](CONFIG.md) for advanced configuration
 - Check [README.md](README.md) for feature overview
-- See `docs/PLAN.md` for roadmap
 
 ## Getting Help
 

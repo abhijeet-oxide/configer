@@ -177,8 +177,8 @@ func (s *ghStub) server(t *testing.T) *httptest.Server {
 
 func TestRemoteBackendCRAndWorking(t *testing.T) {
 	stub := newGHStub(map[string]string{
-		"base/values.yaml":       "network:\n  port: 8080\n",
-		".configer/catalog.yaml": "parameters: []\n",
+		"base/values.yaml":          "network:\n  port: 8080\n",
+		".configer/parameters.yaml": "parameters: []\n",
 	})
 	srv := stub.server(t)
 	defer srv.Close()
@@ -210,8 +210,8 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Dir(), "base/values.yaml"), []byte("network:\n  port: 9090\n"), 0o644); err != nil {
 		t.Fatalf("write values: %v", err)
 	}
-	_ = os.MkdirAll(filepath.Join(ws.Dir(), "generated/prod"), 0o755)
-	if err := os.WriteFile(filepath.Join(ws.Dir(), "generated/prod/out.yaml"), []byte("port: 9090\n"), 0o644); err != nil {
+	_ = os.MkdirAll(filepath.Join(ws.Dir(), "notes"), 0o755)
+	if err := os.WriteFile(filepath.Join(ws.Dir(), "notes/prod-out.yaml"), []byte("port: 9090\n"), 0o644); err != nil {
 		t.Fatalf("write generated: %v", err)
 	}
 	sha, err := ws.Commit(ctx, "CR 1")
@@ -235,7 +235,7 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	}
 
 	// --- catalog write path: mutate the cache, CommitWorking (partial) ---
-	if err := os.WriteFile(filepath.Join(cache, ".configer/catalog.yaml"), []byte("parameters:\n  - id: p1\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cache, ".configer/parameters.yaml"), []byte("parameters:\n  - id: p1\n"), 0o644); err != nil {
 		t.Fatalf("write catalog: %v", err)
 	}
 	wsha, committed, err := b.CommitWorking(ctx, "Import p1")

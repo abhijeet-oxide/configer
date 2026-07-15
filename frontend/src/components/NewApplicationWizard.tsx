@@ -10,15 +10,18 @@ import {
   Space,
   Steps,
   Tag,
+  Tooltip,
   Typography,
   App as AntApp,
 } from "antd";
 import {
   ArrowLeftOutlined,
   ArrowRightOutlined,
+  ArrowUpOutlined,
   BranchesOutlined,
   FileSearchOutlined,
   FolderOpenOutlined,
+  FolderOutlined,
   GithubOutlined,
   HddOutlined,
   LockOutlined,
@@ -233,9 +236,12 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
 
 // ---- step: local folder --------------------------------------------------------
 
-// A folder path and a name; the backend opens the folder in place and
-// initializes Git (with an initial import commit) when it isn't a repository
-// yet, so every edit is versioned from the very first one.
+// A folder PICKER (no typing, no naming): navigate the machine's own
+// filesystem and choose a folder. The application takes the folder's name and
+// a pointer to where it lives — both kept in the workspace on this device. The
+// backend opens the folder in place and initializes Git (with an initial
+// import commit) when it isn't a repository yet, so every edit is versioned
+// from the very first one.
 function LocalFolderStep({
   onBack,
   onDone,
@@ -245,10 +251,20 @@ function LocalFolderStep({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [form] = Form.useForm<{ path: string; name?: string }>();
+  // The directory currently open in the picker (undefined = the server's home).
+  const [cwd, setCwd] = useState<string | undefined>(undefined);
+
+  const listQ = useQuery({
+    queryKey: ["fs-browse", cwd ?? ""],
+    queryFn: () => api.browseFolders(cwd),
+    // keep the previous listing on screen while the next loads (no flicker)
+    placeholderData: (prev) => prev,
+  });
+  const listing = listQ.data;
+
   const connect = useMutation({
-    mutationFn: (v: { path: string; name?: string }) =>
-      api.connectRepo({ url: v.path.trim(), name: v.name?.trim() || undefined }),
+    // Name is derived server-side from the folder; nothing to enter here.
+    mutationFn: (path: string) => api.connectRepo({ url: path }),
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created from the local folder. Scanning it…`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
@@ -258,33 +274,97 @@ function LocalFolderStep({
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-      <Form
-        form={form}
-        layout="vertical"
-        requiredMark={false}
-        onFinish={(v) => connect.mutate(v)}
+    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+      {/* Current location + up. The path is shown, never typed. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <Tooltip title="Up one folder">
+          <Button
+            size="small"
+            icon={<ArrowUpOutlined />}
+            disabled={!listing?.parent || connect.isPending}
+            onClick={() => listing?.parent && setCwd(listing.parent)}
+            aria-label="Up one folder"
+          />
+        </Tooltip>
+        <FolderOpenOutlined style={{ opacity: 0.6 }} />
+        <Typography.Text className="mono" ellipsis style={{ fontSize: 12.5, flex: 1 }} title={listing?.path}>
+          {listing?.path ?? "…"}
+        </Typography.Text>
+      </div>
+
+      {/* The folders inside the current one; click to go deeper. */}
+      <div
+        style={{
+          flex: 1,
+          minHeight: 220,
+          maxHeight: 300,
+          overflow: "auto",
+          border: "1px solid rgba(127,137,160,0.28)",
+          borderRadius: 10,
+        }}
       >
-        <Form.Item
-          name="path"
-          label="Folder on this machine"
-          rules={[{ required: true, whitespace: true, message: "Give the folder's path" }]}
-          extra="An absolute path the Configer server can see. If the folder isn't a Git repository yet, one is initialized with everything in it as the first commit."
-        >
-          <Input className="mono" placeholder="/srv/configs/network-platform" autoFocus />
-        </Form.Item>
-        <Form.Item
-          name="name"
-          label="Application name (optional)"
-          extra="How this configuration appears across Configer. Defaults to the folder's name."
-        >
-          <Input maxLength={60} placeholder="e.g. Network Platform" />
-        </Form.Item>
-      </Form>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        <FileSearchOutlined /> After creating, Configer scans the folder and shows the
-        configuration files it found, so you choose what to manage.
+        {listQ.isError ? (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ margin: 12 }}
+            message="This folder can't be opened"
+            description={(listQ.error as Error).message}
+            action={
+              listing?.parent ? (
+                <Button size="small" onClick={() => listing?.parent && setCwd(listing.parent)}>
+                  Go up
+                </Button>
+              ) : undefined
+            }
+          />
+        ) : listQ.isLoading ? (
+          <InlineListSkeleton rows={6} />
+        ) : (listing?.folders.length ?? 0) === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="No sub-folders here."
+            style={{ marginTop: 40 }}
+          />
+        ) : (
+          <List
+            size="small"
+            dataSource={listing?.folders ?? []}
+            renderItem={(f) => (
+              <List.Item
+                className="scm-change-row"
+                style={{ cursor: "pointer", paddingInline: 12 }}
+                onClick={() => setCwd(f.path)}
+                actions={[<ArrowRightOutlined key="go" style={{ opacity: 0.4 }} />]}
+              >
+                <List.Item.Meta
+                  avatar={<FolderOutlined style={{ fontSize: 18, opacity: 0.7, marginTop: 3 }} />}
+                  title={
+                    <Space size={8}>
+                      <span>{f.name}</span>
+                      {f.hasConfiger ? (
+                        <Tag color="geekblue" style={{ fontSize: 10 }}>
+                          Configer app
+                        </Tag>
+                      ) : f.isRepo ? (
+                        <Tag style={{ fontSize: 10 }}>git repo</Tag>
+                      ) : null}
+                    </Space>
+                  }
+                />
+              </List.Item>
+            )}
+          />
+        )}
+      </div>
+
+      <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 10 }}>
+        <FileSearchOutlined /> The folder is added as{" "}
+        <b>{listing?.name ?? "…"}</b>
+        {listing && !listing.isRepo && " — a local Git repository is initialized for it"}. Configer
+        then scans it and shows the configuration files it found, so you choose what to manage.
       </Typography.Text>
+
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
         <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={connect.isPending}>
           Source
@@ -294,9 +374,10 @@ function LocalFolderStep({
           size="large"
           icon={<RocketOutlined />}
           loading={connect.isPending}
-          onClick={() => form.submit()}
+          disabled={!listing?.path}
+          onClick={() => listing?.path && connect.mutate(listing.path)}
         >
-          Create application & scan
+          Use this folder
         </Button>
       </div>
     </div>

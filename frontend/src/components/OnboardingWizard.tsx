@@ -25,7 +25,9 @@ import {
   FileSearchOutlined,
   FolderOutlined,
   FileOutlined,
+  LeftOutlined,
   PartitionOutlined,
+  RightOutlined,
   SearchOutlined,
   TableOutlined,
 } from "@ant-design/icons";
@@ -186,6 +188,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [treeQ, setTreeQ] = useState("");
   const [paramQ, setParamQ] = useState("");
+  const [treeCollapsed, setTreeCollapsed] = useState(false);
 
   const discoverQ = useQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
   const d = discoverQ.data;
@@ -282,15 +285,14 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const steps = [
     { title: "Layout", icon: <FileSearchOutlined /> },
     { title: "Instances", icon: <ApartmentOutlined /> },
-    { title: "Files", icon: <PartitionOutlined /> },
-    { title: "Parameters", icon: <TableOutlined /> },
+    { title: "Files & parameters", icon: <TableOutlined /> },
     { title: "Initialize", icon: <CheckCircleOutlined /> },
   ];
 
   const canNext =
     step === 0
       ? appName.trim() !== "" && insts.length > 0
-      : step === 3
+      : step === 2
         ? chosenParams.length > 0
         : true;
 
@@ -411,81 +413,107 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       )}
 
       {step === 2 && (
-        <>
-          <Typography.Paragraph type="secondary">
-            Choose which files Configer should manage. Everything is selected by default — untick a
-            file or a whole folder to leave it out, and the settings found in it won't be imported.
-          </Typography.Paragraph>
-          <Space style={{ marginBottom: 10 }} wrap>
-            <Input
-              allowClear
-              size="small"
-              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-              placeholder="Filter files and folders"
-              value={treeQ}
-              onChange={(e) => setTreeQ(e.target.value)}
-              style={{ width: 260 }}
-            />
-            <Button size="small" onClick={() => setAllFiles(true)}>Select all</Button>
-            <Button size="small" onClick={() => setAllFiles(false)}>Clear</Button>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {fileKeys.length - uncheckedFiles.size} of {fileKeys.length} files ·{" "}
-              {chosenParams.length} settings kept
-            </Typography.Text>
-          </Space>
-          <div style={{ border: "1px solid rgba(127,137,160,0.28)", borderRadius: 10, padding: 8, maxHeight: 420, overflow: "auto" }}>
-            {allFiles.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No configuration files were detected." />
-            ) : (
-              <Tree
-                checkable
-                selectable={false}
-                defaultExpandAll
-                treeData={treeData}
-                checkedKeys={checkedKeys}
-                {...(treeQ ? { expandedKeys: folderKeys, autoExpandParent: true } : {})}
-                showIcon
-                icon={(node) => ((node as unknown as FileNode).isLeaf ? <FileOutlined /> : <FolderOutlined />)}
-                onCheck={(checked) => {
-                  const set = new Set(checked as React.Key[]);
-                  // Recompute unchecked file leaves from the checked set.
-                  setUncheckedFiles(new Set(fileKeys.filter((k) => !set.has(k))));
+        <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+          {/* Left: the file tree, collapsible to a thin rail. Unticking a file
+              or folder removes its settings from the table on the right. */}
+          {treeCollapsed ? (
+            <Tooltip title="Show files" placement="right">
+              <div
+                onClick={() => setTreeCollapsed(false)}
+                className="panel-rail"
+                style={{
+                  width: 30, flexShrink: 0, cursor: "pointer", alignSelf: "stretch",
+                  border: "1px solid rgba(127,137,160,0.28)", borderRadius: 10,
+                  display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingTop: 10,
                 }}
-              />
-            )}
-          </div>
-        </>
-      )}
+              >
+                <RightOutlined style={{ fontSize: 11, opacity: 0.7 }} />
+                <span style={{ writingMode: "vertical-rl", fontSize: 12, opacity: 0.7 }}>
+                  Files ({fileKeys.length - uncheckedFiles.size}/{fileKeys.length})
+                </span>
+              </div>
+            </Tooltip>
+          ) : (
+            <div style={{ width: 320, flexShrink: 0, border: "1px solid rgba(127,137,160,0.28)", borderRadius: 10, display: "flex", flexDirection: "column" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderBottom: "1px solid rgba(127,137,160,0.18)" }}>
+                <Typography.Text strong style={{ fontSize: 13 }}>
+                  <PartitionOutlined style={{ marginInlineEnd: 6 }} />
+                  Files to manage
+                </Typography.Text>
+                <Tooltip title="Collapse">
+                  <Button size="small" type="text" icon={<LeftOutlined />} onClick={() => setTreeCollapsed(true)} />
+                </Tooltip>
+              </div>
+              <div style={{ padding: "8px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+                <Input
+                  allowClear
+                  size="small"
+                  prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+                  placeholder="Filter files"
+                  value={treeQ}
+                  onChange={(e) => setTreeQ(e.target.value)}
+                />
+                <Space size={6}>
+                  <Button size="small" onClick={() => setAllFiles(true)}>Select all</Button>
+                  <Button size="small" onClick={() => setAllFiles(false)}>Clear</Button>
+                </Space>
+              </div>
+              <div style={{ padding: "0 8px 8px", maxHeight: 420, overflow: "auto", flex: 1 }}>
+                {allFiles.length === 0 ? (
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No files detected." />
+                ) : (
+                  <Tree
+                    checkable
+                    selectable={false}
+                    defaultExpandAll
+                    treeData={treeData}
+                    checkedKeys={checkedKeys}
+                    {...(treeQ ? { expandedKeys: folderKeys, autoExpandParent: true } : {})}
+                    showIcon
+                    icon={(node) => ((node as unknown as FileNode).isLeaf ? <FileOutlined /> : <FolderOutlined />)}
+                    onCheck={(checked) => {
+                      const set = new Set(checked as React.Key[]);
+                      setUncheckedFiles(new Set(fileKeys.filter((k) => !set.has(k))));
+                    }}
+                  />
+                )}
+              </div>
+              <div style={{ padding: "6px 10px", borderTop: "1px solid rgba(127,137,160,0.18)", fontSize: 12, opacity: 0.7 }}>
+                {fileKeys.length - uncheckedFiles.size} of {fileKeys.length} files kept
+              </div>
+            </div>
+          )}
 
-      {step === 3 && (
-        <>
-          <Typography.Paragraph type="secondary">
-            One row per <i>logical</i> setting: a value repeated across files or instances is
-            deduplicated into a single parameter (the <Tag color="blue" style={{ marginInline: 2 }}>N files</Tag>
-            badge shows how many locations it maps to). Untick anything Configer should not manage.
-          </Typography.Paragraph>
-          <Space style={{ marginBottom: 10 }} wrap>
-            <Input
-              allowClear
-              size="small"
-              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-              placeholder="Search settings, files, paths"
-              value={paramQ}
-              onChange={(e) => setParamQ(e.target.value)}
-              style={{ width: 280 }}
-            />
-            <Button size="small" onClick={() => setDeselected(new Set())}>Select all</Button>
-            <Button
-              size="small"
-              onClick={() => setDeselected(new Set(fileIncludedParams.map((p) => p.id)))}
-            >
-              Select none
-            </Button>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {chosenParams.length} of {fileIncludedParams.length} selected
-            </Typography.Text>
-          </Space>
-          <Table<Parameter>
+          {/* Right: the deduplicated parameters from the selected files. */}
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Typography.Paragraph type="secondary" style={{ marginTop: 0 }}>
+              One row per <i>logical</i> setting from the selected files: a value repeated across
+              files or instances is deduplicated into one parameter (the{" "}
+              <Tag color="blue" style={{ marginInline: 2 }}>N files</Tag> badge shows how many
+              locations it maps to). Untick anything Configer should not manage.
+            </Typography.Paragraph>
+            <Space style={{ marginBottom: 10 }} wrap>
+              <Input
+                allowClear
+                size="small"
+                prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+                placeholder="Search settings, files, paths"
+                value={paramQ}
+                onChange={(e) => setParamQ(e.target.value)}
+                style={{ width: 280 }}
+              />
+              <Button size="small" onClick={() => setDeselected(new Set())}>Select all</Button>
+              <Button
+                size="small"
+                onClick={() => setDeselected(new Set(fileIncludedParams.map((p) => p.id)))}
+              >
+                Select none
+              </Button>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {chosenParams.length} of {fileIncludedParams.length} selected
+              </Typography.Text>
+            </Space>
+            <Table<Parameter>
             size="small"
             rowKey="id"
             dataSource={shownParams}
@@ -547,11 +575,12 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                   ) : null,
               },
             ]}
-          />
-        </>
+            />
+          </div>
+        </div>
       )}
 
-      {step === 4 && (
+      {step === 3 && (
         <Result
           icon={<CloudUploadOutlined style={{ color: "var(--ant-color-primary, #2f6bff)" }} />}
           title={`Initialize ${appName}`}
@@ -591,7 +620,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
           {step === 0 ? "Cancel" : "Back"}
         </Button>
-        {step < 4 && (
+        {step < 3 && (
           <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
             Next
           </Button>

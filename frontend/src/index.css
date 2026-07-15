@@ -292,6 +292,26 @@ body {
   }
 }
 
+/* ---------------------------------------------------- files tree rows */
+
+/* Each file/folder row shows its name and, on hover, its manage actions. */
+.files-tree .file-node {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+.files-tree .file-node-actions {
+  opacity: 0;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease;
+}
+.files-tree .ant-tree-treenode:hover .file-node-actions {
+  opacity: 0.85;
+}
+
 /* ---------------------------------------------------- collapsible panels */
 
 /* The thin spine a collapsed side panel folds to, and the inner-edge gutter

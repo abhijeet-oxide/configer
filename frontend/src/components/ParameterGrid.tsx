@@ -41,6 +41,7 @@ import {
   type Cell,
   bindingsOf,
   type ChangeItem,
+  type CategoryNode,
   type Grid,
   type Instance,
   type Parameter,
@@ -323,10 +324,37 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     },
   });
 
+  // Canonical order matching the left category tree exactly: walk the category
+  // tree depth-first (sub-categories before a node's own parameters, as the
+  // tree renders them) and, within a category, by parameter name. The table
+  // then reads top-to-bottom in the same order as the tree, so the first tree
+  // entry is the first table row.
+  const treeOrder = useMemo(() => {
+    const byCat = new Map<string, { id: string; name: string }[]>();
+    for (const r of grid.rows) {
+      const c = r.param.category || "Uncategorized";
+      const arr = byCat.get(c) ?? [];
+      arr.push({ id: r.param.id, name: r.param.name });
+      byCat.set(c, arr);
+    }
+    for (const arr of byCat.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
+    const order = new Map<string, number>();
+    const walk = (nodes: CategoryNode[]) => {
+      for (const n of nodes) {
+        if (n.children?.length) walk(n.children);
+        for (const p of byCat.get(n.key) ?? []) order.set(p.id, order.size);
+      }
+    };
+    walk(grid.categories);
+    // any parameter not covered by a category node keeps a stable trailing spot
+    for (const r of grid.rows) if (!order.has(r.param.id)) order.set(r.param.id, order.size);
+    return order;
+  }, [grid.rows, grid.categories]);
+
   const q = search.trim().toLowerCase();
   const lq = localQ.trim().toLowerCase();
   const rows = useMemo(() => {
-    return grid.rows.filter((r) => {
+    const filtered = grid.rows.filter((r) => {
       if (categoryKey && r.param.category !== categoryKey && !r.param.category.startsWith(categoryKey + "/"))
         return false;
       if (q && !rowMatches(r, q, searchScope)) return false;
@@ -337,7 +365,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
-  }, [grid.rows, categoryKey, q, lq, filters, searchScope]);
+    return filtered.sort(
+      (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
+    );
+  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder]);
 
   // Auto-fit: each instance column gets at least what its longest visible
   // value needs (so "staging.example.internal" never truncates), and any

@@ -303,7 +303,11 @@ type RepoSummary struct {
 	NoClone bool   `json:"noClone,omitempty"`
 	Branch  string `json:"branch,omitempty"`
 	Project string `json:"project,omitempty"`
-	Params  int    `json:"params"`
+	// NeedsSetup is a connected repository that has no Configer application
+	// yet (.configer/ absent). It is not an error — the UI routes it into
+	// onboarding — so it must never surface as "unavailable".
+	NeedsSetup bool `json:"needsSetup,omitempty"`
+	Params     int  `json:"params"`
 	// Instances counts configuration instances; Environments breaks them
 	// down by environment for the hierarchical dashboard.
 	Instances    int            `json:"instances"`
@@ -334,7 +338,11 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 		return sum
 	}
 	sum.Branch = s.branch()
-	if p, err := s.load(); err == nil {
+	// A connected repository without a .configer application is a first-class
+	// "needs setup" state (routes to onboarding), NOT an error/unavailable.
+	if !s.initialized() {
+		sum.NeedsSetup = true
+	} else if p, err := s.load(); err == nil {
 		sum.Project = p.Name()
 		sum.Params = len(p.Catalog.Parameters)
 		sum.Instances = len(p.Registry.Instances)

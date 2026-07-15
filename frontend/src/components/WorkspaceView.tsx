@@ -75,6 +75,7 @@ function attentionOf(r: RepoSummary): { text: string; color: string }[] {
   if (r.error) out.push({ text: "unavailable", color: "var(--c-danger)" });
   if (r.syncError) out.push({ text: "sync issue", color: "var(--c-pending)" });
   if ((r.behind ?? 0) > 0) out.push({ text: `${r.behind} commit${r.behind === 1 ? "" : "s"} behind`, color: "var(--c-review)" });
+  if (r.needsSetup) out.push({ text: "not set up yet — finish setup", color: "var(--c-pending)" });
   if (r.openChanges > 0)
     out.push({ text: `${r.openChanges} waiting for approval`, color: "var(--c-review)" });
   if (r.drafts > 0) out.push({ text: "unsent draft edits", color: "var(--c-pending)" });
@@ -166,6 +167,13 @@ function RepoCard({
 
       {r.error ? (
         <Alert type="error" showIcon message={r.error} />
+      ) : r.needsSetup ? (
+        <Alert
+          type="warning"
+          showIcon
+          message="Not set up yet"
+          description="Configer hasn't scanned this repository into an application. Open it to finish setup."
+        />
       ) : (
         <>
           <Space size={4} wrap>
@@ -210,8 +218,8 @@ function RepoCard({
         <Tooltip title="Details: health, environments, recent activity">
           <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails} aria-label="Application details" />
         </Tooltip>
-        <Button size="small" type="primary" ghost onClick={onOpen}>
-          Open <RightOutlined style={{ fontSize: 10 }} />
+        <Button size="small" type="primary" ghost={!r.needsSetup} onClick={onOpen}>
+          {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: 10 }} />
         </Button>
       </div>
     </Card>

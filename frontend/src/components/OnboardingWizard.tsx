@@ -14,6 +14,7 @@ import {
 } from "antd";
 import {
   ApartmentOutlined,
+  ArrowLeftOutlined,
   CheckCircleOutlined,
   FileSearchOutlined,
   RocketOutlined,
@@ -107,9 +108,14 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <Typography.Title level={4} style={{ marginBottom: 4 }}>
-        Set up {projectName}
-      </Typography.Title>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
+        <Typography.Title level={4} style={{ marginBottom: 4 }}>
+          Set up {projectName}
+        </Typography.Title>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => setSection("workspace")}>
+          Back to Applications
+        </Button>
+      </div>
       <Typography.Paragraph type="secondary">
         Configer scanned the repository and proposes how to manage it. Nothing is written until the
         final step, which makes one reviewable Git commit adding metadata under{" "}
@@ -316,8 +322,8 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       )}
 
       <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-        <Button disabled={step === 0} onClick={() => setStep(step - 1)}>
-          Back
+        <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
+          {step === 0 ? "Cancel" : "Back"}
         </Button>
         {step < 3 && (
           <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>

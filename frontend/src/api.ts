@@ -390,6 +390,8 @@ export interface RepoSummary {
   noClone?: boolean;
   branch?: string;
   project?: string;
+  /** connected but not yet initialized (no .configer): routes to onboarding */
+  needsSetup?: boolean;
   params: number;
   instances: number;
   environments?: Record<string, number>;

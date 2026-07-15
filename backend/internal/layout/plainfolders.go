@@ -3,6 +3,7 @@ package layout
 import (
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 )
@@ -25,31 +26,50 @@ var sharedDirs = []string{"shared", "common", "base", "global"}
 func (a plainFoldersAdapter) Detect(root string) (Detection, bool) {
 	det := Detection{Layout: KindPlainFolders}
 
-	for _, parent := range instanceParents {
-		dir := filepath.Join(root, parent)
-		var found []Instance
-		for _, child := range subdirs(dir) {
-			if !hasConfigFile(filepath.Join(dir, child)) {
-				continue
+	// Search the repository root first, then one level of nesting (a repo may
+	// keep its GitOps tree under a subfolder like gitops/ or deploy/). The
+	// first parent that yields at least one instance folder wins; instance
+	// folders are recognized by having config files ANYWHERE in their subtree,
+	// since GitOps instances nest their values several folders deep.
+	prefixes := append([]string{"."}, subdirs(root)...)
+	var chosenPrefix string
+search:
+	for _, prefix := range prefixes {
+		for _, parent := range instanceParents {
+			dir := filepath.Join(root, prefix, parent)
+			var found []Instance
+			for _, child := range subdirs(dir) {
+				if !hasConfigFileDeep(filepath.Join(dir, child)) {
+					continue
+				}
+				folder := filepath.ToSlash(filepath.Join(prefix, parent, child))
+				found = append(found, Instance{
+					Name:        child,
+					Folder:      strings.TrimPrefix(folder, "./"),
+					Environment: guessEnvironment(child),
+				})
 			}
-			found = append(found, Instance{
-				Name:        child,
-				Folder:      parent + "/" + child,
-				Environment: guessEnvironment(child),
-			})
-		}
-		if len(found) >= 2 {
-			sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
-			det.Instances = found
-			det.Score = 2
-			det.Note = "Found one folder per instance under " + parent + "/."
-			break
+			if len(found) >= 1 {
+				sort.Slice(found, func(i, j int) bool { return found[i].Name < found[j].Name })
+				det.Instances = found
+				det.Score = 2
+				where := strings.TrimPrefix(filepath.ToSlash(filepath.Join(prefix, parent)), "./")
+				det.Note = "Found one folder per instance under " + where + "/."
+				chosenPrefix = prefix
+				break search
+			}
 		}
 	}
 
+	// Shared/base directories, looked for beside the instances (same prefix).
+	base := chosenPrefix
+	if base == "" {
+		base = "."
+	}
 	for _, s := range sharedDirs {
-		if hasConfigFile(filepath.Join(root, s)) {
-			det.BaseDirs = append(det.BaseDirs, s)
+		rel := strings.TrimPrefix(filepath.ToSlash(filepath.Join(base, s)), "./")
+		if hasConfigFile(filepath.Join(root, base, s)) {
+			det.BaseDirs = append(det.BaseDirs, rel)
 		}
 	}
 	if len(det.BaseDirs) > 0 && det.Note != "" {

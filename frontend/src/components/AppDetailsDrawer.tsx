@@ -14,12 +14,16 @@ import {
 } from "antd";
 import {
   BranchesOutlined,
+  CheckCircleFilled,
   DisconnectOutlined,
   DownloadOutlined,
   EditOutlined,
+  FormOutlined,
   GithubOutlined,
   HddOutlined,
+  RightOutlined,
   SyncOutlined,
+  WarningFilled,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RepoSummary } from "../api";
@@ -30,30 +34,31 @@ import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 
 // AppDetailsDrawer is the quick-glance side panel for one application: the
-// card on the Applications page stays lightweight, and everything deeper
-// (health numbers, environments, recent activity) lives here, one click away.
-// The deep dive — grid, history, approvals — is one more click, on the
-// Configuration page.
+// card on the Applications page stays lightweight, and everything deeper —
+// health per system (with a straight jump to any problem cell), description
+// and metadata from Git, environments, recent activity — lives here, one
+// click away. The deep dive is one more click, on the Configuration page.
 
 export default function AppDetailsDrawer({
   repo,
   open,
   onClose,
+  onEdit,
 }: {
   repo: RepoSummary | null;
   open: boolean;
   onClose: () => void;
+  onEdit?: () => void;
 }) {
   const { message } = AntApp.useApp();
-  const { setSection } = useUI();
+  const { setSection, selectParam, selectInstance, setJump } = useUI();
   const qc = useQueryClient();
   // The drawer always describes the ACTIVE repository (selecting a card
   // switches first), so the repo-scoped queries below hit the right one.
-  const changesQ = useQuery({
-    queryKey: ["changes"],
-    queryFn: api.changes,
-    enabled: open && !!repo && !repo.error,
-  });
+  const enabled = open && !!repo && !repo.error;
+  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, enabled });
+  const appQ = useQuery({ queryKey: ["application", repo?.id], queryFn: api.application, enabled });
+  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, enabled });
 
   const remove = useMutation({
     mutationFn: () => api.removeRepo(repo!.id),
@@ -74,6 +79,34 @@ export default function AppDetailsDrawer({
     setSection(section);
   };
 
+  // Per-system health from the real grid: how many values break a rule in
+  // each instance, plus the first offending parameter so a click can land
+  // the user straight on the problem cell.
+  const health = (gridQ.data?.instances ?? []).map((inst) => {
+    let invalid = 0;
+    let firstParam: string | null = null;
+    for (const row of gridQ.data?.rows ?? []) {
+      const c = row.cells[inst.name];
+      if (c && !c.valid) {
+        invalid++;
+        if (!firstParam) firstParam = row.param.id;
+      }
+    }
+    return { inst, invalid, firstParam };
+  });
+  const totalInvalid = health.reduce((s, h) => s + h.invalid, 0);
+
+  const jumpToProblem = (h: (typeof health)[number]) => {
+    if (!h.firstParam) return;
+    onClose();
+    selectParam(h.firstParam);
+    selectInstance(h.inst.name);
+    setJump("cell", h.firstParam, h.inst.name);
+    setSection("config");
+  };
+
+  const metadata = Object.entries(appQ.data?.metadata ?? {});
+
   return (
     <Drawer
       width={440}
@@ -86,33 +119,38 @@ export default function AppDetailsDrawer({
         </Space>
       }
       footer={
-        <Space style={{ width: "100%", justifyContent: "space-between" }}>
-          <Space>
-            <Button type="primary" icon={<EditOutlined />} onClick={() => goto("overview")}>
-              Open configuration
+        // Primary action first and full width; secondary actions share a row
+        // beneath it, with the destructive one kept apart as an icon.
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button type="primary" block icon={<EditOutlined />} onClick={() => goto("overview")}>
+            Open configuration
+          </Button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <Button block icon={<FormOutlined />} onClick={onEdit}>
+              Edit details
             </Button>
-            <Button icon={<DownloadOutlined />} onClick={() => goto("import")}>
+            <Button block icon={<DownloadOutlined />} onClick={() => goto("import")}>
               Import settings
             </Button>
-          </Space>
-          <Button
-            danger
-            type="text"
-            icon={<DisconnectOutlined />}
-            onClick={() =>
-              Modal.confirm({
-                title: `Disconnect "${r.name}"?`,
-                content:
-                  "It disappears from this workspace only. The Git repository and its history stay exactly as they are, and you can reconnect any time.",
-                okText: "Disconnect",
-                okButtonProps: { danger: true },
-                onOk: () => remove.mutate(),
-              })
-            }
-          >
-            Disconnect
-          </Button>
-        </Space>
+            <Tooltip title="Disconnect from this workspace (the Git repository is untouched)">
+              <Button
+                danger
+                icon={<DisconnectOutlined />}
+                aria-label="Disconnect from workspace"
+                onClick={() =>
+                  Modal.confirm({
+                    title: `Disconnect "${r.name}"?`,
+                    content:
+                      "It disappears from this workspace only. The Git repository and its history stay exactly as they are, and you can reconnect any time.",
+                    okText: "Disconnect",
+                    okButtonProps: { danger: true },
+                    onOk: () => remove.mutate(),
+                  })
+                }
+              />
+            </Tooltip>
+          </div>
+        </div>
       }
     >
       <div className="mono" style={{ fontSize: 12, opacity: 0.6, overflowWrap: "anywhere", marginBottom: 14 }}>
@@ -123,6 +161,12 @@ export default function AppDetailsDrawer({
         <Alert type="error" showIcon message="This application is unavailable" description={r.error} />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {appQ.data?.description && (
+            <Typography.Paragraph style={{ margin: 0, fontSize: 13 }}>
+              {appQ.data.description}
+            </Typography.Paragraph>
+          )}
+
           <Space size={6} wrap>
             {r.branch && (
               <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
@@ -151,9 +195,53 @@ export default function AppDetailsDrawer({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             <StatCard title="Parameters" value={r.params} />
             <StatCard title="Instances" value={r.instances} />
+            <StatCard title="Invalid values" value={totalInvalid} tone={totalInvalid ? "#cf1322" : undefined} />
             <StatCard title="Waiting for approval" value={r.openChanges} tone={r.openChanges ? "#1677ff" : undefined} />
-            <StatCard title="Draft edits" value={r.drafts} tone={r.drafts ? "#fa8c16" : undefined} />
           </div>
+
+          {/* System health: the same signal as the Overview's health map, so
+              the quick view never hides a problem the inside would show. */}
+          {health.length > 0 && (
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                System health
+              </Typography.Text>
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
+                {health.map((h) => (
+                  <div
+                    key={h.inst.name}
+                    className={h.invalid ? "card-clickable" : undefined}
+                    onClick={h.invalid ? () => jumpToProblem(h) : undefined}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 12.5,
+                      padding: "3px 6px",
+                      borderRadius: 6,
+                      cursor: h.invalid ? "pointer" : undefined,
+                    }}
+                  >
+                    {h.invalid ? (
+                      <WarningFilled style={{ color: "var(--c-danger)" }} />
+                    ) : (
+                      <CheckCircleFilled style={{ color: "var(--c-ok)" }} />
+                    )}
+                    <span style={{ flex: 1 }}>{h.inst.name}</span>
+                    {h.invalid ? (
+                      <span style={{ color: "var(--c-danger)", fontWeight: 600 }}>
+                        {h.invalid} invalid <RightOutlined style={{ fontSize: 10 }} />
+                      </span>
+                    ) : (
+                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                        all valid
+                      </Typography.Text>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {Object.keys(r.environments ?? {}).length > 0 && (
             <div>
@@ -166,6 +254,24 @@ export default function AppDetailsDrawer({
                   .map(([env, n]) => (
                     <EnvTag key={env} env={env} count={n} />
                   ))}
+              </div>
+            </div>
+          )}
+
+          {metadata.length > 0 && (
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Metadata
+              </Typography.Text>
+              <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                {metadata.map(([k, v]) => (
+                  <div key={k} style={{ display: "flex", gap: 10, fontSize: 12.5 }}>
+                    <Typography.Text type="secondary" className="mono" style={{ fontSize: 12, minWidth: 110 }}>
+                      {k}
+                    </Typography.Text>
+                    <span style={{ overflowWrap: "anywhere" }}>{v}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

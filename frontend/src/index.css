@@ -292,6 +292,15 @@ body {
   }
 }
 
+/* ---------------------------------------------------- collapsible panels */
+
+/* The thin spine a collapsed side panel folds to, and the inner-edge gutter
+   that folds it: both light up on hover so they read as clickable. */
+.panel-rail:hover,
+.panel-gutter:hover {
+  background: rgba(127, 137, 160, 0.12);
+}
+
 /* ---------------------------------------------------- jump highlights */
 
 /* Flash a row after clicking a parameter in the left tree. */
@@ -302,6 +311,17 @@ body {
 .param-grid .ant-table-row.row-flash > .ant-table-cell,
 .param-grid .ant-table-tbody-virtual .row-flash .ant-table-cell {
   animation: rowFlash 1.9s ease-out;
+}
+
+/* Flash ONE cell (a jump straight to a problem: row + column + the cell
+   itself, strongest on the cell so the eye lands there). */
+@keyframes cellFlash {
+  0% { box-shadow: inset 0 0 0 2px #2f6bff; background: rgba(47, 107, 255, 0.35); }
+  70% { box-shadow: inset 0 0 0 2px #2f6bff; }
+  100% { box-shadow: inset 0 0 0 0 transparent; background: transparent; }
+}
+.param-grid .ant-table-cell.cell-flash {
+  animation: cellFlash 2.4s ease-out;
 }
 
 /* Flash a column header after clicking a system in the left tree. */

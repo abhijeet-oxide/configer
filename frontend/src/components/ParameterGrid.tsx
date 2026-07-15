@@ -274,8 +274,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [matchCursor, setMatchCursor] = useState(0);
   // pending "this is a global setting" question for a just-committed value
   const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
-  // one-shot flash highlight after a jump from the left-hand trees
-  const [flash, setFlash] = useState<{ kind: "param" | "instance"; id: string } | null>(null);
+  // one-shot flash highlight after a jump from the left-hand trees, the
+  // health map, or an application's details panel (kind "cell": row+column)
+  const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string } | null>(null);
   const tableRef = useRef<GetRef<typeof Table>>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -395,24 +396,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const consumedJump = useRef(0);
   useEffect(() => {
     if (!jump || consumedJump.current === jump.n) return;
-    if (jump.kind === "param") {
-      const idx = rows.findIndex((r) => r.param.id === jump.id);
-      if (idx < 0) return; // rows not filtered to it yet; retry on next update
-      consumedJump.current = jump.n;
-      tableRef.current?.scrollTo({ index: Math.max(idx - 2, 0) });
-      selectParam(jump.id);
-    } else {
-      consumedJump.current = jump.n;
+    // antd's virtual table scrolls horizontally via wheel deltas (the body is
+    // transform-positioned, so setting scrollLeft does nothing and desyncs the
+    // header). Dispatching a wheel with the right deltaX moves the body AND
+    // keeps the sticky header aligned. The header's scrollLeft mirrors the
+    // current horizontal position, so we delta from there to the target.
+    const scrollToInstance = (name: string) => {
       let left = 0;
       for (const inst of grid.instances) {
-        if (inst.name === jump.id) break;
+        if (inst.name === name) break;
         left += instWidths[inst.name] ?? 150;
       }
-      // antd's virtual table scrolls horizontally via wheel deltas (the body is
-      // transform-positioned, so setting scrollLeft does nothing and desyncs the
-      // header). Dispatching a wheel with the right deltaX moves the body AND
-      // keeps the sticky header aligned. The header's scrollLeft mirrors the
-      // current horizontal position, so we delta from there to the target.
       const root = rootRef.current;
       const target = Math.max(left - 40, 0);
       if (root) {
@@ -425,8 +419,19 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           }
         }
       }
+    };
+    if (jump.kind === "param" || jump.kind === "cell") {
+      const idx = rows.findIndex((r) => r.param.id === jump.id);
+      if (idx < 0) return; // rows not filtered to it yet; retry on next update
+      consumedJump.current = jump.n;
+      tableRef.current?.scrollTo({ index: Math.max(idx - 2, 0) });
+      selectParam(jump.id);
+      if (jump.kind === "cell" && jump.inst) scrollToInstance(jump.inst);
+    } else {
+      consumedJump.current = jump.n;
+      scrollToInstance(jump.id);
     }
-    setFlash({ kind: jump.kind, id: jump.id });
+    setFlash({ kind: jump.kind, id: jump.id, inst: jump.inst });
     const t = setTimeout(() => setFlash(null), 2000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -525,13 +530,20 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       onHeaderCell: () => ({
         className:
           (inst.environment ? `th-env-${inst.environment}` : "") +
-          (flash?.kind === "instance" && flash.id === inst.name ? " th-flash" : "") +
+          ((flash?.kind === "instance" && flash.id === inst.name) ||
+          (flash?.kind === "cell" && flash.inst === inst.name)
+            ? " th-flash"
+            : "") +
           (selectedInstance === inst.name ? " col-selected-h" : ""),
         onClick: () => selectInstance(selectedInstance === inst.name ? null : inst.name),
         style: { cursor: "pointer" },
       }),
-      onCell: () => ({
-        className: selectedInstance === inst.name ? "col-selected" : "",
+      onCell: (r: Row) => ({
+        className:
+          (selectedInstance === inst.name ? "col-selected" : "") +
+          (flash?.kind === "cell" && flash.id === r.param.id && flash.inst === inst.name
+            ? " cell-flash"
+            : ""),
       }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
@@ -613,7 +625,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               size="small"
               value={searchScope}
               onChange={(v) => setSearchScope(v)}
-              style={{ width: 90, flexShrink: 0 }}
+              style={{ width: 64, flexShrink: 0 }}
+              popupMatchSelectWidth={96}
               title="Search in"
               options={[
                 { value: "all", label: "All" },
@@ -784,8 +797,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           scroll={{ x: scrollX, y: tableY }}
           pagination={false}
           rowClassName={(r) =>
-            (flash?.kind === "param" && flash.id === r.param.id ? "row-flash " : "") +
-            (r.param.id === selectedParamId ? "row-selected" : "")
+            ((flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id
+              ? "row-flash "
+              : "") + (r.param.id === selectedParamId ? "row-selected" : "")
           }
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),

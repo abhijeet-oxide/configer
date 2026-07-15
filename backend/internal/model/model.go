@@ -24,6 +24,10 @@ type Application struct {
 	// Layout names the repository convention the layout adapter interprets:
 	// "plain-folders", "kustomize", or "kpt".
 	Layout string `yaml:"layout,omitempty" json:"layout,omitempty"`
+	// Metadata holds free-form key/value details the user attaches to the
+	// application (owner, team, ticket queue…). Stored in Git with the rest
+	// of the application identity; never interpreted by Configer.
+	Metadata map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 // Scope declares how widely an edit to a parameter lands. An instance-scoped

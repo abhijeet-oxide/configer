@@ -1,5 +1,15 @@
 import { Badge, Button, Tabs, theme as antdTheme } from "antd";
-import { DownloadOutlined } from "@ant-design/icons";
+import {
+  ApartmentOutlined,
+  CheckCircleOutlined,
+  DashboardOutlined,
+  DiffOutlined,
+  DownloadOutlined,
+  FileTextOutlined,
+  HistoryOutlined,
+  SyncOutlined,
+  TableOutlined,
+} from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
@@ -24,12 +34,12 @@ export const APP_SECTIONS = new Set([
   "import",
 ]);
 
-function tabLabel(text: string, count: number, color?: string) {
-  if (!count) return text;
+function tabLabel(icon: React.ReactNode, text: string, count = 0, color?: string) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+      {icon}
       {text}
-      <Badge count={count} size="small" color={color} />
+      {count > 0 && <Badge count={count} size="small" color={color} />}
     </span>
   );
 }
@@ -72,14 +82,16 @@ export default function ConfigurationPage({
           ),
         }}
         items={[
-          { key: "overview", label: "Overview" },
-          { key: "config", label: "Editor" },
-          { key: "compare", label: "Compare" },
-          { key: "changes", label: "Release history" },
-          { key: "approvals", label: tabLabel("Approvals", awaiting, "var(--c-review)") },
-          { key: "instances", label: "Instances" },
-          { key: "files", label: "Files" },
-          { key: "drift", label: tabLabel("Repository changes", findings, "orange") },
+          // Files sits right beside the Editor: both are "look at the
+          // configuration" surfaces, one structured, one raw.
+          { key: "overview", label: tabLabel(<DashboardOutlined />, "Overview") },
+          { key: "config", label: tabLabel(<TableOutlined />, "Editor") },
+          { key: "files", label: tabLabel(<FileTextOutlined />, "Files") },
+          { key: "compare", label: tabLabel(<DiffOutlined />, "Compare") },
+          { key: "changes", label: tabLabel(<HistoryOutlined />, "Release history") },
+          { key: "approvals", label: tabLabel(<CheckCircleOutlined />, "Approvals", awaiting, "var(--c-review)") },
+          { key: "instances", label: tabLabel(<ApartmentOutlined />, "Instances") },
+          { key: "drift", label: tabLabel(<SyncOutlined />, "Repository changes", findings, "orange") },
         ]}
       />
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>

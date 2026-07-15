@@ -1,4 +1,4 @@
-import { Badge, Button, Tabs, theme as antdTheme } from "antd";
+import { Badge, Tabs, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   CheckCircleOutlined,
@@ -68,22 +68,10 @@ export default function ConfigurationPage({
         activeKey={active}
         onChange={(key) => setSection(key)}
         tabBarStyle={{ margin: 0, paddingInline: 16 }}
-        tabBarExtraContent={{
-          right: (
-            <Button
-              size="small"
-              type={active === "import" ? "primary" : "text"}
-              ghost={active === "import"}
-              icon={<DownloadOutlined />}
-              onClick={() => setSection("import")}
-            >
-              Import settings
-            </Button>
-          ),
-        }}
         items={[
           // Files sits right beside the Editor: both are "look at the
-          // configuration" surfaces, one structured, one raw.
+          // configuration" surfaces, one structured, one raw. Import settings
+          // is the last tab.
           { key: "overview", label: tabLabel(<DashboardOutlined />, "Overview") },
           { key: "config", label: tabLabel(<TableOutlined />, "Editor") },
           { key: "files", label: tabLabel(<FileTextOutlined />, "Files") },
@@ -92,6 +80,7 @@ export default function ConfigurationPage({
           { key: "approvals", label: tabLabel(<CheckCircleOutlined />, "Approvals", awaiting, "var(--c-review)") },
           { key: "instances", label: tabLabel(<ApartmentOutlined />, "Instances") },
           { key: "drift", label: tabLabel(<SyncOutlined />, "Repository changes", findings, "orange") },
+          { key: "import", label: tabLabel(<DownloadOutlined />, "Import settings") },
         ]}
       />
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>

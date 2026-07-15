@@ -11,12 +11,6 @@ import { CompareSkeleton } from "./Skeletons";
 // working tree), and read a parameter-level diff. This compares not just two
 // instances but two versions: the same instance across releases, or two
 // instances across two refs. Instance pickers are grouped by environment.
-const statusColor: Record<string, string> = {
-  added: "green",
-  removed: "red",
-  modified: "orange",
-  unchanged: "default",
-};
 
 const WORKING = "";
 
@@ -109,11 +103,38 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
   const leftHead = `${left} @ ${refLabel(leftRef)}`;
   const rightHead = `${right} @ ${refLabel(rightRef)}`;
 
+  // The diff must be visible in the values themselves, not inferred from a
+  // status word: the outgoing side tints red, the incoming side green.
+  const tint = (side: "left" | "right", c: DiffChange): React.CSSProperties => {
+    if (c.status === "modified")
+      return { background: side === "left" ? "rgba(208,59,59,0.07)" : "rgba(12,163,12,0.07)" };
+    if (c.status === "added" && side === "right") return { background: "rgba(12,163,12,0.07)" };
+    if (c.status === "removed" && side === "left") return { background: "rgba(208,59,59,0.07)" };
+    return {};
+  };
+
   const valueColumns =
     layout === "Side by Side"
       ? [
-          { title: leftHead, dataIndex: "left" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
-          { title: rightHead, dataIndex: "right" as const, render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span> },
+          {
+            title: leftHead,
+            dataIndex: "left" as const,
+            onCell: (c: DiffChange) => ({ style: tint("left", c) }),
+            render: (v: unknown, c: DiffChange) => (
+              <span
+                className="mono"
+                style={c.status === "modified" ? { textDecoration: "line-through", opacity: 0.75 } : undefined}
+              >
+                {String(v ?? "-")}
+              </span>
+            ),
+          },
+          {
+            title: rightHead,
+            dataIndex: "right" as const,
+            onCell: (c: DiffChange) => ({ style: tint("right", c) }),
+            render: (v: unknown) => <span className="mono">{String(v ?? "-")}</span>,
+          },
         ]
       : [
           {
@@ -172,9 +193,13 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
               removed={q.data.summary.removed}
               unchanged={q.data.summary.unchanged}
             />
-            <Tag color="orange">{q.data.summary.modified} modified</Tag>
-            <Tag color="green">{q.data.summary.added} added</Tag>
-            <Tag color="red">{q.data.summary.removed} removed</Tag>
+            {/* zero counts are noise: only name what actually happened */}
+            {q.data.summary.modified > 0 && <Tag color="orange">{q.data.summary.modified} modified</Tag>}
+            {q.data.summary.added > 0 && <Tag color="green">{q.data.summary.added} added</Tag>}
+            {q.data.summary.removed > 0 && <Tag color="red">{q.data.summary.removed} removed</Tag>}
+            {q.data.summary.modified + q.data.summary.added + q.data.summary.removed === 0 && (
+              <Tag color="default">no differences</Tag>
+            )}
           </Space>
         )}
       </Space>
@@ -190,11 +215,12 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
             size="small"
             dataSource={rows}
             pagination={false}
+            // change kind reads from the row accent + cell tints, not a
+            // status word repeated down a column
+            rowClassName={(c) => (c.status === "unchanged" ? "" : `diff-row-${c.status}`)}
             columns={[
               { title: "Parameter", dataIndex: "name", width: 240 },
               ...valueColumns,
-              { title: "Change", dataIndex: "status", width: 120,
-                render: (s: string) => <Tag color={statusColor[s]}>{s}</Tag> },
             ]}
           />
         )}

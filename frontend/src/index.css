@@ -226,6 +226,21 @@ body {
   font-size: 18px;
 }
 
+/* -------------------------------------------------------------- compare */
+
+/* Row-level change accent in the Compare diff table: a slim colored border
+   replaces a repeated per-row status tag, so color discriminates instead of
+   a word repeating down the column. */
+.diff-row-modified > td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-pending);
+}
+.diff-row-added > td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-ok);
+}
+.diff-row-removed > td:first-child {
+  box-shadow: inset 3px 0 0 var(--c-danger);
+}
+
 /* ------------------------------------------------------------ skeletons */
 
 /* One shimmer primitive for every loading state in the app. Fluid by design:

@@ -292,6 +292,40 @@ body {
   }
 }
 
+/* ---------------------------------------------------- compact file trees */
+
+/* Tighter rows, indentation and icons so deep GitOps trees stay readable
+   without huge vertical gaps. Applies to the onboarding file picker and the
+   Files-tab explorer. */
+.compact-tree .ant-tree-treenode,
+.files-tree .ant-tree-treenode {
+  padding-bottom: 0 !important;
+  align-items: center;
+}
+.compact-tree .ant-tree-node-content-wrapper,
+.files-tree .ant-tree-node-content-wrapper {
+  min-height: 22px;
+  line-height: 22px;
+  padding-inline: 2px;
+}
+.compact-tree .ant-tree-indent-unit,
+.files-tree .ant-tree-indent-unit {
+  width: 12px;
+}
+.compact-tree .ant-tree-switcher,
+.files-tree .ant-tree-switcher {
+  width: 18px;
+  line-height: 22px;
+}
+.compact-tree .ant-tree-iconEle,
+.files-tree .ant-tree-iconEle {
+  line-height: 22px;
+  width: 18px;
+}
+.compact-tree .ant-tree-checkbox {
+  margin-block: 4px 0;
+}
+
 /* ---------------------------------------------------- files tree rows */
 
 /* Each file/folder row shows its name and, on hover, its manage actions. */

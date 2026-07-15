@@ -8,6 +8,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
@@ -74,4 +76,28 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.commitCatalogChange(w, "Update application details", author(r, req.Author), app)
+}
+
+// deinit removes the .configer folder — Configer's metadata — from the
+// repository and commits the removal, returning the repository to an
+// unmanaged (un-onboarded) state. The repository's own configuration files
+// are untouched; only the .configer directory is deleted.
+func (s *Server) deinit(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Author string `json:"author,omitempty"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	dir := filepath.Join(s.RepoPath, ".configer")
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": false})
+		return
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		writeErr(w, err)
+		return
+	}
+	s.commitCatalogChange(w, "Remove Configer metadata (.configer)", author(r, req.Author), map[string]any{"ok": true, "removed": true})
 }

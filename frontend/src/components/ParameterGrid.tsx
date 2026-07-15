@@ -41,7 +41,6 @@ import {
   type Cell,
   bindingsOf,
   type ChangeItem,
-  type CategoryNode,
   type Grid,
   type Instance,
   type Parameter,
@@ -324,38 +323,24 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     },
   });
 
-  // Canonical order matching the left category tree exactly: walk the category
-  // tree depth-first (sub-categories before a node's own parameters, as the
-  // tree renders them) and, within a category, by parameter name. The table
-  // then reads top-to-bottom in the same order as the tree, so the first tree
-  // entry is the first table row.
+  // Canonical order matching the left parameter tree: the tree groups by the
+  // dotted name and orders each node's children (sub-groups and leaves) by
+  // segment, which is exactly a full-name sort. So the table, ordered by full
+  // name, reads top-to-bottom in the same order as the tree.
   const treeOrder = useMemo(() => {
-    const byCat = new Map<string, { id: string; name: string }[]>();
-    for (const r of grid.rows) {
-      const c = r.param.category || "Uncategorized";
-      const arr = byCat.get(c) ?? [];
-      arr.push({ id: r.param.id, name: r.param.name });
-      byCat.set(c, arr);
-    }
-    for (const arr of byCat.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
     const order = new Map<string, number>();
-    const walk = (nodes: CategoryNode[]) => {
-      for (const n of nodes) {
-        if (n.children?.length) walk(n.children);
-        for (const p of byCat.get(n.key) ?? []) order.set(p.id, order.size);
-      }
-    };
-    walk(grid.categories);
-    // any parameter not covered by a category node keeps a stable trailing spot
-    for (const r of grid.rows) if (!order.has(r.param.id)) order.set(r.param.id, order.size);
+    [...grid.rows]
+      .sort((a, b) => a.param.name.localeCompare(b.param.name))
+      .forEach((r, i) => order.set(r.param.id, i));
     return order;
-  }, [grid.rows, grid.categories]);
+  }, [grid.rows]);
 
   const q = search.trim().toLowerCase();
   const lq = localQ.trim().toLowerCase();
   const rows = useMemo(() => {
     const filtered = grid.rows.filter((r) => {
-      if (categoryKey && r.param.category !== categoryKey && !r.param.category.startsWith(categoryKey + "/"))
+      // categoryKey is a dotted NAME prefix selected in the tree.
+      if (categoryKey && r.param.name !== categoryKey && !r.param.name.startsWith(categoryKey + "."))
         return false;
       if (q && !rowMatches(r, q, searchScope)) return false;
       if (lq && !rowMatches(r, lq, searchScope)) return false;
@@ -632,7 +617,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     PARAM_W + TYPE_W + SCOPE_W + DESC_W +
     grid.instances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
   const headerH = prefs.density === "compact" ? 55 : 63;
-  const title = categoryKey ? categoryKey.split("/").pop() : "All Parameters";
+  const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
 
   // The editor stays editing-focused: the table fills the available height.

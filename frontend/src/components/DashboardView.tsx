@@ -1,4 +1,4 @@
-import { Card, Col, Row, Statistic, Typography, Tag, List, Space, Button, Empty } from "antd";
+import { Card, Col, Row, Statistic, Typography, Tag, List, Space, Button, Checkbox, Empty, Modal, Alert, App as AntApp } from "antd";
 import {
   CheckCircleTwoTone,
   WarningTwoTone,
@@ -16,7 +16,8 @@ import {
   SwapOutlined,
   FolderAddOutlined,
 } from "@ant-design/icons";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Finding } from "../api";
 import { StateTag } from "./CrSteps";
 import { ActivitySparkline, CategoryDonut, HealthTiles, STATUS, type TileDatum } from "./charts";
@@ -30,6 +31,85 @@ import EnvTag from "./EnvTag";
 // signal appears exactly ONCE: the stat cards carry the actionable state, the
 // title row carries identity (sync state, size), and the health map, activity
 // and system panels fill the rest.
+
+// DeleteApplication removes an application from the workspace, and optionally
+// deletes the .configer metadata folder from the repository itself. The
+// repository's own configuration files are never touched.
+function DeleteApplication({
+  project,
+  repoId,
+  onRemoved,
+}: {
+  project: string;
+  repoId: string | null;
+  onRemoved: () => void;
+}) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [alsoConfiger, setAlsoConfiger] = useState(false);
+
+  const remove = useMutation({
+    mutationFn: async () => {
+      // Delete the .configer metadata first (a commit on the repo), then drop
+      // the workspace connection.
+      if (alsoConfiger) await api.deinit("demo-user");
+      if (repoId) await api.removeRepo(repoId);
+    },
+    onSuccess: () => {
+      message.success(
+        alsoConfiger
+          ? `"${project}" removed and its .configer metadata deleted from the repository.`
+          : `"${project}" removed from the workspace. The repository is untouched.`,
+      );
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+      setOpen(false);
+      onRemoved();
+    },
+    onError: (e: Error) => message.error(e.message, 6),
+  });
+
+  return (
+    <>
+      <Button danger icon={<DeleteOutlined />} onClick={() => setOpen(true)}>
+        Delete
+      </Button>
+      <Modal
+        open={open}
+        title={`Delete "${project}"?`}
+        okText={alsoConfiger ? "Delete metadata & remove" : "Remove"}
+        okButtonProps={{ danger: true, loading: remove.isPending }}
+        onOk={() => remove.mutate()}
+        onCancel={() => setOpen(false)}
+      >
+        <Typography.Paragraph>
+          This removes the application from your Configer workspace. By default the Git repository —
+          including your configuration files and the <span className="mono">.configer</span> metadata —
+          stays exactly as it is, and you can reconnect any time.
+        </Typography.Paragraph>
+        <Checkbox checked={alsoConfiger} onChange={(e) => setAlsoConfiger(e.target.checked)}>
+          Also delete the <span className="mono">.configer</span> folder from the repository
+        </Checkbox>
+        {alsoConfiger && (
+          <Alert
+            type="warning"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="This un-onboards the repository"
+            description={
+              <>
+                All Configer metadata (parameters, instances, application details) is deleted in a
+                commit. Your actual configuration files are <b>not</b> touched, but the repository
+                will need to be set up again to manage it here. This cannot be undone except through
+                Git history.
+              </>
+            }
+          />
+        )}
+      </Modal>
+    </>
+  );
+}
 
 export function relTime(iso?: string): string {
   if (!iso) return "";
@@ -51,7 +131,7 @@ const findingBrief: Record<Finding["type"], { icon: React.ReactNode; color: stri
 };
 
 export default function DashboardView({ grid }: { grid: Grid }) {
-  const { setSection, setFilters, selectParam, selectInstance, setJump } = useUI();
+  const { setSection, setFilters, selectParam, selectInstance, setJump, repoId, setRepo } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
@@ -131,6 +211,8 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           {params} parameter{params === 1 ? "" : "s"} · {grid.instances.length} instance
           {grid.instances.length === 1 ? "" : "s"}
         </Typography.Text>
+        <div style={{ flex: 1 }} />
+        <DeleteApplication project={grid.project} repoId={repoId} onRemoved={() => { setRepo(null); setSection("workspace"); }} />
       </div>
 
       {/* One card per signal — the single place each of these is stated. */}

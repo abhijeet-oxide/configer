@@ -23,8 +23,6 @@ import {
   CheckCircleOutlined,
   CloudUploadOutlined,
   FileSearchOutlined,
-  FolderOutlined,
-  FileOutlined,
   LeftOutlined,
   PartitionOutlined,
   RightOutlined,
@@ -36,6 +34,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
+import { fileIcon, folderIcon } from "./fileIcons";
 import { TableSkeleton } from "./Skeletons";
 
 // OnboardingWizard turns a freshly connected repository into a managed
@@ -463,6 +462,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No files detected." />
                 ) : (
                   <Tree
+                    className="compact-tree"
                     checkable
                     selectable={false}
                     defaultExpandAll
@@ -470,7 +470,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     checkedKeys={checkedKeys}
                     {...(treeQ ? { expandedKeys: folderKeys, autoExpandParent: true } : {})}
                     showIcon
-                    icon={(node) => ((node as unknown as FileNode).isLeaf ? <FileOutlined /> : <FolderOutlined />)}
+                    icon={(node) => {
+                      const n = node as unknown as FileNode;
+                      return n.isLeaf ? fileIcon(n.title) : folderIcon();
+                    }}
                     onCheck={(checked) => {
                       const set = new Set(checked as React.Key[]);
                       setUncheckedFiles(new Set(fileKeys.filter((k) => !set.has(k))));

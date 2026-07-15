@@ -36,6 +36,24 @@ import MembersModal from "./MembersModal";
 // approvals bell and fullscreen. Editing-specific actions (Create Change
 // Request, git sync status) live in the editor toolbar where they belong.
 
+// The application-scoped sections and their human tab labels, for the
+// breadcrumb (Applications / <name> / <tab>).
+const APP_BREADCRUMB_SECTIONS = new Set([
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import",
+]);
+const TAB_LABELS: Record<string, string> = {
+  overview: "Overview",
+  config: "Editor",
+  files: "Files",
+  compare: "Compare",
+  changes: "Release history",
+  drafts: "Release history",
+  approvals: "Approvals",
+  instances: "Instances",
+  drift: "Repository changes",
+  import: "Import settings",
+};
+
 function ellipsis(maxWidth: number): React.CSSProperties {
   return {
     display: "inline-block",
@@ -65,6 +83,10 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   const repos = wsQ.data?.repos ?? [];
   const activeRepo = repos.find((r) => r.id === repoId);
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
+  // Whether we're inside one application (a Configuration tab) and which tab,
+  // so the breadcrumb reads Applications / <name> / <tab>.
+  const inApp = APP_BREADCRUMB_SECTIONS.has(section);
+  const tabLabel = TAB_LABELS[section];
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -101,46 +123,56 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                 </a>
               ),
             },
-            {
-              title: (
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    selectedKeys: repoId ? [repoId] : [],
-                    items: [
-                      ...repos.map((r) => ({
-                        key: r.id,
-                        label: (
-                          <Space size={6}>
-                            {r.name}
-                            {r.project && r.project !== r.name && (
-                              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                                {r.project}
-                              </Typography.Text>
-                            )}
-                          </Space>
-                        ),
-                      })),
-                      { type: "divider" as const },
-                      { key: "__workspace", label: "Manage applications…" },
-                    ],
-                    onClick: ({ key }) => {
-                      if (key === "__workspace") setSection("workspace");
-                      else if (key !== repoId) switchRepo(key);
-                    },
-                  }}
-                >
-                  <a style={{ cursor: "pointer" }}>
-                    <b style={ellipsis(200)} title={activeRepo?.name ?? project}>
-                      {activeRepo?.name ?? project ?? "…"}
-                    </b>{" "}
-                    <span style={{ fontSize: 10, opacity: 0.6 }}>▾</span>
-                  </a>
-                </Dropdown>
-              ),
-            },
-            ...(section === "config" && st?.branch
-              ? [{ title: <span style={ellipsis(110)}>{st.branch}</span> }]
+            // Inside an application: its name (a link back to the Overview tab,
+            // the default) with a switcher, then the current tab.
+            ...(inApp
+              ? [
+                  {
+                    title: (
+                      <Space size={2}>
+                        {/* the name itself -> Overview (default tab) */}
+                        <a onClick={() => setSection("overview")} style={{ cursor: "pointer" }}>
+                          <b style={ellipsis(200)} title={activeRepo?.name ?? project}>
+                            {activeRepo?.name ?? project ?? "…"}
+                          </b>
+                        </a>
+                        <Dropdown
+                          trigger={["click"]}
+                          menu={{
+                            selectedKeys: repoId ? [repoId] : [],
+                            items: [
+                              ...repos.map((r) => ({
+                                key: r.id,
+                                label: (
+                                  <Space size={6}>
+                                    {r.name}
+                                    {r.project && r.project !== r.name && (
+                                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                                        {r.project}
+                                      </Typography.Text>
+                                    )}
+                                  </Space>
+                                ),
+                              })),
+                              { type: "divider" as const },
+                              { key: "__workspace", label: "Manage applications…" },
+                            ],
+                            onClick: ({ key }) => {
+                              if (key === "__workspace") setSection("workspace");
+                              else if (key !== repoId) switchRepo(key);
+                            },
+                          }}
+                        >
+                          <a style={{ cursor: "pointer", fontSize: 10, opacity: 0.6 }}>▾</a>
+                        </Dropdown>
+                      </Space>
+                    ),
+                  },
+                  // The current tab (omitted on Overview, the default).
+                  ...(tabLabel && section !== "overview"
+                    ? [{ title: <span style={ellipsis(160)}>{tabLabel}</span> }]
+                    : []),
+                ]
               : []),
           ]}
         />

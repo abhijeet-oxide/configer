@@ -2,20 +2,65 @@ import { create } from "zustand";
 import { setApiRepo } from "./api";
 import type { BrandKey, FontScale, Mode } from "./theme";
 
+// ------------------------------------------------------------------ routing
+// Sections that belong to ONE application (rendered as tabs on the
+// Configuration page). "overview" is the default tab and has no URL slug.
+const APP_SECTIONS_SET = new Set([
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import",
+]);
+// Section <-> URL slug. Overview is intentionally absent: it is the default
+// tab, so its path is just /application/<id> with no suffix.
+const SECTION_TO_SLUG: Record<string, string> = {
+  config: "editor",
+  files: "files",
+  compare: "compare",
+  changes: "history",
+  approvals: "approvals",
+  instances: "instances",
+  drift: "repository-changes",
+  import: "import",
+};
+const SLUG_TO_SECTION: Record<string, string> = Object.fromEntries(
+  Object.entries(SECTION_TO_SLUG).map(([s, slug]) => [slug, s]),
+);
+
+// parseLocation reads the current path + query into a view. A path-named app
+// wins; otherwise a legacy ?app=&view= link resolves; otherwise it is the
+// portfolio. repoId is null only when the location does not name an app (the
+// caller falls back to the remembered repository).
+function parseLocation(): { repoId: string | null; section: string; param: string | null; inst: string | null } {
+  const p = new URLSearchParams(window.location.search);
+  const param = p.get("param");
+  const inst = p.get("inst");
+  const legacyApp = p.get("app");
+  if (legacyApp) return { repoId: legacyApp, section: p.get("view") || "overview", param, inst };
+
+  const segs = window.location.pathname.split("/").filter(Boolean);
+  if (segs[0] === "application" && segs[1]) {
+    const slug = segs[2];
+    const section = slug ? SLUG_TO_SECTION[slug] ?? "overview" : "overview";
+    return { repoId: decodeURIComponent(segs[1]), section, param, inst };
+  }
+  if (segs[0] === "plugins") return { repoId: null, section: "plugins", param, inst };
+  return { repoId: null, section: "workspace", param, inst };
+}
+
 // The active repository survives reloads; the API client is kept in sync so
 // every repo-scoped call goes to the selected configuration.
 //
-// Views are deep-linked in the URL query string so any state is shareable:
-//   ?app=<repoId>&view=<section>&param=<id>&inst=<name>
-// The URL takes precedence over the remembered repo on first load, and the
-// store keeps the URL in sync as the user navigates (back/forward work too).
-const url = new URLSearchParams(window.location.search);
-const urlRepo = url.get("app");
-const initialRepo = urlRepo || localStorage.getItem("configer.repoId");
+// URLs are path-based and human-readable so any view is shareable:
+//   /overview                    the applications portfolio (no app selected)
+//   /application/<id>            one application, Overview (the default tab)
+//   /application/<id>/<tab>      a specific tab (editor, files, compare, …)
+//   /plugins                     the plugins admin surface
+// A selected parameter/instance rides in the query string (?param=&inst=) as a
+// refinement of the current view. Legacy ?app=&view= links still resolve.
+const parsed0 = parseLocation();
+const initialRepo = parsed0.repoId || localStorage.getItem("configer.repoId");
 setApiRepo(initialRepo);
-const initialSection = url.get("view") || (urlRepo ? "overview" : "workspace");
-const initialParam = url.get("param");
-const initialInstance = url.get("inst");
+const initialSection = parsed0.section;
+const initialParam = parsed0.param;
+const initialInstance = parsed0.inst;
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -202,33 +247,42 @@ export const useUI = create<UIState>((set) => ({
 
 // ------------------------------------------------------------------ URL sync
 
-// Serialize the shareable slice of state into a query string. Only the fields
-// that identify "which view am I looking at" are encoded; transient UI (search
-// text, filters, focus) is intentionally left out so links stay clean.
-function queryFor(s: UIState): string {
+// pathFor serializes the shareable slice of state into a path (+ optional
+// ?param=&inst= refinement). Transient UI (search, filters, focus) is left out
+// so links stay clean.
+function pathFor(s: UIState): string {
   const q = new URLSearchParams();
-  if (s.repoId) q.set("app", s.repoId);
-  if (s.section && s.section !== "workspace") q.set("view", s.section);
   if (s.selectedParamId) q.set("param", s.selectedParamId);
   if (s.selectedInstance) q.set("inst", s.selectedInstance);
-  return q.toString();
+  const qs = q.toString() ? `?${q.toString()}` : "";
+
+  const section = s.section === "drafts" ? "changes" : s.section;
+  if (section === "plugins") return `/plugins${qs}`;
+  // Portfolio level: the application never appears in the URL.
+  if (section === "workspace" || section === "home" || !s.repoId) return `/overview${qs}`;
+  if (APP_SECTIONS_SET.has(section)) {
+    const slug = SECTION_TO_SLUG[section]; // undefined for overview -> default tab
+    return `/application/${encodeURIComponent(s.repoId)}${slug ? `/${slug}` : ""}${qs}`;
+  }
+  return `/overview${qs}`;
 }
 
 // A "navigation" (a distinct Back/Forward stop) is a change of application or
-// view. Selecting a parameter/instance or toggling the files view refines the
-// current view in place, so those update the URL without pushing a history
-// entry, otherwise Back would step through every row click instead of returning
-// to the previous view.
+// view. Selecting a parameter/instance refines the current view in place, so
+// those update the URL without pushing a history entry, otherwise Back would
+// step through every row click instead of returning to the previous view.
 function navKey(s: UIState): string {
-  return `${s.repoId ?? ""}|${s.section}`;
+  return `${s.repoId ?? ""}|${s.section === "drafts" ? "changes" : s.section}`;
 }
-let lastQuery = queryFor(useUI.getState());
+let lastPath = pathFor(useUI.getState());
 let lastNavKey = navKey(useUI.getState());
+// Canonicalize the initial URL (root "/" -> "/overview", and legacy
+// ?app=&view= links -> the path form) without adding a history entry.
+window.history.replaceState(null, "", lastPath);
 useUI.subscribe((s) => {
-  const q = queryFor(s);
-  if (q === lastQuery) return;
-  lastQuery = q;
-  const next = q ? `${window.location.pathname}?${q}` : window.location.pathname;
+  const next = pathFor(s);
+  if (next === lastPath) return;
+  lastPath = next;
   const nk = navKey(s);
   if (nk !== lastNavKey) {
     lastNavKey = nk;
@@ -238,19 +292,19 @@ useUI.subscribe((s) => {
   }
 });
 
-// Browser back/forward: re-read the URL and apply it to the store. Switching
-// repositories still routes through setApiRepo so repo-scoped calls follow.
+// Browser back/forward: re-read the URL and apply it to the store. A location
+// that does not name an application (the portfolio) keeps the remembered
+// repository in state so switching back into it still works — it just isn't in
+// the URL. Switching repositories still routes through setApiRepo.
 window.addEventListener("popstate", () => {
-  const p = new URLSearchParams(window.location.search);
-  const repoId = p.get("app") || null;
-  const section = p.get("view") || (repoId ? "overview" : "workspace");
-  const selectedParamId = p.get("param");
-  const selectedInstance = p.get("inst");
-  lastQuery = p.toString();
-  lastNavKey = `${repoId ?? ""}|${section}`;
-  if (repoId !== useUI.getState().repoId) {
+  const loc = parseLocation();
+  const current = useUI.getState();
+  const repoId = loc.repoId ?? current.repoId; // portfolio: keep the active repo
+  lastPath = pathFor({ ...current, ...loc, repoId } as UIState);
+  lastNavKey = `${repoId ?? ""}|${loc.section === "drafts" ? "changes" : loc.section}`;
+  if (repoId !== current.repoId) {
     setApiRepo(repoId);
     if (repoId) localStorage.setItem("configer.repoId", repoId);
   }
-  useUI.setState({ repoId, section, selectedParamId, selectedInstance });
+  useUI.setState({ repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst });
 });

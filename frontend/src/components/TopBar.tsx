@@ -225,7 +225,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           />
         </Tooltip>
         <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
-          <Badge count={awaiting} size="small">
+          <Badge count={awaiting} size="small" color="var(--c-review)">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
           </Badge>
         </Tooltip>

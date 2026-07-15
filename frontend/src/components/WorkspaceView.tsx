@@ -33,6 +33,7 @@ import { WorkspaceSkeleton } from "./Skeletons";
 import { STEP_HANDOFF } from "./ImportWizard";
 import AppDetailsDrawer from "./AppDetailsDrawer";
 import NewApplicationWizard from "./NewApplicationWizard";
+import EnvTag from "./EnvTag";
 
 // WorkspaceView is the landing page: every application as a light,
 // quick-glance card, with anything that needs a human flagged in the
@@ -49,12 +50,6 @@ function loadFavs(): string[] {
     return [];
   }
 }
-
-const envColor: Record<string, string> = {
-  production: "red",
-  staging: "orange",
-  development: "green",
-};
 
 function SyncTag({ r }: { r: RepoSummary }) {
   if (r.error) return <Tag color="error">unavailable</Tag>;
@@ -143,7 +138,7 @@ function RepoCard({
             menu={{
               items: [
                 { key: "open", label: "Open configuration" },
-                { key: "import", label: "Import parameters" },
+                { key: "import", label: "Import settings" },
                 { type: "divider" },
                 { key: "disconnect", danger: true, label: "Disconnect from workspace" },
               ],
@@ -192,9 +187,7 @@ function RepoCard({
             {Object.entries(r.environments ?? {})
               .sort()
               .map(([env, n]) => (
-                <Tag key={env} color={envColor[env] ?? "default"} style={{ fontSize: 11 }}>
-                  {env} ×{n}
-                </Tag>
+                <EnvTag key={env} env={env} count={n} />
               ))}
           </Space>
         </>

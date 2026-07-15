@@ -67,7 +67,7 @@ export default function ConfigurationPage({
               icon={<DownloadOutlined />}
               onClick={() => setSection("import")}
             >
-              Import
+              Import settings
             </Button>
           ),
         }}
@@ -76,7 +76,7 @@ export default function ConfigurationPage({
           { key: "config", label: "Editor" },
           { key: "compare", label: "Compare" },
           { key: "changes", label: "Release history" },
-          { key: "approvals", label: tabLabel("Approvals", awaiting) },
+          { key: "approvals", label: tabLabel("Approvals", awaiting, "var(--c-review)") },
           { key: "instances", label: "Instances" },
           { key: "files", label: "Files" },
           { key: "drift", label: tabLabel("Repository changes", findings, "orange") },

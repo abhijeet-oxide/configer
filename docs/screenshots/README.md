@@ -42,8 +42,7 @@ disconnected and deleted when the run finishes.
 |---|------------|---------------|
 | 03 | ![](03-new-application-signin.png) | Signed out: the wizard asks to **Continue with GitHub** (manual URL entry stays available). |
 | 04 | ![](04-new-application-pick-repository.png) | Signed in: pick from **your repositories and organizations**, searchable, no URLs or tokens. |
-| 05 | ![](05-new-application-pick-branch.png) | Pick the **branch** that holds the configuration. |
-| 06 | ![](06-new-application-name-and-create.png) | Name the application and **create & scan** — the repository is parsed immediately. |
+| 05 | ![](05-new-application-branch-name-create.png) | One screen for the rest: **branch**, **name**, **create & scan** — the repository is parsed immediately. |
 
 ### Level 2 — the Configuration page (everything about one application, as tabs)
 

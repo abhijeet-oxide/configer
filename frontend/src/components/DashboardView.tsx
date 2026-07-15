@@ -4,11 +4,9 @@ import {
   WarningTwoTone,
   InboxOutlined,
   EditOutlined,
-  CloudServerOutlined,
   RightOutlined,
   BranchesOutlined,
   TableOutlined,
-  CheckCircleFilled,
   WarningFilled,
   SyncOutlined,
   ApartmentOutlined,
@@ -24,12 +22,14 @@ import { StateTag } from "./CrSteps";
 import { ActivitySparkline, CategoryDonut, HealthTiles, STATUS, type TileDatum } from "./charts";
 import { useUI } from "../store";
 import { envHex } from "../theme";
+import EnvTag from "./EnvTag";
 
 // DashboardView is the application Overview: an operational command center that
 // answers, without navigating anywhere, is it healthy, is anything waiting,
-// is there drift, are versions consistent, and what changed recently. A live
-// signal ribbon sits up top; actionable stat cards, a health map, and activity
-// panels fill the rest so the page always feels alive.
+// is there drift, are versions consistent, and what changed recently. Each
+// signal appears exactly ONCE: the stat cards carry the actionable state, the
+// title row carries identity (sync state, size), and the health map, activity
+// and system panels fill the rest.
 
 export function relTime(iso?: string): string {
   if (!iso) return "";
@@ -49,35 +49,6 @@ const findingBrief: Record<Finding["type"], { icon: React.ReactNode; color: stri
   file_renamed: { icon: <SwapOutlined />, color: "#fa8c16", label: "File renamed" },
   new_folder: { icon: <FolderAddOutlined />, color: "#6c3df4", label: "New folder" },
 };
-
-// A single live-status pill in the ribbon: an icon + short text, tinted by
-// state and optionally clickable through to the view that owns it.
-function Signal({
-  icon,
-  label,
-  color,
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: React.ReactNode;
-  color: string;
-  onClick?: () => void;
-}) {
-  return (
-    <span
-      className={onClick ? "card-clickable" : undefined}
-      onClick={onClick}
-      style={{
-        display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 500,
-        padding: "3px 10px", borderRadius: 999, border: `1px solid ${color}33`, background: `${color}14`,
-        color, cursor: onClick ? "pointer" : "default", whiteSpace: "nowrap",
-      }}
-    >
-      {icon}
-      {label}
-    </span>
-  );
-}
 
 export default function DashboardView({ grid }: { grid: Grid }) {
   const { setSection, setFilters } = useUI();
@@ -140,118 +111,107 @@ export default function DashboardView({ grid }: { grid: Grid }) {
 
   return (
     <div style={{ padding: 20, height: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
           {grid.project}
         </Typography.Title>
+        {/* identity, not alerts: the sync state and the application's size */}
+        <Tag
+          icon={syncSignal.icon}
+          style={{
+            color: syncSignal.color,
+            background: `${syncSignal.color}14`,
+            borderColor: `${syncSignal.color}55`,
+            marginInlineEnd: 0,
+          }}
+        >
+          {syncSignal.label}
+        </Tag>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          how this application is doing right now
+          {params} parameter{params === 1 ? "" : "s"} · {grid.instances.length} instance
+          {grid.instances.length === 1 ? "" : "s"}
         </Typography.Text>
       </div>
 
-      {/* Live signal ribbon: the at-a-glance operational state. */}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <Signal
-          icon={invalid ? <WarningFilled /> : <CheckCircleFilled />}
-          color={invalid ? STATUS.critical : STATUS.good}
-          label={invalid ? `${invalid} to fix` : "Healthy"}
+      {/* One card per signal — the single place each of these is stated. */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
+        <Card
+          size="small"
+          hoverable
+          className="stat-accent card-clickable"
+          style={{ "--accent": invalid ? "#d03b3b" : "#0ca30c" } as React.CSSProperties}
           onClick={() => {
             setFilters({ invalidOnly: invalid > 0 });
             setSection("config");
           }}
-        />
-        <Signal
-          icon={invalid ? <WarningFilled /> : <CheckCircleFilled />}
-          color={invalid ? STATUS.warning : STATUS.good}
-          label={invalid ? "Validation issues" : "Validation passed"}
-        />
-        <Signal
-          icon={findings.length ? <WarningFilled /> : <CheckCircleFilled />}
-          color={findings.length ? STATUS.warning : STATUS.good}
-          label={findings.length ? `${findings.length} repository change${findings.length === 1 ? "" : "s"}` : "No drift"}
+        >
+          <Statistic
+            title="Configuration health"
+            value={invalid === 0 ? "All settings valid" : `${invalid} to fix`}
+            valueStyle={{ fontSize: 20, color: invalid ? "#cf1322" : "#389e0d" }}
+            prefix={invalid === 0 ? <CheckCircleTwoTone twoToneColor="#52c41a" /> : <WarningTwoTone twoToneColor="#faad14" />}
+          />
+        </Card>
+        <Card
+          size="small"
+          hoverable
+          className="stat-accent card-clickable"
+          style={{ "--accent": "#1677ff" } as React.CSSProperties}
+          onClick={() => setSection("approvals")}
+        >
+          <Statistic
+            title="Waiting for approval"
+            value={awaiting.length}
+            valueStyle={{ fontSize: 20, color: awaiting.length ? "#1677ff" : undefined }}
+            prefix={<InboxOutlined />}
+            suffix={awaiting.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
+          />
+        </Card>
+        <Card
+          size="small"
+          hoverable
+          className="stat-accent card-clickable"
+          style={{ "--accent": "#fa8c16" } as React.CSSProperties}
+          onClick={() => setSection("config")}
+        >
+          <Statistic
+            title="Your unsent edits"
+            value={pending}
+            valueStyle={{ fontSize: 20, color: pending ? "#fa8c16" : undefined }}
+            prefix={<EditOutlined />}
+          />
+        </Card>
+        <Card
+          size="small"
+          hoverable
+          className="stat-accent card-clickable"
+          style={{ "--accent": findings.length ? "#fa8c16" : "#0ca30c" } as React.CSSProperties}
           onClick={() => setSection("drift")}
-        />
-        <Signal {...syncSignal} />
-        <Signal
-          icon={<ApartmentOutlined />}
-          color={versions.length > 1 ? STATUS.warning : "#6c3df4"}
-          label={versions.length === 1 ? versions[0] : versions.length ? `${versions.length} versions` : "no version set"}
-        />
-        <Signal icon={<TableOutlined />} color="#1677ff" label={`${params} parameters`} />
-        <Signal icon={<CloudServerOutlined />} color="#1677ff" label={`${grid.instances.length} instances`} />
+        >
+          <Statistic
+            title="Repository changes"
+            value={findings.length === 0 ? "None" : findings.length}
+            valueStyle={{ fontSize: 20, color: findings.length ? "#fa8c16" : "#389e0d" }}
+            prefix={findings.length ? <WarningTwoTone twoToneColor="#faad14" /> : <CheckCircleTwoTone twoToneColor="#52c41a" />}
+            suffix={findings.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
+          />
+        </Card>
+        <Card
+          size="small"
+          hoverable
+          className="stat-accent card-clickable"
+          style={{ "--accent": versions.length > 1 ? "#fa8c16" : "#6c3df4" } as React.CSSProperties}
+          onClick={() => setSection("instances")}
+        >
+          <Statistic
+            title="Version spread"
+            value={versions.length === 1 ? versions[0] : versions.length ? `${versions.length} versions` : "not set"}
+            valueStyle={{ fontSize: 20, color: versions.length > 1 ? "#fa8c16" : undefined }}
+            prefix={<ApartmentOutlined />}
+            suffix={versions.length > 1 ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
+          />
+        </Card>
       </div>
-
-      <Row gutter={[14, 14]}>
-        <Col xs={24} sm={12} xxl={6}>
-          <Card
-            size="small"
-            hoverable
-            className="stat-accent card-clickable"
-            style={{ "--accent": invalid ? "#d03b3b" : "#0ca30c" } as React.CSSProperties}
-            onClick={() => {
-              setFilters({ invalidOnly: invalid > 0 });
-              setSection("config");
-            }}
-          >
-            <Statistic
-              title="Configuration health"
-              value={invalid === 0 ? "All settings valid" : `${invalid} to fix`}
-              valueStyle={{ fontSize: 20, color: invalid ? "#cf1322" : "#389e0d" }}
-              prefix={invalid === 0 ? <CheckCircleTwoTone twoToneColor="#52c41a" /> : <WarningTwoTone twoToneColor="#faad14" />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} xxl={6}>
-          <Card
-            size="small"
-            hoverable
-            className="stat-accent card-clickable"
-            style={{ "--accent": "#1677ff" } as React.CSSProperties}
-            onClick={() => setSection("approvals")}
-          >
-            <Statistic
-              title="Waiting for approval"
-              value={awaiting.length}
-              valueStyle={{ fontSize: 20, color: awaiting.length ? "#1677ff" : undefined }}
-              prefix={<InboxOutlined />}
-              suffix={awaiting.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} xxl={6}>
-          <Card
-            size="small"
-            hoverable
-            className="stat-accent card-clickable"
-            style={{ "--accent": "#fa8c16" } as React.CSSProperties}
-            onClick={() => setSection("config")}
-          >
-            <Statistic
-              title="Your unsent edits"
-              value={pending}
-              valueStyle={{ fontSize: 20, color: pending ? "#fa8c16" : undefined }}
-              prefix={<EditOutlined />}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} xxl={6}>
-          <Card
-            size="small"
-            hoverable
-            className="stat-accent card-clickable"
-            style={{ "--accent": findings.length ? "#fa8c16" : "#0ca30c" } as React.CSSProperties}
-            onClick={() => setSection("drift")}
-          >
-            <Statistic
-              title="Repository changes"
-              value={findings.length === 0 ? "None" : findings.length}
-              valueStyle={{ fontSize: 20, color: findings.length ? "#fa8c16" : "#389e0d" }}
-              prefix={findings.length ? <WarningTwoTone twoToneColor="#faad14" /> : <CheckCircleTwoTone twoToneColor="#52c41a" />}
-              suffix={findings.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
-            />
-          </Card>
-        </Col>
-      </Row>
 
       <Row gutter={[14, 14]}>
         <Col xs={24} lg={14}>
@@ -396,10 +356,12 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               )}
             />
             <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {[...new Set(grid.instances.map((i) => i.environment ?? "unknown"))].map((e) => (
-                <Tag key={e} style={{ fontSize: 11 }}>
-                  {e} × {grid.instances.filter((i) => (i.environment ?? "unknown") === e).length}
-                </Tag>
+              {[...new Set(grid.instances.map((i) => i.environment ?? "unspecified"))].map((e) => (
+                <EnvTag
+                  key={e}
+                  env={e}
+                  count={grid.instances.filter((i) => (i.environment ?? "unspecified") === e).length}
+                />
               ))}
             </div>
           </Card>

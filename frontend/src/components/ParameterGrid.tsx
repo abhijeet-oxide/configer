@@ -681,7 +681,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             <Button size="small" type="text" icon={<QuestionCircleOutlined />} aria-label="Legend" title="Legend: what the cell marks mean" />
           </Popover>
           <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
-            Add Parameter
+            Add parameter
           </Button>
           <Dropdown
             trigger={["click"]}

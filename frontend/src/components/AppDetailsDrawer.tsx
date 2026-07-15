@@ -24,8 +24,8 @@ import {
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RepoSummary } from "../api";
 import { useUI } from "../store";
-import { envHex } from "../theme";
 import { StateTag } from "./CrSteps";
+import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 
@@ -92,7 +92,7 @@ export default function AppDetailsDrawer({
               Open configuration
             </Button>
             <Button icon={<DownloadOutlined />} onClick={() => goto("import")}>
-              Import
+              Import settings
             </Button>
           </Space>
           <Button
@@ -164,15 +164,7 @@ export default function AppDetailsDrawer({
                 {Object.entries(r.environments ?? {})
                   .sort()
                   .map(([env, n]) => (
-                    <Tag key={env} style={{ fontSize: 11 }}>
-                      <span
-                        style={{
-                          width: 7, height: 7, borderRadius: 4, display: "inline-block",
-                          background: envHex(env), marginInlineEnd: 6,
-                        }}
-                      />
-                      {env} × {n}
-                    </Tag>
+                    <EnvTag key={env} env={env} count={n} />
                   ))}
               </div>
             </div>

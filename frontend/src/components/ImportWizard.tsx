@@ -31,6 +31,7 @@ import {
   GithubOutlined,
   HddOutlined,
   BranchesOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +39,7 @@ import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCan
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { ConnectForm } from "./NewApplicationWizard";
+import NewApplicationWizard from "./NewApplicationWizard";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -324,7 +325,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
           }
           extra={[
             <Button key="editor" type="primary" onClick={() => setSection("config")}>
-              Open Config Editor
+              Open the editor
             </Button>,
             <Button key="again" onClick={reset}>
               Import more
@@ -350,7 +351,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 380px" }}>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Import configuration
+              Import settings
             </Typography.Title>
             <Typography.Text type="secondary">
               Bring settings from your repository files under management. Scanning only reads files;
@@ -423,6 +424,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 15_000 });
   const repos = wsQ.data?.repos ?? [];
   const [choice, setChoice] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const selectedId = choice ?? repoId ?? repos[0]?.id ?? null;
   const selected = repos.find((r) => r.id === selectedId);
 
@@ -484,15 +486,34 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           </Button>
         </div>
       </Card>
-      <Card title="Or connect a new repository" style={{ flex: "1 1 380px", minWidth: 340 }}>
-        <ConnectForm
-          compact
-          onDone={(r) => {
-            sessionStorage.setItem(STEP_HANDOFF, "1");
-            switchRepo(r.id);
-          }}
-        />
+      {/* Creating an application has ONE flow: the guided wizard. This card
+          just opens it; on creation we flow straight into the scan step. */}
+      <Card
+        hoverable
+        onClick={() => setWizardOpen(true)}
+        style={{ flex: "1 1 380px", minWidth: 340, borderStyle: "dashed" }}
+        styles={{
+          body: {
+            height: "100%", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", textAlign: "center", gap: 6,
+          },
+        }}
+      >
+        <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
+        <div style={{ fontWeight: 500 }}>New application</div>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Pick a GitHub repository and go — it is scanned right here afterwards.
+        </Typography.Text>
       </Card>
+      <NewApplicationWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={(r) => {
+          setWizardOpen(false);
+          sessionStorage.setItem(STEP_HANDOFF, "1");
+          switchRepo(r.id);
+        }}
+      />
     </div>
   );
 }
@@ -629,7 +650,7 @@ function ScanStep({
           type="success"
           showIcon
           message="Everything the scan found is already managed."
-          description="New files committed to Git later will show up in Repository Changes, and you can rescan here any time."
+          description="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
         />
       ) : (
         <>
@@ -986,7 +1007,7 @@ function ReviewStep({
             these parameters to the Configer catalog
             {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
             Your existing configuration files keep their values; from now on you edit them per
-            system in the Config Editor, with validation and review built in.
+            system in the Editor, with validation and review built in.
           </>
         }
       />

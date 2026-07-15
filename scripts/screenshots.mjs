@@ -249,13 +249,9 @@ async function main() {
     await shot("04-new-application-pick-repository");
 
     await page.getByText("acme/network-config").click();
-    await page.locator(".ant-select").waitFor();
-    await page.waitForTimeout(600); // branches load into the select
-    await shot("05-new-application-pick-branch");
-
-    await page.getByRole("button", { name: /Continue/ }).click();
     await page.getByText("Create application & scan").waitFor();
-    await shot("06-new-application-name-and-create");
+    await page.waitForTimeout(600); // branches load into the select
+    await shot("05-new-application-branch-name-create");
     await page.keyboard.press("Escape");
 
     // -------- level 2: the Configuration page, tab by tab

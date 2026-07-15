@@ -98,7 +98,7 @@ export default function RepoChangesView() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div style={{ flex: 1 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>
-            Repository Changes
+            Repository changes
           </Typography.Title>
           <Typography.Text type="secondary">
             Anything committed directly on Git, outside Configer, shows up here so nothing happens
@@ -319,7 +319,7 @@ function FindingCard({
                 Affected:
               </Typography.Text>
               {f.params.slice(0, 8).map((p) => (
-                <Tooltip key={p} title="Open in the Config Editor">
+                <Tooltip key={p} title="Open in the Editor">
                   <Tag style={{ cursor: "pointer" }} className="mono" onClick={() => onViewParam(p)}>
                     {p}
                   </Tag>
@@ -336,7 +336,7 @@ function FindingCard({
         <div style={{ flexShrink: 0 }}>
           {f.type === "new_file" && (
             <Button type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
-              Import parameters
+              Import settings
             </Button>
           )}
           {f.type === "new_folder" && (

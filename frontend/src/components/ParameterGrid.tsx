@@ -41,6 +41,7 @@ import {
   type Cell,
   bindingsOf,
   type ChangeItem,
+  type CategoryNode,
   type Grid,
   type Instance,
   type Parameter,
@@ -323,10 +324,37 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     },
   });
 
+  // Canonical order matching the left category tree exactly: walk the category
+  // tree depth-first (sub-categories before a node's own parameters, as the
+  // tree renders them) and, within a category, by parameter name. The table
+  // then reads top-to-bottom in the same order as the tree, so the first tree
+  // entry is the first table row.
+  const treeOrder = useMemo(() => {
+    const byCat = new Map<string, { id: string; name: string }[]>();
+    for (const r of grid.rows) {
+      const c = r.param.category || "Uncategorized";
+      const arr = byCat.get(c) ?? [];
+      arr.push({ id: r.param.id, name: r.param.name });
+      byCat.set(c, arr);
+    }
+    for (const arr of byCat.values()) arr.sort((a, b) => a.name.localeCompare(b.name));
+    const order = new Map<string, number>();
+    const walk = (nodes: CategoryNode[]) => {
+      for (const n of nodes) {
+        if (n.children?.length) walk(n.children);
+        for (const p of byCat.get(n.key) ?? []) order.set(p.id, order.size);
+      }
+    };
+    walk(grid.categories);
+    // any parameter not covered by a category node keeps a stable trailing spot
+    for (const r of grid.rows) if (!order.has(r.param.id)) order.set(r.param.id, order.size);
+    return order;
+  }, [grid.rows, grid.categories]);
+
   const q = search.trim().toLowerCase();
   const lq = localQ.trim().toLowerCase();
   const rows = useMemo(() => {
-    return grid.rows.filter((r) => {
+    const filtered = grid.rows.filter((r) => {
       if (categoryKey && r.param.category !== categoryKey && !r.param.category.startsWith(categoryKey + "/"))
         return false;
       if (q && !rowMatches(r, q, searchScope)) return false;
@@ -337,7 +365,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
-  }, [grid.rows, categoryKey, q, lq, filters, searchScope]);
+    return filtered.sort(
+      (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
+    );
+  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder]);
 
   // Auto-fit: each instance column gets at least what its longest visible
   // value needs (so "staging.example.internal" never truncates), and any
@@ -346,7 +377,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // grid) get the width budget. Type/Scope hold short tags; Description is a
   // supporting hint (the full text is always in the details panel), so it stays
   // narrow and truncates.
-  const PARAM_W = 206;
+  const PARAM_W = 240;
   const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
   const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
   const DESC_W = prefs.showDescCol ? 140 : 0;
@@ -454,19 +485,26 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         key: "param",
         fixed: "left",
         width: PARAM_W,
+        ellipsis: { showTitle: false },
         sorter: (a, b) => a.param.name.localeCompare(b.param.name),
         render: (_v, r) => (
-          <Space size={4}>
-            {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
-            <span>{hl(r.param.name, hlParam)}</span>
+          // The name column is a fixed width; long dotted names must truncate
+          // (with the full name on hover) instead of spilling into Type/Scope.
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+            {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
+            <Tooltip title={r.param.name} placement="topLeft">
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {hl(r.param.name, hlParam)}
+              </span>
+            </Tooltip>
             {bindingsOf(r.param).length === 0 && (
               <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
-                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2 }}>
+                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                   design
                 </Tag>
               </Tooltip>
             )}
-          </Space>
+          </div>
         ),
       },
     ];

@@ -95,6 +95,10 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		}
 		cands := foldLists(fr.Candidates)
 		li, rel, inInstance := folderOf(fr.File)
+		// A Kubernetes manifest (has top-level apiVersion + kind) carries
+		// envelope fields that are structure, not configuration; drop them so
+		// the import proposes only tunable values.
+		manifest := k8sManifest(cands)
 
 		var setters map[string]string
 		if det.Layout == layout.KindKpt && inInstance {
@@ -103,6 +107,9 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 
 		for _, c := range cands {
 			if structuralKey(c.Path) {
+				continue
+			}
+			if manifest && k8sStructural(c.Path) {
 				continue
 			}
 			if inInstance {
@@ -388,12 +395,53 @@ func skipFile(file string) bool {
 	return strings.HasSuffix(base, ".schema.json")
 }
 
-// structuralKey drops Kubernetes envelope fields that identify a resource
-// rather than configure it.
+// structuralKey drops the top-level Kubernetes identity fields present in
+// almost any KRM document, regardless of whether the file is a full manifest.
 func structuralKey(path string) bool {
 	switch path {
 	case "$.apiVersion", "$.kind":
 		return true
+	}
+	return false
+}
+
+// k8sManifest reports whether a scanned file is a Kubernetes manifest: it has
+// both a top-level apiVersion and kind. Helm values files and other plain
+// config do not, so their fields are left untouched.
+func k8sManifest(cands []candidate) bool {
+	var hasAPI, hasKind bool
+	for _, c := range cands {
+		switch c.Path {
+		case "$.apiVersion":
+			hasAPI = true
+		case "$.kind":
+			hasKind = true
+		}
+	}
+	return hasAPI && hasKind
+}
+
+// k8sEnvelopePrefixes are the metadata-bookkeeping and cluster-reported
+// subtrees of a Kubernetes object: identity and status, never tunable config.
+var k8sEnvelopePrefixes = []string{
+	"$.metadata.name", "$.metadata.namespace", "$.metadata.labels",
+	"$.metadata.annotations", "$.metadata.creationTimestamp", "$.metadata.resourceVersion",
+	"$.metadata.uid", "$.metadata.generation", "$.metadata.finalizers",
+	"$.metadata.ownerReferences", "$.metadata.managedFields", "$.metadata.selfLink",
+	"$.status",
+}
+
+// k8sStructural reports whether a path is Kubernetes envelope/structure inside
+// a manifest file — the resource's identity and bookkeeping — rather than a
+// value someone tunes per instance.
+func k8sStructural(path string) bool {
+	if path == "$.apiVersion" || path == "$.kind" {
+		return true
+	}
+	for _, pfx := range k8sEnvelopePrefixes {
+		if path == pfx || strings.HasPrefix(path, pfx+".") || strings.HasPrefix(path, pfx+"[") {
+			return true
+		}
 	}
 	return false
 }

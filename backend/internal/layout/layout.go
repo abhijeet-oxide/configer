@@ -117,6 +117,33 @@ func hasConfigFile(dir string) bool {
 	return false
 }
 
+// hasConfigFileDeep reports whether dir contains at least one YAML/JSON/XML
+// file ANYWHERE in its subtree. GitOps instances (kustomize/Flux) keep their
+// values nested several folders deep (e.g. values/<component>/values.yaml), so
+// a per-instance folder must be recognized by its subtree, not only its top
+// level. Stops at the first hit; skips dotfolders.
+func hasConfigFileDeep(dir string) bool {
+	found := false
+	_ = filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			if path != dir && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		switch strings.ToLower(filepath.Ext(d.Name())) {
+		case ".yaml", ".yml", ".json", ".xml":
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
+}
+
 // subdirs lists the child directories of dir (empty when dir is missing).
 func subdirs(dir string) []string {
 	entries, err := os.ReadDir(dir)

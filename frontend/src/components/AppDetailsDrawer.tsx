@@ -54,8 +54,9 @@ export default function AppDetailsDrawer({
   const { setSection, selectParam, selectInstance, setJump } = useUI();
   const qc = useQueryClient();
   // The drawer always describes the ACTIVE repository (selecting a card
-  // switches first), so the repo-scoped queries below hit the right one.
-  const enabled = open && !!repo && !repo.error;
+  // switches first), so the repo-scoped queries below hit the right one. A
+  // not-yet-initialized repository has no grid/changes/application to load.
+  const enabled = open && !!repo && !repo.error && !repo.needsSetup;
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, enabled });
   const appQ = useQuery({ queryKey: ["application", repo?.id], queryFn: api.application, enabled });
   const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, enabled });
@@ -123,7 +124,7 @@ export default function AppDetailsDrawer({
         // beneath it, with the destructive one kept apart as an icon.
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Button type="primary" block icon={<EditOutlined />} onClick={() => goto("overview")}>
-            Open configuration
+            {r.needsSetup ? "Finish setup" : "Open configuration"}
           </Button>
           <div style={{ display: "flex", gap: 8 }}>
             <Button block icon={<FormOutlined />} onClick={onEdit}>
@@ -159,6 +160,13 @@ export default function AppDetailsDrawer({
 
       {r.error ? (
         <Alert type="error" showIcon message="This application is unavailable" description={r.error} />
+      ) : r.needsSetup ? (
+        <Alert
+          type="info"
+          showIcon
+          message="Not set up yet"
+          description="This repository is connected but hasn't been scanned into a Configer application. Finish setup to detect its instances and settings."
+        />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {appQ.data?.description && (

@@ -181,9 +181,13 @@ func Slug(name string) string {
 }
 
 // NameFromURL derives a human-friendly repository name from a git URL or
-// filesystem path (the last path segment without a .git suffix).
+// filesystem path (the last path segment without a .git suffix). Windows
+// paths use backslashes and a drive letter ("C:\Users\me\project"), so those
+// are normalized first — otherwise the whole path after "C:" would be taken
+// as the name.
 func NameFromURL(url string) string {
-	s := strings.TrimSuffix(strings.TrimRight(strings.TrimSpace(url), "/"), ".git")
+	s := strings.ReplaceAll(strings.TrimSpace(url), "\\", "/")
+	s = strings.TrimSuffix(strings.TrimRight(s, "/"), ".git")
 	if i := strings.LastIndexAny(s, "/:"); i >= 0 {
 		s = s[i+1:]
 	}

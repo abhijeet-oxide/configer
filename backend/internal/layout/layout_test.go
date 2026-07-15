@@ -51,6 +51,48 @@ func TestDetectPlainFolders(t *testing.T) {
 	}
 }
 
+// TestDetectSingleNestedInstance covers the Flux/GitOps shape from the field: a
+// single instance folder whose config values live several directories deep
+// (instances/<name>/values/<component>/values.yaml), with no direct config file
+// at the instance root. It must still be recognized as one instance.
+func TestDetectSingleNestedInstance(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "instances", "wnv7a0vbgw0012c", "values", "cliagent")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deep, "values.yaml"), []byte("global:\n  namespace: wnv7a0vbgw0012c\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := Detect(root)
+	if d.Layout != KindPlainFolders {
+		t.Fatalf("layout = %s, want plain-folders", d.Layout)
+	}
+	if len(d.Instances) != 1 || d.Instances[0].Name != "wnv7a0vbgw0012c" {
+		t.Fatalf("instances = %+v, want one named wnv7a0vbgw0012c", d.Instances)
+	}
+	if d.Instances[0].Folder != "instances/wnv7a0vbgw0012c" {
+		t.Fatalf("folder = %s, want instances/wnv7a0vbgw0012c", d.Instances[0].Folder)
+	}
+}
+
+// TestDetectNestedGitopsTree covers a repo that keeps its instances under a
+// subfolder (a one-level-nested GitOps tree) rather than at the root.
+func TestDetectNestedGitopsTree(t *testing.T) {
+	root := t.TempDir()
+	deep := filepath.Join(root, "gitops", "instances", "site-a", "app")
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deep, "values.yaml"), []byte("port: 8080\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	d := Detect(root)
+	if len(d.Instances) != 1 || d.Instances[0].Folder != "gitops/instances/site-a" {
+		t.Fatalf("instances = %+v, want one at gitops/instances/site-a", d.Instances)
+	}
+}
+
 func TestSettersIn(t *testing.T) {
 	b, err := os.ReadFile("testdata/kpt/packages/prod/config.yaml")
 	if err != nil {

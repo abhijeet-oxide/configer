@@ -41,6 +41,12 @@ func Scan(root string, reg *plugin.Registry, ignore project.Ignore) (ScanResult,
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
+		// Normalize to forward slashes so downstream matching (instance-folder
+		// prefixes, bindings, ignore globs) is identical on Windows and Unix.
+		// Without this, a Windows "instances\prod\values.yaml" never matches an
+		// "instances/prod/" folder prefix and every file wrongly falls to the
+		// shared layer (0 instances detected).
+		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
 			if alwaysSkip[d.Name()] {
 				return filepath.SkipDir

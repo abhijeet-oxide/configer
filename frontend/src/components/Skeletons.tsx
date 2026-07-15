@@ -219,26 +219,46 @@ export function TableSkeleton({ rows = 9 }: { rows?: number }) {
 
 // --------------------------------------------------------------- approvals
 
-// Mirrors ApprovalsView: page header, then review cards each with a step
-// strip, a before/after block and action buttons.
+// Mirrors ApprovalsView: page header, the pipeline stat strip, then the
+// review queue on the left and the selected change request on the right.
 export function ApprovalsSkeleton() {
   return (
-    <div style={{ padding: "16px 20px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ padding: "16px 24px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
       <SkHeader />
-      {[0, 1].map((i) => (
-        <SkPanel key={i} style={{ opacity: 1 - i * 0.3 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+        {[...Array(4)].map((_, i) => (
+          <SkPanel key={i} title={false} style={{ height: 80, justifyContent: "center" }}>
+            <Sk w="60%" h={11} />
+            <Sk w="30%" h={20} />
+          </SkPanel>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 16, flex: 1, minHeight: 0 }}>
+        <div style={{ flex: "0 0 330px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <Sk w={110} h={12} />
+          {[...Array(3)].map((_, i) => (
+            <SkPanel key={i} title={false} style={{ opacity: 1 - i * 0.25 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Sk w={82} h={20} r={999} />
+                <Sk w="55%" h={14} />
+              </div>
+              <Sk w="70%" h={11} />
+            </SkPanel>
+          ))}
+        </div>
+        <SkPanel style={{ flex: 1 }}>
           <div style={{ display: "flex", gap: 8 }}>
-            {[...Array(4)].map((_, s) => (
-              <Sk key={s} w={90} h={22} r={999} />
+            {[...Array(3)].map((_, s) => (
+              <Sk key={s} w={110} h={22} r={999} />
             ))}
           </div>
-          <SkLines rows={3} />
-          <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-            <Sk w={150} h={30} r={6} />
-            <Sk w={96} h={30} r={6} />
+          <SkLines rows={5} gap={16} />
+          <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
+            <Sk w={170} h={38} r={6} />
+            <Sk w={110} h={38} r={6} />
           </div>
         </SkPanel>
-      ))}
+      </div>
     </div>
   );
 }

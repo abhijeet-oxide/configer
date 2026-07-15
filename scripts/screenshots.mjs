@@ -13,9 +13,11 @@
 // :8124, so the New Application wizard shows a stable, demo-safe repository
 // list instead of a real account.
 
+import { execSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdirSync } from "node:fs";
+import { cpSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,13 +28,14 @@ const { chromium } = require("playwright");
 
 const BASE = process.env.SCREENSHOT_BASE_URL || "http://localhost:5173";
 const API = process.env.SCREENSHOT_API_URL || "http://localhost:8080";
-const OUT = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "..",
-  "docs",
-  "screenshots",
-);
+const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
+const OUT = path.join(ROOT, "docs", "screenshots");
 const APP = process.env.SCREENSHOT_APP_ID || "sample-repo";
+// A second, disposable application built from a copy of sample-repo. It gets
+// a real change request under review and a real out-of-band commit, so the
+// Approvals / Release history / Repository changes screenshots show the
+// pages doing their job instead of their empty states. Removed afterwards.
+const DEMO_APP = "payments-demo";
 
 // ---------------------------------------------------------------- gh stub
 
@@ -95,6 +98,76 @@ const api = async (method, p, body) => {
   return res.json();
 };
 
+const git = (dir, cmd) => execSync(`git ${cmd}`, { cwd: dir, stdio: "pipe" });
+
+// Build the disposable demo application: a fresh git repo copied from
+// sample-repo, connected to the workspace, with (a) one change request
+// submitted for review, (b) one fresh draft edit, and (c) one commit made
+// directly on Git so drift findings exist. Everything lives in a temp dir
+// and is disconnected + deleted at the end.
+async function setupDemoApp() {
+  const fix = path.join(os.tmpdir(), `configer-demo-${Date.now()}`);
+  cpSync(path.join(ROOT, "sample-repo"), fix, {
+    recursive: true,
+    filter: (src) => !src.split(path.sep).includes(".git"),
+  });
+  git(fix, "init -b main");
+  git(fix, 'config user.name "Priya"');
+  git(fix, 'config user.email "priya@example.com"');
+  git(fix, "add -A");
+  git(fix, '-c commit.gpgsign=false commit -q -m "baseline configuration"');
+
+  const repo = await api("POST", "/repos", { url: fix, name: DEMO_APP });
+  const rp = (p) => `/repos/${encodeURIComponent(repo.id)}${p}`;
+
+  // Pin the drift baseline to the current HEAD now, so the out-of-band
+  // commit made below is detected as a finding (the baseline initializes
+  // lazily on the first findings query).
+  await api("GET", rp("/repo/findings"));
+
+  // Three integer edits: two become the change request, one stays a draft.
+  const grid = await api("GET", rp("/grid"));
+  const edits = [];
+  for (const row of grid.rows) {
+    if (edits.length >= 3) break;
+    if (row.param.type !== "integer") continue;
+    for (const inst of grid.instances.slice(0, 2)) {
+      const cell = row.cells[inst.name];
+      if (!cell?.editable || typeof cell.value !== "number") continue;
+      edits.push({ instance: inst.name, paramId: row.param.id, value: cell.value + 1 });
+      if (edits.length >= 3) break;
+    }
+  }
+  for (const e of edits.slice(0, 2)) await api("PUT", rp("/values"), { ...e, author: "priya" });
+  const draft = await api("GET", rp("/changes/draft"));
+  await api("POST", rp(`/changes/${draft.draft.id}/submit`), {
+    title: "Raise admin ports for the v24.4 rollout",
+    description: "Prepares the production fleet for next week's gateway update; staging already runs these values.",
+    reference: "OPS-1043",
+    category: "maintenance",
+    author: "priya",
+  });
+  if (edits[2]) await api("PUT", rp("/values"), { ...edits[2], author: "priya" });
+
+  // One commit straight on Git, outside Configer → a Repository changes finding.
+  const folder = grid.instances[0]?.folder || "instances/prod";
+  mkdirSync(path.join(fix, folder), { recursive: true });
+  writeFileSync(
+    path.join(fix, folder, "cache.yaml"),
+    "cache:\n  ttlSeconds: 300\n  maxEntries: 10000\n  evictionPolicy: lru\n",
+  );
+  git(fix, "add -A");
+  git(fix, '-c commit.gpgsign=false commit -q -m "cache tuning applied directly on the box"');
+
+  return { id: repo.id, fix };
+}
+
+async function teardownDemoApp(demo) {
+  if (!demo) return;
+  await api("DELETE", `/repos/${encodeURIComponent(demo.id)}`).catch(() => {});
+  rmSync(demo.fix, { recursive: true, force: true });
+}
+
 // Stage one draft edit so the editor, source control and release history
 // show live content (reverted at the end — nothing is committed).
 async function stageDemoEdit() {
@@ -133,12 +206,16 @@ async function main() {
     await page.screenshot({ path: path.join(OUT, `${name}.png`) });
     console.log(`  ✓ ${name}.png`);
   };
-  const goto = async (view) => {
-    await page.goto(`${BASE}/?app=${APP}&view=${view}`, { waitUntil: "networkidle" });
+  const goto = async (view, app = APP) => {
+    await page.goto(`${BASE}/?app=${app}&view=${view}`, { waitUntil: "networkidle" });
   };
 
   const edit = await stageDemoEdit().catch((e) => {
     console.warn(`  (no demo edit staged: ${e.message})`);
+    return null;
+  });
+  const demo = await setupDemoApp().catch((e) => {
+    console.warn(`  (no demo application: ${e.message})`);
     return null;
   });
 
@@ -182,19 +259,22 @@ async function main() {
     await page.keyboard.press("Escape");
 
     // -------- level 2: the Configuration page, tab by tab
+    // Review-flow tabs are captured on the demo application, which has a real
+    // change request under review and real drift, so the pages show their job.
+    const flowApp = demo ? DEMO_APP : APP;
     const tabs = [
-      ["overview", "07-configuration-overview"],
-      ["config", "08-configuration-editor"],
-      ["compare", "09-configuration-compare"],
-      ["changes", "10-configuration-release-history"],
-      ["approvals", "11-configuration-approvals"],
-      ["instances", "12-configuration-instances"],
-      ["files", "13-configuration-files"],
-      ["drift", "14-configuration-repository-changes"],
-      ["import", "15-configuration-import"],
+      ["overview", "07-configuration-overview", APP],
+      ["config", "08-configuration-editor", APP],
+      ["compare", "09-configuration-compare", APP],
+      ["changes", "10-configuration-release-history", flowApp],
+      ["approvals", "11-configuration-approvals", flowApp],
+      ["instances", "12-configuration-instances", APP],
+      ["files", "13-configuration-files", APP],
+      ["drift", "14-configuration-repository-changes", flowApp],
+      ["import", "15-configuration-import", APP],
     ];
-    for (const [view, name] of tabs) {
-      await goto(view);
+    for (const [view, name, app] of tabs) {
+      await goto(view, app);
       if (view === "files") await page.waitForTimeout(2500); // Monaco loads lazily
       await shot(name);
     }
@@ -226,6 +306,7 @@ async function main() {
         `/values?paramId=${encodeURIComponent(edit.paramId)}&instance=${encodeURIComponent(edit.instance)}`,
       ).catch(() => {});
     }
+    await teardownDemoApp(demo);
     await browser.close();
     stub.close();
   }

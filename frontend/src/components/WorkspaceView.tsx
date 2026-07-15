@@ -262,7 +262,7 @@ export default function WorkspaceView() {
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <div style={{ maxWidth: 1380, margin: "0 auto" }}>
+      <div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>

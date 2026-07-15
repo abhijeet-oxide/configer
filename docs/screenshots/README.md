@@ -19,9 +19,13 @@ cd frontend && npm run dev
 node scripts/screenshots.mjs
 ```
 
-The script stages one draft edit through the API so the editor and history
-show live content, and reverts it afterwards — nothing is committed to the
-sample repository.
+The script stages one draft edit through the API so the editor shows live
+content (reverted afterwards — nothing is committed to the sample
+repository). It also builds a disposable second application, `payments-demo`,
+from a temp copy of sample-repo, submits a real change request and makes one
+commit directly on Git — so the Approvals, Release history and Repository
+changes screenshots show those pages doing their job. That application is
+disconnected and deleted when the run finishes.
 
 ## The gallery
 
@@ -48,11 +52,11 @@ sample repository.
 | 07 | ![](07-configuration-overview.png) | **Overview** tab: health signals, stat cards, system health map, activity. |
 | 08 | ![](08-configuration-editor.png) | **Editor** tab: the parameter×instance grid with groups tree and details panel. |
 | 09 | ![](09-configuration-compare.png) | **Compare** tab: two instances/versions, parameter-level diff. |
-| 10 | ![](10-configuration-release-history.png) | **Release history** tab: every change request and its state. |
-| 11 | ![](11-configuration-approvals.png) | **Approvals** tab: what is waiting for review. |
+| 10 | ![](10-configuration-release-history.png) | **Release history** tab: every change request and its state (a draft and one under review). |
+| 11 | ![](11-configuration-approvals.png) | **Approvals** tab: the review pipeline stats, the queue, and the selected change request with before→after values and one-click decisions. |
 | 12 | ![](12-configuration-instances.png) | **Instances** tab: the deployment targets. |
 | 13 | ![](13-configuration-files.png) | **Files** tab: the repository's real files, editable with drafts. |
-| 14 | ![](14-configuration-repository-changes.png) | **Repository changes** tab: drift detected on Git since last look. |
+| 14 | ![](14-configuration-repository-changes.png) | **Repository changes** tab: per-type drift tiles (clickable filters) and a detected out-of-band commit with its one-click resolution. |
 | 15 | ![](15-configuration-import.png) | **Import**: scan the repository and choose which settings to manage. |
 
 ### Loading & theming

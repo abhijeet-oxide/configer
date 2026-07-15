@@ -106,7 +106,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     step === 0 ? appName.trim() !== "" && insts.length > 0 : step === 2 ? chosenParams.length > 0 : true;
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 24px", maxWidth: 980, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
       <Typography.Title level={4} style={{ marginBottom: 4 }}>
         Set up {projectName}
       </Typography.Title>

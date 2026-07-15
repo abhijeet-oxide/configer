@@ -345,28 +345,30 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   }
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 24px", maxWidth: 1180, margin: "0 auto" }}>
+    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
       <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Import configuration
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            Bring settings from your repository files under management. Scanning only reads files;
-            nothing is written to Git until you confirm at the end.
-          </Typography.Text>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
+          <div style={{ flex: "1 1 380px" }}>
+            <Typography.Title level={4} style={{ margin: 0 }}>
+              Import configuration
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              Bring settings from your repository files under management. Scanning only reads files;
+              nothing is written to Git until you confirm at the end.
+            </Typography.Text>
+          </div>
+          <Steps
+            size="small"
+            current={step}
+            items={[
+              { title: "Connect repository", icon: <ApiOutlined /> },
+              { title: "Scan repository", icon: <FileSearchOutlined /> },
+              { title: "Choose parameters", icon: <CheckSquareOutlined /> },
+              { title: "Review & initialize", icon: <RocketOutlined /> },
+            ]}
+            style={{ flex: "1 1 520px", marginTop: 4 }}
+          />
         </div>
-        <Steps
-          size="small"
-          current={step}
-          items={[
-            { title: "Connect repository", icon: <ApiOutlined /> },
-            { title: "Scan repository", icon: <FileSearchOutlined /> },
-            { title: "Choose parameters", icon: <CheckSquareOutlined /> },
-            { title: "Review & initialize", icon: <RocketOutlined /> },
-          ]}
-          style={{ maxWidth: 860 }}
-        />
         {step === 0 && <ConnectStep onNext={() => setStep(1)} />}
         {step === 1 && (
           <ScanStep
@@ -523,28 +525,65 @@ function ScanStep({
   onNext: () => void;
 }) {
   if (!scan) {
+    // Pre-scan: a full-width hero with the action, and the three promises of
+    // the import spelled out underneath — no dead space, nothing to fear.
+    const promises: { icon: React.ReactNode; title: string; text: string }[] = [
+      {
+        icon: <FileSearchOutlined />,
+        title: "Scanning is read-only",
+        text: "Configer reads the current branch and detects YAML, JSON and XML configuration files. Nothing is written, nothing is sent anywhere.",
+      },
+      {
+        icon: <CheckSquareOutlined />,
+        title: "You choose what to manage",
+        text: "Every detected setting is a suggestion. Untick whole files or single settings; everything you skip stays exactly as it is.",
+      },
+      {
+        icon: <RocketOutlined />,
+        title: "One commit at the end",
+        text: "Only the final confirm writes: one reviewable commit adds the chosen parameters to the catalog. Your files keep their values.",
+      },
+    ];
     return (
-      <Card>
-        <div style={{ textAlign: "center", padding: "28px 12px" }}>
-          <FileSearchOutlined style={{ fontSize: 44, opacity: 0.5 }} />
-          <Typography.Title level={5} style={{ marginTop: 14 }}>
-            Find configuration in your repository
-          </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ maxWidth: 520, margin: "0 auto 18px" }}>
-            Configer reads the repository on the current branch and detects YAML, JSON and XML
-            configuration files. You then pick which settings to manage; everything else stays
-            untouched.
-          </Typography.Paragraph>
-          <Space>
-            <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
-              Repository
-            </Button>
-            <Button type="primary" size="large" icon={<FileSearchOutlined />} loading={scanning} onClick={onScan}>
-              Scan repository
-            </Button>
-          </Space>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <Card>
+          <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
+            <FileSearchOutlined style={{ fontSize: 44, opacity: 0.5 }} />
+            <div style={{ flex: "1 1 360px", minWidth: 0 }}>
+              <Typography.Title level={5} style={{ margin: 0 }}>
+                Find configuration in your repository
+              </Typography.Title>
+              <Typography.Text type="secondary">
+                Configer detects the settings living in your files and offers them for management —
+                you stay in control of every single one.
+              </Typography.Text>
+            </div>
+            <Space>
+              <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+                Repository
+              </Button>
+              <Button type="primary" size="large" icon={<FileSearchOutlined />} loading={scanning} onClick={onScan}>
+                Scan repository
+              </Button>
+            </Space>
+          </div>
+        </Card>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14 }}>
+          {promises.map((p) => (
+            <Card key={p.title} size="small">
+              <Space align="start" size={12}>
+                <span style={{ fontSize: 22, color: "var(--c-review)" }}>{p.icon}</span>
+                <div>
+                  <Typography.Text strong>{p.title}</Typography.Text>
+                  <Typography.Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: 13 }}>
+                    {p.text}
+                  </Typography.Paragraph>
+                </div>
+              </Space>
+            </Card>
+          ))}
         </div>
-      </Card>
+      </div>
     );
   }
 

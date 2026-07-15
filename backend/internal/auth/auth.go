@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/store"
@@ -48,6 +49,14 @@ type Service struct {
 	Admins map[string]bool
 	// HTTP is the outbound client (test seam).
 	HTTP *http.Client
+
+	// tokens caches each signed-in user's GitHub access token, in memory
+	// only — never written to the store or sent to the browser. It lets the
+	// server browse repositories and branches on the user's behalf (the New
+	// Application flow). After a server restart the cache is empty until the
+	// user signs in again, which is a plain re-login, not an error.
+	mu     sync.Mutex
+	tokens map[string]string
 }
 
 // Enabled reports whether OAuth login is configured.
@@ -72,6 +81,37 @@ func (s *Service) http() *http.Client {
 		return s.HTTP
 	}
 	return &http.Client{Timeout: 15 * time.Second}
+}
+
+// rememberToken caches a user's GitHub access token for the lifetime of this
+// process.
+func (s *Service) rememberToken(login, token string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.tokens == nil {
+		s.tokens = map[string]string{}
+	}
+	s.tokens[login] = token
+}
+
+// GitHubToken returns the cached GitHub access token for a signed-in user,
+// or "" when none is known (session predates this process).
+func (s *Service) GitHubToken(login string) string {
+	if s == nil {
+		return ""
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.tokens[login]
+}
+
+// GitHubAPIBase exposes the GitHub API root (Enterprise-aware) for callers
+// that talk to GitHub on a user's behalf.
+func (s *Service) GitHubAPIBase() string {
+	if s == nil {
+		return "https://api.github.com"
+	}
+	return s.apiBase()
 }
 
 // UserFrom returns the authenticated user carried by the request context.
@@ -128,9 +168,11 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		Name: "configer_oauth_state", Value: state, Path: "/",
 		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600,
 	})
+	// The repo scope lets Configer list the user's repositories (their own
+	// and their orgs') and clone private ones during application creation.
 	q := url.Values{
 		"client_id": {s.ClientID},
-		"scope":     {"read:user user:email"},
+		"scope":     {"read:user user:email repo"},
 		"state":     {state},
 	}
 	if s.CallbackURL != "" {
@@ -168,6 +210,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	}
 	ghUser.Admin = s.Admins[ghUser.Login]
 	ghUser.CreatedAt = time.Now().UTC()
+	s.rememberToken(ghUser.Login, token)
 	if err := s.Store.UpsertUser(r.Context(), ghUser); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

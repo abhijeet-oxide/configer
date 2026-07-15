@@ -401,6 +401,29 @@ export interface Workspace {
   repos: RepoSummary[];
 }
 
+// --- GitHub browsing (New Application flow) --------------------------------
+
+/** Whether the server can browse GitHub right now, and through what. */
+export interface GitHubStatus {
+  available: boolean;
+  /** "session" (the signed-in user's access) or "server" (deployment token) */
+  source: "session" | "server" | "";
+  login?: string;
+  /** whether "Sign in with GitHub" is configured on this deployment */
+  signInEnabled: boolean;
+}
+
+export interface GitHubRepo {
+  fullName: string;
+  owner: string;
+  name: string;
+  private: boolean;
+  description?: string;
+  defaultBranch?: string;
+  pushedAt?: string;
+  url: string;
+}
+
 // The active repository. Every repo-scoped call is routed to
 // /api/repos/<id>/...; when unset the legacy unscoped routes hit the
 // server's default repository, so the app works before the workspace loads.
@@ -497,6 +520,10 @@ export const api = {
     return get<{ events: AuditEvent[] | null }>(`/audit${suffix}`);
   },
   workspace: () => get<Workspace>("/workspace"),
+  githubStatus: () => get<GitHubStatus>("/github/status"),
+  githubRepos: () => get<{ repos: GitHubRepo[] }>("/github/repos"),
+  githubBranches: (fullName: string) =>
+    get<{ default: string; branches: string[] }>(`/github/branches?repo=${encodeURIComponent(fullName)}`),
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),
   renameRepo: (id: string, name: string) =>

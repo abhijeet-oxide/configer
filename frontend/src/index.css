@@ -222,6 +222,45 @@ body {
   font-size: 18px;
 }
 
+/* ------------------------------------------------------------ skeletons */
+
+/* One shimmer primitive for every loading state in the app. Fluid by design:
+   widths come from the layout (%, fr, flex), never fixed pixel boxes, so a
+   loading page occupies exactly the space the real page will. The gray reads
+   correctly on both light and dark surfaces. */
+.sk {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: rgba(127, 137, 160, 0.16);
+  display: block;
+  flex-shrink: 0;
+}
+.sk::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
+  );
+  animation: skShimmer 1.6s ease-in-out infinite;
+}
+/* a bordered container standing in for a Card / table shell */
+.sk-panel {
+  border: 1px solid rgba(127, 137, 160, 0.18);
+  border-radius: 10px;
+  background: rgba(127, 137, 160, 0.03);
+}
+@keyframes skShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
 /* -------------------------------------------------------------- motion */
 
 @media (prefers-reduced-motion: reduce) {

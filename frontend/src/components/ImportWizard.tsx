@@ -38,7 +38,7 @@ import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCan
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { ConnectForm } from "./WorkspaceView";
+import { ConnectForm } from "./NewApplicationWizard";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then

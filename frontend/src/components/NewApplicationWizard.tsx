@@ -18,7 +18,9 @@ import {
   ArrowRightOutlined,
   BranchesOutlined,
   FileSearchOutlined,
+  FolderOpenOutlined,
   GithubOutlined,
+  HddOutlined,
   LockOutlined,
   PlusOutlined,
   RocketOutlined,
@@ -30,16 +32,22 @@ import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 
-// NewApplicationWizard is the seamless "New application" flow, two steps:
+// NewApplicationWizard is the seamless "New application" flow. It opens on a
+// choice of source, as two big cards:
 //
-//   sign in with GitHub → pick one of YOUR repositories (own or org) →
-//   branch + name on one screen → create, then scan.
+//   Git repository → sign in with GitHub → pick one of YOUR repositories →
+//                    branch + name on one screen → create, then scan.
+//   Local folder   → point at a folder on the server; Configer turns it into
+//                    a local Git repository (initial commit included) and
+//                    manages it in place.
 //
 // No URLs, no tokens: the server browses GitHub with the signed-in user's
 // own access (or the deployment token) and credentials never reach the
-// browser. A manual mode (git URL or server path) stays available for
-// everything that isn't GitHub. The step body has a fixed minimum height so
-// the dialog never jumps between steps.
+// browser. A manual mode (git URL) stays available for everything that isn't
+// GitHub. The step body has a fixed minimum height so the dialog never jumps
+// between steps.
+
+type Source = "git" | "local";
 
 export default function NewApplicationWizard({
   open,
@@ -52,7 +60,8 @@ export default function NewApplicationWizard({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [step, setStep] = useState(0);
+  const [source, setSource] = useState<Source | null>(null);
+  const [step, setStep] = useState(0); // within the Git path: 0 pick repo, 1 finish
   const [manual, setManual] = useState(false);
   const [repo, setRepo] = useState<GitHubRepo | null>(null);
   const [branch, setBranch] = useState<string | undefined>();
@@ -61,6 +70,7 @@ export default function NewApplicationWizard({
   const statusQ = useQuery({ queryKey: ["github-status"], queryFn: api.githubStatus, enabled: open });
 
   const reset = () => {
+    setSource(null);
     setStep(0);
     setManual(false);
     setRepo(null);
@@ -87,6 +97,21 @@ export default function NewApplicationWizard({
     setStep(1);
   };
 
+  // The step strip mirrors the chosen path; before a choice it shows the
+  // common shape (source → set up → create).
+  const stepItems =
+    source === "local"
+      ? [
+          { title: "Source", icon: <FolderOpenOutlined /> },
+          { title: "Folder, name & create", icon: <RocketOutlined /> },
+        ]
+      : [
+          { title: "Source", icon: <FolderOpenOutlined /> },
+          { title: "Repository", icon: <GithubOutlined /> },
+          { title: "Branch, name & create", icon: <RocketOutlined /> },
+        ];
+  const currentStep = source === null ? 0 : source === "local" ? 1 : 1 + step;
+
   return (
     <Modal
       title="New application"
@@ -100,22 +125,26 @@ export default function NewApplicationWizard({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-        An application manages the configuration living in one Git repository. Pick the
-        repository and branch, give it a name, and Configer scans it for settings — nothing is
-        written until you say so.
+        An application manages the configuration living in one Git repository — remote or a
+        folder on this machine. Configer scans it for settings; nothing is written until you
+        say so.
       </Typography.Paragraph>
-      <Steps
-        size="small"
-        current={step}
-        style={{ margin: "8px 0 20px" }}
-        items={[
-          { title: "Repository", icon: <GithubOutlined /> },
-          { title: "Branch, name & create", icon: <RocketOutlined /> },
-        ]}
-      />
+      <Steps size="small" current={currentStep} style={{ margin: "8px 0 20px" }} items={stepItems} />
       {/* fixed floor so the dialog chrome and buttons never jump between steps */}
       <div style={{ minHeight: 380, display: "flex", flexDirection: "column" }}>
-        {step === 0 &&
+        {source === null && <SourceStep onPick={setSource} />}
+
+        {source === "local" && (
+          <LocalFolderStep
+            onBack={() => setSource(null)}
+            onDone={(r) => {
+              reset();
+              onCreated(r);
+            }}
+          />
+        )}
+
+        {source === "git" && step === 0 &&
           (manual ? (
             <>
               <ConnectForm compact onDone={(r) => { reset(); onCreated(r); }} />
@@ -129,9 +158,10 @@ export default function NewApplicationWizard({
               status={statusQ.data}
               onPick={pickRepo}
               onManual={() => setManual(true)}
+              onBack={() => setSource(null)}
             />
           ))}
-        {step === 1 && repo && (
+        {source === "git" && step === 1 && repo && (
           <FinishStep
             repo={repo}
             branch={branch}
@@ -148,6 +178,131 @@ export default function NewApplicationWizard({
   );
 }
 
+// ---- step: pick the source ---------------------------------------------------
+
+// Two big, equal choices — where does the configuration live?
+function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
+  const card: React.CSSProperties = {
+    flex: 1,
+    border: "1px solid rgba(127,137,160,0.28)",
+    borderRadius: 12,
+    padding: "28px 22px",
+    cursor: "pointer",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    gap: 10,
+  };
+  return (
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 }}>
+      <Typography.Text strong style={{ fontSize: 15, textAlign: "center" }}>
+        Where does the configuration live?
+      </Typography.Text>
+      <div style={{ display: "flex", gap: 14 }}>
+        <div className="card-clickable" style={card} onClick={() => onPick("git")} role="button" tabIndex={0}>
+          <GithubOutlined style={{ fontSize: 40, opacity: 0.75 }} />
+          <Typography.Text strong style={{ fontSize: 14.5 }}>
+            Git repository
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+            Connect a repository on GitHub (or any git URL). You'll authorize with GitHub and
+            pick from your repositories — no URLs or tokens to paste.
+          </Typography.Text>
+          <Button type="primary" ghost size="small" style={{ marginTop: "auto" }}>
+            Choose a repository <ArrowRightOutlined />
+          </Button>
+        </div>
+        <div className="card-clickable" style={card} onClick={() => onPick("local")} role="button" tabIndex={0}>
+          <HddOutlined style={{ fontSize: 40, opacity: 0.75 }} />
+          <Typography.Text strong style={{ fontSize: 14.5 }}>
+            Local folder
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+            Point at a folder on this machine. Configer turns it into a local Git repository
+            (history included) and manages the configuration in place.
+          </Typography.Text>
+          <Button type="primary" ghost size="small" style={{ marginTop: "auto" }}>
+            Choose a folder <ArrowRightOutlined />
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---- step: local folder --------------------------------------------------------
+
+// A folder path and a name; the backend opens the folder in place and
+// initializes Git (with an initial import commit) when it isn't a repository
+// yet, so every edit is versioned from the very first one.
+function LocalFolderStep({
+  onBack,
+  onDone,
+}: {
+  onBack: () => void;
+  onDone: (r: RepoSummary) => void;
+}) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const [form] = Form.useForm<{ path: string; name?: string }>();
+  const connect = useMutation({
+    mutationFn: (v: { path: string; name?: string }) =>
+      api.connectRepo({ url: v.path.trim(), name: v.name?.trim() || undefined }),
+    onSuccess: (r) => {
+      message.success(`Application "${r.name}" created from the local folder. Scanning it…`);
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+      onDone(r);
+    },
+    onError: (e: Error) => message.error(e.message, 6),
+  });
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      <Form
+        form={form}
+        layout="vertical"
+        requiredMark={false}
+        onFinish={(v) => connect.mutate(v)}
+      >
+        <Form.Item
+          name="path"
+          label="Folder on this machine"
+          rules={[{ required: true, whitespace: true, message: "Give the folder's path" }]}
+          extra="An absolute path the Configer server can see. If the folder isn't a Git repository yet, one is initialized with everything in it as the first commit."
+        >
+          <Input className="mono" placeholder="/srv/configs/network-platform" autoFocus />
+        </Form.Item>
+        <Form.Item
+          name="name"
+          label="Application name (optional)"
+          extra="How this configuration appears across Configer. Defaults to the folder's name."
+        >
+          <Input maxLength={60} placeholder="e.g. Network Platform" />
+        </Form.Item>
+      </Form>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <FileSearchOutlined /> After creating, Configer scans the folder and shows the
+        configuration files it found, so you choose what to manage.
+      </Typography.Text>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={connect.isPending}>
+          Source
+        </Button>
+        <Button
+          type="primary"
+          size="large"
+          icon={<RocketOutlined />}
+          loading={connect.isPending}
+          onClick={() => form.submit()}
+        >
+          Create application & scan
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ---- step 0: pick the repository -------------------------------------------
 
 function RepoStep({
@@ -155,11 +310,13 @@ function RepoStep({
   status,
   onPick,
   onManual,
+  onBack,
 }: {
   loading: boolean;
   status?: { available: boolean; source: string; login?: string; signInEnabled: boolean };
   onPick: (r: GitHubRepo) => void;
   onManual: () => void;
+  onBack: () => void;
 }) {
   const [q, setQ] = useState("");
   const reposQ = useQuery({
@@ -209,7 +366,12 @@ function RepoStep({
         )}
         <div style={{ marginTop: 14 }}>
           <Button type="link" onClick={onManual}>
-            Connect manually (git URL or server path)
+            Connect manually (git URL)
+          </Button>
+        </div>
+        <div style={{ marginTop: 4 }}>
+          <Button type="link" size="small" onClick={onBack}>
+            <ArrowLeftOutlined /> Back to choosing a source
           </Button>
         </div>
       </div>
@@ -290,9 +452,14 @@ function RepoStep({
           )}
         />
       )}
-      <Button type="link" size="small" style={{ alignSelf: "flex-start", paddingInline: 0 }} onClick={onManual}>
-        Not on GitHub? Connect manually
-      </Button>
+      <div style={{ display: "flex", justifyContent: "space-between" }}>
+        <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={onBack}>
+          <ArrowLeftOutlined /> Source
+        </Button>
+        <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={onManual}>
+          Not on GitHub? Connect manually
+        </Button>
+      </div>
     </div>
   );
 }

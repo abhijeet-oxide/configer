@@ -16,12 +16,12 @@ import {
   BranchesOutlined,
   GithubOutlined,
   HddOutlined,
+  InfoCircleOutlined,
   MoreOutlined,
   SyncOutlined,
   RightOutlined,
   StarOutlined,
   StarFilled,
-  CheckCircleFilled,
   WarningFilled,
 } from "@ant-design/icons";
 import { useState } from "react";
@@ -32,14 +32,15 @@ import { useSwitchRepo } from "../useSwitchRepo";
 import { WorkspaceSkeleton } from "./Skeletons";
 import { STEP_HANDOFF } from "./ImportWizard";
 import AppDetailsDrawer from "./AppDetailsDrawer";
+import EditApplicationModal from "./EditApplicationModal";
 import NewApplicationWizard from "./NewApplicationWizard";
 import EnvTag from "./EnvTag";
 
 // WorkspaceView is the landing page: every application as a light,
-// quick-glance card, with anything that needs a human flagged in the
-// attention rail on the side. Depth lives one click away: selecting a card
-// opens the details side panel, and "Open configuration" from there leads to
-// the full tabbed Configuration page.
+// quick-glance card. Clicking a card (or its arrow button) goes straight
+// into the application's Configuration page; the info button opens the
+// details side panel. Anything that needs a human is flagged in the
+// attention rail on the side — which only appears when something does.
 
 const FAV_KEY = "configer.favRepos";
 
@@ -86,13 +87,19 @@ function RepoCard({
   fav,
   onToggleFav,
   onOpen,
+  onDetails,
+  onEdit,
   onDisconnect,
 }: {
   r: RepoSummary;
   active: boolean;
   fav: boolean;
   onToggleFav: () => void;
+  /** go inside: the application's Configuration page */
   onOpen: () => void;
+  /** open the details side panel (the info button) */
+  onDetails: () => void;
+  onEdit: () => void;
   onDisconnect: () => void;
 }) {
   const { setSection } = useUI();
@@ -138,6 +145,7 @@ function RepoCard({
             menu={{
               items: [
                 { key: "open", label: "Open configuration" },
+                { key: "edit", label: "Edit details" },
                 { key: "import", label: "Import settings" },
                 { type: "divider" },
                 { key: "disconnect", danger: true, label: "Disconnect from workspace" },
@@ -145,6 +153,7 @@ function RepoCard({
               onClick: ({ key, domEvent }) => {
                 domEvent.stopPropagation();
                 if (key === "open") goto("overview");
+                if (key === "edit") onEdit();
                 if (key === "import") goto("import");
                 if (key === "disconnect") onDisconnect();
               },
@@ -192,10 +201,18 @@ function RepoCard({
           </Space>
         </>
       )}
-      <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Quick view <RightOutlined style={{ fontSize: 10 }} />
-        </Typography.Text>
+      {/* Footer actions: info opens the side panel; the arrow (like the card
+          itself) goes straight inside the application. */}
+      <div
+        style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end", gap: 6 }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Tooltip title="Details: health, environments, recent activity">
+          <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails} aria-label="Application details" />
+        </Tooltip>
+        <Button size="small" type="primary" ghost onClick={onOpen}>
+          Open <RightOutlined style={{ fontSize: 10 }} />
+        </Button>
       </div>
     </Card>
   );
@@ -208,6 +225,7 @@ export default function WorkspaceView() {
   const qc = useQueryClient();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [editId, setEditId] = useState<string | null>(null);
   const [favs, setFavs] = useState<string[]>(loadFavs);
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 20_000 });
   // favorites pinned first, connection order otherwise
@@ -248,6 +266,19 @@ export default function WorkspaceView() {
     setDetailsId(r.id);
   };
 
+  // Go inside: the application's Configuration page (card click / arrow).
+  const openConfig = (r: RepoSummary) => {
+    if (r.id !== repoId) switchRepo(r.id);
+    setSection("overview");
+  };
+
+  // Edit details always edits the ACTIVE repository (the endpoint is
+  // repo-scoped), so switch first.
+  const openEdit = (r: RepoSummary) => {
+    if (r.id !== repoId) switchRepo(r.id);
+    setEditId(r.id);
+  };
+
   const needsAttention = repos
     .map((r) => ({ r, issues: attentionOf(r) }))
     .filter((x) => x.issues.length > 0);
@@ -262,7 +293,8 @@ export default function WorkspaceView() {
               Applications
             </Typography.Title>
             <Typography.Text type="secondary">
-              Every configuration you manage, straight from Git. Click a card for a quick view.
+              Every configuration you manage, straight from Git. Click a card to open it, or its{" "}
+              <InfoCircleOutlined /> for a quick view.
             </Typography.Text>
           </div>
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
@@ -311,7 +343,9 @@ export default function WorkspaceView() {
                   active={r.id === repoId}
                   fav={favs.includes(r.id)}
                   onToggleFav={() => toggleFav(r.id)}
-                  onOpen={() => openDetails(r)}
+                  onOpen={() => openConfig(r)}
+                  onDetails={() => openDetails(r)}
+                  onEdit={() => openEdit(r)}
                   onDisconnect={() => confirmDisconnect(r)}
                 />
               ))}
@@ -329,25 +363,20 @@ export default function WorkspaceView() {
                 <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
                 <div style={{ marginTop: 8, fontWeight: 500 }}>New application</div>
                 <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                  Pick a GitHub repository and go
+                  From a Git repository or a local folder
                 </Typography.Text>
               </Card>
             </div>
 
-            {/* The attention rail: only what needs a human, in plain words. */}
-            <Card
-              size="small"
-              title="Needs attention"
-              style={{ flex: "0 1 300px", minWidth: 260 }}
-            >
-              {needsAttention.length === 0 ? (
-                <Space align="start">
-                  <CheckCircleFilled style={{ color: "var(--c-ok)", marginTop: 3 }} />
-                  <Typography.Text type="secondary">
-                    All applications look healthy. Nothing is waiting on you.
-                  </Typography.Text>
-                </Space>
-              ) : (
+            {/* The attention rail: only what needs a human, in plain words.
+                When nothing does, it simply isn't there — no reassurance
+                banner taking up space. */}
+            {needsAttention.length > 0 && (
+              <Card
+                size="small"
+                title="Needs attention"
+                style={{ flex: "0 1 300px", minWidth: 260 }}
+              >
                 <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                   {needsAttention.map(({ r, issues }) => (
                     <div
@@ -372,13 +401,22 @@ export default function WorkspaceView() {
                     </div>
                   ))}
                 </div>
-              )}
-            </Card>
+              </Card>
+            )}
           </div>
         )}
       </div>
 
-      <AppDetailsDrawer repo={detailsRepo} open={!!detailsRepo} onClose={() => setDetailsId(null)} />
+      <AppDetailsDrawer
+        repo={detailsRepo}
+        open={!!detailsRepo}
+        onClose={() => setDetailsId(null)}
+        onEdit={() => detailsRepo && openEdit(detailsRepo)}
+      />
+
+      {editId && (
+        <EditApplicationModal open repoId={editId} onClose={() => setEditId(null)} />
+      )}
 
       <NewApplicationWizard
         open={wizardOpen}

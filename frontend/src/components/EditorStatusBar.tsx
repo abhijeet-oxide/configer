@@ -5,23 +5,35 @@ import {
   CloudDownloadOutlined,
   DiffOutlined,
   CheckCircleFilled,
+  FilterFilled,
   WarningFilled,
   CloudServerOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
+import { useUI } from "../store";
 import SourceControlPanel from "./SourceControlPanel";
 
 // EditorStatusBar is the VS Code bottom bar for the config editor: branch name
 // and remote state bottom-left, a one-click pull, a "changes" pill that opens
-// the Source Control view, and a live validity readout on the right. It makes
-// the Git reality visible to anyone who wants it, without demanding they learn
-// Git to edit a value.
+// the Source Control view, and a validity readout on the right that doubles as
+// the "show only invalid cells" toggle. It makes the Git reality visible to
+// anyone who wants it, without demanding they learn Git to edit a value.
+//
+// Deliberately CHARCOAL, not the brand color: the bar is chrome (git plumbing
+// + status), so it must not read as a primary surface or compete with the
+// grid. The one accent it carries is the active invalid-only filter.
+
+// Charcoal is fixed in both light and dark: the bar anchors the bottom of the
+// editor as a neutral, quiet band regardless of theme.
+const CHARCOAL = "#2b2f36";
+const CHARCOAL_ACTIVE = "#3a3f48";
 
 export default function EditorStatusBar({ grid }: { grid: Grid }) {
   const { token } = antdTheme.useToken();
   const qc = useQueryClient();
+  const { filters, setFilters } = useUI();
   const [scmOpen, setScmOpen] = useState(false);
 
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
@@ -34,6 +46,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
     for (const r of grid.rows) for (const c of Object.values(r.cells)) if (c.set && !c.valid) n++;
     return n;
   }, [grid.rows]);
+  const invalidOnly = filters.invalidOnly;
 
   const sync = useMutation({
     mutationFn: api.repoSync,
@@ -60,7 +73,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           alignItems: "center",
           height: 26,
           flexShrink: 0,
-          background: token.colorPrimary,
+          background: CHARCOAL,
           color: "#fff",
           fontSize: 12,
         }}
@@ -91,10 +104,29 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           </span>
         </Tooltip>
         <div style={{ flex: 1 }} />
-        <Tooltip title={invalid ? `${invalid} edited value(s) fail validation` : "All edited values are valid"}>
-          <span style={item}>
-            {invalid ? <WarningFilled /> : <CheckCircleFilled />}
-            {invalid ? `${invalid} invalid` : "valid"}
+        {/* Validity readout doubles as the "show only invalid cells" toggle.
+            Clicking flips filters.invalidOnly; clicking again clears it (so
+            there is always a way to undo the selection). The active state is
+            unmistakable: a lit accent block with a filter icon. */}
+        <Tooltip
+          title={
+            invalidOnly
+              ? "Showing only invalid cells — click to show everything again"
+              : invalid
+                ? `${invalid} edited value(s) fail validation — click to show only invalid cells`
+                : "All edited values are valid"
+          }
+        >
+          <span
+            style={{
+              ...item,
+              background: invalidOnly ? token.colorError : invalid ? CHARCOAL_ACTIVE : undefined,
+              fontWeight: invalidOnly ? 600 : undefined,
+            }}
+            onClick={() => setFilters({ invalidOnly: !invalidOnly })}
+          >
+            {invalidOnly ? <FilterFilled /> : invalid ? <WarningFilled /> : <CheckCircleFilled />}
+            {invalidOnly ? `only invalid (${invalid})` : invalid ? `${invalid} invalid` : "valid"}
           </span>
         </Tooltip>
       </div>

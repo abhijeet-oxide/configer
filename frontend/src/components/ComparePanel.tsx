@@ -14,6 +14,15 @@ import { CompareSkeleton } from "./Skeletons";
 
 const WORKING = "";
 
+type CompareLayout = "Inline" | "Side by Side";
+const LAYOUT_KEY = "configer.compareLayout";
+
+// The user's inline-vs-side-by-side choice is a stable personal preference, so
+// it is remembered across sessions rather than resetting to a default.
+function loadLayout(): CompareLayout {
+  return localStorage.getItem(LAYOUT_KEY) === "Inline" ? "Inline" : "Side by Side";
+}
+
 export default function ComparePanel({ grid }: { grid: Grid }) {
   const { compareLeft, compareRight, setCompare } = useUI();
   const left = compareLeft || grid.instances[0]?.name;
@@ -21,8 +30,13 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
   const [leftRef, setLeftRef] = useState<string>(WORKING);
   const [rightRef, setRightRef] = useState<string>(WORKING);
   const [changesOnly, setChangesOnly] = useState(true);
-  const [layout, setLayout] = useState<"Inline" | "Side by Side">("Side by Side");
+  const [layout, setLayout] = useState<CompareLayout>(loadLayout);
   const [q2, setQ2] = useState("");
+
+  const changeLayout = (v: CompareLayout) => {
+    localStorage.setItem(LAYOUT_KEY, v);
+    setLayout(v);
+  };
 
   const refsQ = useQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
 
@@ -171,7 +185,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
           size="small"
           value={layout}
           options={["Inline", "Side by Side"]}
-          onChange={(v) => setLayout(v as typeof layout)}
+          onChange={(v) => changeLayout(v as CompareLayout)}
         />
         <span>
           <Switch size="small" checked={changesOnly} onChange={setChangesOnly} /> Changes only

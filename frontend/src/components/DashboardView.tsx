@@ -51,7 +51,7 @@ const findingBrief: Record<Finding["type"], { icon: React.ReactNode; color: stri
 };
 
 export default function DashboardView({ grid }: { grid: Grid }) {
-  const { setSection, setFilters } = useUI();
+  const { setSection, setFilters, selectParam, selectInstance, setJump } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
@@ -225,7 +225,25 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               </Button>
             }
           >
-            <HealthTiles data={tiles} onClick={() => setSection("config")} />
+            {/* A tile with a problem opens the editor ON the problem: no
+                filtering — the grid scrolls there and flashes the exact cell. */}
+            <HealthTiles
+              data={tiles}
+              onClick={(name) => {
+                const firstInvalid = grid.rows.find((r) => {
+                  const c = r.cells[name];
+                  return c && !c.valid;
+                });
+                selectInstance(name);
+                if (firstInvalid) {
+                  selectParam(firstInvalid.param.id);
+                  setJump("cell", firstInvalid.param.id, name);
+                } else {
+                  setJump("instance", name);
+                }
+                setSection("config");
+              }}
+            />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={5}>

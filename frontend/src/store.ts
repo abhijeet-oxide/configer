@@ -44,6 +44,26 @@ function loadPrefs(): ViewPrefs {
   return defaultPrefs;
 }
 
+// Which editor panels are open (true) vs quick-collapsed. Persisted so the
+// workspace shape survives reloads.
+export interface PanelsOpen {
+  left: boolean;
+  right: boolean;
+  systems: boolean;
+}
+
+const defaultPanels: PanelsOpen = { left: true, right: true, systems: true };
+
+function loadPanels(): PanelsOpen {
+  try {
+    const raw = localStorage.getItem("configer.panels");
+    if (raw) return { ...defaultPanels, ...JSON.parse(raw) };
+  } catch {
+    // corrupted prefs: fall back to defaults
+  }
+  return defaultPanels;
+}
+
 // Row filters applied by the grid toolbar's Filter dropdown.
 export interface RowFilters {
   invalidOnly: boolean;
@@ -75,9 +95,13 @@ interface UIState {
   /** file or folder prefix the Import wizard should focus on (set by the
    *  Repository Changes inbox when jumping into an import) */
   importFocus: string | null;
-  /** one-shot navigation request: scroll the grid to a parameter row or an
-   *  instance column and flash-highlight it (n makes repeats re-trigger) */
-  jump: { kind: "param" | "instance"; id: string; n: number } | null;
+  /** editor panel visibility: quick-collapse for the left parameter tree,
+   *  the right details panel, and the systems pane (bottom of the tree) */
+  panels: PanelsOpen;
+  /** one-shot navigation request: scroll the grid to a parameter row, an
+   *  instance column, or one cell (kind "cell": id=paramId, inst=instance)
+   *  and flash-highlight it (n makes repeats re-trigger) */
+  jump: { kind: "param" | "instance" | "cell"; id: string; inst?: string; n: number } | null;
   /** one-shot handoff: the change request Approvals should select on open
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
@@ -95,8 +119,9 @@ interface UIState {
   setPrefs: (p: Partial<ViewPrefs>) => void;
   setNavCollapsed: (c: boolean) => void;
   setEditorFocus: (f: boolean) => void;
+  togglePanel: (which: keyof PanelsOpen) => void;
   setImportFocus: (f: string | null) => void;
-  setJump: (kind: "param" | "instance", id: string) => void;
+  setJump: (kind: "param" | "instance" | "cell", id: string, inst?: string) => void;
   setReviewCr: (id: number | null) => void;
 }
 
@@ -116,6 +141,7 @@ export const useUI = create<UIState>((set) => ({
   prefs: loadPrefs(),
   navCollapsed: false,
   editorFocus: false,
+  panels: loadPanels(),
   importFocus: null,
   jump: null,
   reviewCrId: null,
@@ -163,8 +189,14 @@ export const useUI = create<UIState>((set) => ({
     }),
   setNavCollapsed: (navCollapsed) => set({ navCollapsed }),
   setEditorFocus: (editorFocus) => set({ editorFocus }),
+  togglePanel: (which) =>
+    set((s) => {
+      const panels = { ...s.panels, [which]: !s.panels[which] };
+      localStorage.setItem("configer.panels", JSON.stringify(panels));
+      return { panels };
+    }),
   setImportFocus: (importFocus) => set({ importFocus }),
-  setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
+  setJump: (kind, id, inst) => set((s) => ({ jump: { kind, id, inst, n: (s.jump?.n ?? 0) + 1 } })),
   setReviewCr: (reviewCrId) => set({ reviewCrId }),
 }));
 

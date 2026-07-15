@@ -1,4 +1,4 @@
-import { Layout, Result, Drawer, Button, Alert, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Result, Drawer, Button, Alert, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   HomeOutlined,
@@ -6,6 +6,8 @@ import {
   PullRequestOutlined,
   CheckCircleOutlined,
   CloudSyncOutlined,
+  LeftOutlined,
+  RightOutlined,
 } from "@ant-design/icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -124,8 +126,20 @@ function OfflineReplay() {
 }
 
 export default function App() {
-  const { section, setSection, selectedParamId, selectParam, navCollapsed, setNavCollapsed, repoId, setRepo } =
-    useUI();
+  const {
+    section,
+    setSection,
+    selectedParamId,
+    selectParam,
+    navCollapsed,
+    setNavCollapsed,
+    repoId,
+    setRepo,
+    panels,
+    togglePanel,
+    editorFocus,
+    setEditorFocus,
+  } = useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
@@ -169,6 +183,48 @@ export default function App() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsQ.data, repoId]);
+
+  // Editor keyboard shortcuts, chosen to echo tools people already know:
+  //   ⌘B      toggle the parameters panel   (VS Code: toggle sidebar)
+  //   ⌘⌥B     toggle the details panel       (the opposite-side companion)
+  //   ⌘J      toggle the systems pane        (VS Code: toggle bottom panel)
+  //   ⌘⇧F     focus mode on/off              (F for focus)
+  //   Esc     leave focus mode
+  // Panel shortcuts only act inside the editor; none fire while typing.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "Escape" && editorFocus) {
+        setEditorFocus(false);
+        return;
+      }
+      if (typing) return;
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === "b") {
+        if (section !== "config") return;
+        e.preventDefault();
+        togglePanel(e.altKey ? "right" : "left");
+      } else if (k === "j") {
+        if (section !== "config") return;
+        e.preventDefault();
+        togglePanel("systems");
+      } else if (k === "f" && e.shiftKey) {
+        if (section !== "config") return;
+        e.preventDefault();
+        setEditorFocus(!editorFocus);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [section, editorFocus, togglePanel, setEditorFocus]);
+
+  // Focus mode strips the workspace chrome (nav rail + header) so the editor
+  // fills the screen; it only applies while the editor is the active view.
+  const focusMode = editorFocus && section === "config";
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
 
@@ -216,20 +272,48 @@ export default function App() {
         </div>,
       );
     }
+    // The left (parameters) and right (details) panels each quick-collapse to
+    // a thin rail on their edge; a click on the rail (or the keyboard
+    // shortcut) brings them back. The rails live OUTSIDE the PanelGroup so the
+    // resizable middle always fills the freed space.
     return withStatusBar(
-      <PanelGroup direction="horizontal" autoSaveId="configer-main" style={{ height: "100%" }}>
-        <Panel defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
-          <CategoryTree grid={grid} />
-        </Panel>
-        <ResizeHandleV />
-        <Panel defaultSize={63} minSize={40} style={{ minWidth: 0, ...panelBg }}>
-          <ParameterGrid grid={grid} />
-        </Panel>
-        <ResizeHandleV />
-        <Panel defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
-          <DetailsPanel grid={grid} />
-        </Panel>
-      </PanelGroup>,
+      <div style={{ display: "flex", height: "100%", minWidth: 0 }}>
+        {!panels.left && (
+          <CollapsedRail side="left" label="Parameters" onExpand={() => togglePanel("left")} />
+        )}
+        <PanelGroup
+          direction="horizontal"
+          autoSaveId={`configer-main-${panels.left ? "L" : ""}${panels.right ? "R" : ""}`}
+          style={{ height: "100%", flex: 1, minWidth: 0 }}
+        >
+          {panels.left && (
+            <>
+              <Panel id="left" order={1} defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
+                <CollapsibleSide side="left" onCollapse={() => togglePanel("left")}>
+                  <CategoryTree grid={grid} />
+                </CollapsibleSide>
+              </Panel>
+              <ResizeHandleV />
+            </>
+          )}
+          <Panel id="mid" order={2} defaultSize={63} minSize={40} style={{ minWidth: 0, ...panelBg }}>
+            <ParameterGrid grid={grid} />
+          </Panel>
+          {panels.right && (
+            <>
+              <ResizeHandleV />
+              <Panel id="right" order={3} defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
+                <CollapsibleSide side="right" onCollapse={() => togglePanel("right")}>
+                  <DetailsPanel grid={grid} />
+                </CollapsibleSide>
+              </Panel>
+            </>
+          )}
+        </PanelGroup>
+        {!panels.right && (
+          <CollapsedRail side="right" label="Details" onExpand={() => togglePanel("right")} />
+        )}
+      </div>,
     );
   }
 
@@ -360,27 +444,122 @@ export default function App() {
 
   return (
     <Layout style={{ height: "100vh" }}>
-      <Sider
-        width={210}
-        collapsedWidth={56}
-        collapsible
-        collapsed={navCollapsed}
-        onCollapse={setNavCollapsed}
-        breakpoint="xxl"
-        theme="light"
-        style={{ borderRight: border }}
-      >
-        <NavRail collapsed={navCollapsed} />
-      </Sider>
+      {!focusMode && (
+        <Sider
+          width={210}
+          collapsedWidth={56}
+          collapsible
+          collapsed={navCollapsed}
+          onCollapse={setNavCollapsed}
+          breakpoint="xxl"
+          theme="light"
+          style={{ borderRight: border }}
+        >
+          <NavRail collapsed={navCollapsed} />
+        </Sider>
+      )}
       <Layout style={{ minWidth: 0 }}>
-        <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
-          <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
-        </Header>
+        {!focusMode && (
+          <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
+            <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
+          </Header>
+        )}
         <OfflineReplay />
         <ConnectionBanner />
         <Content style={{ overflow: "hidden" }}>{body()}</Content>
       </Layout>
     </Layout>
+  );
+}
+
+// CollapsedRail is the thin, always-visible spine a side panel collapses to:
+// a vertical label and a chevron pointing the way the panel will reopen.
+function CollapsedRail({
+  side,
+  label,
+  onExpand,
+}: {
+  side: "left" | "right";
+  label: string;
+  onExpand: () => void;
+}) {
+  const { token } = antdTheme.useToken();
+  return (
+    <Tooltip title={`Show ${label.toLowerCase()} (${side === "left" ? "⌘B" : "⌘⌥B"})`} placement={side === "left" ? "right" : "left"}>
+      <div
+        onClick={onExpand}
+        className="panel-rail"
+        style={{
+          width: 26,
+          flexShrink: 0,
+          cursor: "pointer",
+          background: token.colorBgContainer,
+          [side === "left" ? "borderRight" : "borderLeft"]: `1px solid ${token.colorBorderSecondary}`,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 8,
+          paddingTop: 10,
+          userSelect: "none",
+        }}
+      >
+        {side === "left" ? <RightOutlined style={{ fontSize: 11, opacity: 0.7 }} /> : <LeftOutlined style={{ fontSize: 11, opacity: 0.7 }} />}
+        <span
+          style={{
+            writingMode: "vertical-rl",
+            transform: side === "left" ? "none" : "rotate(180deg)",
+            fontSize: 12,
+            opacity: 0.65,
+            letterSpacing: 0.3,
+          }}
+        >
+          {label}
+        </span>
+      </div>
+    </Tooltip>
+  );
+}
+
+// CollapsibleSide wraps a side panel's content with a slim collapse gutter on
+// its inner edge — a chevron pointing the way the panel folds — so every panel
+// can be tucked away with one click without ever overlapping its content.
+function CollapsibleSide({
+  side,
+  onCollapse,
+  children,
+}: {
+  side: "left" | "right";
+  onCollapse: () => void;
+  children: React.ReactNode;
+}) {
+  const { token } = antdTheme.useToken();
+  const gutter = (
+    <Tooltip title={`Hide panel (${side === "left" ? "⌘B" : "⌘⌥B"})`} placement={side === "left" ? "left" : "right"}>
+      <div
+        onClick={onCollapse}
+        className="panel-gutter"
+        style={{
+          width: 16,
+          flexShrink: 0,
+          cursor: "pointer",
+          display: "flex",
+          justifyContent: "center",
+          paddingTop: 8,
+          color: token.colorTextTertiary,
+          [side === "left" ? "borderLeft" : "borderRight"]: `1px solid ${token.colorBorderSecondary}`,
+        }}
+        aria-label="Collapse panel"
+      >
+        {side === "left" ? <LeftOutlined style={{ fontSize: 11 }} /> : <RightOutlined style={{ fontSize: 11 }} />}
+      </div>
+    </Tooltip>
+  );
+  return (
+    <div style={{ display: "flex", height: "100%", minWidth: 0 }}>
+      {side === "right" && gutter}
+      <div style={{ flex: 1, minWidth: 0, height: "100%" }}>{children}</div>
+      {side === "left" && gutter}
+    </div>
   );
 }
 

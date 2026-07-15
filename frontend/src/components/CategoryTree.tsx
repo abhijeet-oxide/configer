@@ -1,5 +1,6 @@
-import { Tree, Typography, Input, type GetRef } from "antd";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Button, Tooltip, Tree, Typography, Input, type GetRef } from "antd";
+import { DownOutlined, UpOutlined } from "@ant-design/icons";
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CategoryNode, Grid } from "../api";
 import { useElementSize } from "../hooks";
@@ -30,10 +31,20 @@ function ancestorKeys(category: string): string[] {
 }
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectParam, selectedParamId, selectInstance, selectedInstance, setJump } = useUI();
+  const { categoryKey, setCategory, selectParam, selectedParamId, selectInstance, selectedInstance, setJump, panels, togglePanel } = useUI();
   const [filter, setFilter] = useState("");
   const { ref, height } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
+  const systemsRef = useRef<ImperativePanelHandle>(null);
+
+  // Drive the Systems pane from the shared panel state, so the header chevron
+  // and the ⌘J shortcut collapse/expand the same pane in step.
+  useEffect(() => {
+    const p = systemsRef.current;
+    if (!p) return;
+    if (panels.systems && p.isCollapsed()) p.expand();
+    else if (!panels.systems && p.isExpanded()) p.collapse();
+  }, [panels.systems]);
 
   // params per exact category, used to attach leaves under their group node
   const paramsByCat = useMemo(() => {
@@ -180,9 +191,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                   const k = keys[0] as string | undefined;
                   if (!k) return;
                   if (k.startsWith("p:")) {
-                    // parameter leaf: show its group, scroll the grid, highlight
+                    // Parameter leaf: the grid keeps showing everything — just
+                    // scroll to the row and flash it. Only when an active
+                    // category filter would hide the row is the filter cleared
+                    // (never narrowed) so the jump can land.
                     const [id, cat] = k.slice(2).split("|");
-                    setCategory(cat);
+                    if (categoryKey && cat !== categoryKey && !cat.startsWith(categoryKey + "/"))
+                      setCategory(null);
                     selectParam(id);
                     setJump("param", id);
                     return;
@@ -195,11 +210,37 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           </div>
         </Panel>
         <PanelResizeHandle className="rrp-handle rrp-handle-h" />
-        <Panel defaultSize={28} minSize={8} collapsible collapsedSize={6}>
+        <Panel
+          ref={systemsRef}
+          defaultSize={28}
+          minSize={8}
+          collapsible
+          collapsedSize={5}
+          onCollapse={() => panels.systems && togglePanel("systems")}
+          onExpand={() => !panels.systems && togglePanel("systems")}
+        >
           <div style={{ padding: "0 8px 6px", height: "100%", display: "flex", flexDirection: "column" }}>
-            <Typography.Text strong style={{ padding: "10px 4px 6px", borderTop: "1px solid rgba(127,137,160,0.2)" }}>
-              Systems
-            </Typography.Text>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                padding: "8px 4px 6px",
+                borderTop: "1px solid rgba(127,137,160,0.2)",
+              }}
+            >
+              <Typography.Text strong>Systems</Typography.Text>
+              <Tooltip title={panels.systems ? "Collapse systems (⌘J)" : "Expand systems (⌘J)"}>
+                <Button
+                  size="small"
+                  type="text"
+                  icon={panels.systems ? <DownOutlined /> : <UpOutlined />}
+                  onClick={() => togglePanel("systems")}
+                  style={{ opacity: 0.6 }}
+                  aria-label="Toggle systems pane"
+                />
+              </Tooltip>
+            </div>
             <div style={{ flex: 1, minHeight: 0, overflow: "auto", paddingBottom: 6 }}>
               <Tree
                 treeData={systemsData}

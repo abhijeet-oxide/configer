@@ -254,6 +254,15 @@ export interface RepoStatus {
   upstreamGone?: boolean;
 }
 
+// The application identity stored in Git (.configer/application.yaml):
+// display name, description, and free-form user metadata.
+export interface ApplicationDetails {
+  name: string;
+  description?: string;
+  layout?: string;
+  metadata?: Record<string, string>;
+}
+
 // Project summary; initialized=false routes the UI into onboarding.
 export interface ProjectInfo {
   initialized: boolean;
@@ -534,6 +543,13 @@ export const api = {
   // --- active-repository scoped ---
   meta: () => snapGet<Meta>(rp("/meta"), snapKey("meta")),
   projectInfo: () => get<ProjectInfo>(rp("/project")),
+  application: () => get<ApplicationDetails>(rp("/application")),
+  updateApplication: (p: {
+    name?: string;
+    description?: string;
+    metadata?: Record<string, string>;
+    author?: string;
+  }) => put<ApplicationDetails>(rp("/application"), p),
   discover: () => send<Discovery>("POST", rp("/discover")),
   initApp: (p: {
     name: string;

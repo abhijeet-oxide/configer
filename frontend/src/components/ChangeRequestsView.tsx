@@ -106,7 +106,7 @@ export default function ChangeRequestsView() {
     <div style={{ padding: 16, height: "100%", overflow: "auto" }}>
       <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          <PullRequestOutlined /> Change Requests
+          <PullRequestOutlined /> Release history
         </Typography.Title>
         <Button size="small" icon={<ReloadOutlined />} loading={q.isFetching} onClick={invalidate}>
           Refresh
@@ -117,7 +117,7 @@ export default function ChangeRequestsView() {
         size="middle"
         dataSource={q.data}
         pagination={false}
-        locale={{ emptyText: <Empty description="No change requests yet. Edit some cells in the Config Editor to start a draft." /> }}
+        locale={{ emptyText: <Empty description="No change requests yet. Edit some cells in the Editor to start a draft." /> }}
         expandable={{
           expandedRowRender: (cr) => (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -189,11 +189,11 @@ export default function ChangeRequestsView() {
                   <Space size={4}>
                     <Popconfirm
                       title={`Publish #${cr.id} to ${cr.targetBranch}?`}
-                      description="Merges the change request branch (or its pull request)."
+                      description="The changes become the live configuration on the target branch."
                       onConfirm={() => merge.mutate(cr.id)}
                     >
                       <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                        Approve &amp; Merge
+                        Approve &amp; publish
                       </Button>
                     </Popconfirm>
                     <Popconfirm title={`Reject #${cr.id}?`} onConfirm={() => reject.mutate(cr.id)}>

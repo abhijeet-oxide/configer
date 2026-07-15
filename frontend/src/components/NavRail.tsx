@@ -2,6 +2,7 @@ import { Menu, Typography, Badge } from "antd";
 import type { MenuProps } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { envHex } from "../theme";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
 
@@ -25,7 +26,8 @@ function buildItems(attentionCount: number): MenuProps["items"] {
     { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Applications" },
     {
       key: "overview",
-      icon: iconWithBadge(<Ic icon={icons.editor} />, attentionCount),
+      // Counts are "work waiting", not errors: blue, never red.
+      icon: iconWithBadge(<Ic icon={icons.editor} />, attentionCount, "var(--c-review)"),
       label: "Configuration",
     },
     { key: "plugins", icon: <span className="nav-ic"><Ic icon={icons.plugins} /></span>, label: "Plugins (admin)" },
@@ -84,13 +86,12 @@ function DeploymentChip() {
   const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const m = metaQ.data;
   if (!m) return null;
-  const envColor: Record<string, string> = { production: "#f5222d", staging: "#fa8c16" };
   return (
     <div style={{ margin: "0 10px 10px", fontSize: 10.5, opacity: 0.75, display: "flex", alignItems: "center", gap: 6 }}>
       <span
         style={{
           width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-          background: envColor[m.environment] ?? "#52c41a",
+          background: envHex(m.environment),
         }}
       />
       {m.name} {m.version} · {m.environment}

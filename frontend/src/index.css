@@ -87,6 +87,10 @@ body {
   opacity: 0.75;
   border: 1px solid currentColor;
   vertical-align: middle;
+  /* the badge is atomic: it must never wrap mid-word inside a grid cell —
+     when space runs out the VALUE truncates, never the badge */
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .mono {

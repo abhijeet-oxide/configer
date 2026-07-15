@@ -324,7 +324,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
           }
           extra={[
             <Button key="editor" type="primary" onClick={() => setSection("config")}>
-              Open Config Editor
+              Open the editor
             </Button>,
             <Button key="again" onClick={reset}>
               Import more
@@ -350,7 +350,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
         <div style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
           <div style={{ flex: "1 1 380px" }}>
             <Typography.Title level={4} style={{ margin: 0 }}>
-              Import configuration
+              Import settings
             </Typography.Title>
             <Typography.Text type="secondary">
               Bring settings from your repository files under management. Scanning only reads files;
@@ -629,7 +629,7 @@ function ScanStep({
           type="success"
           showIcon
           message="Everything the scan found is already managed."
-          description="New files committed to Git later will show up in Repository Changes, and you can rescan here any time."
+          description="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
         />
       ) : (
         <>
@@ -986,7 +986,7 @@ function ReviewStep({
             these parameters to the Configer catalog
             {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
             Your existing configuration files keep their values; from now on you edit them per
-            system in the Config Editor, with validation and review built in.
+            system in the Editor, with validation and review built in.
           </>
         }
       />

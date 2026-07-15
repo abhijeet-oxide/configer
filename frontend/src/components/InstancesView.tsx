@@ -8,8 +8,8 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
-import { envHex } from "../theme";
 import { TableSkeleton } from "./Skeletons";
+import EnvTag from "./EnvTag";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -185,7 +185,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           {
             title: "Environment",
             dataIndex: "environment",
-            render: (e: string) => (e ? <Tag color={envHex(e)}>{e}</Tag> : <span style={{ opacity: 0.4 }}>-</span>),
+            render: (e: string) => (e ? <EnvTag env={e} /> : <span style={{ opacity: 0.4 }}>-</span>),
           },
           { title: "Region", dataIndex: "region", render: (v) => v || <span style={{ opacity: 0.4 }}>-</span> },
           {

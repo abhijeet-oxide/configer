@@ -73,7 +73,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
 
   return (
     <>
-      <Badge count={pending} size="small" offset={[-4, 0]}>
+      {/* Unsent edits are "pending" everywhere in the product: amber, not red. */}
+      <Badge count={pending} size="small" offset={[-4, 0]} color="var(--c-pending)">
         <Button
           size="small"
           type="primary"
@@ -81,7 +82,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           disabled={pending === 0}
           onClick={() => setOpen(true)}
         >
-          Create Change Request
+          Create change request
         </Button>
       </Badge>
 

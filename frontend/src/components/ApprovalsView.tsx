@@ -285,7 +285,7 @@ export default function ApprovalsView() {
                   onConfirm={() => merge.mutate(selected.id)}
                 >
                   <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                    Approve &amp; Publish
+                    Approve &amp; publish
                   </Button>
                 </Popconfirm>
                 <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>

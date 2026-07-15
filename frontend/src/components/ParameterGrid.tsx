@@ -346,7 +346,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // grid) get the width budget. Type/Scope hold short tags; Description is a
   // supporting hint (the full text is always in the details panel), so it stays
   // narrow and truncates.
-  const PARAM_W = 206;
+  const PARAM_W = 240;
   const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
   const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
   const DESC_W = prefs.showDescCol ? 140 : 0;
@@ -454,19 +454,26 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         key: "param",
         fixed: "left",
         width: PARAM_W,
+        ellipsis: { showTitle: false },
         sorter: (a, b) => a.param.name.localeCompare(b.param.name),
         render: (_v, r) => (
-          <Space size={4}>
-            {r.param.secret && <LockOutlined style={{ color: "#faad14" }} />}
-            <span>{hl(r.param.name, hlParam)}</span>
+          // The name column is a fixed width; long dotted names must truncate
+          // (with the full name on hover) instead of spilling into Type/Scope.
+          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+            {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
+            <Tooltip title={r.param.name} placement="topLeft">
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                {hl(r.param.name, hlParam)}
+              </span>
+            </Tooltip>
             {bindingsOf(r.param).length === 0 && (
               <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
-                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2 }}>
+                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                   design
                 </Tag>
               </Tooltip>
             )}
-          </Space>
+          </div>
         ),
       },
     ];

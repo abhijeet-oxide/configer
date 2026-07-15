@@ -218,69 +218,108 @@ function DetailsTab({
   );
 }
 
-// ProjectOverview fills the details panel with useful, live numbers when no
-// parameter is selected, no dead space on big monitors.
-function ProjectOverview({ grid }: { grid: Grid }) {
-  let invalid = 0;
-  let overridden = 0;
-  let deprecated = 0;
-  let fresh = 0;
-  for (const r of grid.rows) {
-    for (const c of Object.values(r.cells)) {
-      if (!c.valid) invalid++;
-      if (c.set && c.source === "instance") overridden++;
-      if (c.state === "deprecated") deprecated++;
-      if (c.state === "new") fresh++;
-    }
-  }
-  const envs = new Map<string, number>();
-  for (const i of grid.instances) {
-    const e = i.environment ?? "unknown";
-    envs.set(e, (envs.get(e) ?? 0) + 1);
-  }
+// IdlePanel is the details panel's default state: selection-oriented, not a
+// second Overview. It says what selecting does, surfaces what needs the
+// user's hand right now (invalid cells, their own unsent edits), and stays
+// out of the way — the application-wide numbers live on the Overview tab.
+function IdlePanel({ grid }: { grid: Grid }) {
+  const { setFilters, selectParam, setJump } = useUI();
+  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const draftItems = (draftQ.data?.draft?.items ?? []).filter((it) => !it.action || it.action === "set");
+
+  // Parameters with at least one invalid cell, worst first.
+  const invalidRows = grid.rows
+    .map((r) => ({ r, n: Object.values(r.cells).filter((c) => !c.valid).length }))
+    .filter((x) => x.n > 0)
+    .sort((a, b) => b.n - a.n);
+  const invalid = invalidRows.reduce((s, x) => s + x.n, 0);
+
+  const jumpTo = (paramId: string) => {
+    selectParam(paramId);
+    setJump("param", paramId);
+  };
 
   return (
     <div style={{ padding: 14, height: "100%", overflow: "auto" }}>
-      <Typography.Title level={5} style={{ marginTop: 0 }}>
-        {grid.project}
+      <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>
+        Details
       </Typography.Title>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        Project overview: select a parameter row for details and rules.
+        Select a cell to see its value, the file it comes from and its rules. Selecting a row
+        shows the parameter's metadata, history and dependencies here.
       </Typography.Text>
-      <Divider style={{ margin: "12px 0" }} />
-      <ARow gutter={[8, 14]}>
-        <Col span={12}><Statistic title="Parameters" value={grid.rows.length} valueStyle={{ fontSize: 20 }} /></Col>
-        <Col span={12}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 20 }} /></Col>
-        <Col span={12}><Statistic title="Instance overrides" value={overridden} valueStyle={{ fontSize: 20 }} /></Col>
-        <Col span={12}>
-          <Statistic
-            title="Invalid cells"
-            value={invalid}
-            valueStyle={{ fontSize: 20, color: invalid ? "#cf1322" : undefined }}
-          />
-        </Col>
-        <Col span={12}><Statistic title="Newly introduced" value={fresh} valueStyle={{ fontSize: 20, color: fresh ? "#389e0d" : undefined }} /></Col>
-        <Col span={12}><Statistic title="Deprecated" value={deprecated} valueStyle={{ fontSize: 20 }} /></Col>
-      </ARow>
-      <Divider style={{ margin: "12px 0" }} />
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>ENVIRONMENTS</Typography.Text>
-      <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
-        {[...envs.entries()].map(([e, n]) => (
-          <Tag key={e}>{e} × {n}</Tag>
-        ))}
-      </div>
-      <Divider style={{ margin: "12px 0" }} />
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>INSTANCES</Typography.Text>
-      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
-        {grid.instances.map((i) => (
-          <div key={i.name} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-            <span>{i.name}</span>
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {i.softwareVersion} · {i.region ?? "-"}
-            </Typography.Text>
+
+      {invalid > 0 && (
+        <>
+          <Divider style={{ margin: "12px 0" }} />
+          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+            NEEDS FIXING
+          </Typography.Text>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
+            {invalidRows.slice(0, 5).map(({ r, n }) => (
+              <a
+                key={r.param.id}
+                onClick={() => jumpTo(r.param.id)}
+                style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}
+              >
+                <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {r.param.name}
+                </span>
+                <Typography.Text type="danger" style={{ fontSize: 12, flexShrink: 0 }}>
+                  {n} invalid
+                </Typography.Text>
+              </a>
+            ))}
           </div>
-        ))}
-      </div>
+          <Button
+            size="small"
+            style={{ marginTop: 10 }}
+            onClick={() => setFilters({ invalidOnly: true })}
+          >
+            Show only invalid cells
+          </Button>
+        </>
+      )}
+
+      {draftItems.length > 0 && (
+        <>
+          <Divider style={{ margin: "12px 0" }} />
+          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+            YOUR UNSENT EDITS
+          </Typography.Text>
+          <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+            {draftItems.slice(0, 4).map((it) => (
+              <a
+                key={`${it.paramId}|${it.instance}`}
+                onClick={() => jumpTo(it.paramId)}
+                style={{ display: "flex", flexDirection: "column", fontSize: 12 }}
+              >
+                <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {it.paramId} · {it.instance || "global"}
+                </span>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  {fmtValue(it.old)} → {fmtValue(it.new)}
+                </Typography.Text>
+              </a>
+            ))}
+            {draftItems.length > 4 && (
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                and {draftItems.length - 4} more in the draft
+              </Typography.Text>
+            )}
+          </div>
+        </>
+      )}
+
+      {invalid === 0 && draftItems.length === 0 && (
+        <>
+          <Divider style={{ margin: "12px 0" }} />
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <CheckOutlined style={{ color: "var(--c-ok)", marginInlineEnd: 6 }} />
+            Every value is valid and nothing is waiting on you.
+          </Typography.Text>
+        </>
+      )}
     </div>
   );
 }
@@ -522,7 +561,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
     onError: (e: Error) => message.error(e.message),
   });
 
-  if (!row) return <ProjectOverview grid={grid} />;
+  if (!row) return <IdlePanel grid={grid} />;
   const p = row.param;
   const categories = [...new Set(grid.rows.map((r) => r.param.category))].sort();
 

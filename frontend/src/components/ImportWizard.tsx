@@ -31,6 +31,7 @@ import {
   GithubOutlined,
   HddOutlined,
   BranchesOutlined,
+  PlusOutlined,
 } from "@ant-design/icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +39,7 @@ import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCan
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { ConnectForm } from "./NewApplicationWizard";
+import NewApplicationWizard from "./NewApplicationWizard";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -423,6 +424,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 15_000 });
   const repos = wsQ.data?.repos ?? [];
   const [choice, setChoice] = useState<string | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const selectedId = choice ?? repoId ?? repos[0]?.id ?? null;
   const selected = repos.find((r) => r.id === selectedId);
 
@@ -484,15 +486,34 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           </Button>
         </div>
       </Card>
-      <Card title="Or connect a new repository" style={{ flex: "1 1 380px", minWidth: 340 }}>
-        <ConnectForm
-          compact
-          onDone={(r) => {
-            sessionStorage.setItem(STEP_HANDOFF, "1");
-            switchRepo(r.id);
-          }}
-        />
+      {/* Creating an application has ONE flow: the guided wizard. This card
+          just opens it; on creation we flow straight into the scan step. */}
+      <Card
+        hoverable
+        onClick={() => setWizardOpen(true)}
+        style={{ flex: "1 1 380px", minWidth: 340, borderStyle: "dashed" }}
+        styles={{
+          body: {
+            height: "100%", display: "flex", flexDirection: "column",
+            alignItems: "center", justifyContent: "center", textAlign: "center", gap: 6,
+          },
+        }}
+      >
+        <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
+        <div style={{ fontWeight: 500 }}>New application</div>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Pick a GitHub repository and go — it is scanned right here afterwards.
+        </Typography.Text>
       </Card>
+      <NewApplicationWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={(r) => {
+          setWizardOpen(false);
+          sessionStorage.setItem(STEP_HANDOFF, "1");
+          switchRepo(r.id);
+        }}
+      />
     </div>
   );
 }

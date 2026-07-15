@@ -22,9 +22,10 @@ import {
   RocketOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeRequest } from "../api";
+import { useUI } from "../store";
 import CrSteps, { StateTag } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
 import { relTime } from "./DashboardView";
@@ -112,8 +113,18 @@ function QueueItem({
 export default function ApprovalsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { reviewCrId, setReviewCr } = useUI();
   const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
   const [selId, setSelId] = useState<number | null>(null);
+
+  // Arriving from Release history's "Review" action: select that change
+  // request in the queue, then clear the one-shot handoff.
+  useEffect(() => {
+    if (reviewCrId != null) {
+      setSelId(reviewCrId);
+      setReviewCr(null);
+    }
+  }, [reviewCrId, setReviewCr]);
 
   const all = q.data ?? [];
   const waiting = all.filter((c) => c.state === "under_review" || c.state === "approved");

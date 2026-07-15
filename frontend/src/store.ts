@@ -78,6 +78,9 @@ interface UIState {
   /** one-shot navigation request: scroll the grid to a parameter row or an
    *  instance column and flash-highlight it (n makes repeats re-trigger) */
   jump: { kind: "param" | "instance"; id: string; n: number } | null;
+  /** one-shot handoff: the change request Approvals should select on open
+   *  (set by Release history's "Review" action, cleared once consumed) */
+  reviewCrId: number | null;
   setMode: (m: Mode) => void;
   setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
@@ -94,6 +97,7 @@ interface UIState {
   setEditorFocus: (f: boolean) => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance", id: string) => void;
+  setReviewCr: (id: number | null) => void;
 }
 
 export const useUI = create<UIState>((set) => ({
@@ -114,6 +118,7 @@ export const useUI = create<UIState>((set) => ({
   editorFocus: false,
   importFocus: null,
   jump: null,
+  reviewCrId: null,
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
@@ -160,6 +165,7 @@ export const useUI = create<UIState>((set) => ({
   setEditorFocus: (editorFocus) => set({ editorFocus }),
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id) => set((s) => ({ jump: { kind, id, n: (s.jump?.n ?? 0) + 1 } })),
+  setReviewCr: (reviewCrId) => set({ reviewCrId }),
 }));
 
 // ------------------------------------------------------------------ URL sync

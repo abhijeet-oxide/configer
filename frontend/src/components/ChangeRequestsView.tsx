@@ -11,11 +11,12 @@ import {
 } from "antd";
 import {
   PullRequestOutlined,
-  CheckCircleOutlined,
   CloseCircleOutlined,
   BranchesOutlined,
   ReloadOutlined,
   LinkOutlined,
+  EyeOutlined,
+  RightOutlined,
 } from "@ant-design/icons";
 import { EditOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,10 +25,11 @@ import { useUI } from "../store";
 import CrSteps, { StateTag } from "./CrSteps";
 import { TableSkeleton } from "./Skeletons";
 
-// ChangeRequestsView is the workflow home: every draft, in-review, published
-// and rejected change request, with its parameter-level diff and the actions
-// that drive the git-native lifecycle. Everything here can equally be done on
-// GitHub directly; Configer reflects external merges/closes on refresh.
+// ChangeRequestsView is the Release history: every draft, in-review,
+// published and rejected change request with its parameter-level diff. It is
+// deliberately read-only for reviews — approving or rejecting is Approvals'
+// job (one place, one audit trail); rows under review link there. Drafts are
+// authoring, not reviewing, so their submit/discard actions stay here.
 
 export const categoryColor: Record<string, string> = {
   hotfix: "red",
@@ -72,19 +74,11 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
 export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const { setSection } = useUI();
+  const { setSection, setReviewCr } = useUI();
   const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
 
   const invalidate = () => qc.invalidateQueries();
 
-  const merge = useMutation({
-    mutationFn: (id: number) => api.mergeChange(id),
-    onSuccess: (cr) => {
-      message.success(`Change request #${cr.id} published to ${cr.targetBranch}`);
-      invalidate();
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
   const reject = useMutation({
     mutationFn: (id: number) => api.rejectChange(id),
     onSuccess: (cr) => {
@@ -185,20 +179,20 @@ export default function ChangeRequestsView() {
             width: 230,
             render: (_v, cr) => {
               if (cr.state === "under_review" || cr.state === "approved") {
+                // Deciding happens in Approvals — one place for approvals,
+                // one audit trail. History only links there.
                 return (
                   <Space size={4}>
-                    <Popconfirm
-                      title={`Publish #${cr.id} to ${cr.targetBranch}?`}
-                      description="The changes become the live configuration on the target branch."
-                      onConfirm={() => merge.mutate(cr.id)}
+                    <Button
+                      size="small"
+                      icon={<EyeOutlined />}
+                      onClick={() => {
+                        setReviewCr(cr.id);
+                        setSection("approvals");
+                      }}
                     >
-                      <Button size="small" type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                        Approve &amp; publish
-                      </Button>
-                    </Popconfirm>
-                    <Popconfirm title={`Reject #${cr.id}?`} onConfirm={() => reject.mutate(cr.id)}>
-                      <Button size="small" danger icon={<CloseCircleOutlined />} />
-                    </Popconfirm>
+                      Review <RightOutlined style={{ fontSize: 10 }} />
+                    </Button>
                     <Tooltip title="Sync state from the pull request">
                       <Button size="small" icon={<ReloadOutlined />} onClick={() => refresh.mutate(cr.id)} />
                     </Tooltip>

@@ -236,12 +236,14 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
 
 // ---- step: local folder --------------------------------------------------------
 
-// A folder PICKER (no typing, no naming): navigate the machine's own
-// filesystem and choose a folder. The application takes the folder's name and
-// a pointer to where it lives — both kept in the workspace on this device. The
-// backend opens the folder in place and initializes Git (with an initial
-// import commit) when it isn't a repository yet, so every edit is versioned
-// from the very first one.
+// The folder is CHOSEN, never typed: one button opens a modal folder picker
+// (FolderPickerModal) that browses the machine Configer runs on and hands back
+// the real path. The application takes the folder's name and a pointer to where
+// it lives — both kept in the workspace on this device. The backend opens the
+// folder in place and initializes Git (with an initial import commit) when it
+// isn't a repository yet, so every edit is versioned from the very first one.
+type PickedFolder = { path: string; name: string; isRepo: boolean };
+
 function LocalFolderStep({
   onBack,
   onDone,
@@ -251,16 +253,8 @@ function LocalFolderStep({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  // The directory currently open in the picker (undefined = the server's home).
-  const [cwd, setCwd] = useState<string | undefined>(undefined);
-
-  const listQ = useQuery({
-    queryKey: ["fs-browse", cwd ?? ""],
-    queryFn: () => api.browseFolders(cwd),
-    // keep the previous listing on screen while the next loads (no flicker)
-    placeholderData: (prev) => prev,
-  });
-  const listing = listQ.data;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [picked, setPicked] = useState<PickedFolder | null>(null);
 
   const connect = useMutation({
     // Name is derived server-side from the folder; nothing to enter here.
@@ -274,14 +268,147 @@ function LocalFolderStep({
   });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", flex: 1, minHeight: 0 }}>
+    <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
+      {!picked ? (
+        // The "click to select" affordance, styled like a drop zone so it
+        // reads as the one thing to do on this step.
+        <div
+          className="card-clickable"
+          role="button"
+          tabIndex={0}
+          onClick={() => setPickerOpen(true)}
+          style={{
+            border: "1.5px dashed rgba(127,137,160,0.5)",
+            borderRadius: 12,
+            padding: "40px 22px",
+            textAlign: "center",
+            cursor: "pointer",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <FolderOpenOutlined style={{ fontSize: 40, opacity: 0.7 }} />
+          <Typography.Text strong style={{ fontSize: 14.5 }}>
+            Click to select a local directory
+          </Typography.Text>
+          <Typography.Text type="secondary" style={{ fontSize: 12.5, maxWidth: 420 }}>
+            Browse the folders on this machine and choose one to manage. Configer reads the folder
+            in place — no files are uploaded.
+          </Typography.Text>
+        </div>
+      ) : (
+        // The chosen folder, with its resolved name and a way to change it.
+        <div
+          style={{
+            border: "1px solid rgba(127,137,160,0.28)",
+            borderRadius: 12,
+            padding: "16px 18px",
+            display: "flex",
+            alignItems: "center",
+            gap: 14,
+          }}
+        >
+          <FolderOutlined style={{ fontSize: 30, opacity: 0.7 }} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Space size={8}>
+              <Typography.Text strong style={{ fontSize: 14.5 }}>
+                {picked.name}
+              </Typography.Text>
+              {!picked.isRepo && (
+                <Tag color="geekblue" style={{ fontSize: 10 }}>
+                  new local git repo
+                </Tag>
+              )}
+            </Space>
+            <div className="mono" style={{ fontSize: 12, opacity: 0.6, overflowWrap: "anywhere" }}>
+              {picked.path}
+            </div>
+          </div>
+          <Button onClick={() => setPickerOpen(true)} disabled={connect.isPending}>
+            Change
+          </Button>
+        </div>
+      )}
+
+      <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
+        <FileSearchOutlined /> The folder is added as itself
+        {picked && !picked.isRepo && " — a local Git repository is initialized for it"}. Configer
+        then scans it and shows the configuration files it found, so you choose what to manage.
+      </Typography.Text>
+
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={connect.isPending}>
+          Source
+        </Button>
+        <Button
+          type="primary"
+          size="large"
+          icon={<RocketOutlined />}
+          loading={connect.isPending}
+          disabled={!picked}
+          onClick={() => picked && connect.mutate(picked.path)}
+        >
+          Create application &amp; scan
+        </Button>
+      </div>
+
+      <FolderPickerModal
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        onSelect={(f) => {
+          setPicked(f);
+          setPickerOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+
+// FolderPickerModal is the "click to select" dialog: it browses the filesystem
+// of the machine Configer runs on (its filesystem is the user's own when
+// Configer runs on their device), navigating into sub-folders and stepping up,
+// and hands the chosen folder's real path back to the caller.
+function FolderPickerModal({
+  open,
+  onClose,
+  onSelect,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onSelect: (f: PickedFolder) => void;
+}) {
+  // The directory currently open in the picker (undefined = the server's home).
+  const [cwd, setCwd] = useState<string | undefined>(undefined);
+  const listQ = useQuery({
+    queryKey: ["fs-browse", cwd ?? ""],
+    queryFn: () => api.browseFolders(cwd),
+    enabled: open,
+    // keep the previous listing on screen while the next loads (no flicker)
+    placeholderData: (prev) => prev,
+  });
+  const listing = listQ.data;
+
+  return (
+    <Modal
+      title="Select a local folder"
+      open={open}
+      onCancel={onClose}
+      width={600}
+      okText="Use this folder"
+      okButtonProps={{ disabled: !listing?.path }}
+      onOk={() =>
+        listing && onSelect({ path: listing.path, name: listing.name, isRepo: listing.isRepo })
+      }
+    >
       {/* Current location + up. The path is shown, never typed. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "8px 0" }}>
         <Tooltip title="Up one folder">
           <Button
             size="small"
             icon={<ArrowUpOutlined />}
-            disabled={!listing?.parent || connect.isPending}
+            disabled={!listing?.parent}
             onClick={() => listing?.parent && setCwd(listing.parent)}
             aria-label="Up one folder"
           />
@@ -295,9 +422,8 @@ function LocalFolderStep({
       {/* The folders inside the current one; click to go deeper. */}
       <div
         style={{
-          flex: 1,
-          minHeight: 220,
-          maxHeight: 300,
+          minHeight: 260,
+          maxHeight: 340,
           overflow: "auto",
           border: "1px solid rgba(127,137,160,0.28)",
           borderRadius: 10,
@@ -323,7 +449,7 @@ function LocalFolderStep({
         ) : (listing?.folders.length ?? 0) === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="No sub-folders here."
+            description="No sub-folders here. Use this folder, or step up."
             style={{ marginTop: 40 }}
           />
         ) : (
@@ -357,30 +483,10 @@ function LocalFolderStep({
           />
         )}
       </div>
-
-      <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 10 }}>
-        <FileSearchOutlined /> The folder is added as{" "}
-        <b>{listing?.name ?? "…"}</b>
-        {listing && !listing.isRepo && " — a local Git repository is initialized for it"}. Configer
-        then scans it and shows the configuration files it found, so you choose what to manage.
+      <Typography.Text type="secondary" style={{ fontSize: 11.5, display: "block", marginTop: 8 }}>
+        Browsing the machine Configer runs on. Click a folder to open it, then “Use this folder”.
       </Typography.Text>
-
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={connect.isPending}>
-          Source
-        </Button>
-        <Button
-          type="primary"
-          size="large"
-          icon={<RocketOutlined />}
-          loading={connect.isPending}
-          disabled={!listing?.path}
-          onClick={() => listing?.path && connect.mutate(listing.path)}
-        >
-          Use this folder
-        </Button>
-      </div>
-    </div>
+    </Modal>
   );
 }
 

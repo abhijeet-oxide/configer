@@ -1,215 +1,214 @@
-import { Card, Col, Row, Skeleton, Space } from "antd";
+// State-aware, full-page skeletons. Every loading state in the app renders
+// through these so loading always looks the same: a shimmer standing in for
+// the EXACT layout that is about to appear, filling the whole page (never a
+// cluster of tiny boxes), so nothing jumps when real data arrives.
+//
+// The primitive is the `.sk` CSS class (index.css): a fluid shimmer bar whose
+// size comes entirely from the surrounding layout (%, fr, flex). Skeletons
+// here compose it with the same grid/flex scaffolding the real views use.
 
-// State-aware skeletons: each mirrors the exact layout it is standing in for,
-// so the page doesn't "jump" when real data arrives, and the user never sees a
-// generic spinner. Every skeleton here is modelled directly on the component
-// that replaces it (see the matching view file). (The npm package "boneyard"
-// was evaluated for this and rejected: it is an unrelated, unmaintained
-// Backbone.js toolkit, not a skeleton library.)
+/** One shimmer bar. Width/height default to filling the parent. */
+function Sk({
+  w = "100%",
+  h = 14,
+  r,
+  style,
+}: {
+  w?: number | string;
+  h?: number | string;
+  r?: number;
+  style?: React.CSSProperties;
+}) {
+  return <span className="sk" style={{ width: w, height: h, borderRadius: r, ...style }} />;
+}
 
-// A small helper so nested skeletons share one shimmer cadence.
-const line = (w: number | string, h = 14): React.CSSProperties => ({ width: w, height: h });
-
-export function DashboardSkeleton() {
+/** A bordered panel standing in for a Card, with optional title bar. */
+function SkPanel({
+  title = true,
+  children,
+  style,
+}: {
+  title?: boolean;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+}) {
   return (
-    <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
-      <Skeleton.Input active size="small" style={{ width: 180 }} />
-      <Row gutter={[14, 14]}>
-        {[0, 1, 2, 3].map((i) => (
-          <Col xs={24} sm={12} xxl={6} key={i}>
-            <Card size="small"><Skeleton active paragraph={false} title={{ width: "60%" }} /><Skeleton.Input active size="small" style={{ width: 120 }} /></Card>
-          </Col>
-        ))}
-      </Row>
-      <Row gutter={[14, 14]}>
-        <Col xs={24} lg={14}>
-          <Card size="small">
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(148px, 1fr))", gap: 8 }}>
-              {[...Array(6)].map((_, i) => (
-                <Skeleton.Node key={i} active style={{ width: "100%", height: 74 }} />
-              ))}
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card size="small">
-            <Space>
-              <Skeleton.Avatar active size={110} shape="circle" />
-              <Skeleton active paragraph={{ rows: 3, width: 90 }} title={false} />
-            </Space>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card size="small"><Skeleton.Node active style={{ width: "100%", height: 90 }} /></Card>
-        </Col>
-      </Row>
-      <Card size="small"><Skeleton active paragraph={{ rows: 4 }} title={{ width: 140 }} /></Card>
+    <div className="sk-panel" style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, minWidth: 0, ...style }}>
+      {title && <Sk w="38%" h={14} />}
+      {children}
     </div>
   );
 }
 
-export function GridSkeleton() {
+/** Rows of text lines with varied widths, for list/paragraph areas. */
+function SkLines({ rows = 3, gap = 10 }: { rows?: number; gap?: number }) {
+  const widths = ["92%", "68%", "80%", "55%", "74%", "62%", "86%", "48%"];
   return (
-    <div style={{ padding: "10px 14px", display: "flex", flexDirection: "column", gap: 10, height: "100%" }}>
-      <Space>
-        <Skeleton.Input active size="small" style={{ width: 140 }} />
-        <Skeleton.Button active size="small" />
-        <Skeleton.Button active size="small" />
-      </Space>
-      {/* header row */}
-      <Space size={8}>
-        {[180, 70, 140, 110, 110, 110, 110].map((w, i) => (
-          <Skeleton.Input key={i} active size="small" style={{ width: w }} />
-        ))}
-      </Space>
-      {[...Array(11)].map((_, i) => (
-        <Space size={8} key={i}>
-          {[180, 70, 140, 110, 110, 110, 110].map((w, j) => (
-            <Skeleton.Input key={j} active={i < 6} size="small" style={{ width: w, opacity: 1 - i * 0.07 }} />
-          ))}
-        </Space>
+    <div style={{ display: "flex", flexDirection: "column", gap }}>
+      {[...Array(rows)].map((_, i) => (
+        <Sk key={i} w={widths[i % widths.length]} h={12} />
       ))}
     </div>
   );
 }
+
+/** The shared page header: a title line and a subtitle line. */
+function SkHeader() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+      <Sk w={220} h={22} />
+      <Sk w="min(420px, 60%)" h={12} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- overview
+
+// Mirrors DashboardView (the application Overview tab): signal pills, a row
+// of stat cards, the health-map row, then activity panels filling the rest.
+export function OverviewSkeleton() {
+  return (
+    <div style={{ padding: 20, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
+      <Sk w={200} h={22} />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {[104, 128, 150, 92, 118, 130, 122].map((w, i) => (
+          <Sk key={i} w={w} h={26} r={999} />
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
+        {[...Array(4)].map((_, i) => (
+          <SkPanel key={i} title={false} style={{ height: 84, justifyContent: "center" }}>
+            <Sk w="55%" h={11} />
+            <Sk w="40%" h={20} />
+          </SkPanel>
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 3fr) minmax(0, 1fr) minmax(0, 1fr)", gap: 14 }}>
+        <SkPanel style={{ minHeight: 150 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(140px, 1fr))", gap: 8 }}>
+            {[...Array(6)].map((_, i) => (
+              <Sk key={i} h={72} r={8} />
+            ))}
+          </div>
+        </SkPanel>
+        <SkPanel style={{ minHeight: 150 }}>
+          <Sk h={96} r={8} />
+        </SkPanel>
+        <SkPanel style={{ minHeight: 150 }}>
+          <Sk h={72} r={8} />
+          <Sk w="70%" h={11} />
+        </SkPanel>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 14, flex: 1, minHeight: 160 }}>
+        {[...Array(3)].map((_, i) => (
+          <SkPanel key={i}>
+            <SkLines rows={5} gap={14} />
+          </SkPanel>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** @deprecated kept as an alias; the Overview tab skeleton is the dashboard one. */
+export const DashboardSkeleton = OverviewSkeleton;
+
+// -------------------------------------------------------------------- grid
+
+// Mirrors the Config Editor: category tree on the left, the parameter grid
+// (toolbar, header row, data rows) filling the rest of the viewport.
+export function GridSkeleton() {
+  const cols = "minmax(200px, 2.4fr) 90px minmax(120px, 1.3fr) repeat(4, minmax(90px, 1fr))";
+  return (
+    <div style={{ height: "100%", overflow: "hidden", display: "flex" }}>
+      <div
+        style={{
+          width: "15%", minWidth: 170, maxWidth: 280, padding: 14,
+          borderRight: "1px solid rgba(127,137,160,0.18)",
+          display: "flex", flexDirection: "column", gap: 12,
+        }}
+      >
+        <Sk w="80%" h={26} r={6} />
+        {["90%", "72%", "82%", "64%", "76%", "58%", "70%", "66%", "78%", "54%"].map((w, i) => (
+          <Sk key={i} w={w} h={13} style={{ marginLeft: i % 3 === 0 ? 0 : 14, opacity: 1 - i * 0.05 }} />
+        ))}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, padding: "12px 16px", display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Sk w={150} h={24} />
+          <Sk w={76} h={24} />
+          <Sk w={76} h={24} />
+          <span style={{ flex: 1 }} />
+          <Sk w={180} h={24} />
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: cols, gap: 10 }}>
+          {[...Array(7)].map((_, i) => (
+            <Sk key={i} h={16} />
+          ))}
+        </div>
+        <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 12 }}>
+          {[...Array(16)].map((_, r) => (
+            <div key={r} style={{ display: "grid", gridTemplateColumns: cols, gap: 10, opacity: Math.max(0.15, 1 - r * 0.06) }}>
+              {[...Array(7)].map((_, c) => (
+                <Sk key={c} w={c === 0 ? `${88 - (r % 4) * 9}%` : "85%"} h={13} />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- lists
 
 export function ListSkeleton() {
   return (
-    <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 12, maxWidth: 900 }}>
-      <Skeleton.Input active size="small" style={{ width: 200 }} />
-      {[...Array(3)].map((_, i) => (
-        <Card size="small" key={i}>
-          <Skeleton active title={{ width: "40%" }} paragraph={{ rows: 2 }} />
-        </Card>
+    <div style={{ padding: "16px 20px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 12 }}>
+      <SkHeader />
+      {[...Array(4)].map((_, i) => (
+        <SkPanel key={i} style={{ opacity: 1 - i * 0.15 }}>
+          <SkLines rows={2} />
+        </SkPanel>
       ))}
     </div>
   );
 }
 
-// One placeholder card matching RepoCard in WorkspaceView: a 330px card with a
-// header (icon + two name lines + action), a tag strip, three statistics, an
-// environment tag strip and a footer button.
-function RepoCardSkeleton() {
-  return (
-    <Card style={{ width: 330 }} styles={{ body: { padding: 14 } }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <Skeleton.Avatar active size={22} shape="square" style={{ marginTop: 2 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Skeleton.Input active size="small" style={{ ...line(150), display: "block" }} />
-          <Skeleton.Input active size="small" style={{ ...line(190, 10), marginTop: 6 }} />
-        </div>
-        <Skeleton.Button active size="small" style={{ width: 24 }} />
-      </div>
-      <Space size={4} style={{ marginTop: 12 }}>
-        <Skeleton.Button active size="small" style={{ width: 58 }} />
-        <Skeleton.Button active size="small" style={{ width: 74 }} />
-      </Space>
-      <div style={{ display: "flex", gap: 24, marginTop: 14 }}>
-        {[0, 1, 2].map((i) => (
-          <div key={i}>
-            <Skeleton.Input active size="small" style={{ ...line(64, 10) }} />
-            <Skeleton.Input active size="small" style={{ ...line(30, 20), marginTop: 6, display: "block" }} />
-          </div>
-        ))}
-      </div>
-      <Space size={4} style={{ marginTop: 12 }}>
-        <Skeleton.Button active size="small" style={{ width: 66 }} />
-        <Skeleton.Button active size="small" style={{ width: 66 }} />
-      </Space>
-      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
-        <Skeleton.Button active size="small" style={{ width: 96 }} />
-      </div>
-    </Card>
-  );
-}
+// ------------------------------------------------------------------ tables
 
-// Standing in for the Applications grid while the workspace loads. Shows the
-// same card shape the user is about to see, so nothing shifts on arrival and
-// the "no applications" empty state never flashes for connected workspaces.
-export function WorkspaceSkeleton({ count = 3 }: { count?: number }) {
+// Mirrors a full-width table view (Release history, Instances…): page header,
+// a toolbar, a column-header strip, then data rows filling the page.
+export function TableSkeleton({ rows = 9 }: { rows?: number }) {
+  const cols = "56px minmax(200px, 2.6fr) minmax(90px, 1fr) minmax(70px, 0.8fr) minmax(160px, 1.8fr) minmax(90px, 1fr) minmax(140px, 1.6fr)";
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 16, alignItems: "stretch" }}>
-      {[...Array(count)].map((_, i) => (
-        <RepoCardSkeleton key={i} />
-      ))}
-    </div>
-  );
-}
-
-// Mirrors RenderedFilesView: a file tree on the left and a code pane on the
-// right, under the same header. Replaces the bare centred <Spin/>.
-export function FilesSkeleton() {
-  return (
-    <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 14 }}>
-      <div style={{ width: 280, flexShrink: 0 }}>
-        <Skeleton.Input active size="small" style={{ ...line(150, 12) }} />
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
-          {[0, 1, 2, 3, 4, 5].map((i) => (
-            <Skeleton.Input
-              key={i}
-              active
-              size="small"
-              style={{ ...line(`${88 - (i % 3) * 14}%`, 14), marginLeft: i % 4 === 0 ? 0 : 16 }}
-            />
-          ))}
-        </div>
+    <div style={{ padding: "16px 20px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <SkHeader />
+        <Sk w={130} h={30} r={6} />
       </div>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-        <Space size={8}>
-          <Skeleton.Button active size="small" style={{ width: 220 }} />
-          <Skeleton.Button active size="small" style={{ width: 48 }} />
-          <Skeleton.Button active size="small" style={{ width: 64 }} />
-        </Space>
+      <div className="sk-panel" style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column" }}>
         <div
           style={{
-            flex: 1,
-            borderRadius: 8,
-            border: "1px solid rgba(128,128,128,0.25)",
-            background: "rgba(128,128,128,0.06)",
-            padding: "12px 14px",
-            display: "flex",
-            flexDirection: "column",
-            gap: 7,
+            display: "grid", gridTemplateColumns: cols, gap: 16, padding: "12px 16px",
+            background: "rgba(127,137,160,0.06)", borderBottom: "1px solid rgba(127,137,160,0.14)",
           }}
         >
-          {[...Array(14)].map((_, i) => (
-            <Skeleton.Input
-              key={i}
-              active={i < 9}
-              size="small"
-              style={{ ...line(`${[42, 68, 55, 80, 34, 60, 72, 48, 64, 38, 76, 52, 44, 30][i]}%`, 12), opacity: 1 - i * 0.05 }}
-            />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Mirrors the Change Requests table: a header/toolbar row, a column-header
-// strip, then data rows. Replaces AntD's built-in table spinner overlay so the
-// shape matches what loads in.
-export function TableSkeleton({ rows = 6 }: { rows?: number }) {
-  const cols = [56, 320, 130, 90, 240, 130, 230];
-  return (
-    <div style={{ padding: 16, height: "100%", overflow: "auto" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-        <Skeleton.Input active size="small" style={{ width: 200 }} />
-        <Skeleton.Button active size="small" style={{ width: 90 }} />
-      </div>
-      <div style={{ border: "1px solid rgba(128,128,128,0.18)", borderRadius: 8, overflow: "hidden" }}>
-        <div style={{ display: "flex", gap: 16, padding: "12px 16px", background: "rgba(128,128,128,0.06)" }}>
-          {cols.map((w, i) => (
-            <Skeleton.Input key={i} active size="small" style={{ ...line(Math.min(w, 90), 12) }} />
+          {[...Array(7)].map((_, i) => (
+            <Sk key={i} w="70%" h={12} />
           ))}
         </div>
         {[...Array(rows)].map((_, r) => (
           <div
             key={r}
-            style={{ display: "flex", gap: 16, padding: "14px 16px", borderTop: "1px solid rgba(128,128,128,0.12)", opacity: 1 - r * 0.08 }}
+            style={{
+              display: "grid", gridTemplateColumns: cols, gap: 16, padding: "15px 16px",
+              borderTop: r === 0 ? "none" : "1px solid rgba(127,137,160,0.1)",
+              opacity: Math.max(0.2, 1 - r * 0.09),
+            }}
           >
-            {cols.map((w, i) => (
-              <Skeleton.Input key={i} active={r < 4} size="small" style={{ ...line(w, 14) }} />
+            {[...Array(7)].map((_, c) => (
+              <Sk key={c} w={c === 1 ? `${92 - (r % 3) * 12}%` : "80%"} h={13} />
             ))}
           </div>
         ))}
@@ -218,53 +217,199 @@ export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   );
 }
 
-// Mirrors ApprovalsView: a title, a lead paragraph and a couple of review
-// cards, each with a step strip and a before/after item block.
+// --------------------------------------------------------------- approvals
+
+// Mirrors ApprovalsView: page header, the pipeline stat strip, then the
+// review queue on the left and the selected change request on the right.
 export function ApprovalsSkeleton() {
   return (
-    <div style={{ padding: 20, height: "100%", overflow: "auto", maxWidth: 980 }}>
-      <Skeleton.Input active size="small" style={{ width: 160, height: 24 }} />
-      <div style={{ marginTop: 10, marginBottom: 18 }}>
-        <Skeleton active title={false} paragraph={{ rows: 1, width: "70%" }} />
-      </div>
-      <Space direction="vertical" size={14} style={{ width: "100%" }}>
-        {[0, 1].map((i) => (
-          <Card key={i} size="small" title={<Skeleton.Input active size="small" style={{ width: 260 }} />}>
-            <Space size={6} style={{ marginBottom: 12 }}>
-              {[0, 1, 2, 3].map((s) => (
-                <Skeleton.Button key={s} active size="small" style={{ width: 70 }} />
-              ))}
-            </Space>
-            <Skeleton active title={false} paragraph={{ rows: 3 }} />
-            <Space style={{ marginTop: 12 }}>
-              <Skeleton.Button active style={{ width: 150 }} />
-              <Skeleton.Button active style={{ width: 90 }} />
-            </Space>
-          </Card>
+    <div style={{ padding: "16px 24px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
+      <SkHeader />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+        {[...Array(4)].map((_, i) => (
+          <SkPanel key={i} title={false} style={{ height: 80, justifyContent: "center" }}>
+            <Sk w="60%" h={11} />
+            <Sk w="30%" h={20} />
+          </SkPanel>
         ))}
-      </Space>
+      </div>
+      <div style={{ display: "flex", gap: 16, flex: 1, minHeight: 0 }}>
+        <div style={{ flex: "0 0 330px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <Sk w={110} h={12} />
+          {[...Array(3)].map((_, i) => (
+            <SkPanel key={i} title={false} style={{ opacity: 1 - i * 0.25 }}>
+              <div style={{ display: "flex", gap: 8 }}>
+                <Sk w={82} h={20} r={999} />
+                <Sk w="55%" h={14} />
+              </div>
+              <Sk w="70%" h={11} />
+            </SkPanel>
+          ))}
+        </div>
+        <SkPanel style={{ flex: 1 }}>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[...Array(3)].map((_, s) => (
+              <Sk key={s} w={110} h={22} r={999} />
+            ))}
+          </div>
+          <SkLines rows={5} gap={16} />
+          <div style={{ display: "flex", gap: 10, marginTop: "auto" }}>
+            <Sk w={170} h={38} r={6} />
+            <Sk w={110} h={38} r={6} />
+          </div>
+        </SkPanel>
+      </div>
     </div>
   );
 }
 
-// Mirrors PluginsView: a two-column grid of small cards, each a title, a tag,
-// a description and an id/version line.
+// ----------------------------------------------------------------- compare
+
+// Mirrors ComparePanel: the side pickers toolbar and a diff table below.
+// `toolbar={false}` renders only the table part, for use below a real,
+// already-rendered toolbar while just the diff loads.
+export function CompareSkeleton({ toolbar = true }: { toolbar?: boolean }) {
+  const cols = "minmax(180px, 1.6fr) minmax(120px, 2fr) minmax(120px, 2fr) 110px";
+  return (
+    <div style={{ padding: toolbar ? "12px 16px" : 0, height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 12 }}>
+      {toolbar && (
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <Sk w={80} h={16} />
+          <Sk w={280} h={26} r={6} />
+          <Sk w={20} h={16} />
+          <Sk w={280} h={26} r={6} />
+          <Sk w={140} h={26} r={6} />
+        </div>
+      )}
+      <div className="sk-panel" style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>
+        {[...Array(11)].map((_, r) => (
+          <div
+            key={r}
+            style={{
+              display: "grid", gridTemplateColumns: cols, gap: 16, padding: "13px 16px",
+              borderTop: r === 0 ? "none" : "1px solid rgba(127,137,160,0.1)",
+              background: r === 0 ? "rgba(127,137,160,0.06)" : undefined,
+              opacity: Math.max(0.2, 1 - r * 0.08),
+            }}
+          >
+            {[...Array(4)].map((_, c) => (
+              <Sk key={c} w={c === 3 ? 60 : "80%"} h={13} />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------- files
+
+// Mirrors FilesView: a file tree on the left, a code pane filling the right.
+export function FilesSkeleton() {
+  return (
+    <div style={{ flex: 1, minHeight: 0, height: "100%", display: "flex", gap: 14 }}>
+      <div style={{ width: "22%", minWidth: 200, maxWidth: 300, flexShrink: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <Sk w="70%" h={14} />
+        {["88%", "74%", "60%", "82%", "68%", "56%", "78%", "64%"].map((w, i) => (
+          <Sk key={i} w={w} h={13} style={{ marginLeft: i % 4 === 0 ? 0 : 16, opacity: 1 - i * 0.07 }} />
+        ))}
+      </div>
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Sk w="min(260px, 40%)" h={26} r={6} />
+          <Sk w={54} h={26} r={6} />
+          <Sk w={70} h={26} r={6} />
+        </div>
+        <div className="sk-panel" style={{ flex: 1, minHeight: 0, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 9, overflow: "hidden" }}>
+          {[42, 68, 55, 80, 34, 60, 72, 48, 64, 38, 76, 52, 44, 30, 58, 66].map((w, i) => (
+            <Sk key={i} w={`${w}%`} h={12} style={{ opacity: Math.max(0.2, 1 - i * 0.05) }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --------------------------------------------------------------- workspace
+
+// One placeholder application card matching RepoCard in WorkspaceView.
+function RepoCardSkeleton({ fade = 1 }: { fade?: number }) {
+  return (
+    <SkPanel title={false} style={{ opacity: fade }}>
+      <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+        <Sk w={24} h={24} r={6} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>
+          <Sk w="55%" h={15} />
+          <Sk w="80%" h={10} />
+        </div>
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <Sk w={62} h={20} r={999} />
+        <Sk w={84} h={20} r={999} />
+        <Sk w={70} h={20} r={999} />
+      </div>
+      <div style={{ display: "flex", gap: 24, marginTop: 2 }}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Sk w={62} h={10} />
+            <Sk w={30} h={18} />
+          </div>
+        ))}
+      </div>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <Sk w={120} h={26} r={6} />
+      </div>
+    </SkPanel>
+  );
+}
+
+// Standing in for the Applications page while the workspace loads: the same
+// header, the cards grid filling the width, and the attention rail.
+export function WorkspaceSkeleton({ count = 6 }: { count?: number }) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        gap: 14,
+        marginTop: 16,
+      }}
+    >
+      {[...Array(count)].map((_, i) => (
+        <RepoCardSkeleton key={i} fade={Math.max(0.35, 1 - i * 0.13)} />
+      ))}
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------- plugins
+
+// Mirrors PluginsView: a header and a two-column grid of small cards.
 export function PluginsSkeleton() {
   return (
-    <div style={{ padding: 24, overflow: "auto", height: "100%" }}>
-      <Skeleton.Input active size="small" style={{ width: 140, height: 24 }} />
-      <div style={{ marginTop: 10, marginBottom: 16 }}>
-        <Skeleton active title={false} paragraph={{ rows: 1, width: "80%" }} />
-      </div>
-      <Row gutter={[16, 16]}>
+    <div style={{ padding: "16px 20px", height: "100%", overflow: "hidden", display: "flex", flexDirection: "column", gap: 14 }}>
+      <SkHeader />
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
         {[...Array(6)].map((_, i) => (
-          <Col xs={24} md={12} key={i}>
-            <Card size="small" title={<Skeleton.Input active size="small" style={{ width: 140 }} />} extra={<Skeleton.Button active size="small" style={{ width: 70 }} />}>
-              <Skeleton active title={false} paragraph={{ rows: 2, width: ["90%", "60%"] }} />
-            </Card>
-          </Col>
+          <SkPanel key={i} style={{ opacity: Math.max(0.3, 1 - i * 0.12) }}>
+            <SkLines rows={2} />
+          </SkPanel>
         ))}
-      </Row>
+      </div>
+    </div>
+  );
+}
+
+/** A short two-line-per-item list, for inline "recent activity" areas. */
+export function InlineListSkeleton({ rows = 4 }: { rows?: number }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 10 }}>
+      {[...Array(rows)].map((_, i) => (
+        <div key={i} style={{ display: "flex", flexDirection: "column", gap: 6, opacity: 1 - i * 0.18 }}>
+          <Sk w={`${78 - (i % 3) * 14}%`} h={13} />
+          <Sk w="45%" h={10} />
+        </div>
+      ))}
     </div>
   );
 }

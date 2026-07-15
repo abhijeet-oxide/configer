@@ -22,6 +22,8 @@ import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
+import DashboardView from "./components/DashboardView";
+import ConfigurationPage, { APP_SECTIONS } from "./components/ConfigurationPage";
 import ImportWizard from "./components/ImportWizard";
 import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
@@ -30,7 +32,15 @@ import WorkspaceView from "./components/WorkspaceView";
 import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
-import { GridSkeleton, TableSkeleton, ApprovalsSkeleton, FilesSkeleton } from "./components/Skeletons";
+import {
+  GridSkeleton,
+  TableSkeleton,
+  ApprovalsSkeleton,
+  FilesSkeleton,
+  OverviewSkeleton,
+  CompareSkeleton,
+  ListSkeleton,
+} from "./components/Skeletons";
 
 const { Header, Sider, Content } = Layout;
 
@@ -223,32 +233,21 @@ export default function App() {
     );
   }
 
-  function body() {
-    // The workspace (portfolio) level does not depend on any one repo's grid,
-    // so it renders even while a repository is unavailable or none exists.
-    // "home" merged into it: cards on top, the selected configuration's
-    // overview right below on the same page.
-    if (section === "workspace" || section === "home")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <WorkspaceView grid={grid} />
-        </div>
-      );
-    // A repository without a .configer application goes through onboarding
-    // before any other view makes sense.
-    if (uninitialized)
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <OnboardingWizard projectName={projectQ.data?.project ?? "this repository"} />
-        </div>
-      );
+  // appBody renders the inside of one Configuration tab: a full-page skeleton
+  // while the grid loads, the connection fallback when it can't, and the
+  // selected view otherwise. The tab strip above it stays interactive the
+  // whole time, so loading never blanks the page chrome.
+  function appBody() {
     if (gridQ.isLoading) {
       // state-aware skeletons: mirror the exact layout the user is waiting for
+      if (section === "overview") return <OverviewSkeleton />;
       if (section === "approvals") return <ApprovalsSkeleton />;
-      if (section === "changes" || section === "drafts") return <TableSkeleton />;
+      if (section === "changes" || section === "drafts" || section === "instances") return <TableSkeleton />;
+      if (section === "compare") return <CompareSkeleton />;
+      if (section === "drift" || section === "import") return <ListSkeleton />;
       if (section === "files")
         return (
-          <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px", gap: 12, ...panelBg }}>
+          <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px", gap: 12 }}>
             <FilesSkeleton />
           </div>
         );
@@ -280,50 +279,39 @@ export default function App() {
       );
     }
 
+    if (section === "overview") return <DashboardView grid={grid} />;
+    if (section === "import") return <ImportWizard grid={grid} />;
+    if (section === "drift") return <RepoChangesView />;
+    if (section === "approvals") return <ApprovalsView />;
+    if (section === "changes" || section === "drafts") return <ChangeRequestsView />;
+    if (section === "compare") return <ComparePanel grid={grid} />;
+    if (section === "instances") return <InstancesView grid={grid} />;
+    if (section === "files") return <FilesView />;
+    return editorLayout();
+  }
+
+  function body() {
+    // The workspace (portfolio) level does not depend on any one repo's grid,
+    // so it renders even while a repository is unavailable or none exists.
+    if (section === "workspace" || section === "home")
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <WorkspaceView />
+        </div>
+      );
+    // A repository without a .configer application goes through onboarding
+    // before any other view makes sense.
+    if (uninitialized)
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <OnboardingWizard projectName={projectQ.data?.project ?? "this repository"} />
+        </div>
+      );
     if (section === "plugins") return <PluginsView />;
-    if (section === "import")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <ImportWizard grid={grid} />
-        </div>
-      );
-    if (section === "drift")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <RepoChangesView />
-        </div>
-      );
-    if (section === "approvals")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <ApprovalsView />
-        </div>
-      );
-    if (section === "changes" || section === "drafts")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <ChangeRequestsView />
-        </div>
-      );
-    if (section === "compare")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <ComparePanel grid={grid} />
-        </div>
-      );
-    if (section === "instances")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <InstancesView grid={grid} />
-        </div>
-      );
-    if (section === "files")
-      return (
-        <div style={{ height: "100%", ...panelBg }}>
-          <FilesView />
-        </div>
-      );
-    if (section === "config") return editorLayout();
+    // Everything belonging to ONE application lives under the Configuration
+    // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
+    if (APP_SECTIONS.has(section))
+      return <ConfigurationPage section={section}>{appBody()}</ConfigurationPage>;
     return (
       <Result
         title={section}

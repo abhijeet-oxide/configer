@@ -9,6 +9,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { envHex } from "../theme";
+import { TableSkeleton } from "./Skeletons";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -143,6 +144,10 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     return st !== "archived";
   });
 
+  // Same loading language as every other page: a full-page skeleton in the
+  // shape of the table, never a spinner overlay.
+  if (regQ.isLoading) return <TableSkeleton />;
+
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
@@ -172,7 +177,6 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       <Table<Instance>
         rowKey="name"
         size="middle"
-        loading={regQ.isLoading}
         dataSource={shown}
         pagination={false}
         locale={{ emptyText: "No instances. Add one to start managing its configuration." }}

@@ -4,11 +4,8 @@ import {
   Card,
   Dropdown,
   Empty,
-  Form,
-  Input,
   Modal,
   Space,
-  Statistic,
   Tag,
   Tooltip,
   Typography,
@@ -21,26 +18,27 @@ import {
   HddOutlined,
   MoreOutlined,
   SyncOutlined,
-  DisconnectOutlined,
   RightOutlined,
-  DownloadOutlined,
   StarOutlined,
   StarFilled,
-  EditOutlined,
+  CheckCircleFilled,
+  WarningFilled,
 } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type RepoSummary } from "../api";
+import { api, type RepoSummary } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import DashboardView from "./DashboardView";
 import { WorkspaceSkeleton } from "./Skeletons";
 import { STEP_HANDOFF } from "./ImportWizard";
+import AppDetailsDrawer from "./AppDetailsDrawer";
+import NewApplicationWizard from "./NewApplicationWizard";
 
-// WorkspaceView is the single landing page: every connected configuration as
-// a card (favorites pinned first), and right below, the overview of the one
-// currently selected: pick a configuration, read its health, press Edit to
-// open the editor. One seamless flow instead of separate Workspace and Home.
+// WorkspaceView is the landing page: every application as a light,
+// quick-glance card, with anything that needs a human flagged in the
+// attention rail on the side. Depth lives one click away: selecting a card
+// opens the details side panel, and "Open configuration" from there leads to
+// the full tabbed Configuration page.
 
 const FAV_KEY = "configer.favRepos";
 
@@ -74,229 +72,149 @@ function SyncTag({ r }: { r: RepoSummary }) {
   );
 }
 
+// What (if anything) about an application needs a human right now, in plain
+// words, for the attention rail.
+function attentionOf(r: RepoSummary): { text: string; color: string }[] {
+  const out: { text: string; color: string }[] = [];
+  if (r.error) out.push({ text: "unavailable", color: "var(--c-danger)" });
+  if (r.syncError) out.push({ text: "sync issue", color: "var(--c-pending)" });
+  if ((r.behind ?? 0) > 0) out.push({ text: `${r.behind} commit${r.behind === 1 ? "" : "s"} behind`, color: "var(--c-review)" });
+  if (r.openChanges > 0)
+    out.push({ text: `${r.openChanges} waiting for approval`, color: "var(--c-review)" });
+  if (r.drafts > 0) out.push({ text: "unsent draft edits", color: "var(--c-pending)" });
+  return out;
+}
+
 function RepoCard({
   r,
   active,
   fav,
   onToggleFav,
+  onOpen,
+  onDisconnect,
 }: {
   r: RepoSummary;
   active: boolean;
   fav: boolean;
   onToggleFav: () => void;
+  onOpen: () => void;
+  onDisconnect: () => void;
 }) {
-  const { message } = AntApp.useApp();
   const { setSection } = useUI();
   const switchRepo = useSwitchRepo();
-  const qc = useQueryClient();
 
-  const open = (section: string) => {
+  const goto = (section: string) => {
     if (!active) switchRepo(r.id);
     setSection(section);
   };
-  const remove = useMutation({
-    mutationFn: () => api.removeRepo(r.id),
-    onSuccess: () => {
-      message.info(`"${r.name}" was disconnected. The repository itself is untouched on Git.`);
-      qc.invalidateQueries({ queryKey: ["workspace"] });
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
 
   return (
     <Card
-        hoverable
-        onClick={() => {
-          // Selecting a card switches the overview below to this
-          // configuration; it does not yank the user to another page.
-          if (!active) switchRepo(r.id);
-        }}
-        style={{
-          width: 330,
-          height: "100%",
-          borderColor: active ? "var(--ant-color-primary, #2a78d6)" : undefined,
-        }}
-        styles={{ body: { padding: 14 } }}
-      >
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-          <div style={{ fontSize: 20, opacity: 0.75, marginTop: 2 }}>
-            {r.local ? <HddOutlined /> : <GithubOutlined />}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <Typography.Text strong style={{ fontSize: 14.5 }}>
-              {r.name}
-            </Typography.Text>
-            <div className="mono" style={{ fontSize: 11, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {r.origin}
-            </div>
-          </div>
-          <span onClick={(e) => e.stopPropagation()}>
-            <Tooltip title={fav ? "Unpin from favorites" : "Mark as favorite (pinned first)"}>
-              <Button
-                size="small"
-                type="text"
-                icon={fav ? <StarFilled style={{ color: "#f5b301" }} /> : <StarOutlined />}
-                onClick={onToggleFav}
-              />
-            </Tooltip>
-          </span>
-          <span onClick={(e) => e.stopPropagation()}>
-            <Dropdown
-              trigger={["click"]}
-              menu={{
-                items: [
-                  { key: "editor", label: "Open Config Editor" },
-                  { key: "import", label: "Import parameters" },
-                  { type: "divider" },
-                  { key: "disconnect", danger: true, label: "Disconnect from workspace" },
-                ],
-                onClick: ({ key, domEvent }) => {
-                  domEvent.stopPropagation();
-                  if (key === "editor") open("config");
-                  if (key === "import") open("import");
-                  if (key === "disconnect")
-                    Modal.confirm({
-                      title: `Disconnect "${r.name}"?`,
-                      content:
-                        "It disappears from this workspace only. The Git repository and its history stay exactly as they are, and you can reconnect any time.",
-                      okText: "Disconnect",
-                      okButtonProps: { danger: true },
-                      onOk: () => remove.mutate(),
-                    });
-                },
-              }}
-            >
-              <Button size="small" type="text" icon={<MoreOutlined />} />
-            </Dropdown>
-          </span>
+      hoverable
+      onClick={onOpen}
+      style={{ borderColor: active ? "var(--ant-color-primary, #2a78d6)" : undefined }}
+      styles={{ body: { padding: 14, display: "flex", flexDirection: "column", gap: 10, height: "100%" } }}
+    >
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+        <div style={{ fontSize: 20, opacity: 0.75, marginTop: 2 }}>
+          {r.local ? <HddOutlined /> : <GithubOutlined />}
         </div>
-
-        {r.error ? (
-          <Alert type="error" showIcon message={r.error} style={{ marginTop: 12 }} />
-        ) : (
-          <>
-            <Space size={4} wrap style={{ marginTop: 10 }}>
-              {active && <Tag color="blue">active</Tag>}
-              {r.noClone && (
-                <Tooltip title="Managed through the GitHub API with no clone on the server">
-                  <Tag color="geekblue">no clone</Tag>
-                </Tooltip>
-              )}
-              {r.branch && (
-                <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
-                  {r.branch}
-                </Tag>
-              )}
-              <SyncTag r={r} />
-              {r.project && <Tag color="geekblue">{r.project}</Tag>}
-            </Space>
-            <div style={{ display: "flex", gap: 24, marginTop: 12 }}>
-              <Statistic title="Parameters" value={r.params} valueStyle={{ fontSize: 18 }} />
-              <Statistic title="Instances" value={r.instances} valueStyle={{ fontSize: 18 }} />
-              <Statistic
-                title="In review"
-                value={r.openChanges}
-                valueStyle={{ fontSize: 18, color: r.openChanges ? "#eda100" : undefined }}
-              />
-            </div>
-            <Space size={4} wrap style={{ marginTop: 10, minHeight: 22 }}>
-              {Object.entries(r.environments ?? {})
-                .sort()
-                .map(([env, n]) => (
-                  <Tag key={env} color={envColor[env] ?? "default"} style={{ fontSize: 11 }}>
-                    {env} ×{n}
-                  </Tag>
-                ))}
-            </Space>
-          </>
-        )}
-        <div style={{ marginTop: 10, display: "flex", justifyContent: "flex-end", gap: 6 }}>
-          {active ? (
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Typography.Text strong style={{ fontSize: 14.5 }}>
+            {r.name}
+          </Typography.Text>
+          <div className="mono" style={{ fontSize: 11, opacity: 0.55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {r.origin}
+          </div>
+        </div>
+        <span onClick={(e) => e.stopPropagation()}>
+          <Tooltip title={fav ? "Unpin from favorites" : "Mark as favorite (pinned first)"}>
             <Button
               size="small"
-              type="primary"
-              icon={<EditOutlined />}
-              onClick={(e) => {
-                e.stopPropagation();
-                open("config");
-              }}
-            >
-              Edit configuration
-            </Button>
-          ) : (
-            <Button size="small">
-              Select <RightOutlined />
-            </Button>
-          )}
-        </div>
-      </Card>
-  );
-}
-
-// ConnectForm is shared by the workspace modal and the import wizard's
-// connect step: a git URL (or a path on the server) plus optional branch,
-// display name and access token.
-export function ConnectForm({
-  onDone,
-  compact,
-}: {
-  onDone: (r: RepoSummary) => void;
-  compact?: boolean;
-}) {
-  const { message } = AntApp.useApp();
-  const qc = useQueryClient();
-  const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
-  const connect = useMutation({
-    mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) => api.connectRepo(v),
-    onSuccess: (r) => {
-      const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
-      message.success(`Application "${r.name}" created (${how}).`);
-      qc.invalidateQueries({ queryKey: ["workspace"] });
-      form.resetFields();
-      onDone(r);
-    },
-    onError: (e: Error) => message.error(e.message, 6),
-  });
-  return (
-    <Form form={form} layout="vertical" onFinish={(v) => connect.mutate(v)} requiredMark={false}>
-      <Form.Item
-        name="name"
-        label="Application name"
-        rules={[{ required: true, message: "Give the application a name" }]}
-      >
-        <Input placeholder="e.g. Network Platform" maxLength={60} autoFocus />
-      </Form.Item>
-      <Form.Item
-        name="url"
-        label="Repository"
-        rules={[{ required: true, message: "Give a git URL or a path on the server" }]}
-        extra={compact ? undefined : "The GitHub repository whose configuration this application manages."}
-      >
-        <Input placeholder="https://github.com/acme/network-config.git" className="mono" />
-      </Form.Item>
-      <Form.Item name="branch" label="Branch (optional)">
-        <Input placeholder="default branch" className="mono" maxLength={80} />
-      </Form.Item>
-      <Form.Item
-        name="token"
-        label="Access token (private repositories)"
-        extra="Used by the server for Git operations. It never leaves the server and is never shown again."
-      >
-        <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
-      </Form.Item>
-      <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-          Create application
-        </Button>
+              type="text"
+              icon={fav ? <StarFilled style={{ color: "#f5b301" }} /> : <StarOutlined />}
+              onClick={onToggleFav}
+            />
+          </Tooltip>
+        </span>
+        <span onClick={(e) => e.stopPropagation()}>
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "open", label: "Open configuration" },
+                { key: "import", label: "Import parameters" },
+                { type: "divider" },
+                { key: "disconnect", danger: true, label: "Disconnect from workspace" },
+              ],
+              onClick: ({ key, domEvent }) => {
+                domEvent.stopPropagation();
+                if (key === "open") goto("overview");
+                if (key === "import") goto("import");
+                if (key === "disconnect") onDisconnect();
+              },
+            }}
+          >
+            <Button size="small" type="text" icon={<MoreOutlined />} />
+          </Dropdown>
+        </span>
       </div>
-    </Form>
+
+      {r.error ? (
+        <Alert type="error" showIcon message={r.error} />
+      ) : (
+        <>
+          <Space size={4} wrap>
+            {active && <Tag color="blue">active</Tag>}
+            {r.branch && (
+              <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
+                {r.branch}
+              </Tag>
+            )}
+            <SyncTag r={r} />
+          </Space>
+          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+            {r.params} parameter{r.params === 1 ? "" : "s"} · {r.instances} instance{r.instances === 1 ? "" : "s"}
+            {r.openChanges > 0 && (
+              <>
+                {" · "}
+                <span style={{ color: "var(--c-review)", fontWeight: 600 }}>{r.openChanges} in review</span>
+              </>
+            )}
+            {r.drafts > 0 && (
+              <>
+                {" · "}
+                <span style={{ color: "var(--c-pending)", fontWeight: 600 }}>draft edits</span>
+              </>
+            )}
+          </Typography.Text>
+          <Space size={4} wrap style={{ minHeight: 22 }}>
+            {Object.entries(r.environments ?? {})
+              .sort()
+              .map(([env, n]) => (
+                <Tag key={env} color={envColor[env] ?? "default"} style={{ fontSize: 11 }}>
+                  {env} ×{n}
+                </Tag>
+              ))}
+          </Space>
+        </>
+      )}
+      <div style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end" }}>
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Quick view <RightOutlined style={{ fontSize: 10 }} />
+        </Typography.Text>
+      </div>
+    </Card>
   );
 }
 
-export default function WorkspaceView({ grid }: { grid?: Grid }) {
+export default function WorkspaceView() {
+  const { message } = AntApp.useApp();
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
-  const [connectOpen, setConnectOpen] = useState(false);
+  const qc = useQueryClient();
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [detailsId, setDetailsId] = useState<string | null>(null);
   const [favs, setFavs] = useState<string[]>(loadFavs);
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 20_000 });
   // favorites pinned first, connection order otherwise
@@ -310,27 +228,58 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
       return next;
     });
 
+  const remove = useMutation({
+    mutationFn: (id: string) => api.removeRepo(id),
+    onSuccess: (_, id) => {
+      const name = repos.find((r) => r.id === id)?.name ?? id;
+      message.info(`"${name}" was disconnected. The repository itself is untouched on Git.`);
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  const confirmDisconnect = (r: RepoSummary) =>
+    Modal.confirm({
+      title: `Disconnect "${r.name}"?`,
+      content:
+        "It disappears from this workspace only. The Git repository and its history stay exactly as they are, and you can reconnect any time.",
+      okText: "Disconnect",
+      okButtonProps: { danger: true },
+      onOk: () => remove.mutate(r.id),
+    });
+
+  // Open the details side panel for one application; it always describes the
+  // active repository, so switch first.
+  const openDetails = (r: RepoSummary) => {
+    if (r.id !== repoId) switchRepo(r.id);
+    setDetailsId(r.id);
+  };
+
+  const needsAttention = repos
+    .map((r) => ({ r, issues: attentionOf(r) }))
+    .filter((x) => x.issues.length > 0);
+  const detailsRepo = repos.find((r) => r.id === detailsId) ?? null;
+
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+      <div>
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
           <div>
             <Typography.Title level={4} style={{ margin: 0 }}>
               Applications
             </Typography.Title>
             <Typography.Text type="secondary">
-              Pick an application to see its overview below; everything stays in Git.
+              Every configuration you manage, straight from Git. Click a card for a quick view.
             </Typography.Text>
           </div>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-            Create application
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+            New application
           </Button>
         </div>
 
         {wsQ.isLoading && repos.length === 0 ? (
-          // Loading: stand in with the exact card shape so the empty state never
-          // flashes for connected workspaces (the reported "connect repository →
-          // no repositories" flicker).
+          // Loading: the full page shape (cards grid), so nothing jumps and the
+          // empty state never flashes for connected workspaces.
           <WorkspaceSkeleton />
         ) : repos.length === 0 ? (
           <Card style={{ marginTop: 20 }}>
@@ -346,70 +295,111 @@ export default function WorkspaceView({ grid }: { grid?: Grid }) {
                 </>
               }
             >
-              <Button type="primary" icon={<PlusOutlined />} onClick={() => setConnectOpen(true)}>
-                Create application
+              <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+                New application
               </Button>
             </Empty>
           </Card>
         ) : (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 14, marginTop: 16, alignItems: "stretch" }}>
-            {repos.map((r) => (
-              <RepoCard
-                key={r.id}
-                r={r}
-                active={r.id === repoId}
-                fav={favs.includes(r.id)}
-                onToggleFav={() => toggleFav(r.id)}
-              />
-            ))}
-            <Card
-              style={{ width: 330, borderStyle: "dashed", display: "flex", alignItems: "center", justifyContent: "center", minHeight: 200 }}
-              styles={{ body: { textAlign: "center" } }}
-              hoverable
-              onClick={() => setConnectOpen(true)}
+          <div style={{ display: "flex", gap: 20, marginTop: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+            <div
+              style={{
+                flex: "1 1 620px",
+                minWidth: 0,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+                gap: 14,
+              }}
             >
-              <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
-              <div style={{ marginTop: 8, fontWeight: 500 }}>Create application</div>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Connect a GitHub repository
-              </Typography.Text>
+              {repos.map((r) => (
+                <RepoCard
+                  key={r.id}
+                  r={r}
+                  active={r.id === repoId}
+                  fav={favs.includes(r.id)}
+                  onToggleFav={() => toggleFav(r.id)}
+                  onOpen={() => openDetails(r)}
+                  onDisconnect={() => confirmDisconnect(r)}
+                />
+              ))}
+              <Card
+                style={{ borderStyle: "dashed", minHeight: 170 }}
+                styles={{
+                  body: {
+                    height: "100%", display: "flex", flexDirection: "column",
+                    alignItems: "center", justifyContent: "center", textAlign: "center",
+                  },
+                }}
+                hoverable
+                onClick={() => setWizardOpen(true)}
+              >
+                <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
+                <div style={{ marginTop: 8, fontWeight: 500 }}>New application</div>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Pick a GitHub repository and go
+                </Typography.Text>
+              </Card>
+            </div>
+
+            {/* The attention rail: only what needs a human, in plain words. */}
+            <Card
+              size="small"
+              title="Needs attention"
+              style={{ flex: "0 1 300px", minWidth: 260 }}
+            >
+              {needsAttention.length === 0 ? (
+                <Space align="start">
+                  <CheckCircleFilled style={{ color: "var(--c-ok)", marginTop: 3 }} />
+                  <Typography.Text type="secondary">
+                    All applications look healthy. Nothing is waiting on you.
+                  </Typography.Text>
+                </Space>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {needsAttention.map(({ r, issues }) => (
+                    <div
+                      key={r.id}
+                      className="card-clickable"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => openDetails(r)}
+                    >
+                      <Space size={6}>
+                        <WarningFilled style={{ color: issues[0].color }} />
+                        <Typography.Text strong style={{ fontSize: 13 }}>
+                          {r.name}
+                        </Typography.Text>
+                      </Space>
+                      <div style={{ marginTop: 2, marginInlineStart: 20 }}>
+                        {issues.map((it) => (
+                          <div key={it.text} style={{ fontSize: 12, color: it.color }}>
+                            {it.text}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
-          </div>
-        )}
-
-        <Typography.Paragraph type="secondary" style={{ marginTop: 14, fontSize: 12 }}>
-          <DownloadOutlined /> Tip: after creating an application, use <a onClick={() => setSection("import")}>Import</a> to
-          bring the repository's settings under management. <DisconnectOutlined style={{ marginInlineStart: 10 }} />{" "}
-          Removing an application never deletes anything on Git.
-        </Typography.Paragraph>
-
-        {grid && repoId && (
-          <div style={{ marginTop: 4, borderTop: "1px solid rgba(128,128,128,0.2)" }}>
-            <DashboardView grid={grid} embedded />
           </div>
         )}
       </div>
 
-      <Modal
-        title="Create an application"
-        open={connectOpen}
-        onCancel={() => setConnectOpen(false)}
-        footer={null}
-        destroyOnClose
-      >
-        <ConnectForm
-          onDone={(r) => {
-            setConnectOpen(false);
-            // Creating an application flows straight into the scan/import step,
-            // so the repository is parsed and its settings offered for
-            // management right away — the "import is the next step of creating
-            // an application" flow.
-            sessionStorage.setItem(STEP_HANDOFF, "1");
-            switchRepo(r.id);
-            setSection("import");
-          }}
-        />
-      </Modal>
+      <AppDetailsDrawer repo={detailsRepo} open={!!detailsRepo} onClose={() => setDetailsId(null)} />
+
+      <NewApplicationWizard
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        onCreated={(r) => {
+          setWizardOpen(false);
+          // Creating an application flows straight into the scan/import step,
+          // so the repository is parsed and its settings offered for
+          // management right away.
+          sessionStorage.setItem(STEP_HANDOFF, "1");
+          switchRepo(r.id);
+          setSection("import");
+        }}
+      />
     </div>
   );
 }

@@ -5,11 +5,11 @@ import { api } from "../api";
 import { Ic, icons } from "./icons";
 import { useUI } from "../store";
 
-// The far-left navigation rail, kept to the few things people actually use
-// all day: Workspace (all configurations), Editor, Import, Approvals. Less
-// frequent tools live under More; admin-ish surfaces (Plugins) are tucked at
-// the bottom of More rather than polluting the main flow. Badges sit on the
-// icons so the collapsed rail stays clean and readable.
+// The far-left navigation rail, kept to the two levels of the hierarchy:
+// Applications (the portfolio) and Configuration (everything about the
+// selected application — its views live as tabs on the Configuration page).
+// Admin-ish surfaces (Plugins) sit at the bottom. Badges sit on the icons so
+// the collapsed rail stays clean and readable.
 
 function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
   if (!count) return <span className="nav-ic">{icon}</span>;
@@ -20,48 +20,31 @@ function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
   );
 }
 
-function buildItems(approvalsCount: number, findingsCount: number): MenuProps["items"] {
+function buildItems(attentionCount: number): MenuProps["items"] {
   return [
     { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Applications" },
-    { key: "config", icon: <span className="nav-ic"><Ic icon={icons.editor} /></span>, label: "Editor" },
-    { key: "import", icon: <span className="nav-ic"><Ic icon={icons.import} /></span>, label: "Import" },
     {
-      key: "approvals",
-      icon: iconWithBadge(<Ic icon={icons.approvals} />, approvalsCount),
-      label: "Approvals",
+      key: "overview",
+      icon: iconWithBadge(<Ic icon={icons.editor} />, attentionCount),
+      label: "Configuration",
     },
-    {
-      key: "more",
-      icon: iconWithBadge(<Ic icon={icons.settings} />, findingsCount, "orange"),
-      label: "More",
-      children: [
-        { key: "changes", icon: <Ic icon={icons.changes} />, label: "Change Requests" },
-        { key: "instances", icon: <Ic icon={icons.deployments} />, label: "Instances" },
-        { key: "compare", icon: <Ic icon={icons.compare} />, label: "Compare" },
-        { key: "files", icon: <Ic icon={icons.files} />, label: "Files" },
-        {
-          key: "drift",
-          icon: <Ic icon={icons.drift} />,
-          label: (
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-              Repository Changes
-              <Badge count={findingsCount} size="small" color="orange" />
-            </span>
-          ),
-        },
-        { type: "divider" },
-        { key: "plugins", icon: <Ic icon={icons.plugins} />, label: "Plugins (admin)" },
-      ],
-    },
+    { key: "plugins", icon: <span className="nav-ic"><Ic icon={icons.plugins} /></span>, label: "Plugins (admin)" },
   ];
+}
+
+// Every application-scoped section highlights the Configuration entry; the
+// rail reflects the level, the tabs on the page reflect the view.
+function railKey(section: string): string {
+  if (section === "workspace" || section === "home") return "workspace";
+  if (section === "plugins") return "plugins";
+  return "overview";
 }
 
 export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
   const { section, setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const items = buildItems(approvalsCount, findingsQ.data?.findings?.length ?? 0);
+  const items = buildItems(approvalsCount);
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
@@ -85,7 +68,7 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
         className="nav-rail"
         mode="inline"
         inlineCollapsed={collapsed}
-        selectedKeys={[section]}
+        selectedKeys={[railKey(section)]}
         onClick={({ key }) => setSection(key)}
         items={items}
         style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}

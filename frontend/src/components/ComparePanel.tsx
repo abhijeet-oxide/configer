@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";
 import { DiffMiniBar } from "./charts";
 import { useUI } from "../store";
+import { CompareSkeleton } from "./Skeletons";
 
 // Compare view: pick two sides, each an instance at a git ref (branch/tag or the
 // working tree), and read a parameter-level diff. This compares not just two
@@ -180,11 +181,13 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
       <div style={{ flex: 1, overflow: "auto" }}>
         {sameSide ? (
           <Empty description="Pick two different sides (a different instance or a different version)" />
+        ) : q.isLoading ? (
+          // consistent loading language: the diff-table skeleton, no spinner
+          <CompareSkeleton toolbar={false} />
         ) : (
           <Table<DiffChange>
             rowKey="paramId"
             size="small"
-            loading={q.isLoading}
             dataSource={rows}
             pagination={false}
             columns={[

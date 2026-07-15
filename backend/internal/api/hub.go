@@ -198,6 +198,10 @@ func (h *Hub) Routes() http.Handler {
 	mux.Handle("/api/docs/", swaggerHandler)
 	h.auth.Routes(mux)
 	mux.HandleFunc("GET /api/audit", h.auditLog)
+	// GitHub browsing for the New Application flow (credentials stay server-side).
+	mux.HandleFunc("GET /api/github/status", h.githubStatus)
+	mux.HandleFunc("GET /api/github/repos", h.githubRepos)
+	mux.HandleFunc("GET /api/github/branches", h.githubBranches)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)
@@ -419,6 +423,17 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	id := h.registry.UniqueID(workspace.Slug(name))
 
+	// No token typed? Fall back to the signed-in user's own GitHub access
+	// (or the server-wide token), so private repositories connect without
+	// any credential pasting. Local paths never need one.
+	autoToken := false
+	if req.Token == "" {
+		if st, err := os.Stat(req.URL); err != nil || !st.IsDir() {
+			req.Token, _, _ = h.githubCred(r)
+			autoToken = req.Token != ""
+		}
+	}
+
 	var e workspace.Entry
 	switch {
 	case func() bool { st, err := os.Stat(req.URL); return err == nil && st.IsDir() }():
@@ -436,8 +451,20 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 		dir := filepath.Join(h.dataDir, "repos", id)
 		if _, cerr := gitengine.Clone(req.URL, dir, req.Branch, req.Token, gitName, gitEmail); cerr != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": cerr.Error()})
-			return
+			// The automatically supplied credential must never make things
+			// worse: if it was rejected, try once more the way an anonymous
+			// clone (public repository) would have gone.
+			if autoToken {
+				_ = os.RemoveAll(dir)
+				if _, cerr2 := gitengine.Clone(req.URL, dir, req.Branch, "", gitName, gitEmail); cerr2 == nil {
+					req.Token = ""
+					cerr = nil
+				}
+			}
+			if cerr != nil {
+				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": cerr.Error()})
+				return
+			}
 		}
 		e = workspace.Entry{ID: id, Name: name, Origin: req.URL, Path: dir,
 			Branch: req.Branch, AddedAt: time.Now().UTC()}

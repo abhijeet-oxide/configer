@@ -79,7 +79,7 @@ function Signal({
   );
 }
 
-export default function DashboardView({ grid, embedded }: { grid: Grid; embedded?: boolean }) {
+export default function DashboardView({ grid }: { grid: Grid }) {
   const { setSection, setFilters } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -144,15 +144,9 @@ export default function DashboardView({ grid, embedded }: { grid: Grid; embedded
         <Typography.Title level={4} style={{ margin: 0 }}>
           {grid.project}
         </Typography.Title>
-        {embedded ? (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-            overview of the selected configuration
-          </Typography.Text>
-        ) : (
-          <Typography.Link onClick={() => setSection("workspace")} style={{ fontSize: 12 }}>
-            all configurations <RightOutlined style={{ fontSize: 10 }} />
-          </Typography.Link>
-        )}
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          how this application is doing right now
+        </Typography.Text>
       </div>
 
       {/* Live signal ribbon: the at-a-glance operational state. */}

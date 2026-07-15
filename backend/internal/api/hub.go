@@ -202,6 +202,8 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/github/status", h.githubStatus)
 	mux.HandleFunc("GET /api/github/repos", h.githubRepos)
 	mux.HandleFunc("GET /api/github/branches", h.githubBranches)
+	// Local-folder picker for the New Application flow (localhost mode).
+	mux.HandleFunc("GET /api/fs/browse", h.browseFolders)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)

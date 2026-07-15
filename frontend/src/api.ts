@@ -422,6 +422,27 @@ export interface GitHubStatus {
   signInEnabled: boolean;
 }
 
+// --- local folder browsing (New Application → Local folder) ----------------
+
+/** One selectable sub-folder in the local folder picker. */
+export interface FolderEntry {
+  name: string;
+  path: string;
+  isRepo: boolean;
+  hasConfiger: boolean;
+}
+
+/** A directory listing from the server's own filesystem (localhost mode). */
+export interface FolderListing {
+  path: string;
+  name: string;
+  /** parent directory path, or "" at the filesystem root */
+  parent: string;
+  isRepo: boolean;
+  hasConfiger: boolean;
+  folders: FolderEntry[];
+}
+
 export interface GitHubRepo {
   fullName: string;
   owner: string;
@@ -530,6 +551,8 @@ export const api = {
   },
   workspace: () => get<Workspace>("/workspace"),
   githubStatus: () => get<GitHubStatus>("/github/status"),
+  browseFolders: (path?: string) =>
+    get<FolderListing>(`/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
   githubRepos: () => get<{ repos: GitHubRepo[] }>("/github/repos"),
   githubBranches: (fullName: string) =>
     get<{ default: string; branches: string[] }>(`/github/branches?repo=${encodeURIComponent(fullName)}`),

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/layout"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -51,10 +52,13 @@ func derefLabels(p *map[string]string) map[string]string {
 	return *p
 }
 
-// addInstance stages a new deployment target (optionally cloned from an
-// existing one) into the draft change request. Nothing touches Git until the
-// draft is submitted: the branch then carries the scaffolded folder plus the
-// registry entry, reviewable like any other change.
+// addInstance creates a new deployment target right away: when cloned, its
+// folder is scaffolded as a real parallel copy of the source's managed files
+// (per the repository's layout convention) and the registry entry is written,
+// all committed with attribution. The instance is therefore live immediately —
+// visible in the Instances view with its own folder, and its cells editable in
+// the grid — instead of only materializing when a change request is submitted.
+// Value edits made afterwards still go through the normal draft/review flow.
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -66,6 +70,9 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid instance name is required"})
 		return
 	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
 	p, err := s.load()
 	if err != nil {
 		writeErr(w, err)
@@ -75,23 +82,41 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " already exists"})
 		return
 	}
-	if req.CloneFrom != "" {
-		if _, ok := p.InstanceByName(req.CloneFrom); !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "clone source " + req.CloneFrom + " not found"})
-			return
-		}
-	}
 
 	meta := model.Instance{
 		Name: name, Environment: str(req.Environment), Region: str(req.Region),
 		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
 		Status: str(req.Status), Labels: derefLabels(req.Labels),
 	}
-	s.stageStructural(w, author(r, req.Author), change.Item{
-		Instance: name,
-		Action:   change.ActionAddInstance,
-		Old:      req.CloneFrom,
-		New:      meta,
+	if meta.Status == "" {
+		meta.Status = "active"
+	}
+	title := "Add instance " + name
+	if req.CloneFrom != "" {
+		from, ok := p.InstanceByName(req.CloneFrom)
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "clone source " + req.CloneFrom + " not found"})
+			return
+		}
+		// Scaffold a real parallel folder (a copy of the source's managed files)
+		// so the new instance's cells are backed by files and editable at once.
+		scaffolded, serr := layout.ForKind(p.App.Layout).Scaffold(s.RepoPath, from, name)
+		if serr != nil {
+			writeErr(w, serr)
+			return
+		}
+		meta.Folder = scaffolded.Folder
+		if meta.SoftwareVersion == "" {
+			meta.SoftwareVersion = from.SoftwareVersion
+		}
+		title += " (clone of " + req.CloneFrom + ")"
+	}
+	if err := writer.AddInstance(s.RepoPath, meta); err != nil {
+		writeErr(w, err)
+		return
+	}
+	s.commitCatalogChange(w, title, author(r, req.Author), map[string]any{
+		"ok": true, "staged": false, "instance": meta,
 	})
 }
 

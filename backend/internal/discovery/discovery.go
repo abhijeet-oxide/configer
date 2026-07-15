@@ -63,6 +63,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		rel        string // path within the instance folder
 		path       string // path within the file
 		format     string
+		line       int // source line of the value (display only)
 		types      map[model.ParamType]bool
 		itemType   model.ParamType
 		name       string
@@ -77,6 +78,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		file   string
 		path   string
 		format string
+		line   int
 		typ    model.ParamType
 		item   model.ParamType
 		name   string
@@ -108,7 +110,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 				g, ok := instGroups[key]
 				if !ok {
 					g = &instGroup{
-						rel: rel, path: c.Path, format: c.Format,
+						rel: rel, path: c.Path, format: c.Format, line: c.Line,
 						types: map[model.ParamType]bool{}, itemType: c.itemType,
 						name: c.Name, byInstance: map[string]any{}, order: len(instOrder),
 					}
@@ -127,7 +129,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 				continue
 			}
 			sharedGroups[key] = &sharedGroup{
-				file: fr.File, path: c.Path, format: c.Format,
+				file: fr.File, path: c.Path, format: c.Format, line: c.Line,
 				typ: c.Type, item: c.itemType, name: c.Name, value: c.Value,
 				order: len(sharedOrder),
 			}
@@ -151,7 +153,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 			ItemType:    g.itemType,
 			Scope:       model.ScopeInstance,
 			Secret:      looksSecret(g.name),
-			Bindings:    []model.Binding{{File: "{folder}/" + g.rel, Path: g.path, Format: g.format}},
+			Bindings:    []model.Binding{{File: "{folder}/" + g.rel, Path: g.path, Format: g.format, Line: g.line}},
 		}
 		if v, same := commonValue(g.byInstance, len(res.Instances)); same {
 			p.Default = v
@@ -180,7 +182,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 			Scope:    model.ScopeGlobal,
 			Secret:   looksSecret(g.name),
 			Default:  g.value,
-			Bindings: []model.Binding{{File: g.file, Path: g.path, Format: g.format, Layer: model.LayerBase}},
+			Bindings: []model.Binding{{File: g.file, Path: g.path, Format: g.format, Layer: model.LayerBase, Line: g.line}},
 		})
 	}
 	sharedParams = mergeIdentical(sharedParams, func(p model.Parameter) string {
@@ -261,6 +263,7 @@ type candidate struct {
 	itemType model.ParamType
 	Value    any
 	Format   string
+	Line     int
 }
 
 var indexSuffix = regexp.MustCompile(`\[\d+\]$`)
@@ -273,7 +276,7 @@ func foldLists(cands []plugin.Candidate) []candidate {
 	lists := map[string]int{} // folded path -> position in out
 	for _, c := range cands {
 		if !indexSuffix.MatchString(c.Path) {
-			out = append(out, candidate{Name: c.Name, Path: c.Path, Type: c.Type, Value: c.Value, Format: c.Format})
+			out = append(out, candidate{Name: c.Name, Path: c.Path, Type: c.Type, Value: c.Value, Format: c.Format, Line: c.Line})
 			continue
 		}
 		base := indexSuffix.ReplaceAllString(c.Path, "")
@@ -289,6 +292,7 @@ func foldLists(cands []plugin.Candidate) []candidate {
 			itemType: c.Type,
 			Value:    []any{c.Value},
 			Format:   c.Format,
+			Line:     c.Line, // the list's first element line
 		})
 	}
 	return out

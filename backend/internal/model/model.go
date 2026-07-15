@@ -121,6 +121,10 @@ type Binding struct {
 	Format string `yaml:"format,omitempty" json:"format,omitempty"` // yaml | json | xml
 	// Layer overrides the inferred precedence layer ("base" or "instance").
 	Layer string `yaml:"layer,omitempty" json:"layer,omitempty"`
+	// Line is the 1-based source line the value lives on, for display in the
+	// onboarding proposal. It is NEVER persisted (line numbers drift), only
+	// carried through the discovery JSON — hence yaml:"-".
+	Line int `yaml:"-" json:"line,omitempty"`
 }
 
 // EffectiveLayer returns the binding's precedence layer: an explicit Layer

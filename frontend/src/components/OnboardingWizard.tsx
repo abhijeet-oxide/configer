@@ -1,44 +1,176 @@
 import {
   Alert,
   App as AntApp,
+  AutoComplete,
+  Badge,
   Button,
+  Empty,
   Form,
   Input,
+  Popover,
   Result,
-  Select,
+  Space,
   Steps,
   Table,
   Tag,
   Tooltip,
+  Tree,
   Typography,
 } from "antd";
 import {
   ApartmentOutlined,
   ArrowLeftOutlined,
   CheckCircleOutlined,
+  CloudUploadOutlined,
   FileSearchOutlined,
-  RocketOutlined,
+  FolderOutlined,
+  FileOutlined,
+  PartitionOutlined,
+  SearchOutlined,
   TableOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, bindingsOf, type Instance, type Parameter } from "../api";
+import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
+import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { TableSkeleton } from "./Skeletons";
 
 // OnboardingWizard turns a freshly connected repository into a managed
-// application in four steps: detect the layout, confirm the instances found
-// in the folder structure, review the deduplicated parameters, and initialize
-// — ONE commit that adds .configer/ metadata. Values never move: they stay in
-// the repository's own files, exactly where they already live.
-
-const envOptions = ["production", "staging", "development"].map((e) => ({ value: e, label: e }));
+// application: detect the layout, confirm the instances, CHOOSE WHICH FILES to
+// manage (a checkbox tree of the real folder structure), review the
+// deduplicated parameters, and initialize — ONE commit that adds .configer/
+// metadata. Values never move: they stay in the repository's own files.
 
 const layoutLabels: Record<string, string> = {
   kpt: "kpt / KRM packages",
   kustomize: "Kustomize (base + overlays)",
   "plain-folders": "Per-instance folders",
 };
+
+// --- file helpers -----------------------------------------------------------
+
+const INST_TOKEN = "{folder}/";
+
+function folderOf(i: Instance): string {
+  return i.folder || `instances/${i.name}`;
+}
+
+// The real repository files a binding touches: a shared binding is one literal
+// file; an instance-template binding ({folder}/…) expands to each instance.
+function filesOfBinding(b: Binding, insts: Instance[]): string[] {
+  if (b.file.includes("{folder}") || b.file.includes("{instance}")) {
+    return insts.map((i) =>
+      b.file.replace(/\{folder\}/g, folderOf(i)).replace(/\{instance\}/g, i.name),
+    );
+  }
+  return [b.file];
+}
+
+function filesOfParam(p: Parameter, insts: Instance[]): string[] {
+  const set = new Set<string>();
+  for (const b of bindingsOf(p)) for (const f of filesOfBinding(b, insts)) set.add(f);
+  return [...set];
+}
+
+interface FileNode {
+  key: string;
+  title: string;
+  isLeaf?: boolean;
+  children?: FileNode[];
+}
+
+// Build a folder/file tree from a flat list of repo-relative paths.
+function buildFileTree(files: string[]): { nodes: FileNode[]; fileKeys: string[]; folderKeys: string[] } {
+  const root: FileNode[] = [];
+  const fileKeys: string[] = [];
+  const folderKeys = new Set<string>();
+  for (const f of [...files].sort()) {
+    const parts = f.split("/");
+    let level = root;
+    let prefix = "";
+    parts.forEach((part, idx) => {
+      prefix = prefix ? `${prefix}/${part}` : part;
+      const isLeaf = idx === parts.length - 1;
+      let node = level.find((n) => n.key === prefix);
+      if (!node) {
+        node = isLeaf ? { key: prefix, title: part, isLeaf: true } : { key: prefix, title: part, children: [] };
+        level.push(node);
+      }
+      if (isLeaf) fileKeys.push(prefix);
+      else {
+        folderKeys.add(prefix);
+        level = node.children!;
+      }
+    });
+  }
+  return { nodes: root, fileKeys, folderKeys: [...folderKeys] };
+}
+
+function pruneTree(nodes: FileNode[], q: string): FileNode[] {
+  if (!q) return nodes;
+  const out: FileNode[] = [];
+  for (const n of nodes) {
+    if (n.key.toLowerCase().includes(q)) {
+      out.push(n); // a matching folder keeps its whole subtree
+      continue;
+    }
+    if (n.isLeaf) continue;
+    const kids = pruneTree(n.children ?? [], q);
+    if (kids.length) out.push({ ...n, children: kids });
+  }
+  return out;
+}
+
+// Pretty binding: the file (instance templates shown without the {folder}/
+// prefix, tagged "per instance"), its line, and its in-file path.
+function prettyBinding(b: Binding): { file: string; perInstance: boolean } {
+  if (b.file.startsWith(INST_TOKEN)) return { file: b.file.slice(INST_TOKEN.length), perInstance: true };
+  return { file: b.file, perInstance: false };
+}
+
+function LocationsCell({ p }: { p: Parameter }) {
+  const bs = bindingsOf(p);
+  if (bs.length === 0) return <Tag color="purple">design</Tag>;
+  const content = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 360 }}>
+      {bs.map((b, i) => {
+        const pb = prettyBinding(b);
+        const dir = pb.file.includes("/") ? pb.file.slice(0, pb.file.lastIndexOf("/") + 1) : "";
+        const base = pb.file.slice(dir.length);
+        return (
+          <div key={i} style={{ fontSize: 12 }}>
+            <div style={{ overflowWrap: "anywhere" }}>
+              <span className="mono" style={{ opacity: 0.55 }}>{dir}</span>
+              <span className="mono" style={{ fontWeight: 600 }}>{base}</span>
+              {b.line ? <span className="mono" style={{ color: "var(--c-review)" }}>:{b.line}</span> : null}
+              {pb.perInstance && (
+                <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>per instance</Tag>
+              )}
+            </div>
+            <div className="mono" style={{ fontSize: 11, opacity: 0.6, overflowWrap: "anywhere" }}>{b.path}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+  const first = prettyBinding(bs[0]);
+  const firstBase = first.file.slice(first.file.lastIndexOf("/") + 1);
+  return (
+    <Popover title="Where this value lives" content={content} placement="left">
+      <span style={{ cursor: "pointer" }}>
+        {bs.length > 1 ? (
+          <Tag color="blue">{bs.length} files</Tag>
+        ) : (
+          <span className="mono" style={{ fontSize: 11, opacity: 0.8 }}>
+            {firstBase}
+            {bs[0].line ? <span style={{ color: "var(--c-review)" }}>:{bs[0].line}</span> : null}
+          </span>
+        )}
+      </span>
+    </Popover>
+  );
+}
 
 export default function OnboardingWizard({ projectName }: { projectName: string }) {
   const { message } = AntApp.useApp();
@@ -48,20 +180,71 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const [appName, setAppName] = useState(projectName);
   const [description, setDescription] = useState("");
   const [instances, setInstances] = useState<Instance[] | null>(null);
+  // Files unchecked in the tree; a parameter with all its files unchecked is
+  // dropped. Manually unticked parameters (finer control) live in deselected.
+  const [uncheckedFiles, setUncheckedFiles] = useState<Set<string>>(new Set());
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
+  const [treeQ, setTreeQ] = useState("");
+  const [paramQ, setParamQ] = useState("");
 
   const discoverQ = useQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
   const d = discoverQ.data;
 
-  // The instances table edits a local copy seeded from discovery.
-  const insts = instances ?? d?.instances ?? [];
+  const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
   const patchInstance = (name: string, patch: Partial<Instance>) =>
     setInstances(insts.map((i) => (i.name === name ? { ...i, ...patch } : i)));
 
-  const chosenParams = useMemo(
-    () => (d?.parameters ?? []).filter((p) => !deselected.has(p.id)),
-    [d, deselected],
+  // Map every parameter to the real files it touches, and the full file set.
+  const filesByParam = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const p of d?.parameters ?? []) m.set(p.id, filesOfParam(p, insts));
+    return m;
+  }, [d, insts]);
+  const allFiles = useMemo(() => {
+    const s = new Set<string>();
+    for (const files of filesByParam.values()) for (const f of files) s.add(f);
+    return [...s];
+  }, [filesByParam]);
+  const { nodes: treeNodes, fileKeys, folderKeys } = useMemo(() => buildFileTree(allFiles), [allFiles]);
+
+  // Ant Tree wants the fully-checked keys: every still-selected file, plus a
+  // folder only when ALL of its descendant files are selected (a partially
+  // selected folder is left out so the tree renders it indeterminate).
+  const checkedKeys = useMemo(() => {
+    const files = fileKeys.filter((k) => !uncheckedFiles.has(k));
+    const folders = folderKeys.filter((fk) => {
+      const kids = fileKeys.filter((f) => f.startsWith(fk + "/"));
+      return kids.length > 0 && kids.every((f) => !uncheckedFiles.has(f));
+    });
+    return [...files, ...folders];
+  }, [fileKeys, folderKeys, uncheckedFiles]);
+
+  // A parameter survives if at least one of its files is still selected.
+  const includedByFiles = (p: Parameter): boolean => {
+    const files = filesByParam.get(p.id) ?? [];
+    if (files.length === 0) return true; // design-phase params have no file
+    return files.some((f) => !uncheckedFiles.has(f));
+  };
+  const fileIncludedParams = useMemo(
+    () => (d?.parameters ?? []).filter(includedByFiles),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [d, uncheckedFiles, filesByParam],
   );
+  const chosenParams = useMemo(
+    () => fileIncludedParams.filter((p) => !deselected.has(p.id)),
+    [fileIncludedParams, deselected],
+  );
+
+  const shownParams = useMemo(() => {
+    const q = paramQ.trim().toLowerCase();
+    if (!q) return fileIncludedParams;
+    return fileIncludedParams.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category ?? "").toLowerCase().includes(q) ||
+        bindingsOf(p).some((b) => b.file.toLowerCase().includes(q) || b.path.toLowerCase().includes(q)),
+    );
+  }, [fileIncludedParams, paramQ]);
 
   const init = useMutation({
     mutationFn: () =>
@@ -99,12 +282,21 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const steps = [
     { title: "Layout", icon: <FileSearchOutlined /> },
     { title: "Instances", icon: <ApartmentOutlined /> },
+    { title: "Files", icon: <PartitionOutlined /> },
     { title: "Parameters", icon: <TableOutlined /> },
-    { title: "Initialize", icon: <RocketOutlined /> },
+    { title: "Initialize", icon: <CheckCircleOutlined /> },
   ];
 
   const canNext =
-    step === 0 ? appName.trim() !== "" && insts.length > 0 : step === 2 ? chosenParams.length > 0 : true;
+    step === 0
+      ? appName.trim() !== "" && insts.length > 0
+      : step === 3
+        ? chosenParams.length > 0
+        : true;
+
+  // --- tree interactions ---
+  const treeData = pruneTree(treeNodes, treeQ.trim().toLowerCase());
+  const setAllFiles = (checked: boolean) => setUncheckedFiles(checked ? new Set() : new Set(fileKeys));
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
@@ -159,8 +351,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       {step === 1 && (
         <>
           <Typography.Paragraph type="secondary">
-            Each folder below becomes one instance — a column in the parameter grid. Adjust the
-            metadata; it lands in <span className="mono">.configer/instances.yaml</span>.
+            Each folder below becomes one instance — a column in the parameter grid. Set the
+            environment (pick a suggestion or type your own) and version; it lands in{" "}
+            <span className="mono">.configer/instances.yaml</span>.
           </Typography.Paragraph>
           <Table<Instance>
             size="small"
@@ -176,15 +369,18 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               },
               {
                 title: "Environment",
-                width: 170,
+                width: 190,
                 render: (_v, i) => (
-                  <Select
+                  <AutoComplete
                     size="small"
-                    style={{ width: 150 }}
+                    style={{ width: 170 }}
                     allowClear
-                    placeholder="unset"
+                    placeholder="e.g. Development"
                     value={i.environment || undefined}
-                    options={envOptions}
+                    options={ENV_PRESETS.map((e) => ({ value: e }))}
+                    filterOption={(input, option) =>
+                      (option?.value as string).toLowerCase().includes(input.toLowerCase())
+                    }
                     onChange={(v) => patchInstance(i.name, { environment: v })}
                   />
                 ),
@@ -204,47 +400,130 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               },
             ]}
           />
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginTop: 12 }}
+            message="You can add more instances any time"
+            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances) — no need to get them all here."
+          />
         </>
       )}
 
       {step === 2 && (
         <>
           <Typography.Paragraph type="secondary">
-            One row per <i>logical</i> setting: a value repeated across files or instances was
-            deduplicated into a single parameter — editing it later updates every mapped location.
-            Untick anything Configer should not manage.
+            Choose which files Configer should manage. Everything is selected by default — untick a
+            file or a whole folder to leave it out, and the settings found in it won't be imported.
           </Typography.Paragraph>
+          <Space style={{ marginBottom: 10 }} wrap>
+            <Input
+              allowClear
+              size="small"
+              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+              placeholder="Filter files and folders"
+              value={treeQ}
+              onChange={(e) => setTreeQ(e.target.value)}
+              style={{ width: 260 }}
+            />
+            <Button size="small" onClick={() => setAllFiles(true)}>Select all</Button>
+            <Button size="small" onClick={() => setAllFiles(false)}>Clear</Button>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {fileKeys.length - uncheckedFiles.size} of {fileKeys.length} files ·{" "}
+              {chosenParams.length} settings kept
+            </Typography.Text>
+          </Space>
+          <div style={{ border: "1px solid rgba(127,137,160,0.28)", borderRadius: 10, padding: 8, maxHeight: 420, overflow: "auto" }}>
+            {allFiles.length === 0 ? (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No configuration files were detected." />
+            ) : (
+              <Tree
+                checkable
+                selectable={false}
+                defaultExpandAll
+                treeData={treeData}
+                checkedKeys={checkedKeys}
+                {...(treeQ ? { expandedKeys: folderKeys, autoExpandParent: true } : {})}
+                showIcon
+                icon={(node) => ((node as unknown as FileNode).isLeaf ? <FileOutlined /> : <FolderOutlined />)}
+                onCheck={(checked) => {
+                  const set = new Set(checked as React.Key[]);
+                  // Recompute unchecked file leaves from the checked set.
+                  setUncheckedFiles(new Set(fileKeys.filter((k) => !set.has(k))));
+                }}
+              />
+            )}
+          </div>
+        </>
+      )}
+
+      {step === 3 && (
+        <>
+          <Typography.Paragraph type="secondary">
+            One row per <i>logical</i> setting: a value repeated across files or instances is
+            deduplicated into a single parameter (the <Tag color="blue" style={{ marginInline: 2 }}>N files</Tag>
+            badge shows how many locations it maps to). Untick anything Configer should not manage.
+          </Typography.Paragraph>
+          <Space style={{ marginBottom: 10 }} wrap>
+            <Input
+              allowClear
+              size="small"
+              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+              placeholder="Search settings, files, paths"
+              value={paramQ}
+              onChange={(e) => setParamQ(e.target.value)}
+              style={{ width: 280 }}
+            />
+            <Button size="small" onClick={() => setDeselected(new Set())}>Select all</Button>
+            <Button
+              size="small"
+              onClick={() => setDeselected(new Set(fileIncludedParams.map((p) => p.id)))}
+            >
+              Select none
+            </Button>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {chosenParams.length} of {fileIncludedParams.length} selected
+            </Typography.Text>
+          </Space>
           <Table<Parameter>
             size="small"
             rowKey="id"
-            dataSource={d.parameters}
-            pagination={d.parameters.length > 15 ? { pageSize: 15, size: "small" } : false}
+            dataSource={shownParams}
+            pagination={shownParams.length > 15 ? { pageSize: 15, size: "small" } : false}
             rowSelection={{
-              selectedRowKeys: d.parameters.filter((p) => !deselected.has(p.id)).map((p) => p.id),
+              selectedRowKeys: shownParams.filter((p) => !deselected.has(p.id)).map((p) => p.id),
               onChange: (keys) => {
                 const keep = new Set(keys as string[]);
-                setDeselected(new Set(d.parameters.filter((p) => !keep.has(p.id)).map((p) => p.id)));
+                // Only toggle the rows currently in view; leave others as-is.
+                setDeselected((prev) => {
+                  const next = new Set(prev);
+                  for (const p of shownParams) {
+                    if (keep.has(p.id)) next.delete(p.id);
+                    else next.add(p.id);
+                  }
+                  return next;
+                });
               },
             }}
             columns={[
               {
                 title: "Setting",
-                render: (_v, p) => (
-                  <span>
-                    <span className="mono">{p.name}</span>
-                    {p.secret && <Tag color="gold" style={{ marginInlineStart: 6 }}>secret</Tag>}
-                  </span>
-                ),
+                render: (_v, p) => {
+                  const n = bindingsOf(p).length;
+                  return (
+                    <Space size={6}>
+                      <span className="mono">{p.name}</span>
+                      {n > 1 && <Badge count={n} color="var(--c-review)" title={`${n} locations`} />}
+                      {p.secret && <Tag color="gold">secret</Tag>}
+                    </Space>
+                  );
+                },
               },
               { title: "Category", dataIndex: "category", width: 130 },
-              {
-                title: "Type",
-                width: 90,
-                render: (_v, p) => <Tag color="geekblue">{p.type}</Tag>,
-              },
+              { title: "Type", width: 90, render: (_v, p) => <Tag color="geekblue">{p.type}</Tag> },
               {
                 title: "Scope",
-                width: 110,
+                width: 100,
                 render: (_v, p) =>
                   p.scope === "global" ? (
                     <Tooltip title="Lives in a shared file: one edit applies to every instance">
@@ -254,23 +533,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     <Tag>instance</Tag>
                   ),
               },
-              {
-                title: "Locations",
-                width: 110,
-                render: (_v, p) => {
-                  const bs = bindingsOf(p);
-                  return bs.length > 1 ? (
-                    <Tooltip title={bs.map((b) => `${b.file} · ${b.path}`).join("\n")}>
-                      <Tag color="blue">{bs.length} files</Tag>
-                    </Tooltip>
-                  ) : (
-                    <span className="mono" style={{ fontSize: 11, opacity: 0.7 }}>{bs[0]?.file}</span>
-                  );
-                },
-              },
+              { title: "Locations", width: 130, render: (_v, p) => <LocationsCell p={p} /> },
               {
                 title: "Validation",
-                width: 110,
+                width: 100,
                 render: (_v, p) =>
                   p.validation?.schemaRef ? (
                     <Tooltip title={`From ${p.validation.schemaRef}`}>
@@ -285,9 +551,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         </>
       )}
 
-      {step === 3 && (
+      {step === 4 && (
         <Result
-          icon={<RocketOutlined />}
+          icon={<CloudUploadOutlined style={{ color: "var(--ant-color-primary, #2f6bff)" }} />}
           title={`Initialize ${appName}`}
           subTitle={
             <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>
@@ -314,7 +580,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             </div>
           }
           extra={
-            <Button type="primary" size="large" icon={<RocketOutlined />} loading={init.isPending} onClick={() => init.mutate()}>
+            <Button type="primary" size="large" icon={<CloudUploadOutlined />} loading={init.isPending} onClick={() => init.mutate()}>
               Initialize application
             </Button>
           }
@@ -325,7 +591,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
           {step === 0 ? "Cancel" : "Back"}
         </Button>
-        {step < 3 && (
+        {step < 4 && (
           <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
             Next
           </Button>
@@ -333,7 +599,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       </div>
 
       <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>
-        {d.parameters.length} settings found across {insts.length} instances
+        {chosenParams.length} settings selected across {insts.length} instances
         {d.sharedFiles?.length ? ` · ${d.sharedFiles.length} shared file(s)` : ""}
       </Typography.Text>
     </div>

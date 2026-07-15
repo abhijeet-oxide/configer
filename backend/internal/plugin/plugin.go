@@ -43,6 +43,9 @@ type Candidate struct {
 	Value  any             `json:"value"`  // value found in the source file
 	File   string          `json:"file"`   // repo-relative source file
 	Format string          `json:"format"` // yaml | json | xml
+	// Line is the 1-based line the value sits on in the source file (0 when
+	// the format can't report one, e.g. JSON). Used for display only.
+	Line int `json:"line,omitempty"`
 }
 
 // IngestParser detects and extracts parameters from a source file format.

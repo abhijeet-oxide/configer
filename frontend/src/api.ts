@@ -16,6 +16,8 @@ export interface Binding {
   path: string;
   format?: string;
   layer?: string;
+  /** 1-based source line the value lives on (0/absent when unknown); display only */
+  line?: number;
 }
 
 /** The parameter's bindings ([] for a design-phase parameter). */

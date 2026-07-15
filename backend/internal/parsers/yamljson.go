@@ -2,6 +2,7 @@ package parsers
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
@@ -28,13 +29,59 @@ func (YAMLParser) Detect(path string, _ []byte) bool {
 }
 
 func (YAMLParser) Extract(file string, content []byte) ([]plugin.Candidate, error) {
-	var root any
-	if err := yaml.Unmarshal(content, &root); err != nil {
+	// Decode into a yaml.Node so every scalar carries its source line, which
+	// the onboarding UI shows beside each value. A plain any-decode loses that.
+	var doc yaml.Node
+	if err := yaml.Unmarshal(content, &doc); err != nil {
 		return nil, err
 	}
 	var out []plugin.Candidate
-	flatten(normalize(root), "$", file, "yaml", &out)
+	root := &doc
+	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+		root = root.Content[0]
+	}
+	flattenNode(root, "$", file, &out)
 	return out, nil
+}
+
+// flattenNode walks a yaml.Node tree, emitting one candidate per scalar leaf
+// with its 1-based source line. Mapping keys and their value nodes are paired;
+// sequence items are indexed.
+func flattenNode(n *yaml.Node, path, file string, out *[]plugin.Candidate) {
+	switch n.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(n.Content); i += 2 {
+			flattenNode(n.Content[i+1], path+"."+n.Content[i].Value, file, out)
+		}
+	case yaml.SequenceNode:
+		for i, c := range n.Content {
+			flattenNode(c, fmt.Sprintf("%s[%d]", path, i), file, out)
+		}
+	case yaml.AliasNode:
+		if n.Alias != nil {
+			flattenNode(n.Alias, path, file, out)
+		}
+	case yaml.ScalarNode:
+		*out = append(*out, plugin.Candidate{
+			Name:   nameFromPath(path),
+			Path:   path,
+			Type:   inferType(scalarValue(n)),
+			Value:  scalarValue(n),
+			File:   file,
+			Format: "yaml",
+			Line:   n.Line,
+		})
+	}
+}
+
+// scalarValue decodes a scalar node to its Go value so type inference and the
+// displayed value match a plain decode.
+func scalarValue(n *yaml.Node) any {
+	var v any
+	if err := n.Decode(&v); err != nil {
+		return n.Value
+	}
+	return v
 }
 
 // JSONParser extracts parameters from JSON documents.
@@ -64,40 +111,3 @@ func (JSONParser) Extract(file string, content []byte) ([]plugin.Candidate, erro
 	return out, nil
 }
 
-// normalize converts map[any]any (produced by yaml.v3 for some documents) into
-// map[string]any recursively so downstream code can assume string keys.
-func normalize(v any) any {
-	switch n := v.(type) {
-	case map[any]any:
-		m := make(map[string]any, len(n))
-		for k, val := range n {
-			m[toString(k)] = normalize(val)
-		}
-		return m
-	case map[string]any:
-		m := make(map[string]any, len(n))
-		for k, val := range n {
-			m[k] = normalize(val)
-		}
-		return m
-	case []any:
-		for i := range n {
-			n[i] = normalize(n[i])
-		}
-		return n
-	default:
-		return v
-	}
-}
-
-func toString(v any) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return strings.TrimSpace(strings.Trim(strings.ReplaceAll(strings.ToLower(strings.TrimSpace(sprint(v))), " ", "_"), "\""))
-}
-
-func sprint(v any) string {
-	b, _ := json.Marshal(v)
-	return string(b)
-}

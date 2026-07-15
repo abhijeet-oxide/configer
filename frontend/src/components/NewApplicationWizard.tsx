@@ -30,15 +30,16 @@ import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 
-// NewApplicationWizard is the seamless "New application" flow:
+// NewApplicationWizard is the seamless "New application" flow, two steps:
 //
 //   sign in with GitHub → pick one of YOUR repositories (own or org) →
-//   pick the branch → name the application → create, then scan.
+//   branch + name on one screen → create, then scan.
 //
 // No URLs, no tokens: the server browses GitHub with the signed-in user's
 // own access (or the deployment token) and credentials never reach the
 // browser. A manual mode (git URL or server path) stays available for
-// everything that isn't GitHub.
+// everything that isn't GitHub. The step body has a fixed minimum height so
+// the dialog never jumps between steps.
 
 export default function NewApplicationWizard({
   open,
@@ -109,82 +110,40 @@ export default function NewApplicationWizard({
         style={{ margin: "8px 0 20px" }}
         items={[
           { title: "Repository", icon: <GithubOutlined /> },
-          { title: "Branch", icon: <BranchesOutlined /> },
-          { title: "Name & create", icon: <RocketOutlined /> },
+          { title: "Branch, name & create", icon: <RocketOutlined /> },
         ]}
       />
-      {step === 0 &&
-        (manual ? (
-          <>
-            <ConnectForm compact onDone={(r) => { reset(); onCreated(r); }} />
-            <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={() => setManual(false)}>
-              <ArrowLeftOutlined /> Back to picking from GitHub
-            </Button>
-          </>
-        ) : (
-          <RepoStep
-            loading={statusQ.isLoading}
-            status={statusQ.data}
-            onPick={pickRepo}
-            onManual={() => setManual(true)}
+      {/* fixed floor so the dialog chrome and buttons never jump between steps */}
+      <div style={{ minHeight: 380, display: "flex", flexDirection: "column" }}>
+        {step === 0 &&
+          (manual ? (
+            <>
+              <ConnectForm compact onDone={(r) => { reset(); onCreated(r); }} />
+              <Button type="link" size="small" style={{ paddingInline: 0, alignSelf: "flex-start" }} onClick={() => setManual(false)}>
+                <ArrowLeftOutlined /> Back to picking from GitHub
+              </Button>
+            </>
+          ) : (
+            <RepoStep
+              loading={statusQ.isLoading}
+              status={statusQ.data}
+              onPick={pickRepo}
+              onManual={() => setManual(true)}
+            />
+          ))}
+        {step === 1 && repo && (
+          <FinishStep
+            repo={repo}
+            branch={branch}
+            setBranch={setBranch}
+            name={name}
+            setName={setName}
+            creating={create.isPending}
+            onBack={() => setStep(0)}
+            onCreate={() => create.mutate()}
           />
-        ))}
-      {step === 1 && repo && (
-        <BranchStep
-          repo={repo}
-          branch={branch}
-          setBranch={setBranch}
-          onBack={() => setStep(0)}
-          onNext={() => setStep(2)}
-        />
-      )}
-      {step === 2 && repo && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          <Alert
-            type="info"
-            showIcon
-            icon={<FileSearchOutlined />}
-            message={
-              <>
-                <span className="mono">{repo.fullName}</span> on branch{" "}
-                <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11, marginInlineEnd: 0 }}>
-                  {branch ?? repo.defaultBranch ?? "default"}
-                </Tag>{" "}
-                — after creating, Configer scans this branch and shows the configuration files it
-                found, so you choose what to manage.
-              </>
-            }
-          />
-          <Form layout="vertical" requiredMark={false}>
-            <Form.Item
-              label="Application name"
-              extra="How this configuration appears across Configer. The repository is not renamed."
-            >
-              <Input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                maxLength={60}
-                autoFocus
-                placeholder={repo.name}
-              />
-            </Form.Item>
-          </Form>
-          <div style={{ display: "flex", justifyContent: "space-between" }}>
-            <Button icon={<ArrowLeftOutlined />} onClick={() => setStep(1)} disabled={create.isPending}>
-              Branch
-            </Button>
-            <Button
-              type="primary"
-              size="large"
-              icon={<RocketOutlined />}
-              loading={create.isPending}
-              onClick={() => create.mutate()}
-            >
-              Create application & scan
-            </Button>
-          </div>
-        </div>
-      )}
+        )}
+      </div>
     </Modal>
   );
 }
@@ -338,20 +297,28 @@ function RepoStep({
   );
 }
 
-// ---- step 1: pick the branch ------------------------------------------------
+// ---- step 1: branch, name & create -------------------------------------------
 
-function BranchStep({
+// A Select and a text input do not deserve two separate steps: everything
+// after picking the repository lives on one screen, one click from done.
+function FinishStep({
   repo,
   branch,
   setBranch,
+  name,
+  setName,
+  creating,
   onBack,
-  onNext,
+  onCreate,
 }: {
   repo: GitHubRepo;
   branch?: string;
   setBranch: (b: string) => void;
+  name: string;
+  setName: (n: string) => void;
+  creating: boolean;
   onBack: () => void;
-  onNext: () => void;
+  onCreate: () => void;
 }) {
   const branchesQ = useQuery({
     queryKey: ["github-branches", repo.fullName],
@@ -361,49 +328,79 @@ function BranchStep({
   const chosen = branch ?? branchesQ.data?.default ?? repo.defaultBranch;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <Typography.Text>
-        Which branch of <span className="mono">{repo.fullName}</span> holds the configuration to
-        manage? Configer reads and writes on this branch; every edit still goes through review.
-      </Typography.Text>
-      {branchesQ.isError ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="Couldn't list branches"
-          description={(branchesQ.error as Error).message}
-          action={
-            <Button size="small" onClick={() => branchesQ.refetch()}>
-              Try again
-            </Button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
+      <Form layout="vertical" requiredMark={false}>
+        <Form.Item
+          label={
+            <>
+              Branch of <span className="mono" style={{ marginInlineStart: 4 }}>{repo.fullName}</span>
+            </>
           }
-        />
-      ) : (
-        <Select
-          size="large"
-          showSearch
-          loading={branchesQ.isLoading}
-          value={branchesQ.isLoading ? undefined : chosen}
-          placeholder="Choose a branch"
-          onChange={(v) => setBranch(v)}
-          suffixIcon={<BranchesOutlined />}
-          options={(branchesQ.data?.branches ?? []).map((b) => ({
-            value: b,
-            label: (
-              <span className="mono">
-                {b}
-                {b === branchesQ.data?.default ? "  (default)" : ""}
-              </span>
-            ),
-          }))}
-        />
-      )}
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <Button icon={<ArrowLeftOutlined />} onClick={onBack}>
+          extra="Configer reads and writes on this branch; every edit still goes through review."
+        >
+          {branchesQ.isError ? (
+            <Alert
+              type="warning"
+              showIcon
+              message="Couldn't list branches"
+              description={(branchesQ.error as Error).message}
+              action={
+                <Button size="small" onClick={() => branchesQ.refetch()}>
+                  Try again
+                </Button>
+              }
+            />
+          ) : (
+            <Select
+              size="large"
+              showSearch
+              style={{ width: "100%" }}
+              loading={branchesQ.isLoading}
+              value={branchesQ.isLoading ? undefined : chosen}
+              placeholder="Choose a branch"
+              onChange={(v) => setBranch(v)}
+              suffixIcon={<BranchesOutlined />}
+              options={(branchesQ.data?.branches ?? []).map((b) => ({
+                value: b,
+                label: (
+                  <span className="mono">
+                    {b}
+                    {b === branchesQ.data?.default ? "  (default)" : ""}
+                  </span>
+                ),
+              }))}
+            />
+          )}
+        </Form.Item>
+        <Form.Item
+          label="Application name"
+          extra="How this configuration appears across Configer. The repository is not renamed."
+        >
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={60}
+            placeholder={repo.name}
+          />
+        </Form.Item>
+      </Form>
+      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <FileSearchOutlined /> After creating, Configer scans this branch and shows the
+        configuration files it found, so you choose what to manage.
+      </Typography.Text>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={creating}>
           Repository
         </Button>
-        <Button type="primary" disabled={!chosen} onClick={() => { if (chosen) setBranch(chosen); onNext(); }}>
-          Continue <ArrowRightOutlined />
+        <Button
+          type="primary"
+          size="large"
+          icon={<RocketOutlined />}
+          loading={creating}
+          disabled={branchesQ.isLoading && !chosen}
+          onClick={onCreate}
+        >
+          Create application & scan
         </Button>
       </div>
     </div>

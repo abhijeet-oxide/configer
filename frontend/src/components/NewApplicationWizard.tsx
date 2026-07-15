@@ -26,7 +26,7 @@ import {
   HddOutlined,
   LockOutlined,
   PlusOutlined,
-  RocketOutlined,
+  ThunderboltOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import { useMemo, useState } from "react";
@@ -106,12 +106,12 @@ export default function NewApplicationWizard({
     source === "local"
       ? [
           { title: "Source", icon: <FolderOpenOutlined /> },
-          { title: "Folder, name & create", icon: <RocketOutlined /> },
+          { title: "Folder, name & create", icon: <ThunderboltOutlined /> },
         ]
       : [
           { title: "Source", icon: <FolderOpenOutlined /> },
           { title: "Repository", icon: <GithubOutlined /> },
-          { title: "Branch, name & create", icon: <RocketOutlined /> },
+          { title: "Branch, name & create", icon: <ThunderboltOutlined /> },
         ];
   const currentStep = source === null ? 0 : source === "local" ? 1 : 1 + step;
 
@@ -345,7 +345,7 @@ function LocalFolderStep({
         <Button
           type="primary"
           size="large"
-          icon={<RocketOutlined />}
+          icon={<ThunderboltOutlined />}
           loading={connect.isPending}
           disabled={!picked}
           onClick={() => picked && connect.mutate(picked.path)}
@@ -749,7 +749,7 @@ function FinishStep({
         <Button
           type="primary"
           size="large"
-          icon={<RocketOutlined />}
+          icon={<ThunderboltOutlined />}
           loading={creating}
           disabled={branchesQ.isLoading && !chosen}
           onClick={onCreate}

@@ -8,6 +8,7 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
+import { ENV_PRESETS } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
 
@@ -274,7 +275,13 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="environment" label="Environment" style={{ flex: 1 }}>
-              <AutoComplete options={environments.map((e) => ({ value: e }))} placeholder="production" />
+              <AutoComplete
+                options={[...new Set([...ENV_PRESETS, ...environments])].map((e) => ({ value: e }))}
+                filterOption={(input, option) =>
+                  (option?.value as string).toLowerCase().includes(input.toLowerCase())
+                }
+                placeholder="Development"
+              />
             </Form.Item>
             <Form.Item name="region" label="Region" style={{ flex: 1 }}>
               <Input placeholder="eu-central-1" />

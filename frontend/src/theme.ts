@@ -31,10 +31,19 @@ export const semantic = {
 // instead of hardcoding hexes per component.
 export const envColors: Record<string, string> = {
   production: "#4338ca", // indigo: serious, high-stakes, but not an error
+  prod: "#4338ca", // alias of production
   staging: "#fa8c16", // amber
   development: "#0ca30c", // green
+  lab: "#0f9d6e", // teal
+  sandbox: "#7c3aed", // violet
+  nonprod: "#0891b2", // cyan
 };
-export const envHex = (env: string | undefined): string => (env ? envColors[env] : undefined) ?? "#8c8c8c";
+export const envHex = (env: string | undefined): string =>
+  (env ? envColors[env.toLowerCase()] : undefined) ?? "#8c8c8c";
+
+// Suggested environment names offered in the pickers. The field is free text —
+// these are only defaults; any custom value is accepted.
+export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 
 export function buildTheme(mode: Mode, brand: BrandKey, scale: FontScale = "normal"): ThemeConfig {
   const base = scale === "large" ? 15 : 13;

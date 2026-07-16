@@ -1,5 +1,5 @@
 import {
-  Button, Empty, Popconfirm, Select, Space, Switch, Tag, Tooltip, Tree, Typography, App as AntApp,
+  Alert, Button, Empty, Popconfirm, Select, Space, Switch, Tag, Tooltip, Tree, Typography, App as AntApp,
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
@@ -10,6 +10,7 @@ import {
   SaveOutlined,
   UndoOutlined,
   DiffOutlined,
+  FolderAddOutlined,
 } from "@ant-design/icons";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -46,24 +47,34 @@ function changedMark(name: string, changed: boolean): React.ReactNode {
 
 interface TreeCtx {
   changed: Set<string>;
+  created: Set<string>;
   managed: Set<string>;
   onAdd: (prefix: string) => void;
   onRemove: (file: string) => void;
 }
 
-// fileTitle renders one file/folder row: name (+ modified marker), a "managed"
-// dot for managed files, and hover actions (+ to manage, − to stop managing).
+// fileTitle renders one file/folder row: name (+ modified/new marker), a
+// "managed" dot for managed files, and hover actions (+ to manage, − to stop
+// managing).
 function nodeTitle(name: string, key: string, isFile: boolean, ctx: TreeCtx): React.ReactNode {
   const managed = isFile && ctx.managed.has(key);
+  const created = ctx.created.has(key);
   return (
-    <span className="file-node">
+    <span className={`file-node${created ? " pending" : ""}`}>
       <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
         {managed && (
           <Tooltip title="Managed: parameters map into this file">
             <span style={{ width: 7, height: 7, borderRadius: 4, background: "var(--c-ok)", flexShrink: 0 }} />
           </Tooltip>
         )}
-        {changedMark(name, ctx.changed.has(key))}
+        {created ? (
+          <span className="file-name">
+            {name}
+            <span style={{ marginInlineStart: 6, fontSize: 11 }} title="New - added in your draft">U</span>
+          </span>
+        ) : (
+          <span className="file-name">{changedMark(name, ctx.changed.has(key))}</span>
+        )}
       </span>
       <span className="file-node-actions" onClick={(e) => e.stopPropagation()}>
         {isFile ? (
@@ -144,17 +155,32 @@ export default function FilesView() {
   const setSection = useUI((s) => s.setSection);
   const setImportFocus = useUI((s) => s.setImportFocus);
   const projectQ = useQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
-  const instances = useMemo(() => projectQ.data?.instances ?? [], [projectQ.data]);
   const [instance, setInstance] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyManaged, setOnlyManaged] = useState(true);
   const [dirty, setDirty] = useState<string | null>(null);
 
+  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
+
+  // The instance list comes from the grid so it includes instances that only
+  // exist as a pending draft add (status "draft"); the committed registry is
+  // the fallback before the grid loads.
+  const instances = useMemo(() => {
+    const g = gridQ.data?.instances;
+    if (g && g.length) return g.map((i) => ({ name: i.name, status: i.status }));
+    return (projectQ.data?.instances ?? []).map((i) => ({ name: i.name, status: undefined as string | undefined }));
+  }, [gridQ.data, projectQ.data]);
+
+  const pending = useMemo(
+    () => new Set(instances.filter((i) => i.status === "draft").map((i) => i.name)),
+    [instances],
+  );
+  const instancePending = !!instance && pending.has(instance);
+
   useEffect(() => {
     if (!instance && instances.length > 0) setInstance(instances[0].name);
   }, [instances, instance]);
 
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
   const draftQ = useQuery({
     queryKey: ["files-draft", instance],
     queryFn: () => api.render(instance!),
@@ -164,7 +190,9 @@ export default function FilesView() {
   const committedQ = useQuery({
     queryKey: ["files-committed", instance],
     queryFn: () => api.render(instance!, { draft: false }),
-    enabled: !!instance,
+    // A pending instance has no committed files yet; skip the fetch (it would
+    // 404) so every file reads as newly added.
+    enabled: !!instance && !instancePending,
     refetchInterval: 15_000,
   });
   const allFiles = useMemo(() => draftQ.data?.files ?? [], [draftQ.data]);
@@ -192,9 +220,22 @@ export default function FilesView() {
     [allFiles, onlyManaged, managed],
   );
 
+  // A file is "created" when it has no committed counterpart (a pending
+  // instance's whole folder, or a new file staged in the draft); "changed"
+  // when it exists committed but the draft-applied content differs.
+  const createdFiles = useMemo(() => {
+    const s = new Set<string>();
+    if (committedQ.isLoading && !instancePending) return s;
+    for (const f of allFiles) if (!committedOf.has(f.path)) s.add(f.path);
+    return s;
+  }, [allFiles, committedOf, committedQ.isLoading, instancePending]);
+
   const changedFiles = useMemo(() => {
     const s = new Set<string>();
-    for (const f of allFiles) if (committedOf.get(f.path) !== f.content) s.add(f.path);
+    for (const f of allFiles) {
+      if (!committedOf.has(f.path)) continue; // created, not changed
+      if (committedOf.get(f.path) !== f.content) s.add(f.path);
+    }
     return s;
   }, [allFiles, committedOf]);
 
@@ -215,9 +256,9 @@ export default function FilesView() {
   };
 
   const ctx: TreeCtx = useMemo(
-    () => ({ changed: changedFiles, managed, onAdd: addToManaged, onRemove: (f) => retire.mutate(f) }),
+    () => ({ changed: changedFiles, created: createdFiles, managed, onAdd: addToManaged, onRemove: (f) => retire.mutate(f) }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [changedFiles, managed],
+    [changedFiles, createdFiles, managed],
   );
   const tree = useMemo(() => buildTree(files, ctx), [files, ctx]);
 
@@ -254,7 +295,7 @@ export default function FilesView() {
       setDirty(null);
       if (r.staged === 0) message.info("No changes to save");
       else if (r.kind === "values")
-        message.success(`${r.staged} value edit(s) staged in your draft — visible in the grid too`);
+        message.success(`${r.staged} value edit(s) staged in your draft - visible in the grid too`);
       else message.success("File edit staged in your draft");
       qc.invalidateQueries();
     },
@@ -306,16 +347,41 @@ export default function FilesView() {
             </Space>
           </Tooltip>
           <Select
-            style={{ width: 220 }}
+            style={{ width: 240 }}
             value={instance ?? undefined}
             placeholder="Choose an instance"
             showSearch
             filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
             onChange={(v) => setInstance(v)}
-            options={instances.map((i) => ({ value: i.name, label: i.name }))}
+            options={instances.map((i) => ({
+              value: i.name,
+              label: (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {i.name}
+                  {i.status === "draft" && <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>new</Tag>}
+                  {i.status === "retiring" && <Tag color="warning" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>retiring</Tag>}
+                </span>
+              ),
+            }))}
           />
         </Space>
       </div>
+
+      {instancePending && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<FolderAddOutlined />}
+          message={
+            <span>
+              <b className="mono">{instance}</b> is a pending new instance. This whole folder will be
+              created on the feature branch when you submit the change request - nothing is written to
+              the repository yet.
+            </span>
+          }
+          style={{ padding: "6px 12px" }}
+        />
+      )}
 
       {files.length === 0 ? (
         <Empty
@@ -349,7 +415,7 @@ export default function FilesView() {
                   {managed.has(current.path) ? (
                     <Tag color="success">managed</Tag>
                   ) : (
-                    <Tooltip title="Not managed yet — add it to scan for settings">
+                    <Tooltip title="Not managed yet - add it to scan for settings">
                       <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
                         Add to managed
                       </Button>

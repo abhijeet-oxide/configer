@@ -87,7 +87,7 @@ body {
   opacity: 0.75;
   border: 1px solid currentColor;
   vertical-align: middle;
-  /* the badge is atomic: it must never wrap mid-word inside a grid cell —
+  /* the badge is atomic: it must never wrap mid-word inside a grid cell -
      when space runs out the VALUE truncates, never the badge */
   display: inline-block;
   white-space: nowrap;
@@ -292,6 +292,42 @@ body {
   }
 }
 
+/* ---------------------------------------------------- state illustrations */
+
+/* Gentle, professional motion for the SVG illustration kit (success, scan,
+   empty, offline). All effects respect prefers-reduced-motion. */
+.ill { display: block; }
+
+@keyframes illDraw { to { stroke-dashoffset: 0; } }
+.ill-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: illDraw 0.6s ease-out 0.25s forwards;
+}
+
+@keyframes illPop { 0% { transform: scale(0.6); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.ill-pop { animation: illPop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes illRipple { 0% { transform: scale(0.85); opacity: 0.18; } 70% { opacity: 0.05; } 100% { transform: scale(1.15); opacity: 0; } }
+.ill-ripple { transform-origin: center; animation: illRipple 2.4s ease-out infinite; }
+
+@keyframes illSpark { 0% { opacity: 0; transform: scale(0.3); } 40% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4); } }
+.ill-spark { transform-box: fill-box; transform-origin: center; animation: illSpark 1.8s ease-out infinite; }
+
+@keyframes illFloaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.ill-floaty { animation: illFloaty 3.2s ease-in-out infinite; }
+
+@keyframes illSweep { 0% { transform: translateY(0); } 100% { transform: translateY(56px); } }
+.ill-sweep { animation: illSweep 1.7s ease-in-out infinite alternate; }
+
+@keyframes illDash { to { stroke-dashoffset: -16; } }
+.ill-dash { animation: illDash 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ill-draw { animation: none; stroke-dashoffset: 0; }
+  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash { animation: none; }
+}
+
 /* ---------------------------------------------------- group by value */
 
 /* When "group by value" is on, rows that share a value across every instance
@@ -384,6 +420,80 @@ body {
 }
 .files-tree .ant-tree-treenode:hover .file-node-actions {
   opacity: 0.85;
+}
+
+/* ------------------------------------------------ VS Code-style explorer */
+
+/* Bring the antd tree closer to the VS Code file explorer: full-width rows,
+   quiet hover/selection, indent guides, a left accent on the selected file,
+   and a monospace-ish, tight rhythm. Applied to the Files tab and the
+   onboarding picker. */
+.files-tree.ant-tree,
+.compact-tree.ant-tree {
+  background: transparent;
+  font-size: 13px;
+}
+.files-tree .ant-tree-treenode,
+.compact-tree .ant-tree-treenode {
+  width: 100%;
+  padding-inline: 0 !important;
+  position: relative;
+}
+/* Full-row hover/selection, not just the label pill. */
+.files-tree .ant-tree-node-content-wrapper,
+.compact-tree .ant-tree-node-content-wrapper {
+  flex: 1;
+  border-radius: 4px;
+  transition: background 0.1s ease;
+}
+.files-tree .ant-tree-node-content-wrapper:hover,
+.compact-tree .ant-tree-node-content-wrapper:hover {
+  background: rgba(127, 137, 160, 0.13);
+}
+.files-tree .ant-tree-node-content-wrapper.ant-tree-node-selected,
+.compact-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: rgba(47, 107, 255, 0.16);
+  font-weight: 500;
+}
+:root[data-theme="dark"] .files-tree .ant-tree-node-content-wrapper.ant-tree-node-selected,
+:root[data-theme="dark"] .compact-tree .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background: rgba(90, 140, 255, 0.22);
+}
+/* A thin accent bar on the selected row, VS Code's active-file cue. */
+.files-tree .ant-tree-treenode-selected::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--c-accent, #2f6bff);
+}
+/* Indent guides: a faint vertical rule per nesting level. */
+.files-tree .ant-tree-indent-unit,
+.compact-tree .ant-tree-indent-unit {
+  position: relative;
+}
+.files-tree .ant-tree-indent-unit::before,
+.compact-tree .ant-tree-indent-unit::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 5px;
+  border-inline-start: 1px solid rgba(127, 137, 160, 0.18);
+}
+/* Folder chevrons: quieter, VS Code grey. */
+.files-tree .ant-tree-switcher,
+.compact-tree .ant-tree-switcher {
+  color: rgba(127, 137, 160, 0.9);
+}
+/* A pending (draft-added) file/folder reads green + italic, like a new,
+   uncommitted VS Code entry. */
+.files-tree .file-node.pending .file-name {
+  color: var(--c-ok, #16a34a);
+  font-style: italic;
 }
 
 /* ---------------------------------------------------- collapsible panels */

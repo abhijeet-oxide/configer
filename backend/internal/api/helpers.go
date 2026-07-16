@@ -88,8 +88,8 @@ func writeErr(w http.ResponseWriter, err error) {
 
 // withCORS emits CORS headers only for an explicitly allowed origin
 // (CONFIGER_CORS_ORIGIN). The frontend is same-origin in every supported
-// setup — nginx serves it beside the API in production and the Vite dev
-// server proxies /api — so by default no cross-origin access exists, which
+// setup - nginx serves it beside the API in production and the Vite dev
+// server proxies /api - so by default no cross-origin access exists, which
 // is also what cookie sessions require.
 func withCORS(next http.Handler) http.Handler {
 	allowed := os.Getenv("CONFIGER_CORS_ORIGIN")

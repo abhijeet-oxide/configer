@@ -40,7 +40,7 @@ import EnvTag from "./EnvTag";
 // quick-glance card. Clicking a card (or its arrow button) goes straight
 // into the application's Configuration page; the info button opens the
 // details side panel. Anything that needs a human is flagged in the
-// attention rail on the side — which only appears when something does.
+// attention rail on the side - which only appears when something does.
 
 const FAV_KEY = "configer.favRepos";
 
@@ -75,7 +75,7 @@ function attentionOf(r: RepoSummary): { text: string; color: string }[] {
   if (r.error) out.push({ text: "unavailable", color: "var(--c-danger)" });
   if (r.syncError) out.push({ text: "sync issue", color: "var(--c-pending)" });
   if ((r.behind ?? 0) > 0) out.push({ text: `${r.behind} commit${r.behind === 1 ? "" : "s"} behind`, color: "var(--c-review)" });
-  if (r.needsSetup) out.push({ text: "not set up yet — finish setup", color: "var(--c-pending)" });
+  if (r.needsSetup) out.push({ text: "not set up yet - finish setup", color: "var(--c-pending)" });
   if (r.openChanges > 0)
     out.push({ text: `${r.openChanges} waiting for approval`, color: "var(--c-review)" });
   if (r.drafts > 0) out.push({ text: "unsent draft edits", color: "var(--c-pending)" });
@@ -377,7 +377,7 @@ export default function WorkspaceView() {
             </div>
 
             {/* The attention rail: only what needs a human, in plain words.
-                When nothing does, it simply isn't there — no reassurance
+                When nothing does, it simply isn't there - no reassurance
                 banner taking up space. */}
             {needsAttention.length > 0 && (
               <Card

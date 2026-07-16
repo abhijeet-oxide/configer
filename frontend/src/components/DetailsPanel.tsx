@@ -221,7 +221,7 @@ function DetailsTab({
 // IdlePanel is the details panel's default state: selection-oriented, not a
 // second Overview. It says what selecting does, surfaces what needs the
 // user's hand right now (invalid cells, their own unsent edits), and stays
-// out of the way — the application-wide numbers live on the Overview tab.
+// out of the way - the application-wide numbers live on the Overview tab.
 function IdlePanel({ grid }: { grid: Grid }) {
   const { setFilters, selectParam, setJump } = useUI();
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });

@@ -6,7 +6,6 @@ import {
   Checkbox,
   Empty,
   Input,
-  Result,
   Select,
   Space,
   Statistic,
@@ -40,6 +39,7 @@ import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
+import { ScanArt, StatePanel, SuccessArt } from "./illustrations";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -312,35 +312,35 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   // ---- success screen -------------------------------------------------------
   if (doneInfo) {
     return (
-      <div style={{ height: "100%", overflow: "auto", padding: 24 }}>
-        <Result
-          status="success"
-          title={`${doneInfo.imported} parameter(s) are now managed by Configer`}
-          subTitle={
+      <div style={{ height: "100%", overflow: "auto", padding: "40px 24px" }}>
+        <StatePanel
+          art={<SuccessArt />}
+          title={`${doneInfo.imported} parameter${doneInfo.imported === 1 ? "" : "s"} now managed`}
+          subtitle={
             <>
-              They were added to the catalog with one commit on Git, values still come from your
-              existing files.
+              Added to the catalog in one commit on Git - values still come from your existing files.
               {doneInfo.ignored > 0 && ` ${doneInfo.ignored} file(s) were added to the ignore rules.`}
             </>
           }
-          extra={[
-            <Button key="editor" type="primary" onClick={() => setSection("config")}>
-              Open the editor
-            </Button>,
-            <Button key="again" onClick={reset}>
-              Import more
-            </Button>,
-          ]}
+          actions={
+            <>
+              <Button type="primary" onClick={() => setSection("config")}>
+                Open the editor
+              </Button>
+              <Button onClick={reset}>Import more</Button>
+            </>
+          }
         >
           {doneInfo.skipped.length > 0 && (
             <Alert
               type="warning"
               showIcon
+              style={{ marginTop: 8, textAlign: "left" }}
               message={`${doneInfo.skipped.length} entr(ies) could not be imported`}
               description={doneInfo.skipped.join(", ")}
             />
           )}
-        </Result>
+        </StatePanel>
       </div>
     );
   }
@@ -502,7 +502,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
         <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
         <div style={{ fontWeight: 500 }}>New application</div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Pick a GitHub repository and go — it is scanned right here afterwards.
+          Pick a GitHub repository and go - it is scanned right here afterwards.
         </Typography.Text>
       </Card>
       <NewApplicationWizard
@@ -545,9 +545,19 @@ function ScanStep({
   onBack: () => void;
   onNext: () => void;
 }) {
+  if (scanning && !scan) {
+    // Reading a large repository can take a moment; show it clearly.
+    return (
+      <StatePanel
+        art={<ScanArt />}
+        title="Scanning your repository…"
+        subtitle="Reading the configuration files and detecting settings. This only reads your files - nothing is written."
+      />
+    );
+  }
   if (!scan) {
     // Pre-scan: a full-width hero with the action, and the three promises of
-    // the import spelled out underneath — no dead space, nothing to fear.
+    // the import spelled out underneath - no dead space, nothing to fear.
     const promises: { icon: React.ReactNode; title: string; text: string }[] = [
       {
         icon: <FileSearchOutlined />,
@@ -569,13 +579,13 @@ function ScanStep({
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         <Card>
           <div style={{ display: "flex", alignItems: "center", gap: 24, flexWrap: "wrap" }}>
-            <FileSearchOutlined style={{ fontSize: 44, opacity: 0.5 }} />
+            <ScanArt size={96} />
             <div style={{ flex: "1 1 360px", minWidth: 0 }}>
               <Typography.Title level={5} style={{ margin: 0 }}>
                 Find configuration in your repository
               </Typography.Title>
               <Typography.Text type="secondary">
-                Configer detects the settings living in your files and offers them for management —
+                Configer detects the settings living in your files and offers them for management -
                 you stay in control of every single one.
               </Typography.Text>
             </div>

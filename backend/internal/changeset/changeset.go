@@ -34,7 +34,39 @@ type Service struct {
 	Store   *crstore.Store
 }
 
-func branchName(id int) string { return fmt.Sprintf("configer/cr-%d", id) }
+// branchName turns a change request into a readable feature branch. The user
+// names the change on submit ("Increase prod memory limit"); we slugify that
+// into feature/increase-prod-memory-limit. The id is appended when the slug
+// would otherwise be empty or the generic "unnamed", keeping branches unique
+// on the remote without ever exposing raw git numbering for a named change.
+func branchName(cr *change.ChangeRequest) string {
+	slug := slugify(cr.Title)
+	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
+		return fmt.Sprintf("feature/unnamed-cr-%d", cr.ID)
+	}
+	return "feature/" + slug
+}
+
+// slugify lowercases a title into a git-ref-safe slug (kept local so the
+// changeset package has no dependency on the api layer).
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 // commitMessage builds the commit with human attribution trailers (§ Git
 // identity: the committer is the configured machine identity, the real author
@@ -94,7 +126,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if err != nil {
 		return nil, err
 	}
-	branch := branchName(cr.ID)
+	branch := branchName(cr)
 
 	// Isolated checkout so readers of the primary tree/cache are never
 	// disturbed (a git worktree locally, a materialized temp dir remotely).
@@ -106,7 +138,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	wt := ws.Dir()
 
 	// 1) Apply every item by editing the repository's OWN files in the
-	//    isolated worktree — the write-back-native model. Each edit is
+	//    isolated worktree - the write-back-native model. Each edit is
 	//    surgical (comments, order and unmanaged content preserved), exactly
 	//    the diff a careful engineer would have produced by hand. Structural
 	//    items (add/remove instance) go first so value edits for a brand-new
@@ -194,7 +226,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 //     parameter lives in several).
 //   - "reset" and "exclude" remove the key from the instance's files: the
 //     value falls back to whatever the base layer supplies, or becomes truly
-//     absent — exactly what deleting the line by hand would mean.
+//     absent - exactly what deleting the line by hand would mean.
 func applyItem(root string, proj *project.Project, it change.Item) error {
 	param, ok := proj.ParamByID(it.ParamID)
 	if !ok {
@@ -245,7 +277,7 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 
 // applyStructural performs an instance-topology item in the worktree: a new
 // instance is scaffolded by the layout adapter (following the repository's
-// own convention) or an existing one is retired (folder + registry entry) —
+// own convention) or an existing one is retired (folder + registry entry) -
 // exactly what a careful engineer would do by hand.
 func applyStructural(root string, proj *project.Project, it change.Item) error {
 	switch it.Act() {
@@ -273,6 +305,13 @@ func applyStructural(root string, proj *project.Project, it change.Item) error {
 		return writer.AddInstance(root, meta)
 	case change.ActionRemoveInstance:
 		return writer.DeleteInstance(root, it.Instance)
+	case change.ActionUpdateInstance:
+		var patch writer.InstancePatch
+		if err := decodeInto(it.New, &patch); err != nil {
+			return fmt.Errorf("decode instance patch: %w", err)
+		}
+		_, err := writer.UpdateInstance(root, it.Instance, patch)
+		return err
 	}
 	return fmt.Errorf("unknown structural action %q", it.Act())
 }
@@ -313,11 +352,11 @@ func prBody(cr *change.ChangeRequest) string {
 			if from, _ := it.Old.(string); from != "" {
 				src = "clone of " + from
 			}
-			fmt.Fprintf(&b, "| add instance | %s | — | %s |\n", inst, src)
+			fmt.Fprintf(&b, "| add instance | %s | - | %s |\n", inst, src)
 		case change.ActionRemoveInstance:
-			fmt.Fprintf(&b, "| remove instance | %s | — | — |\n", inst)
+			fmt.Fprintf(&b, "| remove instance | %s | - | - |\n", inst)
 		case change.ActionEditFile:
-			fmt.Fprintf(&b, "| edit file `%s` | %s | — | — |\n", it.File, inst)
+			fmt.Fprintf(&b, "| edit file `%s` | %s | - | - |\n", it.File, inst)
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 		}

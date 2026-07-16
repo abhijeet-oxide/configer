@@ -27,7 +27,7 @@ import { TableSkeleton } from "./Skeletons";
 
 // ChangeRequestsView is the Release history: every draft, in-review,
 // published and rejected change request with its parameter-level diff. It is
-// deliberately read-only for reviews — approving or rejecting is Approvals'
+// deliberately read-only for reviews - approving or rejecting is Approvals'
 // job (one place, one audit trail); rows under review link there. Drafts are
 // authoring, not reviewing, so their submit/discard actions stay here.
 
@@ -179,7 +179,7 @@ export default function ChangeRequestsView() {
             width: 230,
             render: (_v, cr) => {
               if (cr.state === "under_review" || cr.state === "approved") {
-                // Deciding happens in Approvals — one place for approvals,
+                // Deciding happens in Approvals - one place for approvals,
                 // one audit trail. History only links there.
                 return (
                   <Space size={4}>

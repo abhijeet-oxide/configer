@@ -20,16 +20,16 @@ node scripts/screenshots.mjs
 ```
 
 The script stages one draft edit through the API so the editor shows live
-content (reverted afterwards — nothing is committed to the sample
+content (reverted afterwards - nothing is committed to the sample
 repository). It also builds a disposable second application, `payments-demo`,
 from a temp copy of sample-repo, submits a real change request and makes one
-commit directly on Git — so the Approvals, Release history and Repository
+commit directly on Git - so the Approvals, Release history and Repository
 changes screenshots show those pages doing their job. That application is
 disconnected and deleted when the run finishes.
 
 ## The gallery
 
-### Level 1 — the Applications portfolio
+### Level 1 - the Applications portfolio
 
 | # | Screenshot | What it shows |
 |---|------------|---------------|
@@ -42,9 +42,9 @@ disconnected and deleted when the run finishes.
 |---|------------|---------------|
 | 03 | ![](03-new-application-signin.png) | Signed out: the wizard asks to **Continue with GitHub** (manual URL entry stays available). |
 | 04 | ![](04-new-application-pick-repository.png) | Signed in: pick from **your repositories and organizations**, searchable, no URLs or tokens. |
-| 05 | ![](05-new-application-branch-name-create.png) | One screen for the rest: **branch**, **name**, **create & scan** — the repository is parsed immediately. |
+| 05 | ![](05-new-application-branch-name-create.png) | One screen for the rest: **branch**, **name**, **create & scan** - the repository is parsed immediately. |
 
-### Level 2 — the Configuration page (everything about one application, as tabs)
+### Level 2 - the Configuration page (everything about one application, as tabs)
 
 | # | Screenshot | What it shows |
 |---|------------|---------------|
@@ -62,6 +62,6 @@ disconnected and deleted when the run finishes.
 
 | # | Screenshot | What it shows |
 |---|------------|---------------|
-| 16 | ![](16-loading-skeleton-editor.png) | Loading the editor: a **full-page skeleton** in the exact shape of the grid — the one loading language used everywhere. |
+| 16 | ![](16-loading-skeleton-editor.png) | Loading the editor: a **full-page skeleton** in the exact shape of the grid - the one loading language used everywhere. |
 | 17 | ![](17-loading-skeleton-overview.png) | Loading the overview: same skeleton language, tab chrome stays interactive. |
 | 18 | ![](18-dark-mode-overview.png) | Dark mode. |

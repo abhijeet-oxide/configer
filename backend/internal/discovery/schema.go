@@ -12,7 +12,7 @@ import (
 
 // Schema auto-detection: when a JSON Schema ships next to a configuration
 // file (values.schema.json, <file>.schema.json, or .configer/schemas/…), its
-// constraints become the parameter's validation rules — enforced on every
+// constraints become the parameter's validation rules - enforced on every
 // edit from then on. User-defined rules (RuleEditor) can still override them
 // later; they live in the same Validation struct.
 

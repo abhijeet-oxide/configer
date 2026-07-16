@@ -18,7 +18,7 @@ import { useUI } from "../store";
 // a tab strip (Overview, Editor, Compare, Release history, Approvals,
 // Instances, Files, Repository changes) over the active view. Tabs map 1:1
 // to the store's `section`, so deep links (?view=...) and browser history
-// keep working exactly as before — this is chrome, not a router.
+// keep working exactly as before - this is chrome, not a router.
 
 /** Sections that live under the Configuration page (vs. workspace level). */
 export const APP_SECTIONS = new Set([

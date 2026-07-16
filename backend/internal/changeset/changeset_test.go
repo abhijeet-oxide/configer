@@ -216,7 +216,7 @@ func TestSubmitResetRemovesKey(t *testing.T) {
 // TestSubmitAddInstance is the git-native instance lifecycle contract: a
 // staged add-instance scaffolds the folder ON THE CR BRANCH (copy of the
 // clone source), registers the instance, and value edits for the brand-new
-// instance land inside the scaffolded folder — one reviewable commit.
+// instance land inside the scaffolded folder - one reviewable commit.
 func TestSubmitAddInstance(t *testing.T) {
 	_, originDir, svc := fixture(t)
 	ctx := context.Background()

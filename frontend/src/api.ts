@@ -136,13 +136,19 @@ export interface Cell {
 export type CellAction = "set" | "reset" | "exclude";
 
 /** All draft item actions: cell edits plus structural instance changes. */
-export type ItemAction = CellAction | "add-instance" | "remove-instance" | "edit-file";
+export type ItemAction =
+  | CellAction
+  | "add-instance"
+  | "remove-instance"
+  | "update-instance"
+  | "edit-file";
 
 /** Human label for a structural item ("" for plain cell edits). */
 export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
   if (it.action === "add-instance")
     return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
   if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
+  if (it.action === "update-instance") return `Update instance ${it.instance} settings`;
   if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
   return "";
 };

@@ -171,7 +171,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	// Merge instance-layer parameters that are the SAME logical setting in
 	// several locations (e.g. a namespace repeated in values.yaml and an XML
 	// file). Conservative rule: identical LEAF name AND identical values in
-	// every instance — a coincidence across the whole fleet is implausible.
+	// every instance - a coincidence across the whole fleet is implausible.
 	params = mergeIdentical(params, func(p model.Parameter) string {
 		g := instGroups[instKeyOf(p)]
 		return leafOf(p.Name) + "|" + fmt.Sprintf("%v", sortedValues(g.byInstance))
@@ -198,7 +198,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 
 	// Unify base and instance layers: when a shared file carries the same
 	// setting an instance-layer parameter manages (same in-file path and leaf
-	// name — the kustomize base + overlay-patch shape), the shared location
+	// name - the kustomize base + overlay-patch shape), the shared location
 	// becomes the parameter's BASE binding: instances without an override
 	// inherit the base value, exactly as their tooling merges it.
 	remaining := sharedParams[:0]
@@ -434,7 +434,7 @@ var k8sEnvelopePrefixes = []string{
 }
 
 // k8sStructural reports whether a path is Kubernetes envelope/structure inside
-// a manifest file — the resource's identity and bookkeeping — rather than a
+// a manifest file - the resource's identity and bookkeeping - rather than a
 // value someone tunes per instance.
 func k8sStructural(path string) bool {
 	if path == "$.apiVersion" || path == "$.kind" {

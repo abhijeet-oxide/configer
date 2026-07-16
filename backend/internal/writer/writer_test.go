@@ -218,7 +218,7 @@ func TestAddParametersBatch(t *testing.T) {
 		t.Fatalf("skipped = %v, want 2", skipped)
 	}
 	if elapsed > 2*time.Second {
-		t.Fatalf("batch of %d took %v — expected well under 2s", n, elapsed)
+		t.Fatalf("batch of %d took %v - expected well under 2s", n, elapsed)
 	}
 
 	// Everything persisted in one catalog.

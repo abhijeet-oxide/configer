@@ -3,9 +3,10 @@ package api
 // Instance registry endpoints. Creating or retiring an instance is a
 // STRUCTURAL change: it stages into the draft change request and, on submit,
 // the CR branch carries the scaffolded folder (per the repository's layout
-// convention) plus the registry entry — reviewable like any other change.
-// Metadata-only updates (version, region, labels, archive) commit directly
-// with attribution, like parameter metadata.
+// convention) plus the registry entry - reviewable like any other change.
+// Metadata-only updates (version, region, labels, archive) also stage into
+// the draft, so every edit to an instance is a pending change on the feature
+// branch, never a silent commit to the main branch.
 
 import (
 	"encoding/json"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
-	"github.com/abhijeet-oxide/configer/backend/internal/layout"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -52,13 +52,13 @@ func derefLabels(p *map[string]string) map[string]string {
 	return *p
 }
 
-// addInstance creates a new deployment target right away: when cloned, its
-// folder is scaffolded as a real parallel copy of the source's managed files
-// (per the repository's layout convention) and the registry entry is written,
-// all committed with attribution. The instance is therefore live immediately —
-// visible in the Instances view with its own folder, and its cells editable in
-// the grid — instead of only materializing when a change request is submitted.
-// Value edits made afterwards still go through the normal draft/review flow.
+// addInstance stages the creation of a new deployment target as a PENDING
+// structural change on the draft change request - it does NOT touch the main
+// branch. On submit the CR branch carries the scaffolded folder (a real
+// parallel copy of the clone source's managed files, per the repository's
+// layout convention) plus the registry entry, reviewable like any other
+// change. Until then the Files and Instances views preview the new folder as
+// pending, and value edits made against it stage in the same draft.
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -71,8 +71,6 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
 	p, err := s.load()
 	if err != nil {
 		writeErr(w, err)
@@ -81,6 +79,15 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	if _, exists := p.InstanceByName(name); exists {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " already exists"})
 		return
+	}
+	// A pending add for the same name is also a conflict.
+	if d := s.Store.CurrentDraft(); d != nil {
+		for _, it := range d.Items {
+			if it.Act() == change.ActionAddInstance && it.Instance == name {
+				writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " is already pending in your draft"})
+				return
+			}
+		}
 	}
 
 	meta := model.Instance{
@@ -91,32 +98,22 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	if meta.Status == "" {
 		meta.Status = "active"
 	}
-	title := "Add instance " + name
 	if req.CloneFrom != "" {
 		from, ok := p.InstanceByName(req.CloneFrom)
 		if !ok {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "clone source " + req.CloneFrom + " not found"})
 			return
 		}
-		// Scaffold a real parallel folder (a copy of the source's managed files)
-		// so the new instance's cells are backed by files and editable at once.
-		scaffolded, serr := layout.ForKind(p.App.Layout).Scaffold(s.RepoPath, from, name)
-		if serr != nil {
-			writeErr(w, serr)
-			return
-		}
-		meta.Folder = scaffolded.Folder
 		if meta.SoftwareVersion == "" {
 			meta.SoftwareVersion = from.SoftwareVersion
 		}
-		title += " (clone of " + req.CloneFrom + ")"
 	}
-	if err := writer.AddInstance(s.RepoPath, meta); err != nil {
-		writeErr(w, err)
-		return
-	}
-	s.commitCatalogChange(w, title, author(r, req.Author), map[string]any{
-		"ok": true, "staged": false, "instance": meta,
+	// New carries the metadata; Old carries the clone source name ("" = empty).
+	s.stageStructural(w, author(r, req.Author), change.Item{
+		Instance: name,
+		Action:   change.ActionAddInstance,
+		Old:      req.CloneFrom,
+		New:      meta,
 	})
 }
 
@@ -148,22 +145,76 @@ func (s *Server) stageStructural(w http.ResponseWriter, author string, it change
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": true, "pending": pending, "changeId": draft.ID})
 }
 
-// updateInstance patches an instance's metadata or status (archive = status
-// "archived").
+// updateInstance stages a metadata/status edit (archive = status "archived")
+// as a PENDING change - never a direct commit to the main branch. If the
+// instance is itself still pending (a draft add-instance), the edit folds
+// into that add so submit produces a single clean registry entry.
 func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 		return
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	inst, err := writer.UpdateInstance(s.RepoPath, r.PathValue("name"), req.patch())
+	name := r.PathValue("name")
+	p, err := s.load()
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeErr(w, err)
 		return
 	}
-	s.commitCatalogChange(w, "Update instance "+inst.Name, author(r, req.Author), inst)
+	_, committed := p.InstanceByName(name)
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+
+	// Folding into a pending add keeps the new instance one reviewable item.
+	if d := s.Store.CurrentDraft(); d != nil {
+		for _, it := range d.Items {
+			if it.Act() == change.ActionAddInstance && it.Instance == name {
+				meta := decodeInstance(it.New)
+				writer.ApplyInstancePatch(&meta, req.patch())
+				if _, uerr := s.Store.Update(d.ID, func(cr *change.ChangeRequest) error {
+					cr.UpsertItem(change.Item{Instance: name, Action: change.ActionAddInstance, Old: it.Old, New: meta, UpdatedAt: time.Now().UTC()})
+					return nil
+				}); uerr != nil {
+					writeErr(w, uerr)
+					return
+				}
+				writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": true, "instance": meta})
+				return
+			}
+		}
+	}
+	if !committed {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance " + name + " not found"})
+		return
+	}
+	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		cr.UpsertItem(change.Item{Instance: name, Action: change.ActionUpdateInstance, New: req.patch(), UpdatedAt: time.Now().UTC()})
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+	d := s.Store.CurrentDraft()
+	pending := 0
+	if d != nil {
+		pending = len(d.Items)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": true, "pending": pending, "changeId": draft.ID})
+}
+
+// decodeInstance round-trips a JSON-shaped any (a stored draft item's New)
+// back into a model.Instance.
+func decodeInstance(v any) model.Instance {
+	var m model.Instance
+	b, _ := json.Marshal(v)
+	_ = json.Unmarshal(b, &m)
+	return m
 }
 
 // deleteInstance stages the retirement of an instance (registry entry +

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 // with a live parameter counter and a stage checklist, so committing an
 // application to Git reads as real, contextual progress rather than a spinner.
 // Initialization is a single fast commit now, so the ring eases toward the end
-// while the request is in flight and snaps to complete on success — the stage
+// while the request is in flight and snaps to complete on success - the stage
 // labels and counts reflect the actual work (instances + parameters written).
 
 interface Stage {

@@ -1,7 +1,7 @@
 package api
 
 // Platform layer: login-aware role enforcement, per-application member
-// management, and the audit trail. Everything degrades gracefully — with no
+// management, and the audit trail. Everything degrades gracefully - with no
 // OAuth client configured the deployment behaves as the single-user tool it
 // always was, and the database is an embedded SQLite file.
 
@@ -81,7 +81,7 @@ func requiredRole(r *http.Request) store.Role {
 
 // effectiveRole computes a user's role on one application: deployment admins
 // approve everywhere; an explicit membership wins; otherwise the deployment
-// default applies (every authenticated user sees every application — the
+// default applies (every authenticated user sees every application - the
 // registry is shared, initialize once for everyone).
 func (h *Hub) effectiveRole(r *http.Request, repoID string, u store.User) store.Role {
 	if u.Admin {
@@ -192,7 +192,7 @@ func (h *Hub) removeMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// requireAdmin allows deployment admins (or anyone when auth is disabled —
+// requireAdmin allows deployment admins (or anyone when auth is disabled -
 // single-user mode has no roles to protect).
 func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	if !h.auth.Enabled() {

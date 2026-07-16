@@ -1,4 +1,4 @@
-# prod-us-east — gold tier, Ashburn DC1.
+# prod-us-east - gold tier, Ashburn DC1.
 # Managed by Configer; edits arrive as reviewed pull requests.
 namespace: telco-prod-use1
 network:

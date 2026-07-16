@@ -1,8 +1,8 @@
-# Configer — contributor guide
+# Configer - contributor guide
 
 Configer is a **write-back-native** GitOps configuration UI: it renders an
 existing repository's config as a parameter×instance grid and edits the
-repository's OWN files surgically. `.configer/` holds metadata only — never
+repository's OWN files surgically. `.configer/` holds metadata only - never
 values, never generated artifacts. Every UI action is an ordinary Git
 operation (draft → branch → commit → PR → merge).
 
@@ -23,13 +23,13 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 
 ## Architecture (backend, `backend/internal/`)
 
-**The edit spine — every write goes through here:**
-- `pathedit` — THE single engine for reading/surgically editing YAML/JSON/XML
+**The edit spine - every write goes through here:**
+- `pathedit` - THE single engine for reading/surgically editing YAML/JSON/XML
   documents. Comment-preserving yaml.Node edits; order-preserving JSON
   emission; XML via etree. Paths: dotted (`$.a.b`, `servers[2]`,
   `rules[name=ssh].port`) or XPath for XML. Never add a second path engine.
-- `writeback` — file-level wrapper: read file, pathedit, write file.
-- `change` / `changeset` / `crstore` — the change-request lifecycle
+- `writeback` - file-level wrapper: read file, pathedit, write file.
+- `change` / `changeset` / `crstore` - the change-request lifecycle
   (Draft→UnderReview→Approved→Published). `changeset.Submit` opens an
   isolated worktree on `configer/cr-<n>`, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
@@ -37,23 +37,23 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   in a JSON file beside the repo (rebuildable; not the platform DB).
 
 **The model:**
-- `model` — `Parameter` (metadata + `Bindings []Binding`), `Instance`
+- `model` - `Parameter` (metadata + `Bindings []Binding`), `Instance`
   (metadata + `Folder`), `Application`. A Binding is `{File, Path, Format,
   Layer}`; `File` may template `{folder}`/`{instance}`. Layers: `base`
   (shared file, one edit affects all) < `instance` (own folder). A
   deduplicated parameter has N bindings; edits fan out to all.
-- `project` — loads `.configer/{application,parameters,instances,ignore}.yaml`.
-- `resolver` — effective cell value = default → base bindings → instance
+- `project` - loads `.configer/{application,parameters,instances,ignore}.yaml`.
+- `resolver` - effective cell value = default → base bindings → instance
   bindings, reading the REAL files via pathedit; reports which file won.
-- `grid` — builds the matrix (+ `ApplyDraft` previews pending items,
+- `grid` - builds the matrix (+ `ApplyDraft` previews pending items,
   including draft instance columns).
-- `validate` — types, preset rules, regex/min-max; gates every write (422).
+- `validate` - types, preset rules, regex/min-max; gates every write (422).
 
 **Repo interpretation:**
-- `layout` — Adapter per convention: `kpt`, `kustomize`, `plainfolders`
+- `layout` - Adapter per convention: `kpt`, `kustomize`, `plainfolders`
   (fallback). Detect / discover instances from folders / scaffold new
   instance folders. Add new conventions here.
-- `discovery` — onboarding proposal: scan (via `ingest`+`parsers`), fold
+- `discovery` - onboarding proposal: scan (via `ingest`+`parsers`), fold
   lists, dedup same setting across files/instances into one multi-binding
   parameter, unify kustomize base+patch pairs, attach JSON-Schema validation
   (`discovery/schema.go`), filter structural noise (kustomization.yaml,
@@ -78,10 +78,10 @@ per-repo handlers split by resource (`reads.go`, `values.go`,
 
 React 18 + TS strict + Vite + Ant Design 5 + react-query (server state) +
 zustand (`store.ts`, UI state with URL deep-links `?app=&view=&param=&inst=`).
-Hand-rolled section router in `App.tsx` (deliberate — no router lib).
+Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `api.ts` is the typed client and shared helpers (`bindingsOf`,
 `expandBinding`, `structuralLabel`). Theming: `theme.ts` tokens through
-`ConfigProvider` in `main.tsx` — never hardcode hex colors; use
+`ConfigProvider` in `main.tsx` - never hardcode hex colors; use
 `envHex`/`semantic`. Key views: `ParameterGrid` (grid + typed editors),
 `FilesView`+`MonacoFileView` (file mode over real files, saves via
 `PUT /api/files/draft`), `OnboardingWizard` (discover→init),
@@ -103,6 +103,10 @@ Hand-rolled section router in `App.tsx` (deliberate — no router lib).
   layouts; `api/platform_test.go` is the role-enforcement matrix.
 - Keep Go files ≤ ~400 lines and single-purpose; split by resource, not by
   layer.
+- **Never use an em-dash (the U+2014 character) anywhere**: not in code,
+  comments, UI strings, commit messages, or docs. Use a spaced hyphen
+  (` - `), a colon, or two sentences instead. This is enforced: `make lint`
+  fails if any U+2014 is found in a tracked source file.
 
 ## The `.configer` schema (quick reference)
 

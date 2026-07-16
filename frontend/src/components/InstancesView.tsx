@@ -16,7 +16,7 @@ import EnvTag from "./EnvTag";
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
 // into the draft change request, and submitting produces a branch where the
 // instance folder is scaffolded (or removed) following the repository's own
-// layout convention — reviewable like any other change. Metadata edits
+// layout convention - reviewable like any other change. Metadata edits
 // (version, region, labels, archive) commit directly with attribution.
 
 // Status colors carry meaning (green = active, gold = deprecated, etc.); red is
@@ -76,6 +76,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     qc.invalidateQueries({ queryKey: ["grid"] });
     qc.invalidateQueries({ queryKey: ["workspace"] });
     qc.invalidateQueries({ queryKey: ["render"] });
+    qc.invalidateQueries({ queryKey: ["draft"] });
   };
 
   const save = useMutation({
@@ -88,10 +89,10 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["draft"] });
       done(
         v.mode === "edit"
-          ? "Instance updated (committed with attribution)"
+          ? "Instance change staged in your draft: submit to send it for review"
           : v.mode === "clone"
-            ? "Instance created as a copy — its folder and files are ready to edit"
-            : "Instance created (committed with attribution)",
+            ? "New instance staged in your draft - preview its folder in Files, then submit for review"
+            : "New instance staged in your draft: submit to send it for review",
       );
     },
     onError: (e: Error) => message.error(e.message),
@@ -106,7 +107,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   });
   const setStatus = useMutation({
     mutationFn: (p: { name: string; status: string }) => api.updateInstance(p.name, { status: p.status, author: "demo-user" }),
-    onSuccess: (_r, p) => done(p.status === "archived" ? "Instance archived" : "Instance activated"),
+    onSuccess: (_r, p) => done(p.status === "archived" ? "Archive staged in your draft: submit to apply" : "Activation staged in your draft: submit to apply"),
     onError: (e: Error) => message.error(e.message),
   });
 
@@ -262,7 +263,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         title={modal?.mode === "edit" ? `Edit ${modal.instance?.name}` : modal?.mode === "clone" ? `Clone ${modal.instance?.name}` : "Add instance"}
         onCancel={() => setModal(null)}
         onOk={() => form.submit()}
-        okText={modal?.mode === "edit" ? "Save" : "Stage in draft"}
+        okText="Stage in draft"
         confirmLoading={save.isPending}
         destroyOnHidden
       >

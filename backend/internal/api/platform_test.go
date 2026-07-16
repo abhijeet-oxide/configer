@@ -150,7 +150,7 @@ func TestRoleEnforcement(t *testing.T) {
 		t.Errorf("admin member set = %d: %s", w.Code, w.Body.String())
 	}
 	// The promoted approver may now hit merge (404/409 for the missing CR is
-	// fine — the gate is what we test).
+	// fine - the gate is what we test).
 	if w := call(t, h, "POST", base+"/changes/99/merge", "tok-editor", ""); w.Code == http.StatusForbidden {
 		t.Errorf("approver merge still forbidden: %s", w.Body.String())
 	}

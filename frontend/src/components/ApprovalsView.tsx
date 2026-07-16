@@ -33,7 +33,7 @@ import { ApprovalsSkeleton } from "./Skeletons";
 
 // ApprovalsView is the approver's workspace: the review pipeline at a glance
 // (stat strip), a queue of everything waiting on the left, and the selected
-// change request in full on the right — before→after values, lifecycle, and
+// change request in full on the right - before→after values, lifecycle, and
 // one-click decisions. The same approval can always be done on GitHub via
 // the pull request link. When nothing is waiting, the page shows the recent
 // decision history instead of going blank.
@@ -215,7 +215,7 @@ export default function ApprovalsView() {
               </Typography.Title>
               <Typography.Paragraph type="secondary" style={{ maxWidth: 380, margin: "0 auto" }}>
                 Nothing is waiting for approval. When someone submits a change request it appears
-                here immediately — and in the badge on the Approvals tab.
+                here immediately - and in the badge on the Approvals tab.
               </Typography.Paragraph>
             </div>
           </Card>

@@ -2,7 +2,7 @@ import { Tag } from "antd";
 import { envHex } from "../theme";
 
 // EnvTag is THE way an environment is named anywhere in the product: a pale
-// tint of the environment's identity color (theme.ts envColors — production
+// tint of the environment's identity color (theme.ts envColors - production
 // indigo, staging amber, development green) with a solid dot and colored
 // text. One visual language for a load-bearing dimension; never a saturated
 // solid chip, never danger-red for production.

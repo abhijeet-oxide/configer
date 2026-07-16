@@ -41,7 +41,7 @@ export const envColors: Record<string, string> = {
 export const envHex = (env: string | undefined): string =>
   (env ? envColors[env.toLowerCase()] : undefined) ?? "#8c8c8c";
 
-// Suggested environment names offered in the pickers. The field is free text —
+// Suggested environment names offered in the pickers. The field is free text -
 // these are only defaults; any custom value is accepted.
 export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 

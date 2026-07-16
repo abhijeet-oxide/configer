@@ -84,7 +84,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
             <span className="mono">{st?.branch ?? "…"}</span>
           </span>
         </Tooltip>
-        <Tooltip title={st?.remote ? (st.behind > 0 ? `${st.behind} behind — click to pull` : "Up to date — click to pull") : "Local only"}>
+        <Tooltip title={st?.remote ? (st.behind > 0 ? `${st.behind} behind - click to pull` : "Up to date - click to pull") : "Local only"}>
           <span
             style={{ ...item, opacity: st?.remote ? 1 : 0.7 }}
             onClick={() => st?.remote && sync.mutate()}
@@ -111,9 +111,9 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
         <Tooltip
           title={
             invalidOnly
-              ? "Showing only invalid cells — click to show everything again"
+              ? "Showing only invalid cells - click to show everything again"
               : invalid
-                ? `${invalid} edited value(s) fail validation — click to show only invalid cells`
+                ? `${invalid} edited value(s) fail validation - click to show only invalid cells`
                 : "All edited values are valid"
           }
         >

@@ -304,8 +304,8 @@ type RepoSummary struct {
 	Branch  string `json:"branch,omitempty"`
 	Project string `json:"project,omitempty"`
 	// NeedsSetup is a connected repository that has no Configer application
-	// yet (.configer/ absent). It is not an error — the UI routes it into
-	// onboarding — so it must never surface as "unavailable".
+	// yet (.configer/ absent). It is not an error - the UI routes it into
+	// onboarding - so it must never surface as "unavailable".
 	NeedsSetup bool `json:"needsSetup,omitempty"`
 	Params     int  `json:"params"`
 	// Instances counts configuration instances; Environments breaks them

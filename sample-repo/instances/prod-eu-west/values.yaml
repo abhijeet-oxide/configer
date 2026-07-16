@@ -1,4 +1,4 @@
-# prod-eu-west — gold tier, Dublin DC2.
+# prod-eu-west - gold tier, Dublin DC2.
 namespace: telco-prod-euw1
 network:
   service:

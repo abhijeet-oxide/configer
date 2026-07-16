@@ -19,7 +19,7 @@ import SubmitChangesButton from "./SubmitChangesButton";
 // SourceControlPanel is the VS Code "Source Control" view, translated for people
 // who never think about Git: the branch the work lands on, the active (still
 // uncommitted) changes grouped by the file each one touches, a one-click undo
-// per change, and pull-latest — all without exposing raw Git. Committing is the
+// per change, and pull-latest - all without exposing raw Git. Committing is the
 // same review-and-submit flow used elsewhere (SubmitChangesButton), so a change
 // becomes a branch + pull request behind the scenes.
 
@@ -98,6 +98,11 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
 
   const draftId = draftQ.data?.draft?.id;
   const targetBranch = draftQ.data?.draft?.targetBranch ?? st?.branch;
+  // While a draft is open the work rides its own feature branch, named for
+  // real on submit - so the panel never says the user is editing "on main".
+  const draftBranch = draftQ.data?.draft?.branch;
+  const hasDraft = items.length > 0 || !!draftId;
+  const currentBranch = hasDraft && draftBranch ? draftBranch : st?.branch;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
@@ -105,9 +110,16 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BranchesOutlined style={{ color: token.colorPrimary }} />
-          <Typography.Text strong className="mono" style={{ fontSize: 13 }}>
-            {st?.branch ?? "…"}
+          <Typography.Text strong className="mono" style={{ fontSize: 13 }} ellipsis={{ tooltip: currentBranch }}>
+            {currentBranch ?? "…"}
           </Typography.Text>
+          {hasDraft && draftBranch && (
+            <Tooltip title="Your first edit moved you off the main branch onto this feature branch. It gets a real name when you submit the change request.">
+              <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                {draftBranch === "feature/unnamed" ? "new · unnamed" : "feature"}
+              </Tag>
+            </Tooltip>
+          )}
           <div style={{ flex: 1 }} />
           <Tooltip title={st?.remote ? "Pull the latest from the remote" : "No remote configured"}>
             <Button
@@ -135,8 +147,18 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
           {(st?.ahead ?? 0) > 0 && <Tag color="warning">{st!.ahead} ahead</Tag>}
         </div>
         <Typography.Paragraph type="secondary" style={{ fontSize: 11.5, margin: "8px 0 0" }}>
-          Your edits are saved for review, then published to <code>{targetBranch ?? "the main branch"}</code>.
-          You don't need to touch Git — Configer handles the branch and pull request.
+          {hasDraft ? (
+            <>
+              Every edit - a value, a new instance, an instance's settings - is collected on this
+              feature branch as a pending change. Submitting names the branch and opens a pull request
+              into <code>{targetBranch ?? "main"}</code>. You don't need to touch Git.
+            </>
+          ) : (
+            <>
+              Make an edit and Configer moves you off <code>{targetBranch ?? "main"}</code> onto a feature
+              branch automatically, collecting changes for review before they merge back.
+            </>
+          )}
         </Typography.Paragraph>
       </div>
 
@@ -180,7 +202,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
                 <div style={{ display: "flex", flexDirection: "column" }}>
                   {fc.items.map((it) => (
                     <div
-                      key={`${it.paramId}|${it.instance}`}
+                      key={`${it.action ?? "set"}|${it.paramId}|${it.instance}|${it.file ?? ""}`}
                       className="scm-change-row"
                       style={{
                         display: "flex",

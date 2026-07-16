@@ -3,7 +3,7 @@
 // repository file, or a side-by-side diff when the committed baseline differs
 // from the draft-applied content (the live "what your edits will change"
 // view). When editable, changes report through onDirty and Ctrl/Cmd-S runs
-// onSave — the same save path as the grid: staged into the draft.
+// onSave - the same save path as the grid: staged into the draft.
 import { Editor, DiffEditor } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import "../monaco";

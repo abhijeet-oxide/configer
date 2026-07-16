@@ -2,7 +2,7 @@ package workspace
 
 import "testing"
 
-// TestNameFromURL covers URL, Unix path, and Windows path derivation — the
+// TestNameFromURL covers URL, Unix path, and Windows path derivation - the
 // last of which previously returned the whole path after the drive letter.
 func TestNameFromURL(t *testing.T) {
 	cases := map[string]string{

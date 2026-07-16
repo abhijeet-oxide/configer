@@ -1,5 +1,5 @@
 import {
-  Button, Empty, Popconfirm, Select, Space, Switch, Tag, Tooltip, Tree, Typography, App as AntApp,
+  Button, Dropdown, Input, Popconfirm, Select, Switch, Tooltip, Tree, App as AntApp,
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
@@ -9,24 +9,31 @@ import {
   MinusCircleOutlined,
   SaveOutlined,
   UndoOutlined,
+  SearchOutlined,
+  MoreOutlined,
   DiffOutlined,
+  TableOutlined,
+  BranchesOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, bindingsOf } from "../api";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { api } from "../api";
 import { useUI } from "../store";
+import { bindingsIndex } from "../bindingsIndex";
 import { fileIcon, folderIcon } from "./fileIcons";
 import { FilesSkeleton } from "./Skeletons";
+import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
+import { languageFor } from "../monaco";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
 
-// FilesView is file mode: the VS Code-like editor over the instance's REAL
-// repository files (its folder plus shared config). Files Configer already
-// manages (a parameter is bound to them) carry a "managed" badge; a toggle
-// narrows the tree to only those. Unmanaged files can be added to management
-// (which reprocesses them for parameters via Import), and a managed file can be
-// dropped from management (its parameters are retired). The editor shows a
-// side-by-side diff of committed vs draft-applied content and is EDITABLE.
+// FilesView is file mode: a focused developer workspace over the instance's
+// REAL repository files (its folder plus shared config). The editor
+// dominates; the tree is subordinate, searchable and resizable. Files
+// Configer manages carry a dot; management is added or dropped from the row
+// actions. Saving stages into the draft, exactly like a grid edit.
 
 interface RFile {
   path: string;
@@ -37,7 +44,7 @@ interface RFile {
 function changedMark(name: string, changed: boolean): React.ReactNode {
   if (!changed) return <span>{name}</span>;
   return (
-    <span style={{ color: "#d98a00", fontWeight: 600 }}>
+    <span style={{ color: "var(--c-pending)", fontWeight: 600 }}>
       {name}
       <span style={{ marginInlineStart: 6, fontSize: 11 }}>M</span>
     </span>
@@ -51,16 +58,16 @@ interface TreeCtx {
   onRemove: (file: string) => void;
 }
 
-// fileTitle renders one file/folder row: name (+ modified marker), a "managed"
+// nodeTitle renders one file/folder row: name (+ modified marker), a "managed"
 // dot for managed files, and hover actions (+ to manage, − to stop managing).
 function nodeTitle(name: string, key: string, isFile: boolean, ctx: TreeCtx): React.ReactNode {
   const managed = isFile && ctx.managed.has(key);
   return (
     <span className="file-node">
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+      <span className="inline-flex min-w-0 items-center gap-1.5">
         {managed && (
           <Tooltip title="Managed: parameters map into this file">
-            <span style={{ width: 7, height: 7, borderRadius: 4, background: "var(--c-ok)", flexShrink: 0 }} />
+            <span className="size-[7px] shrink-0 rounded-full" style={{ background: "var(--c-ok)" }} />
           </Tooltip>
         )}
         {changedMark(name, ctx.changed.has(key))}
@@ -137,18 +144,35 @@ function buildTree(files: RFile[], ctx: TreeCtx): DataNode[] {
   return toNodes(root, "");
 }
 
+// detectIndent reports the file's indentation width (a best effort from the
+// first indented line), for the status strip.
+function detectIndent(content: string): number {
+  for (const line of content.split("\n")) {
+    const m = /^( +)\S/.exec(line);
+    if (m) return m[1].length;
+  }
+  return 2;
+}
+
 export default function FilesView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const mode = useUI((s) => s.mode);
   const setSection = useUI((s) => s.setSection);
   const setImportFocus = useUI((s) => s.setImportFocus);
+  const setCompare = useUI((s) => s.setCompare);
+  const setJump = useUI((s) => s.setJump);
+  const selectInstance = useUI((s) => s.selectInstance);
+  const fileFocus = useUI((s) => s.fileFocus);
   const projectQ = useQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
   const instances = useMemo(() => projectQ.data?.instances ?? [], [projectQ.data]);
   const [instance, setInstance] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyManaged, setOnlyManaged] = useState(true);
   const [dirty, setDirty] = useState<string | null>(null);
+  const [treeQ, setTreeQ] = useState("");
+  const [reveal, setReveal] = useState<number | undefined>(undefined);
+  const [cursor, setCursor] = useState<{ ln: number; col: number }>({ ln: 1, col: 1 });
 
   useEffect(() => {
     if (!instance && instances.length > 0) setInstance(instances[0].name);
@@ -173,24 +197,16 @@ export default function FilesView() {
     [committedQ.data],
   );
 
-  // A file is "managed" when a parameter binds into it (for the selected
-  // instance, instance-layer templates expand to that instance's folder).
-  const managed = useMemo(() => {
-    const set = new Set<string>();
-    const inst = gridQ.data?.instances.find((i) => i.name === instance);
-    const folder = inst?.folder || (instance ? `instances/${instance}` : "");
-    for (const r of gridQ.data?.rows ?? []) {
-      for (const b of bindingsOf(r.param)) {
-        set.add(b.file.replace(/\{folder\}/g, folder).replace(/\{instance\}/g, instance ?? ""));
-      }
-    }
-    return set;
-  }, [gridQ.data, instance]);
+  // One index answers both "is this file managed" and "which parameters live
+  // in this file" (the Files -> Editor direction).
+  const paramsByFile = useMemo(() => bindingsIndex(gridQ.data, instance), [gridQ.data, instance]);
+  const managed = useMemo(() => new Set(paramsByFile.keys()), [paramsByFile]);
 
-  const files = useMemo(
-    () => (onlyManaged ? allFiles.filter((f) => managed.has(f.path)) : allFiles),
-    [allFiles, onlyManaged, managed],
-  );
+  const files = useMemo(() => {
+    const base = onlyManaged ? allFiles.filter((f) => managed.has(f.path)) : allFiles;
+    const q = treeQ.trim().toLowerCase();
+    return q ? base.filter((f) => f.path.toLowerCase().includes(q)) : base;
+  }, [allFiles, onlyManaged, managed, treeQ]);
 
   const changedFiles = useMemo(() => {
     const s = new Set<string>();
@@ -221,6 +237,19 @@ export default function FilesView() {
   );
   const tree = useMemo(() => buildTree(files, ctx), [files, ctx]);
 
+  // Cross-navigation: another view asked to open a file (optionally at a
+  // line, for an instance). One-shot; consumed by n.
+  const consumedFocus = useRef(0);
+  useEffect(() => {
+    if (!fileFocus || consumedFocus.current === fileFocus.n) return;
+    consumedFocus.current = fileFocus.n;
+    if (fileFocus.instance) setInstance(fileFocus.instance);
+    setOnlyManaged(false);
+    setTreeQ("");
+    setSelected(fileFocus.path);
+    setReveal(fileFocus.line);
+  }, [fileFocus]);
+
   useEffect(() => {
     setDirty(null);
     if (files.length === 0) {
@@ -233,6 +262,7 @@ export default function FilesView() {
 
   const current = files.find((f) => f.path === selected);
   const committed = current ? committedOf.get(current.path) : undefined;
+  const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
 
   const allDirs = useMemo(() => {
     const keys = new Set<string>();
@@ -254,7 +284,7 @@ export default function FilesView() {
       setDirty(null);
       if (r.staged === 0) message.info("No changes to save");
       else if (r.kind === "values")
-        message.success(`${r.staged} value edit(s) staged in your draft — visible in the grid too`);
+        message.success(`${r.staged} value edit(s) staged in your draft; visible in the grid too`);
       else message.success("File edit staged in your draft");
       qc.invalidateQueries();
     },
@@ -275,38 +305,42 @@ export default function FilesView() {
     URL.revokeObjectURL(a.href);
   };
 
+  // Files -> Editor: jump to the parameter(s) bound into the open file.
+  const openInEditor = (paramId: string) => {
+    if (instance) selectInstance(instance);
+    setJump("cell", paramId, instance ?? undefined);
+    setSection("config");
+  };
+
+  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 30_000 });
+
   if (projectQ.isLoading || (instance && draftQ.isLoading)) {
     return (
-      <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px", gap: 12 }}>
-        <FilesSkeleton />
-      </div>
+      <LoadingStage
+        stage={instance ? `Rendering files for ${instance}…` : "Loading the application…"}
+        skeleton={
+          <div className="flex h-full flex-col gap-3 px-5 py-4">
+            <FilesSkeleton />
+          </div>
+        }
+      />
     );
   }
 
   const managedCount = allFiles.filter((f) => managed.has(f.path)).length;
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", padding: "16px 20px", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 260 }}>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Files
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            This instance's real repository files. Managed files carry a{" "}
-            <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 4, background: "var(--c-ok)", verticalAlign: "middle" }} />{" "}
-            dot; add or drop files from management with the row actions.
-          </Typography.Text>
-        </div>
-        <Space>
-          <Tooltip title="Show only files Configer manages, or the whole repository">
-            <Space size={6}>
-              <Switch size="small" checked={onlyManaged} onChange={setOnlyManaged} />
-              <Typography.Text style={{ fontSize: 13 }}>Only managed ({managedCount})</Typography.Text>
-            </Space>
-          </Tooltip>
+    <div className="flex h-full min-w-0 flex-col">
+      {/* The workspace toolbar: branch, instance, managed filter on the left;
+          the open file's path, state and actions on the right. */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          {statusQ.data?.branch && (
+            <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{statusQ.data.branch}</MonoChip>
+          )}
           <Select
-            style={{ width: 220 }}
+            size="small"
+            style={{ width: 190 }}
             value={instance ?? undefined}
             placeholder="Choose an instance"
             showSearch
@@ -314,73 +348,148 @@ export default function FilesView() {
             onChange={(v) => setInstance(v)}
             options={instances.map((i) => ({ value: i.name, label: i.name }))}
           />
-        </Space>
+          <Tooltip title="Show only files Configer manages, or the whole repository">
+            <span className="inline-flex items-center gap-1.5 text-[13px]">
+              <Switch size="small" checked={onlyManaged} onChange={setOnlyManaged} />
+              Managed ({managedCount})
+            </span>
+          </Tooltip>
+        </div>
+        <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
+          {current && (
+            <>
+              <MonoChip title={current.path}>{current.path}</MonoChip>
+              {managed.has(current.path) ? (
+                <StatusPill tone="ok">Managed</StatusPill>
+              ) : (
+                <Tooltip title="Not managed yet; add it to scan for settings">
+                  <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
+                    Add to managed
+                  </Button>
+                </Tooltip>
+              )}
+              {changedFiles.has(current.path) && (
+                <Tooltip title="This file carries pending draft changes; the editor shows committed vs draft">
+                  <span className="inline-flex">
+                    <StatusPill tone="pending" icon={<DiffOutlined />}>Pending changes</StatusPill>
+                  </span>
+                </Tooltip>
+              )}
+              {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
+              {currentParams.length > 0 && (
+                <Dropdown
+                  trigger={["click"]}
+                  menu={{
+                    items: currentParams.map((id) => ({
+                      key: id,
+                      label: <span className="mono">{id}</span>,
+                    })),
+                    onClick: ({ key }) => openInEditor(key),
+                  }}
+                >
+                  <Button size="small" icon={<TableOutlined />}>
+                    Open in editor
+                  </Button>
+                </Dropdown>
+              )}
+              <Button
+                size="small"
+                icon={<DiffOutlined />}
+                onClick={() => {
+                  if (instance) setCompare(instance, null);
+                  localStorage.setItem("configer.compareMode", "files");
+                  setSection("compare");
+                }}
+              >
+                Compare
+              </Button>
+              <Button
+                size="small"
+                type="primary"
+                icon={<SaveOutlined />}
+                disabled={dirty === null}
+                loading={save.isPending}
+                onClick={() => dirty !== null && save.mutate(dirty)}
+              >
+                Save to draft
+              </Button>
+              <Dropdown
+                trigger={["click"]}
+                menu={{
+                  items: [
+                    { key: "undo", icon: <UndoOutlined />, label: "Discard unsaved typing", disabled: dirty === null },
+                    { key: "copy", icon: <CopyOutlined />, label: "Copy content" },
+                    { key: "download", icon: <DownloadOutlined />, label: "Download file" },
+                  ],
+                  onClick: ({ key }) => {
+                    if (key === "undo") setDirty(null);
+                    if (key === "copy") void copy();
+                    if (key === "download") download();
+                  },
+                }}
+              >
+                <Button size="small" icon={<MoreOutlined />} aria-label="More file actions" />
+              </Dropdown>
+            </>
+          )}
+        </div>
       </div>
 
       {files.length === 0 ? (
-        <Empty
-          description={onlyManaged ? "No managed files for this instance yet." : "No files found for this instance."}
-          style={{ marginTop: 60 }}
-        >
-          {onlyManaged && allFiles.length > 0 && (
-            <Button onClick={() => setOnlyManaged(false)}>Show all repository files</Button>
-          )}
-        </Empty>
+        <EmptyState
+          icon={<FileTextOutlined />}
+          title={
+            treeQ
+              ? "No files match your search."
+              : onlyManaged
+                ? "No managed files for this instance yet."
+                : "No files found for this instance."
+          }
+          hint={
+            onlyManaged && allFiles.length > 0
+              ? "The repository has files that are not managed yet."
+              : undefined
+          }
+          actionLabel={onlyManaged && allFiles.length > 0 ? "Show all repository files" : undefined}
+          onAction={() => setOnlyManaged(false)}
+        />
       ) : (
-        <div style={{ flex: 1, minHeight: 0, display: "flex", gap: 14 }}>
-          <div style={{ width: 300, overflow: "auto", flexShrink: 0 }}>
-            <Tree.DirectoryTree
-              className="files-tree"
-              showIcon
-              selectedKeys={selected ? [selected] : []}
-              defaultExpandedKeys={allDirs}
-              onSelect={(keys) => {
-                const k = String(keys[0] ?? "");
-                if (k && !k.endsWith("/")) setSelected(k);
-              }}
-              treeData={tree}
-            />
-          </div>
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-            {current ? (
-              <>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <Tag className="mono">{current.path}</Tag>
-                  {managed.has(current.path) ? (
-                    <Tag color="success">managed</Tag>
-                  ) : (
-                    <Tooltip title="Not managed yet — add it to scan for settings">
-                      <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
-                        Add to managed
-                      </Button>
-                    </Tooltip>
-                  )}
-                  {changedFiles.has(current.path) && (
-                    <Tooltip title="This file carries pending draft changes; the editor shows committed vs draft">
-                      <Tag color="orange" icon={<DiffOutlined />}>pending changes</Tag>
-                    </Tooltip>
-                  )}
-                  {dirty !== null && <Tag color="processing">unsaved</Tag>}
-                  <div style={{ flex: 1 }} />
-                  <Space size={6}>
-                    <Button
+        <>
+          <div className="min-h-0 flex-1">
+            <PanelGroup direction="horizontal" autoSaveId="configer-files" className="h-full">
+              <Panel id="tree" order={1} defaultSize={22} minSize={12} maxSize={45}>
+                <div className="flex h-full flex-col border-r border-line">
+                  <div className="p-2">
+                    <Input
                       size="small"
-                      type="primary"
-                      icon={<SaveOutlined />}
-                      disabled={dirty === null}
-                      loading={save.isPending}
-                      onClick={() => dirty !== null && save.mutate(dirty)}
-                    >
-                      Save to draft
-                    </Button>
-                    <Tooltip title="Discard unsaved typing">
-                      <Button size="small" icon={<UndoOutlined />} disabled={dirty === null} onClick={() => setDirty(null)} />
-                    </Tooltip>
-                    <Button size="small" icon={<CopyOutlined />} onClick={copy} />
-                    <Button size="small" icon={<DownloadOutlined />} onClick={download} />
-                  </Space>
+                      allowClear
+                      prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+                      placeholder="Search files…"
+                      value={treeQ}
+                      onChange={(e) => setTreeQ(e.target.value)}
+                    />
+                  </div>
+                  <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
+                    <Tree.DirectoryTree
+                      className="files-tree"
+                      showIcon
+                      selectedKeys={selected ? [selected] : []}
+                      defaultExpandedKeys={allDirs}
+                      onSelect={(keys) => {
+                        const k = String(keys[0] ?? "");
+                        if (k && !k.endsWith("/")) {
+                          setSelected(k);
+                          setReveal(undefined);
+                        }
+                      }}
+                      treeData={tree}
+                    />
+                  </div>
                 </div>
-                <div style={{ flex: 1, minHeight: 0, border: "1px solid rgba(128,128,128,0.25)", borderRadius: 8, overflow: "hidden" }}>
+              </Panel>
+              <PanelResizeHandle className="rrp-handle rrp-handle-v" />
+              <Panel id="editor" order={2} minSize={40}>
+                {current ? (
                   <Suspense fallback={<FilesSkeleton />}>
                     <MonacoFileView
                       key={`${instance}|${current.path}`}
@@ -389,17 +498,35 @@ export default function FilesView() {
                       original={committed}
                       dark={mode === "dark"}
                       editable
+                      revealLine={reveal}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
                       onSave={(v) => save.mutate(v)}
+                      onCursor={(ln, col) => setCursor({ ln, col })}
                     />
                   </Suspense>
-                </div>
-              </>
-            ) : (
-              <Empty description="Select a file" style={{ marginTop: 60 }} />
-            )}
+                ) : (
+                  <EmptyState icon={<FileTextOutlined />} title="Select a file" />
+                )}
+              </Panel>
+            </PanelGroup>
           </div>
-        </div>
+          {/* The reference's editor status strip: position, indentation,
+              language, and how much of the estate is on screen. */}
+          <div
+            className="flex h-[26px] shrink-0 items-center gap-4 px-3 text-xs text-white"
+            style={{ background: "var(--nav-bg)" }}
+          >
+            <span>
+              Ln {cursor.ln}, Col {cursor.col}
+            </span>
+            <span>Spaces: {current ? detectIndent(dirty ?? current.content) : 2}</span>
+            <span className="uppercase">{current ? languageFor(current.path) : ""}</span>
+            <span className="ml-auto opacity-85">
+              {files.length} file{files.length === 1 ? "" : "s"}
+              {changedFiles.size > 0 && ` · ${changedFiles.size} with pending changes`}
+            </span>
+          </div>
+        </>
       )}
     </div>
   );

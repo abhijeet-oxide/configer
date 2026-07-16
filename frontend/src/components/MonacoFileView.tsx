@@ -18,6 +18,7 @@ interface Revealable {
   getValue: () => string;
   onDidChangeModelContent: (cb: () => void) => void;
   addCommand?: (keybinding: number, handler: () => void) => void;
+  onDidChangeCursorPosition?: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void;
 }
 
 const baseOptions = {
@@ -42,6 +43,7 @@ export default function MonacoFileView({
   editable = false,
   onDirty,
   onSave,
+  onCursor,
 }: {
   path: string;
   content: string;
@@ -52,6 +54,8 @@ export default function MonacoFileView({
   editable?: boolean;
   onDirty?: (value: string) => void;
   onSave?: (value: string) => void;
+  /** live cursor position, for a Ln/Col status strip */
+  onCursor?: (line: number, col: number) => void;
 }) {
   const language = languageFor(path);
   const theme = dark ? "vs-dark" : "light";
@@ -59,9 +63,11 @@ export default function MonacoFileView({
   const edRef = useRef<Revealable | null>(null);
   const saveRef = useRef(onSave);
   const dirtyRef = useRef(onDirty);
+  const cursorRef = useRef(onCursor);
   useEffect(() => {
     saveRef.current = onSave;
     dirtyRef.current = onDirty;
+    cursorRef.current = onCursor;
   });
 
   const reveal = (line?: number) => {
@@ -80,6 +86,9 @@ export default function MonacoFileView({
     edRef.current = editor;
     editor.onDidChangeModelContent(() => dirtyRef.current?.(editor.getValue()));
     editor.addCommand?.(CTRL_CMD_S, () => saveRef.current?.(editor.getValue()));
+    editor.onDidChangeCursorPosition?.((e) =>
+      cursorRef.current?.(e.position.lineNumber, e.position.column),
+    );
     reveal(revealLine);
   };
 

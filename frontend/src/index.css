@@ -12,6 +12,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+/* Tailwind's preflight sets svg { display: block }, which stacks Ant Design's
+   inline icons onto their own line (menus, trees, buttons). Icons are inline
+   glyphs in this product; restore that. */
+.anticon svg,
+.ant-tree .ant-tree-iconEle svg {
+  display: inline-block;
+}
+
 /* Semantic accent variables (--c-*) live in tokens.css together with the
    full design token set: brand, surfaces, spacing, radius, elevation, motion. */
 
@@ -450,7 +458,25 @@ body {
 
 /* ---------------------------------------------------- files tree rows */
 
-/* Each file/folder row shows its name and, on hover, its manage actions. */
+/* Each row is one flex line: icon, then the title (name + hover actions).
+   The wrapper must be the flex container; otherwise the full-width title
+   box wraps under the icon (visible since Tailwind's preflight made svg
+   glyphs block-level). */
+.files-tree .ant-tree-node-content-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.files-tree .ant-tree-title {
+  flex: 1;
+  min-width: 0;
+}
+.files-tree .ant-tree-treenode {
+  display: flex;
+  width: 100%;
+}
 .files-tree .file-node {
   display: flex;
   align-items: center;

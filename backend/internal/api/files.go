@@ -31,9 +31,17 @@ type FileContent struct {
 
 // instanceFiles lists the real files that make up one instance's
 // configuration, with pending draft items applied in memory.
+//
+// A brand-new instance that only exists as a pending draft add has no folder
+// on disk yet; its files are synthesized (a preview of the folder submit will
+// scaffold) so the Files explorer shows the new folder as a pending addition
+// instead of "instance not found".
 func instanceFiles(p *project.Project, instanceName string, items []change.Item) ([]FileContent, error) {
 	inst, ok := p.InstanceByName(instanceName)
 	if !ok {
+		if files, pending := pendingInstanceFiles(p, instanceName, items); pending {
+			return files, nil
+		}
 		return nil, errInstanceNotFound(instanceName)
 	}
 
@@ -82,6 +90,85 @@ func instanceFiles(p *project.Project, instanceName string, items []change.Item)
 		out = append(out, FileContent{Path: f, Content: content})
 	}
 	return out, nil
+}
+
+// pendingInstanceFiles previews the files of an instance that exists only as a
+// pending draft add. For a clone it mirrors the source folder into the new
+// folder (dir(sourceFolder)/name, matching the layout adapter) so the explorer
+// shows the whole scaffolded tree; for an empty instance it shows the shared
+// files alone. Staged value edits for the new instance are applied on top.
+func pendingInstanceFiles(p *project.Project, name string, items []change.Item) ([]FileContent, bool) {
+	var add *change.Item
+	for i := range items {
+		if items[i].Act() == change.ActionAddInstance && items[i].Instance == name {
+			add = &items[i]
+			break
+		}
+	}
+	if add == nil {
+		return nil, false
+	}
+
+	// The synthetic instance: the pending metadata, plus the folder submit
+	// will create, so instance-layer bindings expand to the right files.
+	inst := model.Instance{Name: name}
+	if b, err := json.Marshal(add.New); err == nil {
+		_ = json.Unmarshal(b, &inst)
+	}
+
+	contents := map[string]string{}         // path -> committed bytes
+	cloneFrom, _ := add.Old.(string)
+	if src, ok := p.InstanceByName(cloneFrom); ok {
+		srcFolder := src.FolderOrDefault()
+		newFolder := filepath.ToSlash(filepath.Join(filepath.Dir(srcFolder), name))
+		inst.Folder = newFolder
+		base := filepath.Join(p.Root, filepath.FromSlash(srcFolder))
+		_ = filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() || !d.Type().IsRegular() {
+				return nil
+			}
+			rel, rerr := filepath.Rel(base, path)
+			if rerr != nil {
+				return nil
+			}
+			b, rerr := os.ReadFile(path)
+			if rerr != nil {
+				return nil
+			}
+			contents[filepath.ToSlash(filepath.Join(newFolder, rel))] = string(b)
+			return nil
+		})
+	} else if inst.Folder == "" {
+		inst.Folder = "instances/" + name
+	}
+
+	// Shared (base-layer) files this application's parameters bind to.
+	for _, param := range p.Catalog.Parameters {
+		for _, b := range param.Bindings {
+			if b.EffectiveLayer() == model.LayerBase {
+				if _, seen := contents[b.File]; !seen {
+					if raw, err := os.ReadFile(filepath.Join(p.Root, filepath.FromSlash(b.File))); err == nil {
+						contents[b.File] = string(raw)
+					}
+				}
+			}
+		}
+	}
+
+	paths := make([]string, 0, len(contents))
+	for f := range contents {
+		paths = append(paths, f)
+	}
+	sort.Strings(paths)
+	out := make([]FileContent, 0, len(paths))
+	for _, f := range paths {
+		content, err := applyDraftToFile(p, inst, f, contents[f], items)
+		if err != nil {
+			content = contents[f]
+		}
+		out = append(out, FileContent{Path: f, Content: content})
+	}
+	return out, true
 }
 
 // applyDraftToFile applies the draft items that land in file f (for this

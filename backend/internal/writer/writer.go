@@ -242,6 +242,13 @@ func mutateRegistry(root string, fn func(*model.InstanceRegistry) error) error {
 	return writeYAML(path, reg)
 }
 
+// ApplyInstancePatch applies a partial metadata update to inst in place (nil
+// fields left untouched). Exported so a pending draft item can be folded into
+// a not-yet-committed instance without going through the file.
+func ApplyInstancePatch(inst *model.Instance, patch InstancePatch) {
+	applyInstancePatch(inst, patch)
+}
+
 func applyInstancePatch(inst *model.Instance, patch InstancePatch) {
 	if patch.Environment != nil {
 		inst.Environment = *patch.Environment

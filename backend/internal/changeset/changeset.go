@@ -34,7 +34,39 @@ type Service struct {
 	Store   *crstore.Store
 }
 
-func branchName(id int) string { return fmt.Sprintf("configer/cr-%d", id) }
+// branchName turns a change request into a readable feature branch. The user
+// names the change on submit ("Increase prod memory limit"); we slugify that
+// into feature/increase-prod-memory-limit. The id is appended when the slug
+// would otherwise be empty or the generic "unnamed", keeping branches unique
+// on the remote without ever exposing raw git numbering for a named change.
+func branchName(cr *change.ChangeRequest) string {
+	slug := slugify(cr.Title)
+	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
+		return fmt.Sprintf("feature/unnamed-cr-%d", cr.ID)
+	}
+	return "feature/" + slug
+}
+
+// slugify lowercases a title into a git-ref-safe slug (kept local so the
+// changeset package has no dependency on the api layer).
+func slugify(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
 
 // commitMessage builds the commit with human attribution trailers (§ Git
 // identity: the committer is the configured machine identity, the real author
@@ -94,7 +126,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if err != nil {
 		return nil, err
 	}
-	branch := branchName(cr.ID)
+	branch := branchName(cr)
 
 	// Isolated checkout so readers of the primary tree/cache are never
 	// disturbed (a git worktree locally, a materialized temp dir remotely).
@@ -273,6 +305,13 @@ func applyStructural(root string, proj *project.Project, it change.Item) error {
 		return writer.AddInstance(root, meta)
 	case change.ActionRemoveInstance:
 		return writer.DeleteInstance(root, it.Instance)
+	case change.ActionUpdateInstance:
+		var patch writer.InstancePatch
+		if err := decodeInto(it.New, &patch); err != nil {
+			return fmt.Errorf("decode instance patch: %w", err)
+		}
+		_, err := writer.UpdateInstance(root, it.Instance, patch)
+		return err
 	}
 	return fmt.Errorf("unknown structural action %q", it.Act())
 }

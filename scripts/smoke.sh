@@ -47,8 +47,11 @@ echo "== submit the draft"
 curl -sf -X POST "$BASE/changes/1/submit" -d '{"title":"Smoke test","author":"smoke"}' | grep -q under_review \
   || fail "submit did not reach under_review"
 
+# The change request is named for its title: "Smoke test" -> feature/smoke-test.
+CR_BRANCH="feature/smoke-test"
+
 echo "== assert the CR branch diffs"
-show() { git -C "$WORK/repo" show "configer/cr-1:$1"; }
+show() { git -C "$WORK/repo" show "$CR_BRANCH:$1"; }
 show instances/prod-us-east/values.yaml | grep -q 'port: 9443 # management plane' \
   || fail "surgical edit lost the inline comment"
 show instances/prod-us-east/values.yaml | grep -q 'namespace: telco-prod-smoke' \
@@ -57,7 +60,7 @@ show instances/prod-us-east/network.xml | grep -q 'namespace="telco-prod-smoke"'
   || fail "dedup edit did not fan out to network.xml"
 show shared/platform.yaml | grep -q 'domain: smoke.example.com' \
   || fail "global edit missing in shared file"
-git -C "$WORK/repo" ls-tree -r --name-only configer/cr-1 | grep -q '^generated/' \
+git -C "$WORK/repo" ls-tree -r --name-only "$CR_BRANCH" | grep -q '^generated/' \
   && fail "generated/ artifacts exist - write-back regression"
 show instances/prod-eu-west/values.yaml | grep -q '10.20.10.10' \
   || fail "untouched instance changed"

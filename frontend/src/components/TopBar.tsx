@@ -7,32 +7,22 @@ import {
   Badge,
   Avatar,
   Dropdown,
-  Tag,
   Typography,
   type InputRef,
 } from "antd";
-import {
-  SearchOutlined,
-  MoonOutlined,
-  SunOutlined,
-  BellOutlined,
-  SyncOutlined,
-  CloudServerOutlined,
-  FontSizeOutlined,
-  FullscreenOutlined,
-  FullscreenExitOutlined,
-} from "@ant-design/icons";
+import { SearchOutlined, BellOutlined, ExportOutlined } from "@ant-design/icons";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
+import { AppContextChips } from "./ui";
 import MembersModal from "./MembersModal";
 
-// Application header, kept deliberately light: an ellipsized breadcrumb that
-// can never wrap the layout, the global search, appearance controls, the
-// approvals bell and fullscreen. Editing-specific actions (Create Change
-// Request, git sync status) live in the editor toolbar where they belong.
+// The application context bar: breadcrumb with the app switcher, then the
+// persistent context chips (branch, git sync state, instances, unsent edits)
+// so the user always knows where they are and whether anything is pending.
+// Appearance controls live in the rail's Settings; this bar stays quiet.
 
 // The application-scoped sections and their human tab labels, for the
 // breadcrumb (Applications / <name> / <tab>).
@@ -44,8 +34,8 @@ const TAB_LABELS: Record<string, string> = {
   config: "Editor",
   files: "Files",
   compare: "Compare",
-  changes: "Release history",
-  drafts: "Release history",
+  changes: "Releases",
+  drafts: "Releases",
   approvals: "Approvals",
   instances: "Instances",
   drift: "Repository changes",
@@ -64,18 +54,10 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 }
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, fontScale, setFontScale, search, setSearch, setSection, repoId, section } =
-    useUI();
+  const { search, setSearch, setSection, repoId, section } = useUI();
   const switchRepo = useSwitchRepo();
   const searchRef = useRef<InputRef>(null);
-  const [fullscreen, setFullscreen] = useState(false);
 
-  const statusQ = useQuery({
-    queryKey: ["repo-status"],
-    queryFn: api.repoStatus,
-    refetchInterval: 20_000,
-    enabled: section === "config",
-  });
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
@@ -85,6 +67,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   // so the breadcrumb reads Applications / <name> / <tab>.
   const inApp = APP_BREADCRUMB_SECTIONS.has(section);
   const tabLabel = TAB_LABELS[section];
+  // "View in Git" opens the repository at its hosting provider.
+  const gitUrl = activeRepo?.origin?.startsWith("http") ? activeRepo.origin : undefined;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,21 +77,9 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         searchRef.current?.focus();
       }
     };
-    const onFs = () => setFullscreen(!!document.fullscreenElement);
     window.addEventListener("keydown", onKey);
-    document.addEventListener("fullscreenchange", onFs);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.removeEventListener("fullscreenchange", onFs);
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
-
-  const toggleFullscreen = () => {
-    if (document.fullscreenElement) void document.exitFullscreen();
-    else void document.documentElement.requestFullscreen();
-  };
-
-  const st = statusQ.data;
 
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
@@ -175,30 +147,10 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           ]}
         />
       </div>
-      {section === "config" && st && (
-        <Tooltip
-          title={
-            st.upstreamGone
-              ? `The branch "${st.branch}" no longer exists on the remote; it may have been deleted on GitHub. Your local work is safe; ask an administrator to restore the branch or point Configer at a different one.`
-              : st.remote
-                ? `Synced with the Git remote${st.syncError ? `: ${st.syncError}` : ""}. Commits made directly on Git are picked up automatically.`
-                : "Local repository (no remote configured)"
-          }
-        >
-          <Tag
-            icon={st.syncError || st.upstreamGone ? <CloudServerOutlined /> : <SyncOutlined spin={statusQ.isFetching} />}
-            color={st.upstreamGone ? "error" : st.syncError ? "warning" : st.behind > 0 ? "processing" : "success"}
-            style={{ marginInlineEnd: 0, flexShrink: 0 }}
-          >
-            {st.upstreamGone
-              ? "branch removed on remote"
-              : st.remote
-                ? st.behind > 0
-                  ? `${st.behind} behind`
-                  : "git: live"
-                : "git: local"}
-          </Tag>
-        </Tooltip>
+      {inApp && (
+        <div style={{ flexShrink: 0, display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
+          <AppContextChips />
+        </div>
       )}
       <div style={{ flex: 1, minWidth: 8 }} />
       <Input
@@ -212,34 +164,14 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
       />
       <Space size={4} style={{ flexShrink: 0 }}>
-        <Tooltip title={mode === "light" ? "Switch to dark mode" : "Switch to light mode"}>
-          <Button
-            size="small"
-            type="text"
-            icon={mode === "light" ? <MoonOutlined /> : <SunOutlined />}
-            onClick={() => setMode(mode === "light" ? "dark" : "light")}
-          />
-        </Tooltip>
-        <Tooltip title={fontScale === "normal" ? "Larger text (easier reading)" : "Normal text size"}>
-          <Button
-            size="small"
-            type={fontScale === "large" ? "primary" : "text"}
-            ghost={fontScale === "large"}
-            icon={<FontSizeOutlined />}
-            onClick={() => setFontScale(fontScale === "normal" ? "large" : "normal")}
-          />
-        </Tooltip>
-        <Tooltip title={fullscreen ? "Exit full screen" : "Full screen"}>
-          <Button
-            size="small"
-            type="text"
-            icon={fullscreen ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-            onClick={toggleFullscreen}
-          />
-        </Tooltip>
+        {inApp && gitUrl && (
+          <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
+            View in Git
+          </Button>
+        )}
         <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
           <Badge count={awaiting} size="small" color="var(--c-review)">
-            <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("approvals")} />
+            <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />
           </Badge>
         </Tooltip>
         <IdentityControl repoId={repoId} />
@@ -290,7 +222,7 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
           },
         }}
       >
-        <Avatar size={26} src={u.avatarUrl || undefined} style={{ background: "#7c3aed", flexShrink: 0, cursor: "pointer" }}>
+        <Avatar size={26} src={u.avatarUrl || undefined} style={{ background: "var(--brand)", flexShrink: 0, cursor: "pointer" }}>
           {initials}
         </Avatar>
       </Dropdown>

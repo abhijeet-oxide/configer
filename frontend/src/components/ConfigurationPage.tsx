@@ -1,24 +1,14 @@
-import { Badge, Tabs, theme as antdTheme } from "antd";
-import {
-  ApartmentOutlined,
-  CheckCircleOutlined,
-  DashboardOutlined,
-  DiffOutlined,
-  DownloadOutlined,
-  FileTextOutlined,
-  HistoryOutlined,
-  SyncOutlined,
-  TableOutlined,
-} from "@ant-design/icons";
+import { Dropdown, Badge } from "antd";
+import { DownOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
 
 // ConfigurationPage is the single home of everything about ONE application:
-// a tab strip (Overview, Editor, Compare, Release history, Approvals,
-// Instances, Files, Repository changes) over the active view. Tabs map 1:1
-// to the store's `section`, so deep links (?view=...) and browser history
-// keep working exactly as before — this is chrome, not a router.
+// a quiet underline tab row (Overview, Editor, Files, Compare, Releases,
+// Approvals, Instances, More) over the active view. Tabs map 1:1 to the
+// store's `section`, so deep links and browser history keep working exactly
+// as before; this is chrome, not a router.
 
 /** Sections that live under the Configuration page (vs. workspace level). */
 export const APP_SECTIONS = new Set([
@@ -34,12 +24,43 @@ export const APP_SECTIONS = new Set([
   "import",
 ]);
 
-function tabLabel(icon: React.ReactNode, text: string, count = 0, color?: string) {
+const TABS: { key: string; label: string }[] = [
+  { key: "overview", label: "Overview" },
+  { key: "config", label: "Editor" },
+  { key: "files", label: "Files" },
+  { key: "compare", label: "Compare" },
+  { key: "changes", label: "Releases" },
+  { key: "approvals", label: "Approvals" },
+  { key: "instances", label: "Instances" },
+];
+
+// Lower-traffic surfaces fold under More so the strip stays calm.
+const MORE: { key: string; label: string }[] = [
+  { key: "drift", label: "Repository changes" },
+  { key: "import", label: "Import settings" },
+];
+
+function CountPill({ n }: { n: number }) {
+  if (!n) return null;
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-      {icon}
-      {text}
-      {count > 0 && <Badge count={count} size="small" color={color} />}
+    <span
+      style={{
+        minWidth: 16,
+        height: 16,
+        padding: "0 5px",
+        borderRadius: "var(--r-pill)",
+        background: "var(--c-review-bg)",
+        border: "1px solid var(--c-review-bd)",
+        color: "var(--c-review)",
+        fontSize: 10.5,
+        fontWeight: 600,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        lineHeight: 1,
+      }}
+    >
+      {n}
     </span>
   );
 }
@@ -52,37 +73,55 @@ export default function ConfigurationPage({
   children: React.ReactNode;
 }) {
   const { setSection } = useUI();
-  const { token } = antdTheme.useToken();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
 
-  // "drafts" is a legacy alias of the Release history view.
+  // "drafts" is a legacy alias of the Releases view.
   const active = section === "drafts" ? "changes" : section;
+  const moreActive = MORE.find((m) => m.key === active);
 
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: token.colorBgContainer }}>
-      <Tabs
-        size="small"
-        activeKey={active}
-        onChange={(key) => setSection(key)}
-        tabBarStyle={{ margin: 0, paddingInline: 16 }}
-        items={[
-          // Files sits right beside the Editor: both are "look at the
-          // configuration" surfaces, one structured, one raw. Import settings
-          // is the last tab.
-          { key: "overview", label: tabLabel(<DashboardOutlined />, "Overview") },
-          { key: "config", label: tabLabel(<TableOutlined />, "Editor") },
-          { key: "files", label: tabLabel(<FileTextOutlined />, "Files") },
-          { key: "compare", label: tabLabel(<DiffOutlined />, "Compare") },
-          { key: "changes", label: tabLabel(<HistoryOutlined />, "Release history") },
-          { key: "approvals", label: tabLabel(<CheckCircleOutlined />, "Approvals", awaiting, "var(--c-review)") },
-          { key: "instances", label: tabLabel(<ApartmentOutlined />, "Instances") },
-          { key: "drift", label: tabLabel(<SyncOutlined />, "Repository changes", findings, "orange") },
-          { key: "import", label: tabLabel(<DownloadOutlined />, "Import settings") },
-        ]}
-      />
+    <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
+      <div className="app-tabs" role="tablist">
+        {TABS.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={active === t.key}
+            className={`app-tab${active === t.key ? " app-tab-active" : ""}`}
+            onClick={() => setSection(t.key)}
+          >
+            {t.label}
+            {t.key === "approvals" && <CountPill n={awaiting} />}
+          </button>
+        ))}
+        <Dropdown
+          trigger={["click"]}
+          menu={{
+            selectedKeys: moreActive ? [moreActive.key] : [],
+            items: MORE.map((m) => ({
+              key: m.key,
+              label: (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                  {m.label}
+                  {m.key === "drift" && findings > 0 && (
+                    <Badge count={findings} size="small" color="var(--c-pending)" />
+                  )}
+                </span>
+              ),
+            })),
+            onClick: ({ key }) => setSection(key),
+          }}
+        >
+          <button className={`app-tab${moreActive ? " app-tab-active" : ""}`}>
+            {moreActive ? moreActive.label : "More"}
+            {findings > 0 && !moreActive && <CountPill n={findings} />}
+            <DownOutlined style={{ fontSize: 9, marginLeft: 2 }} />
+          </button>
+        </Dropdown>
+      </div>
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
     </div>
   );

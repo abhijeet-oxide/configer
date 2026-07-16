@@ -1,57 +1,177 @@
-import { Menu, Typography, Badge } from "antd";
-import type { MenuProps } from "antd";
+import { useState } from "react";
+import { Badge, Drawer, List, Popover, Switch, Tooltip, Typography } from "antd";
+import {
+  HomeOutlined,
+  AppstoreOutlined,
+  ClusterOutlined,
+  PullRequestOutlined,
+  DatabaseOutlined,
+  CheckCircleOutlined,
+  FileProtectOutlined,
+  SettingOutlined,
+  QuestionCircleOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
+} from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { envHex } from "../theme";
-import { Ic, icons } from "./icons";
 import { useUI } from "../store";
+import MembersModal from "./MembersModal";
 
-// The far-left navigation rail, kept to the two levels of the hierarchy:
-// Applications (the portfolio) and Configuration (everything about the
-// selected application — its views live as tabs on the Configuration page).
-// Admin-ish surfaces (Plugins) sit at the bottom. Badges sit on the icons so
-// the collapsed rail stays clean and readable.
+// The navigation rail: the product's one piece of dark chrome. Global items
+// (Home, Applications, Approvals) work everywhere; application items
+// (Instances, Changes, Repositories, Audit) act on the active application and
+// wait quietly until one is selected. Expanded at the global level, it folds
+// to an icon rail inside an application so the working surface dominates.
 
-function iconWithBadge(icon: React.ReactNode, count: number, color?: string) {
-  if (!count) return <span className="nav-ic">{icon}</span>;
-  return (
-    <Badge count={count} size="small" color={color} offset={[4, -2]}>
-      <span className="nav-ic">{icon}</span>
-    </Badge>
+interface RailItem {
+  key: string;
+  label: string;
+  icon: React.ReactNode;
+  section?: string;
+  needsApp?: boolean;
+  badge?: number;
+}
+
+// Which rail entry a section lights up. Application tabs without their own
+// rail entry (Overview, Editor, Files, Compare, Import) belong to
+// Applications: the rail shows the level, the tab strip shows the view.
+function railKey(section: string): string {
+  switch (section) {
+    case "home":
+      return "home";
+    case "instances":
+      return "instances";
+    case "changes":
+    case "drafts":
+      return "changes";
+    case "drift":
+      return "repositories";
+    case "approvals":
+    case "inbox":
+      return "approvals";
+    case "plugins":
+      return "settings";
+    default:
+      return "applications";
+  }
+}
+
+function RailEntry({
+  item,
+  active,
+  collapsed,
+  disabled,
+  onClick,
+}: {
+  item: RailItem;
+  active: boolean;
+  collapsed: boolean;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const inner = (
+    <div
+      className={`rail-item${active ? " rail-item-active" : ""}${disabled ? " rail-item-disabled" : ""}`}
+      onClick={disabled ? undefined : onClick}
+      role="button"
+      aria-disabled={disabled}
+      style={{ justifyContent: collapsed ? "center" : "flex-start" }}
+    >
+      <Badge count={item.badge ?? 0} size="small" offset={collapsed ? [2, 0] : [4, 0]} color="var(--nav-bg-active)">
+        <span className="rail-item-icon">{item.icon}</span>
+      </Badge>
+      {!collapsed && <span className="rail-item-label">{item.label}</span>}
+    </div>
+  );
+  const tip = disabled ? `${item.label}: select an application first` : collapsed ? item.label : "";
+  return tip ? (
+    <Tooltip title={tip} placement="right">
+      {inner}
+    </Tooltip>
+  ) : (
+    inner
   );
 }
 
-function buildItems(attentionCount: number): MenuProps["items"] {
-  return [
-    { key: "workspace", icon: <span className="nav-ic"><Ic icon={icons.workspace} /></span>, label: "Applications" },
-    {
-      key: "overview",
-      // Counts are "work waiting", not errors: blue, never red.
-      icon: iconWithBadge(<Ic icon={icons.editor} />, attentionCount, "var(--c-review)"),
-      label: "Configuration",
-    },
-    { key: "plugins", icon: <span className="nav-ic"><Ic icon={icons.plugins} /></span>, label: "Plugins (admin)" },
+export default function NavRail({
+  collapsed = false,
+  onToggleCollapse,
+}: {
+  collapsed?: boolean;
+  onToggleCollapse?: () => void;
+}) {
+  const { section, setSection, repoId, mode, setMode, fontScale, setFontScale } = useUI();
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
+  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false, enabled: !!repoId });
+  const [auditOpen, setAuditOpen] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
+
+  const repos = wsQ.data?.repos ?? [];
+  const activeRepo = repos.find((r) => r.id === repoId);
+  const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
+  const activeChanges = (activeRepo?.drafts || 0) + (activeRepo?.openChanges || 0);
+  const findings = findingsQ.data?.findings?.length ?? 0;
+  const activeKey = railKey(section);
+
+  const items: RailItem[] = [
+    { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
+    { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
+    { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "instances", needsApp: true },
+    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changes", needsApp: true, badge: activeChanges },
+    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "drift", needsApp: true, badge: findings },
+    { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined /> },
   ];
-}
 
-// Every application-scoped section highlights the Configuration entry; the
-// rail reflects the level, the tabs on the page reflect the view.
-function railKey(section: string): string {
-  if (section === "workspace" || section === "home") return "workspace";
-  if (section === "plugins") return "plugins";
-  return "overview";
-}
+  const settingsContent = (
+    <div style={{ width: 220 }}>
+      <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-3)", marginBottom: 8 }}>
+        Appearance
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span>Dark mode</span>
+        <Switch size="small" checked={mode === "dark"} onChange={(v) => setMode(v ? "dark" : "light")} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <span>Larger text</span>
+        <Switch size="small" checked={fontScale === "large"} onChange={(v) => setFontScale(v ? "large" : "normal")} />
+      </div>
+      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
+      <a onClick={() => setSection("plugins")} style={{ display: "block", padding: "4px 0" }}>
+        Plugins (admin)
+      </a>
+      {repoId && (
+        <a onClick={() => setMembersOpen(true)} style={{ display: "block", padding: "4px 0" }}>
+          People &amp; roles
+        </a>
+      )}
+    </div>
+  );
 
-export default function NavRail({ collapsed = false }: { collapsed?: boolean }) {
-  const { section, setSection } = useUI();
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const approvalsCount = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
-  const items = buildItems(approvalsCount);
+  const helpContent = (
+    <div style={{ width: 250, fontSize: 12 }}>
+      <div style={{ fontWeight: 600, marginBottom: 6 }}>Keyboard shortcuts</div>
+      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", color: "var(--text-2)" }}>
+        <span className="mono">⌘K</span> <span>Search everything</span>
+        <span className="mono">⌘B</span> <span>Toggle parameters panel</span>
+        <span className="mono">⌘⌥B</span> <span>Toggle inspector</span>
+        <span className="mono">⌘J</span> <span>Toggle systems pane</span>
+        <span className="mono">⌘⇧F</span> <span>Focus mode</span>
+      </div>
+      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
+      <span style={{ color: "var(--text-2)" }}>
+        Every edit becomes an ordinary Git change: draft, review, merge.
+      </span>
+    </div>
+  );
+
   return (
-    <div style={{ height: "100%", display: "flex", flexDirection: "column" }}>
+    <div className="rail" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
       <div
         style={{
-          padding: collapsed ? "14px 0 8px" : "14px 16px 8px",
+          padding: collapsed ? "14px 0 10px" : "14px 16px 10px",
           display: "flex",
           gap: 10,
           alignItems: "center",
@@ -60,23 +180,104 @@ export default function NavRail({ collapsed = false }: { collapsed?: boolean }) 
       >
         <div className="logo-tile">C</div>
         {!collapsed && (
-          <div style={{ lineHeight: 1.1 }}>
-            <Typography.Text strong>Configer</Typography.Text>
-            <div style={{ fontSize: 10, opacity: 0.6 }}>CONFIG LIFECYCLE MGMT</div>
+          <div style={{ lineHeight: 1.1, minWidth: 0 }}>
+            <Typography.Text strong style={{ color: "var(--nav-fg-active)" }}>
+              Configer
+            </Typography.Text>
+            <div style={{ fontSize: 10, color: "var(--nav-fg)", letterSpacing: 0.4 }}>CONFIG LIFECYCLE</div>
           </div>
         )}
       </div>
-      <Menu
-        className="nav-rail"
-        mode="inline"
-        inlineCollapsed={collapsed}
-        selectedKeys={[railKey(section)]}
-        onClick={({ key }) => setSection(key)}
-        items={items}
-        style={{ borderInlineEnd: "none", flex: 1, overflow: "auto" }}
-      />
-      {!collapsed && <DeploymentChip />}
+      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "4px 8px" }}>
+        {items.map((it) => (
+          <RailEntry
+            key={it.key}
+            item={it}
+            active={activeKey === it.key}
+            collapsed={collapsed}
+            disabled={!!it.needsApp && !repoId}
+            onClick={() => {
+              if (it.key === "audit") setAuditOpen(true);
+              else if (it.section) setSection(it.section);
+            }}
+          />
+        ))}
+        <Popover content={settingsContent} placement="rightTop" trigger="click">
+          <div>
+            <RailEntry
+              item={{ key: "settings", label: "Settings", icon: <SettingOutlined /> }}
+              active={activeKey === "settings"}
+              collapsed={collapsed}
+              disabled={false}
+              onClick={() => {}}
+            />
+          </div>
+        </Popover>
+      </div>
+      <div style={{ padding: "4px 8px 10px", borderTop: "1px solid var(--nav-border)" }}>
+        <Popover content={helpContent} placement="rightBottom" trigger="click">
+          <div>
+            <RailEntry
+              item={{ key: "help", label: "Help", icon: <QuestionCircleOutlined /> }}
+              active={false}
+              collapsed={collapsed}
+              disabled={false}
+              onClick={() => {}}
+            />
+          </div>
+        </Popover>
+        <RailEntry
+          item={{
+            key: "collapse",
+            label: "Collapse",
+            icon: collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />,
+          }}
+          active={false}
+          collapsed={collapsed}
+          disabled={false}
+          onClick={() => onToggleCollapse?.()}
+        />
+        {!collapsed && <DeploymentChip />}
+      </div>
+      <Drawer title="Audit trail" width={480} open={auditOpen} onClose={() => setAuditOpen(false)}>
+        <AuditList open={auditOpen} />
+      </Drawer>
+      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </div>
+  );
+}
+
+// AuditList shows who did what, newest first, across the workspace.
+function AuditList({ open }: { open: boolean }) {
+  const repoId = useUI((s) => s.repoId);
+  const auditQ = useQuery({
+    queryKey: ["audit", repoId],
+    queryFn: () => api.audit({ repo: repoId ?? undefined, limit: 100 }),
+    enabled: open,
+  });
+  const events = auditQ.data?.events ?? [];
+  if (!auditQ.isLoading && events.length === 0)
+    return (
+      <Typography.Text type="secondary">
+        No audit events recorded yet. State-changing actions appear here with who did them and when.
+      </Typography.Text>
+    );
+  return (
+    <List
+      size="small"
+      loading={auditQ.isLoading}
+      dataSource={events}
+      renderItem={(e) => (
+        <List.Item style={{ display: "block" }}>
+          <div style={{ fontSize: 13 }}>
+            <b>{e.login || "anonymous"}</b> {e.action}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
+            {e.detail} · {new Date(e.at).toLocaleString()}
+          </div>
+        </List.Item>
+      )}
+    />
   );
 }
 
@@ -87,12 +288,20 @@ function DeploymentChip() {
   const m = metaQ.data;
   if (!m) return null;
   return (
-    <div style={{ margin: "0 10px 10px", fontSize: 10.5, opacity: 0.75, display: "flex", alignItems: "center", gap: 6 }}>
+    <div
+      style={{
+        margin: "8px 8px 0",
+        fontSize: 10.5,
+        color: "var(--nav-fg)",
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        overflow: "hidden",
+        whiteSpace: "nowrap",
+      }}
+    >
       <span
-        style={{
-          width: 6, height: 6, borderRadius: 3, flexShrink: 0,
-          background: envHex(m.environment),
-        }}
+        style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0, background: envHex(m.environment) }}
       />
       {m.name} {m.version} · {m.environment}
     </div>

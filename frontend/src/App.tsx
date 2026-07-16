@@ -225,6 +225,20 @@ export default function App() {
   // Focus mode strips the workspace chrome (nav rail + header) so the editor
   // fills the screen; it only applies while the editor is the active view.
   const focusMode = editorFocus && section === "config";
+
+  // The rail folds to icons inside an application so the working surface
+  // dominates (like the reference), and re-expands at the global level. A
+  // manual toggle pins the user's choice for the rest of the session.
+  const manualRail = useRef(false);
+  useEffect(() => {
+    if (manualRail.current) return;
+    const shouldCollapse = APP_SECTIONS.has(section);
+    setNavCollapsed(shouldCollapse);
+  }, [section, setNavCollapsed]);
+  const toggleRail = () => {
+    manualRail.current = true;
+    setNavCollapsed(!navCollapsed);
+  };
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
 
@@ -415,8 +429,8 @@ export default function App() {
   // Phone tier: single column with a bottom tab bar, no side rail, no tabs row.
   if (phone) {
     const tabs = [
-      { key: "workspace", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Settings" },
+      { key: "home", icon: <HomeOutlined />, label: "Home" },
+      { key: "config", icon: <TableOutlined />, label: "Editor" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
     ];
@@ -454,16 +468,14 @@ export default function App() {
     <Layout style={{ height: "100vh" }}>
       {!focusMode && (
         <Sider
-          width={210}
-          collapsedWidth={56}
+          width={216}
+          collapsedWidth={60}
           collapsible
           collapsed={navCollapsed}
-          onCollapse={setNavCollapsed}
-          breakpoint="xxl"
-          theme="light"
-          style={{ borderRight: border }}
+          trigger={null}
+          style={{ background: "var(--nav-bg)" }}
         >
-          <NavRail collapsed={navCollapsed} />
+          <NavRail collapsed={navCollapsed} onToggleCollapse={toggleRail} />
         </Sider>
       )}
       <Layout style={{ minWidth: 0 }}>

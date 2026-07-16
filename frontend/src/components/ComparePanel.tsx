@@ -1,27 +1,37 @@
-import { Select, Segmented, Switch, Space, Table, Tag, Typography, Empty, Input } from "antd";
-import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined } from "@ant-design/icons";
+import { Select, Segmented, Space, Table, Input } from "antd";
+import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined, DiffOutlined } from "@ant-design/icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";
 import { DiffMiniBar } from "./charts";
 import { useUI } from "../store";
 import { CompareSkeleton } from "./Skeletons";
+import { ChangeChip, EmptyState, LoadingStage } from "./ui";
+import CompareFiles, { COMMITTED } from "./CompareFiles";
 
-// Compare view: pick two sides, each an instance at a git ref (branch/tag or the
-// working tree), and read a parameter-level diff. This compares not just two
-// instances but two versions: the same instance across releases, or two
-// instances across two refs. Instance pickers are grouped by environment.
+// Compare view: pick two sides, each an instance at a version (working
+// draft, committed baseline, or a git ref), and read the difference two
+// ways: Parameters answers "which configuration values differ?", Files
+// answers "what actual repository content differs?". The comparison context
+// (sides, versions) stays stable while switching views.
 
 const WORKING = "";
 
 type CompareLayout = "Inline" | "Side by Side";
 const LAYOUT_KEY = "configer.compareLayout";
+type CompareMode = "parameters" | "files";
+const MODE_KEY = "configer.compareMode";
 
-// The user's inline-vs-side-by-side choice is a stable personal preference, so
-// it is remembered across sessions rather than resetting to a default.
+// The user's layout and mode choices are stable personal preferences, so
+// they are remembered across sessions rather than resetting to a default.
 function loadLayout(): CompareLayout {
   return localStorage.getItem(LAYOUT_KEY) === "Inline" ? "Inline" : "Side by Side";
 }
+function loadMode(): CompareMode {
+  return localStorage.getItem(MODE_KEY) === "files" ? "files" : "parameters";
+}
+
+type Pill = "changed" | "all" | "modified" | "added" | "removed";
 
 export default function ComparePanel({ grid }: { grid: Grid }) {
   const { compareLeft, compareRight, setCompare } = useUI();
@@ -29,27 +39,36 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
   const right = compareRight || grid.instances[2]?.name || grid.instances[1]?.name;
   const [leftRef, setLeftRef] = useState<string>(WORKING);
   const [rightRef, setRightRef] = useState<string>(WORKING);
-  const [changesOnly, setChangesOnly] = useState(true);
+  const [pill, setPill] = useState<Pill>("changed");
   const [layout, setLayout] = useState<CompareLayout>(loadLayout);
+  const [mode, setMode] = useState<CompareMode>(loadMode);
   const [q2, setQ2] = useState("");
 
   const changeLayout = (v: CompareLayout) => {
     localStorage.setItem(LAYOUT_KEY, v);
     setLayout(v);
   };
+  const changeMode = (v: CompareMode) => {
+    localStorage.setItem(MODE_KEY, v);
+    setMode(v);
+  };
 
   const refsQ = useQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
 
   const sameSide = left === right && leftRef === rightRef;
+  // The parameter diff understands real refs; the committed pseudo-ref only
+  // exists for file mode, so parameters treat it as the working tree.
+  const paramRef = (r: string) => (r === COMMITTED ? WORKING : r);
   const q = useQuery({
-    queryKey: ["compare", left, leftRef, right, rightRef],
-    queryFn: () => api.compare(left, right, { leftRef, rightRef }),
-    enabled: !!left && !!right && !sameSide,
+    queryKey: ["compare", left, paramRef(leftRef), right, paramRef(rightRef)],
+    queryFn: () => api.compare(left, right, { leftRef: paramRef(leftRef), rightRef: paramRef(rightRef) }),
+    enabled: !!left && !!right && !sameSide && mode === "parameters",
   });
 
   const rows = useMemo(() => {
     let changes = q.data?.changes ?? [];
-    if (changesOnly) changes = changes.filter((c) => c.status !== "unchanged");
+    if (pill === "changed") changes = changes.filter((c) => c.status !== "unchanged");
+    else if (pill !== "all") changes = changes.filter((c) => c.status === pill);
     const needle = q2.trim().toLowerCase();
     if (needle)
       changes = changes.filter(
@@ -59,7 +78,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
           String(c.right ?? "").toLowerCase().includes(needle),
       );
     return changes;
-  }, [q.data, changesOnly, q2]);
+  }, [q.data, pill, q2]);
 
   // Instance options grouped by environment (the tree-like picker).
   const instOptions = useMemo(() => {
@@ -77,6 +96,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
   const refOptions = useMemo(() => {
     const opts: { label: string; title?: string; value?: string; options?: { value: string; label: string }[] }[] = [
       { value: WORKING, label: "Working tree (current)" },
+      { value: COMMITTED, label: "Committed (no draft)" },
     ];
     const branches = refsQ.data?.branches ?? [];
     const tags = refsQ.data?.tags ?? [];
@@ -85,33 +105,37 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
     return opts;
   }, [refsQ.data]);
 
-  const refLabel = (ref: string) => (ref === WORKING ? "working" : ref);
+  const refLabel = (ref: string) => (ref === WORKING ? "working" : ref === COMMITTED ? "committed" : ref);
 
   const side = (
+    label: string,
     value: string,
     ref: string,
     onInstance: (v: string) => void,
     onRef: (v: string) => void,
   ) => (
-    <Space.Compact size="small">
-      <Select
-        size="small"
-        style={{ width: 190 }}
-        value={value}
-        showSearch
-        optionFilterProp="label"
-        options={instOptions}
-        onChange={onInstance}
-      />
-      <Select
-        size="small"
-        style={{ width: 150 }}
-        value={ref}
-        options={refOptions}
-        onChange={onRef}
-        suffixIcon={<BranchesOutlined />}
-      />
-    </Space.Compact>
+    <span className="inline-flex items-center gap-1.5">
+      <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">{label}</span>
+      <Space.Compact size="small">
+        <Select
+          size="small"
+          style={{ width: 185 }}
+          value={value}
+          showSearch
+          optionFilterProp="label"
+          options={instOptions}
+          onChange={onInstance}
+        />
+        <Select
+          size="small"
+          style={{ width: 150 }}
+          value={ref}
+          options={refOptions}
+          onChange={onRef}
+          suffixIcon={<BranchesOutlined />}
+        />
+      </Space.Compact>
+    </span>
   );
 
   const leftHead = `${left} @ ${refLabel(leftRef)}`;
@@ -121,9 +145,9 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
   // status word: the outgoing side tints red, the incoming side green.
   const tint = (side: "left" | "right", c: DiffChange): React.CSSProperties => {
     if (c.status === "modified")
-      return { background: side === "left" ? "rgba(208,59,59,0.07)" : "rgba(12,163,12,0.07)" };
-    if (c.status === "added" && side === "right") return { background: "rgba(12,163,12,0.07)" };
-    if (c.status === "removed" && side === "left") return { background: "rgba(208,59,59,0.07)" };
+      return { background: side === "left" ? "var(--c-danger-bg)" : "var(--c-ok-bg)" };
+    if (c.status === "added" && side === "right") return { background: "var(--c-ok-bg)" };
+    if (c.status === "removed" && side === "left") return { background: "var(--c-danger-bg)" };
     return {};
   };
 
@@ -161,84 +185,136 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
                 <span className="mono">
                   <span style={{ textDecoration: "line-through", opacity: 0.55 }}>{String(c.left ?? "-")}</span>
                   <ArrowRightOutlined style={{ margin: "0 8px", opacity: 0.45, fontSize: 11 }} />
-                  <span style={{ color: "#389e0d" }}>{String(c.right ?? "-")}</span>
+                  <span style={{ color: "var(--c-ok)" }}>{String(c.right ?? "-")}</span>
                 </span>
               ),
           },
         ];
 
+  const summary = q.data?.summary;
+  const changedTotal = summary ? summary.modified + summary.added + summary.removed : 0;
+
   return (
-    <div style={{ padding: "8px 12px", height: "100%", display: "flex", flexDirection: "column" }}>
-      <Space wrap style={{ marginBottom: 8 }} align="center">
-        <Typography.Text strong>Compare</Typography.Text>
-        {side(left, leftRef, (v) => setCompare(v, right), setLeftRef)}
+    <div className="flex h-full min-w-0 flex-col">
+      {/* The comparison context: two sides, the view mode, and the outcome
+          summary. Stays put while switching Parameters and Files. */}
+      <div className="flex flex-wrap items-center gap-2.5 border-b border-line bg-surface px-3 py-2">
+        {side("Left", left, leftRef, (v) => setCompare(v, right), setLeftRef)}
         <SwapOutlined
           onClick={() => {
             setCompare(right, left);
             setLeftRef(rightRef);
             setRightRef(leftRef);
           }}
-          style={{ cursor: "pointer" }}
+          className="cursor-pointer text-ink-3"
+          title="Swap sides"
         />
-        {side(right, rightRef, (v) => setCompare(left, v), setRightRef)}
-        <Segmented
-          size="small"
-          value={layout}
-          options={["Inline", "Side by Side"]}
-          onChange={(v) => changeLayout(v as CompareLayout)}
-        />
-        <span>
-          <Switch size="small" checked={changesOnly} onChange={setChangesOnly} /> Changes only
-        </span>
-        <Input
-          size="small"
-          allowClear
-          prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-          placeholder="Search this diff"
-          value={q2}
-          onChange={(e) => setQ2(e.target.value)}
-          style={{ width: 160 }}
-        />
-        {q.data && (
-          <Space size={6} align="center">
-            <DiffMiniBar
-              modified={q.data.summary.modified}
-              added={q.data.summary.added}
-              removed={q.data.summary.removed}
-              unchanged={q.data.summary.unchanged}
-            />
-            {/* zero counts are noise: only name what actually happened */}
-            {q.data.summary.modified > 0 && <Tag color="orange">{q.data.summary.modified} modified</Tag>}
-            {q.data.summary.added > 0 && <Tag color="green">{q.data.summary.added} added</Tag>}
-            {q.data.summary.removed > 0 && <Tag color="red">{q.data.summary.removed} removed</Tag>}
-            {q.data.summary.modified + q.data.summary.added + q.data.summary.removed === 0 && (
-              <Tag color="default">no differences</Tag>
-            )}
-          </Space>
-        )}
-      </Space>
-      <div style={{ flex: 1, overflow: "auto" }}>
-        {sameSide ? (
-          <Empty description="Pick two different sides (a different instance or a different version)" />
-        ) : q.isLoading ? (
-          // consistent loading language: the diff-table skeleton, no spinner
-          <CompareSkeleton toolbar={false} />
-        ) : (
-          <Table<DiffChange>
-            rowKey="paramId"
+        {side("Right", right, rightRef, (v) => setCompare(left, v), setRightRef)}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          {mode === "parameters" && summary && (
+            <span className="inline-flex items-center gap-1.5">
+              <DiffMiniBar
+                modified={summary.modified}
+                added={summary.added}
+                removed={summary.removed}
+                unchanged={summary.unchanged}
+              />
+              <span className="text-xs font-semibold text-ink">
+                {changedTotal} change{changedTotal === 1 ? "" : "s"}
+              </span>
+            </span>
+          )}
+          <Segmented
             size="small"
-            dataSource={rows}
-            pagination={false}
-            // change kind reads from the row accent + cell tints, not a
-            // status word repeated down a column
-            rowClassName={(c) => (c.status === "unchanged" ? "" : `diff-row-${c.status}`)}
-            columns={[
-              { title: "Parameter", dataIndex: "name", width: 240 },
-              ...valueColumns,
+            value={mode}
+            onChange={(v) => changeMode(v as CompareMode)}
+            options={[
+              { value: "parameters", label: "Parameters" },
+              { value: "files", label: "Files" },
             ]}
           />
-        )}
+        </div>
       </div>
+
+      {sameSide ? (
+        <EmptyState
+          icon={<DiffOutlined />}
+          title="Pick two different sides"
+          hint="Compare a different instance, or the same instance at a different version."
+        />
+      ) : mode === "files" ? (
+        <CompareFiles grid={grid} left={{ instance: left, ref: leftRef }} right={{ instance: right, ref: rightRef }} />
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+            <Segmented
+              size="small"
+              value={pill}
+              onChange={(v) => setPill(v as Pill)}
+              options={[
+                { value: "changed", label: `Changed${changedTotal ? ` (${changedTotal})` : ""}` },
+                { value: "all", label: "All" },
+                { value: "modified", label: `Modified${summary?.modified ? ` (${summary.modified})` : ""}` },
+                { value: "added", label: `Added${summary?.added ? ` (${summary.added})` : ""}` },
+                { value: "removed", label: `Removed${summary?.removed ? ` (${summary.removed})` : ""}` },
+              ]}
+            />
+            <Segmented
+              size="small"
+              value={layout}
+              options={["Inline", "Side by Side"]}
+              onChange={(v) => changeLayout(v as CompareLayout)}
+            />
+            <div className="ml-auto">
+              <Input
+                size="small"
+                allowClear
+                prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+                placeholder="Search this diff"
+                value={q2}
+                onChange={(e) => setQ2(e.target.value)}
+                style={{ width: 180 }}
+              />
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+            {q.isLoading ? (
+              <LoadingStage stage="Computing configuration differences…" skeleton={<CompareSkeleton toolbar={false} />} />
+            ) : rows.length === 0 ? (
+              <EmptyState
+                icon={<DiffOutlined />}
+                title={pill === "changed" ? "No differences between these sides." : "Nothing matches."}
+                hint={
+                  pill === "changed" ? "Every parameter resolves to the same value on both sides." : undefined
+                }
+              />
+            ) : (
+              <Table<DiffChange>
+                rowKey="paramId"
+                size="small"
+                dataSource={rows}
+                pagination={false}
+                rowClassName={(c) => (c.status === "unchanged" ? "" : `diff-row-${c.status}`)}
+                columns={[
+                  {
+                    title: "Parameter",
+                    dataIndex: "name",
+                    width: 240,
+                    render: (v: string) => <span className="mono">{v}</span>,
+                  },
+                  ...valueColumns,
+                  {
+                    title: "Change",
+                    key: "change",
+                    width: 110,
+                    render: (_v, c) => <ChangeChip kind={c.status} />,
+                  },
+                ]}
+              />
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { Steps, Tag, Tooltip } from "antd";
 import { EditOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
 import type { ChangeState } from "../api";
+import { StatusPill, type PillTone } from "./ui";
 
 // CrSteps renders a change request's lifecycle like package tracking:
 // Draft → Under Review → Published. Each step explains what is happening on
@@ -39,6 +40,29 @@ export function StateTag({ state }: { state: ChangeState }) {
   return (
     <Tooltip title={m.explain}>
       <Tag color={m.color}>{m.label}</Tag>
+    </Tooltip>
+  );
+}
+
+// StatePill is the design-layer chip for the same lifecycle (the reference's
+// "Pending review" pill); one mapping so state colors never diverge.
+const stateTone: Record<ChangeState, { tone: PillTone; label: string }> = {
+  draft: { tone: "neutral", label: "Draft" },
+  under_review: { tone: "pending", label: "Pending review" },
+  approved: { tone: "review", label: "Approved" },
+  published: { tone: "ok", label: "Published" },
+  rejected: { tone: "danger", label: "Rejected" },
+};
+
+export function StatePill({ state, size = "md" }: { state: ChangeState; size?: "sm" | "md" }) {
+  const m = stateTone[state];
+  return (
+    <Tooltip title={stateMeta[state].explain}>
+      <span className="inline-flex">
+        <StatusPill tone={m.tone} size={size}>
+          {m.label}
+        </StatusPill>
+      </span>
     </Tooltip>
   );
 }

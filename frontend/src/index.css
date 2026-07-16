@@ -590,6 +590,11 @@ body {
   white-space: nowrap;
 }
 
+/* Selected row highlight for the approvals queue table. */
+.cr-table .ant-table-row.row-selected > td {
+  background: var(--brand-soft) !important;
+}
+
 /* Source Control change rows (VS Code-style hover highlight). */
 .scm-change-row:hover {
   background: rgba(128, 128, 128, 0.1);

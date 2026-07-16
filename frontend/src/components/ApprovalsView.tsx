@@ -1,14 +1,13 @@
 import {
-  Badge,
+  Avatar,
   Button,
-  Card,
-  Empty,
+  Input,
   List,
   Popconfirm,
-  Space,
-  Statistic,
-  Tag,
-  Typography,
+  Select,
+  Table,
+  Tabs,
+  Tooltip,
   App as AntApp,
 } from "antd";
 import {
@@ -17,94 +16,156 @@ import {
   CloseCircleOutlined,
   LinkOutlined,
   BranchesOutlined,
-  InboxOutlined,
-  HistoryOutlined,
-  RocketOutlined,
-  StopOutlined,
+  SendOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeRequest } from "../api";
+import { api, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
-import CrSteps, { StateTag } from "./CrSteps";
+import CrSteps, { StatePill } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
 import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
+import { SectionCard, EmptyState, MonoChip } from "./ui";
 
-// ApprovalsView is the approver's workspace: the review pipeline at a glance
-// (stat strip), a queue of everything waiting on the left, and the selected
-// change request in full on the right — before→after values, lifecycle, and
-// one-click decisions. The same approval can always be done on GitHub via
-// the pull request link. When nothing is waiting, the page shows the recent
-// decision history instead of going blank.
+// ApprovalsView is the review workspace: state tabs over a compact queue
+// table, and the selected change request in full underneath: its changes,
+// details and activity, with the discussion (comments) and reviewers beside
+// them, and the decision at the bottom. The same approval can always be done
+// on GitHub via the pull request link.
 
-function StatTile({
-  title,
-  value,
-  accent,
-  icon,
-  active,
-  onClick,
-}: {
-  title: string;
-  value: number;
-  accent: string;
-  icon: React.ReactNode;
-  active?: boolean;
-  onClick?: () => void;
-}) {
+type StateFilter = "waiting" | "approved" | "published" | "rejected";
+
+const FILTERS: { key: StateFilter; label: string; states: ChangeState[] }[] = [
+  { key: "waiting", label: "Waiting for review", states: ["under_review", "approved"] },
+  { key: "approved", label: "Approved", states: ["approved"] },
+  { key: "published", label: "Published", states: ["published"] },
+  { key: "rejected", label: "Rejected", states: ["rejected"] },
+];
+
+// The lifecycle events we can honestly reconstruct for one change request:
+// creation, each comment, and its latest state transition.
+function crActivity(cr: ChangeRequest): { at: string; actor: string; text: string }[] {
+  const out = [{ at: cr.createdAt, actor: cr.author, text: "created the draft" }];
+  for (const c of cr.comments ?? []) out.push({ at: c.createdAt, actor: c.author, text: `commented: "${c.body}"` });
+  if (cr.state !== "draft" && cr.updatedAt !== cr.createdAt) {
+    const what: Record<string, string> = {
+      under_review: "submitted it for review",
+      approved: "approved it",
+      published: "published it",
+      rejected: "rejected it",
+    };
+    out.push({ at: cr.updatedAt, actor: cr.author, text: what[cr.state] ?? cr.state });
+  }
+  return out.sort((a, b) => (a.at < b.at ? -1 : 1));
+}
+
+// CommentsPanel: the in-app discussion, plus the PR link for the Git-native
+// version of the same conversation.
+function CommentsPanel({ cr }: { cr: ChangeRequest }) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const [body, setBody] = useState("");
+  const add = useMutation({
+    mutationFn: () => api.addComment(cr.id, body.trim(), "demo-user"),
+    onSuccess: () => {
+      setBody("");
+      qc.invalidateQueries({ queryKey: ["changes"] });
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+  const comments = cr.comments ?? [];
   return (
-    <Card
-      size="small"
-      hoverable={!!onClick}
-      onClick={onClick}
-      className="stat-accent"
-      style={{
-        "--accent": accent,
-        borderColor: active ? accent : undefined,
-      } as React.CSSProperties}
-    >
-      <Statistic
-        title={title}
-        value={value}
-        prefix={<span style={{ color: accent }}>{icon}</span>}
-        valueStyle={{ fontSize: 22, color: value ? accent : undefined }}
-      />
-    </Card>
+    <div className="flex flex-col gap-2">
+      <div className="text-[13px] font-semibold text-ink">Comments</div>
+      {comments.length === 0 ? (
+        <div className="text-xs text-ink-3">No comments yet.</div>
+      ) : (
+        <div className="flex max-h-56 flex-col gap-2 overflow-auto">
+          {comments.map((c) => (
+            <div key={c.id} className="rounded-card bg-surface-2 p-2 shadow-neu-inset">
+              <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
+                <UserOutlined /> <b className="text-ink-2">{c.author || "anonymous"}</b> · {relTime(c.createdAt)}
+              </div>
+              <div className="mt-0.5 text-xs whitespace-pre-wrap text-ink">{c.body}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-1.5">
+        <Input
+          size="small"
+          placeholder="Add a comment…"
+          value={body}
+          onChange={(e) => setBody(e.target.value)}
+          onPressEnter={() => body.trim() && add.mutate()}
+        />
+        <Button
+          size="small"
+          type="primary"
+          icon={<SendOutlined />}
+          disabled={!body.trim()}
+          loading={add.isPending}
+          onClick={() => add.mutate()}
+          aria-label="Send comment"
+        />
+      </div>
+      {cr.prUrl && (
+        <a href={cr.prUrl} target="_blank" rel="noreferrer" className="text-xs">
+          <LinkOutlined /> Discussion also lives on the pull request
+        </a>
+      )}
+    </div>
   );
 }
 
-// One entry in the review queue on the left.
-function QueueItem({
-  cr,
-  selected,
-  onClick,
-}: {
-  cr: ChangeRequest;
-  selected: boolean;
-  onClick: () => void;
-}) {
+// ReviewersPanel: who was asked to look. Assignment is informational; the
+// approver role still gates publishing.
+function ReviewersPanel({ cr, repoId }: { cr: ChangeRequest; repoId: string | null }) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
+  const membersQ = useQuery({
+    queryKey: ["members", repoId],
+    queryFn: () => api.members(repoId!),
+    enabled: !!repoId && !!meQ.data?.enabled,
+  });
+  const set = useMutation({
+    mutationFn: (logins: string[]) => api.setReviewers(cr.id, logins),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["changes"] }),
+    onError: (e: Error) => message.error(e.message),
+  });
+  const known = (membersQ.data?.users ?? []).map((u) => ({ value: u.login, label: u.name || u.login }));
+  const me = meQ.data?.user?.login;
   return (
-    <div
-      onClick={onClick}
-      className="card-clickable"
-      style={{
-        border: `1px solid ${selected ? "var(--c-review)" : "rgba(127,137,160,0.25)"}`,
-        background: selected ? "rgba(47,107,255,0.06)" : undefined,
-        borderRadius: 10,
-        padding: "10px 12px",
-        cursor: "pointer",
-      }}
-    >
-      <Space size={6} wrap>
-        <StateTag state={cr.state} />
-        <Typography.Text strong style={{ fontSize: 13 }}>
-          #{cr.id} {cr.title}
-        </Typography.Text>
-      </Space>
-      <div style={{ marginTop: 4, fontSize: 12, opacity: 0.65 }}>
-        {cr.author} · {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"} ·{" "}
-        {relTime(cr.updatedAt)}
+    <div className="flex flex-col gap-2">
+      <div className="text-[13px] font-semibold text-ink">Reviewers</div>
+      <div className="text-[11px] text-ink-3">Assign reviewers</div>
+      <Select
+        size="small"
+        mode={known.length ? "multiple" : "tags"}
+        allowClear
+        placeholder="Search users…"
+        value={cr.reviewers ?? []}
+        options={known}
+        onChange={(v) => set.mutate(v)}
+        loading={set.isPending}
+        style={{ width: "100%" }}
+      />
+      <div className="flex flex-col gap-1.5">
+        {(cr.reviewers ?? []).map((login) => (
+          <div key={login} className="flex items-center gap-2 text-xs">
+            <Avatar size={20} style={{ background: "var(--brand)", fontSize: 10 }}>
+              {login.slice(0, 2).toUpperCase()}
+            </Avatar>
+            <span className="text-ink">
+              {login}
+              {login === me && " (You)"}
+            </span>
+            <span className="ml-auto text-[11px] text-ink-3">Reviewer</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -113,36 +174,38 @@ function QueueItem({
 export default function ApprovalsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const { reviewCrId, setReviewCr } = useUI();
+  const { reviewCrId, setReviewCr, repoId, setSection } = useUI();
   const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const [filter, setFilter] = useState<StateFilter>("waiting");
   const [selId, setSelId] = useState<number | null>(null);
 
-  // Arriving from Release history's "Review" action: select that change
-  // request in the queue, then clear the one-shot handoff.
+  const all = useMemo(() => q.data ?? [], [q.data]);
+
+  // Arriving from Releases' "Review" action: select that change request and
+  // the tab it lives on, then clear the one-shot handoff.
   useEffect(() => {
     if (reviewCrId != null) {
       setSelId(reviewCrId);
+      const cr = all.find((c) => c.id === reviewCrId);
+      if (cr) setFilter(cr.state === "published" ? "published" : cr.state === "rejected" ? "rejected" : "waiting");
       setReviewCr(null);
     }
-  }, [reviewCrId, setReviewCr]);
+  }, [reviewCrId, setReviewCr, all]);
 
-  const all = q.data ?? [];
-  const waiting = all.filter((c) => c.state === "under_review" || c.state === "approved");
-  const decided = all
-    .filter((c) => c.state === "published" || c.state === "rejected")
+  const counts = Object.fromEntries(
+    FILTERS.map((f) => [f.key, all.filter((c) => f.states.includes(c.state)).length]),
+  ) as Record<StateFilter, number>;
+  const shown = all
+    .filter((c) => FILTERS.find((f) => f.key === filter)!.states.includes(c.state))
     .sort((a, b) => (b.updatedAt ?? "").localeCompare(a.updatedAt ?? ""));
-  const counts = {
-    review: all.filter((c) => c.state === "under_review").length,
-    approved: all.filter((c) => c.state === "approved").length,
-    published: all.filter((c) => c.state === "published").length,
-    rejected: all.filter((c) => c.state === "rejected").length,
-  };
-  const selected = waiting.find((c) => c.id === selId) ?? waiting[0];
+  const selected = shown.find((c) => c.id === selId) ?? shown[0];
+  const hasDraft = (draftQ.data?.draft?.items?.length ?? 0) > 0;
 
   const merge = useMutation({
     mutationFn: (id: number) => api.mergeChange(id),
     onSuccess: (cr) => {
-      message.success(`Change request #${cr.id} is now live on ${cr.targetBranch}`);
+      message.success(`Change request CR-${cr.id} is now live on ${cr.targetBranch}`);
       qc.invalidateQueries();
     },
     onError: (e: Error) => message.error(e.message),
@@ -150,7 +213,7 @@ export default function ApprovalsView() {
   const reject = useMutation({
     mutationFn: (id: number) => api.rejectChange(id),
     onSuccess: (cr) => {
-      message.info(`Change request #${cr.id} was rejected`);
+      message.info(`Change request CR-${cr.id} was rejected`);
       qc.invalidateQueries();
     },
     onError: (e: Error) => message.error(e.message),
@@ -160,154 +223,204 @@ export default function ApprovalsView() {
   // "all caught up" state before the data has arrived.
   if (q.isLoading) return <ApprovalsSkeleton />;
 
-  const decisionsList = (
-    <List
-      size="small"
-      dataSource={decided.slice(0, 10)}
-      locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No decisions yet." /> }}
-      renderItem={(cr) => (
-        <List.Item style={{ paddingInline: 0 }}>
-          <Space direction="vertical" size={0} style={{ width: "100%" }}>
-            <Space size={6} wrap>
-              <StateTag state={cr.state} />
-              <Typography.Text strong style={{ fontSize: 13 }}>
-                #{cr.id} {cr.title}
-              </Typography.Text>
-            </Space>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {cr.author} · {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"} · {relTime(cr.updatedAt)}
-            </Typography.Text>
-          </Space>
-        </List.Item>
-      )}
-    />
-  );
+  const decidable = selected && (selected.state === "under_review" || selected.state === "approved");
 
   return (
-    <div style={{ padding: "16px 24px", height: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          Approvals
-        </Typography.Title>
-        <Typography.Text type="secondary">
-          Changes waiting for your decision. Approving publishes them to Git; reviewing on GitHub
-          via the pull request works just as well.
-        </Typography.Text>
-      </div>
-
-      {/* The review pipeline at a glance. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
-        <StatTile title="Waiting for review" value={counts.review} accent="var(--c-review)" icon={<InboxOutlined />} />
-        <StatTile title="Approved, not yet published" value={counts.approved} accent="#08979c" icon={<CheckCircleOutlined />} />
-        <StatTile title="Published" value={counts.published} accent="var(--c-ok)" icon={<RocketOutlined />} />
-        <StatTile title="Rejected" value={counts.rejected} accent="var(--c-danger)" icon={<StopOutlined />} />
-      </div>
-
-      {waiting.length === 0 ? (
-        // Nothing pending: a calm all-clear plus the decision history, so the
-        // page stays informative instead of a lone smiley in white space.
-        <div style={{ display: "flex", gap: 14, alignItems: "stretch", flexWrap: "wrap", flex: 1 }}>
-          <Card style={{ flex: "1 1 340px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ textAlign: "center", padding: "28px 16px" }}>
-              <CheckCircleFilled style={{ fontSize: 52, color: "var(--c-ok)" }} />
-              <Typography.Title level={4} style={{ marginTop: 16, marginBottom: 6 }}>
-                All caught up
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ maxWidth: 380, margin: "0 auto" }}>
-                Nothing is waiting for approval. When someone submits a change request it appears
-                here immediately — and in the badge on the Approvals tab.
-              </Typography.Paragraph>
-            </div>
-          </Card>
-          <Card
-            size="small"
-            title={
-              <Space size={8}>
-                <HistoryOutlined /> Recent decisions
-              </Space>
-            }
-            style={{ flex: "1 1 380px" }}
-          >
-            {decisionsList}
-          </Card>
-        </div>
-      ) : (
-        <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-          {/* The queue: everything waiting, most recent first. */}
-          <div style={{ flex: "0 0 330px", display: "flex", flexDirection: "column", gap: 10, minWidth: 0 }}>
-            <Typography.Text type="secondary" style={{ fontSize: 12, textTransform: "uppercase", letterSpacing: 0.4 }}>
-              <Badge count={waiting.length} size="small" color="var(--c-review)" offset={[10, 0]}>
-                Review queue
-              </Badge>
-            </Typography.Text>
-            {waiting.map((cr) => (
-              <QueueItem key={cr.id} cr={cr} selected={cr.id === selected?.id} onClick={() => setSelId(cr.id)} />
-            ))}
-            {decided.length > 0 && (
-              <Card size="small" title={<Space size={8}><HistoryOutlined /> Recent decisions</Space>} style={{ marginTop: 8 }}>
-                {decisionsList}
-              </Card>
-            )}
+    <div className="flex h-full flex-col gap-4 overflow-auto bg-canvas px-6 py-5">
+      <div className="flex flex-wrap items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-xl font-semibold text-ink">Approvals</div>
+          <div className="text-[13px] text-ink-2">
+            Review and approve change requests with full context. Approving publishes to Git.
           </div>
+        </div>
+        {hasDraft && (
+          <Button type="primary" onClick={() => setSection("config")}>
+            Create change request
+          </Button>
+        )}
+      </div>
 
-          {/* The selected change request, in full. */}
+      {/* State tabs with counts (the reference's filter row). */}
+      <div className="app-tabs" style={{ padding: 0, background: "transparent" }}>
+        {FILTERS.map((f) => (
+          <button
+            key={f.key}
+            className={`app-tab${filter === f.key ? " app-tab-active" : ""}`}
+            onClick={() => {
+              setFilter(f.key);
+              setSelId(null);
+            }}
+          >
+            {f.label}
+            {counts[f.key] > 0 && <span className="text-[11px] text-ink-3">({counts[f.key]})</span>}
+          </button>
+        ))}
+      </div>
+
+      {shown.length === 0 ? (
+        <SectionCard>
+          <EmptyState
+            icon={<CheckCircleFilled />}
+            title={filter === "waiting" ? "All caught up" : "Nothing here yet"}
+            hint={
+              filter === "waiting"
+                ? "Nothing is waiting for approval. When someone submits a change request it appears here immediately."
+                : "Change requests in this state will appear here."
+            }
+          />
+        </SectionCard>
+      ) : (
+        <>
+          <SectionCard padded={false}>
+            <Table<ChangeRequest>
+              className="cr-table"
+              rowKey="id"
+              size="small"
+              dataSource={shown}
+              pagination={false}
+              onRow={(cr) => ({
+                onClick: () => setSelId(cr.id),
+                style: { cursor: "pointer" },
+              })}
+              rowClassName={(cr) => (cr.id === selected?.id ? "row-selected" : "")}
+              columns={[
+                {
+                  title: "Change request",
+                  dataIndex: "id",
+                  width: 110,
+                  render: (id) => <span className="mono font-semibold text-brand">CR-{id}</span>,
+                },
+                { title: "Title", dataIndex: "title", ellipsis: true },
+                { title: "Created by", dataIndex: "author", width: 140, ellipsis: true },
+                { title: "Changes", width: 90, render: (_v, cr) => cr.items?.length ?? 0 },
+                {
+                  title: "Target",
+                  dataIndex: "targetBranch",
+                  width: 140,
+                  render: (v) => <span className="mono text-xs">{v}</span>,
+                },
+                {
+                  title: "Status",
+                  dataIndex: "state",
+                  width: 150,
+                  render: (s: ChangeState) => <StatePill state={s} size="sm" />,
+                },
+                { title: "Created", width: 100, render: (_v, cr) => relTime(cr.createdAt) },
+              ]}
+            />
+          </SectionCard>
+
           {selected && (
-            <Card
-              style={{ flex: 1, minWidth: 0 }}
-              title={
-                <Space wrap>
-                  <b>#{selected.id}</b> {selected.title}
-                  <Typography.Text type="secondary" style={{ fontWeight: 400, fontSize: 12 }}>
-                    by {selected.author} · {relTime(selected.updatedAt)}
-                  </Typography.Text>
-                </Space>
-              }
-              extra={
-                <Space size={4}>
+            <SectionCard>
+              {/* Identity row of the selected change request. */}
+              <div className="flex flex-wrap items-center gap-2.5 pt-1">
+                <span className="mono text-sm font-semibold text-brand">CR-{selected.id}</span>
+                <span className="text-sm font-semibold text-ink">{selected.title}</span>
+                <StatePill state={selected.state} size="sm" />
+                <span className="text-xs text-ink-3">
+                  Created by {selected.author} · {relTime(selected.createdAt)} · Target:{" "}
+                  <span className="mono">{selected.targetBranch}</span>
+                </span>
+                <div className="ml-auto flex items-center gap-2">
                   {selected.branch && (
-                    <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
-                      {selected.branch}
-                    </Tag>
+                    <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{selected.branch}</MonoChip>
                   )}
                   {selected.prUrl && (
-                    <a href={selected.prUrl} target="_blank" rel="noreferrer">
-                      <Tag icon={<LinkOutlined />} color="geekblue">
-                        Review on GitHub
-                      </Tag>
+                    <a href={selected.prUrl} target="_blank" rel="noreferrer" className="text-xs">
+                      <LinkOutlined /> PR{selected.prNumber ? ` #${selected.prNumber}` : ""}
                     </a>
                   )}
-                </Space>
-              }
-            >
-              <CrSteps state={selected.state} />
-              {selected.description && (
-                <Typography.Paragraph style={{ margin: "12px 0 0" }} type="secondary">
-                  “{selected.description}”
-                </Typography.Paragraph>
-              )}
-              <div style={{ margin: "14px 0" }}>
-                <ItemsTable items={selected.items} />
+                </div>
               </div>
-              <Space>
-                <Popconfirm
-                  title={`Publish these changes to ${selected.targetBranch}?`}
-                  description="They will become the live configuration."
-                  okText="Publish"
-                  onConfirm={() => merge.mutate(selected.id)}
-                >
-                  <Button type="primary" size="large" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                    Approve &amp; publish
-                  </Button>
-                </Popconfirm>
-                <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>
-                  <Button danger size="large" icon={<CloseCircleOutlined />} loading={reject.isPending}>
-                    Reject
-                  </Button>
-                </Popconfirm>
-              </Space>
-            </Card>
+
+              <div className="mt-2 flex flex-wrap gap-5">
+                {/* Changes / Details / Activity */}
+                <div className="min-w-[340px] flex-1">
+                  <Tabs
+                    size="small"
+                    items={[
+                      {
+                        key: "changes",
+                        label: `Changes (${selected.items?.length ?? 0})`,
+                        children: <ItemsTable items={selected.items} />,
+                      },
+                      {
+                        key: "details",
+                        label: "Details",
+                        children: (
+                          <div className="flex flex-col gap-3">
+                            {selected.description && (
+                              <div className="text-[13px] text-ink-2">“{selected.description}”</div>
+                            )}
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              {selected.category && <MonoChip>{selected.category}</MonoChip>}
+                              {selected.reference && <MonoChip>{selected.reference}</MonoChip>}
+                              {selected.baseSha && <MonoChip title="Base commit">base {selected.baseSha.slice(0, 7)}</MonoChip>}
+                              {selected.commitSha && (
+                                <MonoChip title="Change commit">commit {selected.commitSha.slice(0, 7)}</MonoChip>
+                              )}
+                            </div>
+                            <CrSteps state={selected.state} />
+                          </div>
+                        ),
+                      },
+                      {
+                        key: "activity",
+                        label: "Activity",
+                        children: (
+                          <List
+                            size="small"
+                            dataSource={crActivity(selected)}
+                            renderItem={(a) => (
+                              <List.Item style={{ paddingInline: 0 }}>
+                                <div className="flex w-full gap-2">
+                                  <UserOutlined style={{ color: "var(--text-3)", marginTop: 3 }} />
+                                  <div className="min-w-0 flex-1 text-xs">
+                                    <b>{a.actor || "anonymous"}</b> {a.text}
+                                  </div>
+                                  <span className="shrink-0 text-[11px] text-ink-3">{relTime(a.at)}</span>
+                                </div>
+                              </List.Item>
+                            )}
+                          />
+                        ),
+                      },
+                    ]}
+                  />
+                </div>
+
+                {/* Discussion and reviewers beside the diff, like the reference. */}
+                <div className="flex w-[260px] shrink-0 flex-col gap-4 border-l border-line pl-4">
+                  <CommentsPanel cr={selected} />
+                  <ReviewersPanel cr={selected} repoId={repoId} />
+                </div>
+              </div>
+
+              {decidable && (
+                <div className="mt-3 flex justify-end gap-2 border-t border-line pt-3">
+                  <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>
+                    <Button danger icon={<CloseCircleOutlined />} loading={reject.isPending}>
+                      Reject
+                    </Button>
+                  </Popconfirm>
+                  <Popconfirm
+                    title={`Publish these changes to ${selected.targetBranch}?`}
+                    description="They will become the live configuration."
+                    okText="Publish"
+                    onConfirm={() => merge.mutate(selected.id)}
+                  >
+                    <Tooltip title="Approving publishes (merges) to the target branch">
+                      <Button type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
+                        Approve
+                      </Button>
+                    </Tooltip>
+                  </Popconfirm>
+                </div>
+              )}
+            </SectionCard>
           )}
-        </div>
+        </>
       )}
     </div>
   );

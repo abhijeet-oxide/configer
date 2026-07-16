@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Button } from "antd";
 
 // EmptyState replaces the bare AntD Empty in recomposed flows: an icon in a
-// soft circle, a one-line title, a one-line hint and an optional action.
+// soft pressed well, a one-line title, a one-line hint and an optional action.
 export default function EmptyState({
   icon,
   title,
@@ -19,39 +19,16 @@ export default function EmptyState({
   children?: ReactNode;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: "var(--sp-2)",
-        padding: "var(--sp-8) var(--sp-4)",
-        textAlign: "center",
-      }}
-    >
+    <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
       {icon && (
-        <div
-          style={{
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            background: "var(--brand-soft)",
-            color: "var(--brand)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 20,
-            marginBottom: "var(--sp-1)",
-          }}
-        >
+        <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-brand-soft text-xl text-brand shadow-neu-inset">
           {icon}
         </div>
       )}
-      <div style={{ fontSize: "var(--fs-14)", fontWeight: 600, color: "var(--text)" }}>{title}</div>
-      {hint && <div style={{ fontSize: "var(--fs-12)", color: "var(--text-2)", maxWidth: 420 }}>{hint}</div>}
+      <div className="text-sm font-semibold text-ink">{title}</div>
+      {hint && <div className="max-w-[420px] text-xs text-ink-2">{hint}</div>}
       {actionLabel && onAction && (
-        <Button type="primary" size="small" onClick={onAction} style={{ marginTop: "var(--sp-2)" }}>
+        <Button type="primary" size="small" onClick={onAction} className="mt-2">
           {actionLabel}
         </Button>
       )}

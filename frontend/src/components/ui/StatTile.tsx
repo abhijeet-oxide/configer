@@ -1,8 +1,8 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// StatTile is the reference's stat card: a quiet label, a strong value, an
-// optional sub-line and an optional leading icon. Clickable tiles lift on
-// hover (via .card-clickable) and navigate to the place the number came from.
+// StatTile is the reference's stat card in soft-UI: a quiet label, a strong
+// value, an optional sub-line and leading icon, resting on a neumorphic
+// surface. Clickable tiles lift on hover and go to where the number came from.
 export default function StatTile({
   label,
   value,
@@ -20,51 +20,22 @@ export default function StatTile({
 }) {
   return (
     <div
-      className={onClick ? "card-clickable" : undefined}
+      className={`flex min-w-0 items-center gap-3 rounded-card bg-surface px-4 py-3 shadow-neu ${
+        onClick ? "card-clickable cursor-pointer" : ""
+      }`}
       onClick={onClick}
       role={onClick ? "button" : undefined}
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-lg)",
-        boxShadow: "var(--el-1)",
-        padding: "var(--sp-3) var(--sp-4)",
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--sp-3)",
-        minWidth: 0,
-        cursor: onClick ? "pointer" : undefined,
-        ...style,
-      }}
+      style={style}
     >
       {icon && (
-        <div
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: "var(--r-md)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
-            fontSize: 16,
-          }}
-        >
+        <div className="flex size-[34px] shrink-0 items-center justify-center rounded-md text-base">
           {icon}
         </div>
       )}
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: "var(--fs-12)", color: "var(--text-2)", marginBottom: 2, whiteSpace: "nowrap" }}>
-          {label}
-        </div>
-        <div style={{ fontSize: "var(--fs-20)", fontWeight: 650, color: "var(--text)", lineHeight: 1.2 }}>
-          {value}
-        </div>
-        {sub && (
-          <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: 2, whiteSpace: "nowrap" }}>
-            {sub}
-          </div>
-        )}
+      <div className="min-w-0">
+        <div className="mb-0.5 whitespace-nowrap text-xs text-ink-2">{label}</div>
+        <div className="text-xl leading-tight font-semibold text-ink">{value}</div>
+        {sub && <div className="mt-0.5 whitespace-nowrap text-[11px] text-ink-3">{sub}</div>}
       </div>
     </div>
   );

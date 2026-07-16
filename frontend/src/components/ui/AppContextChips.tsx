@@ -38,21 +38,8 @@ export function MonoChip({ icon, children, title }: { icon?: React.ReactNode; ch
   return (
     <span
       title={title}
-      className="mono"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        padding: "1px 8px",
-        height: 22,
-        borderRadius: "var(--r-pill)",
-        border: "1px solid var(--border)",
-        background: "var(--surface-2)",
-        color: "var(--text-2)",
-        fontSize: "var(--fs-11)",
-        whiteSpace: "nowrap",
-        lineHeight: 1,
-      }}
+      className="mono inline-flex h-[22px] items-center gap-1 rounded-full border border-line bg-surface-2 px-2 leading-none whitespace-nowrap text-ink-2"
+      style={{ fontSize: "var(--fs-11)" }}
     >
       {icon}
       {children}
@@ -78,7 +65,7 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
   if (!repoId) return null;
 
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0 }}>
+    <span className="inline-flex min-w-0 items-center gap-2">
       {st?.branch && (
         <MonoChip icon={<BranchesOutlined style={{ fontSize: 11 }} />} title={`Branch ${st.branch}`}>
           {st.branch}

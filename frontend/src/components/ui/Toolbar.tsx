@@ -15,23 +15,13 @@ export default function Toolbar({
 }) {
   return (
     <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "var(--sp-2)",
-        minHeight: 40,
-        padding: "0 var(--sp-3)",
-        borderBottom: border ? "1px solid var(--border)" : undefined,
-        background: "var(--surface)",
-        flexShrink: 0,
-        minWidth: 0,
-        ...style,
-      }}
+      className={`flex min-h-10 min-w-0 shrink-0 items-center gap-2 bg-surface px-3 ${
+        border ? "border-b border-line" : ""
+      }`}
+      style={style}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", minWidth: 0, flex: 1 }}>{left}</div>
-      {right && (
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexShrink: 0 }}>{right}</div>
-      )}
+      <div className="flex min-w-0 flex-1 items-center gap-2">{left}</div>
+      {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
     </div>
   );
 }

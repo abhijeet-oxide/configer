@@ -96,7 +96,7 @@ export default function WorkspaceView() {
   const detailsRepo = repos.find((r) => r.id === detailsId) ?? null;
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "var(--sp-5) var(--sp-6)", background: "var(--canvas)" }}>
+    <div className="h-full overflow-auto bg-canvas px-6 py-5">
       <PageHeader
         title="Applications"
         description="Every configuration you manage, straight from Git. Click a card to open it."
@@ -122,15 +122,10 @@ export default function WorkspaceView() {
           />
         </SectionCard>
       ) : (
-        <div style={{ display: "flex", gap: "var(--sp-5)", alignItems: "flex-start", flexWrap: "wrap" }}>
+        <div className="flex flex-wrap items-start gap-5">
           <div
-            style={{
-              flex: "1 1 620px",
-              minWidth: 0,
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
-              gap: 14,
-            }}
+            className="grid min-w-0 gap-3.5"
+            style={{ flex: "1 1 620px", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}
           >
             {repos.map((r) => (
               <AppCard
@@ -147,26 +142,13 @@ export default function WorkspaceView() {
               />
             ))}
             <div
-              className="card-clickable"
+              className="card-clickable flex min-h-[170px] cursor-pointer flex-col items-center justify-center rounded-card border border-dashed border-line-strong bg-surface/60 text-center text-ink-2"
               onClick={() => setWizardOpen(true)}
               role="button"
-              style={{
-                border: "1px dashed var(--border-strong)",
-                borderRadius: "var(--r-lg)",
-                minHeight: 170,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                textAlign: "center",
-                cursor: "pointer",
-                background: "var(--surface)",
-                color: "var(--text-2)",
-              }}
             >
               <PlusOutlined style={{ fontSize: 26, color: "var(--brand)" }} />
-              <div style={{ marginTop: 8, fontWeight: 500, color: "var(--brand)" }}>New application</div>
-              <div style={{ fontSize: 12, color: "var(--text-3)" }}>From a Git repository or a local folder</div>
+              <div className="mt-2 font-medium text-brand">New application</div>
+              <div className="text-xs text-ink-3">From a Git repository or a local folder</div>
             </div>
           </div>
 
@@ -174,7 +156,7 @@ export default function WorkspaceView() {
               When nothing does, it simply isn't there. */}
           {needsAttention.length > 0 && (
             <SectionCard title="Needs attention" style={{ flex: "0 1 340px", minWidth: 280 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {needsAttention.map(({ r, issues }) => (
                   <AttentionCard
                     key={r.id}

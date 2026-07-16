@@ -254,13 +254,13 @@ body {
   box-shadow: inset 0 3px 0 rgba(6, 118, 71, 0.6);
 }
 
-/* cards lift slightly on hover when clickable */
+/* cards lift slightly on hover when clickable (soft-UI: deeper dual shadow) */
 .card-clickable {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
 }
 .card-clickable:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.1);
+  box-shadow: var(--el-2);
 }
 
 /* gradient accent strip on dashboard stat cards */

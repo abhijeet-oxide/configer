@@ -7,24 +7,12 @@ import { LoadingOutlined } from "@ant-design/icons";
 // Never fakes progress; the stage text changes only when the work does.
 export default function LoadingStage({ stage, skeleton }: { stage: string; skeleton?: ReactNode }) {
   return (
-    <div style={{ position: "relative", height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "var(--sp-2)",
-          padding: "var(--sp-2) var(--sp-4)",
-          fontSize: "var(--fs-12)",
-          color: "var(--text-2)",
-          flexShrink: 0,
-        }}
-        role="status"
-        aria-live="polite"
-      >
+    <div className="relative flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center gap-2 px-4 py-2 text-xs text-ink-2" role="status" aria-live="polite">
         <LoadingOutlined style={{ color: "var(--brand)" }} />
         {stage}
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>{skeleton}</div>
+      <div className="min-h-0 flex-1">{skeleton}</div>
     </div>
   );
 }

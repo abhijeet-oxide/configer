@@ -38,50 +38,28 @@ export function SyncPill({ r }: { r: RepoSummary }) {
 export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void }) {
   return (
     <div
-      className="card-clickable"
+      className="card-clickable flex min-w-0 cursor-pointer flex-col gap-2 rounded-card bg-surface p-4 shadow-neu"
       onClick={onOpen}
       role="button"
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-lg)",
-        boxShadow: "var(--el-1)",
-        padding: "var(--sp-4)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--sp-2)",
-        cursor: "pointer",
-        minWidth: 0,
-      }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-        <span
-          style={{
-            fontSize: "var(--fs-14)",
-            fontWeight: 600,
-            color: "var(--brand)",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-            flex: 1,
-          }}
-        >
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex-1 overflow-hidden text-sm font-semibold text-ellipsis whitespace-nowrap text-brand">
           {r.name}
         </span>
-        <span style={{ color: "var(--text-3)", flexShrink: 0 }}>
+        <span className="shrink-0 text-ink-3">
           {r.local ? <HddOutlined /> : <GithubOutlined />}
         </span>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+      <div className="flex flex-wrap items-center gap-2">
         {r.branch && <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{r.branch}</MonoChip>}
         <SyncPill r={r} />
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: "var(--fs-12)" }}>
-        <span style={{ color: "var(--c-review)", display: "inline-flex", alignItems: "center", gap: 6 }}>
+      <div className="flex flex-col gap-1 text-xs">
+        <span className="inline-flex items-center gap-1.5 text-review">
           <ClusterOutlined style={{ fontSize: 11 }} />
           {r.instances} instance{r.instances === 1 ? "" : "s"}
         </span>
-        <span style={{ display: "inline-flex", gap: 12 }}>
+        <span className="inline-flex gap-3">
           <span style={{ color: r.openChanges > 0 ? "var(--c-pending)" : "var(--text-3)" }}>
             ● {r.openChanges} change{r.openChanges === 1 ? "" : "s"}
           </span>
@@ -90,7 +68,7 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
           </span>
         </span>
       </div>
-      <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: "auto" }}>
+      <div className="mt-auto text-[11px] text-ink-3">
         {r.addedAt ? `Added ${relTime(r.addedAt)}` : r.project && r.project !== r.name ? r.project : " "}
       </div>
     </div>
@@ -124,33 +102,20 @@ export default function AppCard({
 }) {
   return (
     <div
-      className="card-clickable"
+      className={`card-clickable flex min-w-0 cursor-pointer flex-col gap-2.5 rounded-card bg-surface p-3.5 shadow-neu ${
+        active ? "ring-1 ring-brand-border" : ""
+      }`}
       onClick={onOpen}
-      style={{
-        background: "var(--surface)",
-        border: `1px solid ${active ? "var(--brand-border)" : "var(--border)"}`,
-        borderRadius: "var(--r-lg)",
-        boxShadow: "var(--el-1)",
-        padding: 14,
-        display: "flex",
-        flexDirection: "column",
-        gap: 10,
-        cursor: "pointer",
-        minWidth: 0,
-      }}
     >
       <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-        <div style={{ fontSize: 20, color: "var(--text-3)", marginTop: 2 }}>
+        <div className="mt-0.5 text-xl text-ink-3">
           {r.local ? <HddOutlined /> : <GithubOutlined />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <Typography.Text strong style={{ fontSize: 14.5 }}>
             {r.name}
           </Typography.Text>
-          <div
-            className="mono"
-            style={{ fontSize: 11, color: "var(--text-3)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-          >
+          <div className="mono overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-ink-3">
             {r.origin}
           </div>
         </div>
@@ -231,10 +196,7 @@ export default function AppCard({
       )}
       {/* Footer actions: info opens the side panel; the arrow (like the card
           itself) goes straight inside the application. */}
-      <div
-        style={{ marginTop: "auto", display: "flex", justifyContent: "flex-end", gap: 6 }}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="mt-auto flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
         <Tooltip title="Details: health, environments, recent activity">
           <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails} aria-label="Application details" />
         </Tooltip>

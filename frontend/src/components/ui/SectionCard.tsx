@@ -1,9 +1,9 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// SectionCard is the standard content surface: white, subtle border, level-1
-// elevation, optional title row with a right-side action ("View all"). Use
-// grouping and whitespace first; reach for a card only when the reference
-// composition calls for one.
+// SectionCard is the standard content surface: a neumorphic card (soft dual
+// shadow, no hard border) with an optional title row and a right-side action
+// ("View all"). Use grouping and whitespace first; reach for a card only when
+// the composition calls for one.
 export default function SectionCard({
   title,
   extra,
@@ -20,44 +20,16 @@ export default function SectionCard({
   padded?: boolean;
 }) {
   return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-lg)",
-        boxShadow: "var(--el-1)",
-        display: "flex",
-        flexDirection: "column",
-        minWidth: 0,
-        ...style,
-      }}
-    >
+    <div className="flex min-w-0 flex-col rounded-card-lg bg-surface shadow-neu" style={style}>
       {(title || extra) && (
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "var(--sp-2)",
-            padding: "var(--sp-3) var(--sp-4)",
-            fontSize: "var(--fs-13)",
-            fontWeight: 600,
-            color: "var(--text)",
-          }}
-        >
-          <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {title}
-          </span>
-          {extra && <span style={{ flexShrink: 0, fontWeight: 400 }}>{extra}</span>}
+        <div className="flex items-center justify-between gap-2 px-4 py-3 text-[13px] font-semibold text-ink">
+          <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap">{title}</span>
+          {extra && <span className="shrink-0 font-normal">{extra}</span>}
         </div>
       )}
       <div
-        style={{
-          padding: padded ? `${title || extra ? "0" : "var(--sp-4)"} var(--sp-4) var(--sp-4)` : 0,
-          minWidth: 0,
-          flex: 1,
-          ...bodyStyle,
-        }}
+        className={`min-w-0 flex-1 ${padded ? (title || extra ? "px-4 pb-4" : "p-4") : ""}`}
+        style={bodyStyle}
       >
         {children}
       </div>

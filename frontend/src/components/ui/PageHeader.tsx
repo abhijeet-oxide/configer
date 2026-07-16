@@ -15,31 +15,15 @@ export default function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <div style={{ marginBottom: "var(--sp-4)" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--sp-3)", minWidth: 0 }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div
-            style={{
-              fontSize: "var(--fs-20)",
-              fontWeight: 650,
-              color: "var(--text)",
-              lineHeight: 1.25,
-              display: "flex",
-              alignItems: "center",
-              gap: "var(--sp-2)",
-              minWidth: 0,
-              flexWrap: "wrap",
-            }}
-          >
+    <div className="mb-4">
+      <div className="flex min-w-0 items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xl leading-snug font-semibold text-ink">
             {title}
           </div>
-          {description && (
-            <div style={{ fontSize: "var(--fs-13)", color: "var(--text-2)", marginTop: 2 }}>{description}</div>
-          )}
+          {description && <div className="mt-0.5 text-[13px] text-ink-2">{description}</div>}
         </div>
-        {actions && (
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-2)", flexShrink: 0 }}>{actions}</div>
-        )}
+        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
       </div>
       {children}
     </div>

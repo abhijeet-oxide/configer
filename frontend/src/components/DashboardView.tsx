@@ -238,11 +238,11 @@ export default function DashboardView({ grid }: { grid: Grid }) {
     });
 
   return (
-    <div style={{ padding: "var(--sp-5) var(--sp-6)", height: "100%", overflow: "auto", background: "var(--canvas)" }}>
-      <div style={{ maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}>
+    <div className="h-full overflow-auto bg-canvas px-6 py-5">
+      <div className="mx-auto flex max-w-[1240px] flex-col gap-4">
         {/* Identity row: name + persistent context, actions on the right. */}
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flexWrap: "wrap" }}>
-          <span style={{ fontSize: "var(--fs-20)", fontWeight: 650, color: "var(--text)" }}>{grid.project}</span>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-xl font-semibold text-ink">{grid.project}</span>
           <AppContextChips />
           <div style={{ flex: 1 }} />
           {gitUrl && (
@@ -271,7 +271,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
         </div>
 
         {/* The four operational numbers, each clickable to its source. */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--sp-4)" }}>
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <StatTile
             label="Configuration health"
             value={
@@ -319,15 +319,15 @@ export default function DashboardView({ grid }: { grid: Grid }) {
         </div>
 
         {/* Attention + deployment targets: the two questions after health. */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "var(--sp-4)" }}>
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
           <SectionCard title="Needs your attention">
             {attention.length === 0 ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-2)", padding: "var(--sp-2) 0" }}>
+              <div className="flex items-center gap-2.5 py-2 text-ink-2">
                 <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
                 Nothing needs you right now.
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="flex flex-col gap-2">
                 {attention.map((a) => (
                   <AttentionCard
                     key={a.key}
@@ -351,7 +351,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               </a>
             }
           >
-            <div style={{ display: "flex", flexDirection: "column" }}>
+            <div className="flex flex-col">
               {perInstance.map(({ inst, invalid: bad, bound }) => (
                 <div
                   key={inst.name}
@@ -395,7 +395,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
         </div>
 
         {/* Supporting band: what happened, how much, and the repository. */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "var(--sp-4)" }}>
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
           <SectionCard
             title="Recent activity"
             extra={
@@ -450,7 +450,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               ) : undefined
             }
           >
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="flex flex-col gap-2">
               <div style={{ fontWeight: 600, fontSize: "var(--fs-13)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {repo?.name ?? grid.project}
               </div>

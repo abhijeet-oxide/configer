@@ -1,18 +1,18 @@
 import type { CSSProperties, ReactNode } from "react";
 
-// StatusPill is THE status chip of the design system: a soft tinted pill with
-// a dot and a short label. Tones map to the semantic palette in tokens.css.
-// Use it for operational state (Synced, Pending review, Failing, Active);
-// never for environment identity (that is EnvTag's job).
+// StatusPill is THE status chip of the design system: a pastel tinted pill
+// with a dot and a short label. Tones map to the semantic palette in
+// tokens.css. Use it for operational state (Synced, Pending review, Failing,
+// Active); never for environment identity (that is EnvTag's job).
 
 export type PillTone = "ok" | "pending" | "review" | "danger" | "neutral";
 
-const TONES: Record<PillTone, { fg: string; bg: string; bd: string }> = {
-  ok: { fg: "var(--c-ok)", bg: "var(--c-ok-bg)", bd: "var(--c-ok-bd)" },
-  pending: { fg: "var(--c-pending)", bg: "var(--c-pending-bg)", bd: "var(--c-pending-bd)" },
-  review: { fg: "var(--c-review)", bg: "var(--c-review-bg)", bd: "var(--c-review-bd)" },
-  danger: { fg: "var(--c-danger)", bg: "var(--c-danger-bg)", bd: "var(--c-danger-bd)" },
-  neutral: { fg: "var(--text-2)", bg: "var(--surface-2)", bd: "var(--border)" },
+const TONE_CLASS: Record<PillTone, string> = {
+  ok: "bg-ok-bg border-ok-bd text-ok",
+  pending: "bg-pending-bg border-pending-bd text-pending",
+  review: "bg-review-bg border-review-bd text-review",
+  danger: "bg-danger-bg border-danger-bd text-danger",
+  neutral: "bg-surface-2 border-line text-ink-2",
 };
 
 export function StatusPill({
@@ -33,40 +33,15 @@ export function StatusPill({
   style?: CSSProperties;
   title?: string;
 }) {
-  const t = TONES[tone];
   return (
     <span
       title={title}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 5,
-        padding: size === "sm" ? "0 7px" : "1px 9px",
-        height: size === "sm" ? 18 : 22,
-        borderRadius: "var(--r-pill)",
-        background: t.bg,
-        border: `1px solid ${t.bd}`,
-        color: t.fg,
-        fontSize: size === "sm" ? "var(--fs-11)" : "var(--fs-12)",
-        fontWeight: 500,
-        lineHeight: 1,
-        whiteSpace: "nowrap",
-        verticalAlign: "middle",
-        ...style,
-      }}
+      style={style}
+      className={`inline-flex items-center gap-1.5 rounded-full border font-medium leading-none whitespace-nowrap align-middle ${
+        size === "sm" ? "h-[18px] px-2 text-[11px]" : "h-[22px] px-2.5 text-xs"
+      } ${TONE_CLASS[tone]}`}
     >
-      {icon ??
-        (dot && (
-          <span
-            style={{
-              width: 6,
-              height: 6,
-              borderRadius: 3,
-              background: "currentColor",
-              flexShrink: 0,
-            }}
-          />
-        ))}
+      {icon ?? (dot && <span className="size-1.5 shrink-0 rounded-full bg-current" />)}
       {children}
     </span>
   );

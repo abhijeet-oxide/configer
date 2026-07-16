@@ -218,10 +218,12 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	}
 	params = append(params, remaining...)
 
-	// Attach schema-derived validation and assign unique IDs.
+	// Attach schema-derived validation and assign unique IDs. One schema cache
+	// serves every parameter, so a shared schema file is read + parsed once.
+	schemas := schemaCache{}
 	used := map[string]bool{}
 	for i := range params {
-		attachSchema(root, &params[i], res.Instances)
+		attachSchema(root, schemas, &params[i], res.Instances)
 		id := slugify(params[i].Name)
 		for n := 2; used[id]; n++ {
 			id = fmt.Sprintf("%s-%d", slugify(params[i].Name), n)

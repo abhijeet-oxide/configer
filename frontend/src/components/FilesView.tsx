@@ -3,8 +3,6 @@ import {
 } from "antd";
 import type { DataNode } from "antd/es/tree";
 import {
-  FolderOpenOutlined,
-  FileTextOutlined,
   CopyOutlined,
   DownloadOutlined,
   PlusCircleOutlined,
@@ -17,6 +15,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf } from "../api";
 import { useUI } from "../store";
+import { fileIcon, folderIcon } from "./fileIcons";
 import { FilesSkeleton } from "./Skeletons";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
@@ -119,17 +118,20 @@ function buildTree(files: RFile[], ctx: TreeCtx): DataNode[] {
         return {
           key,
           title: nodeTitle(name, key, false, ctx),
-          icon: <FolderOpenOutlined />,
+          icon: folderIcon(),
           selectable: false,
           children: toNodes(sub, key),
         };
       });
-    const fileNodes = d.files.sort().map((full) => ({
-      key: full,
-      title: nodeTitle(full.split("/").pop() ?? full, full, true, ctx),
-      icon: <FileTextOutlined />,
-      isLeaf: true,
-    }));
+    const fileNodes = d.files.sort().map((full) => {
+      const base = full.split("/").pop() ?? full;
+      return {
+        key: full,
+        title: nodeTitle(base, full, true, ctx),
+        icon: fileIcon(base),
+        isLeaf: true,
+      };
+    });
     return [...dirNodes, ...fileNodes];
   };
   return toNodes(root, "");

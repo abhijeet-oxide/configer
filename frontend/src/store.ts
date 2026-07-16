@@ -69,6 +69,8 @@ export interface ViewPrefs {
   showScopeCol: boolean;
   showDescCol: boolean;
   showCompare: boolean;
+  /** cluster rows that share the same value across instances, adjacently */
+  groupByValue: boolean;
 }
 
 const defaultPrefs: ViewPrefs = {
@@ -77,6 +79,7 @@ const defaultPrefs: ViewPrefs = {
   showScopeCol: true,
   showDescCol: true,
   showCompare: true,
+  groupByValue: false,
 };
 
 function loadPrefs(): ViewPrefs {

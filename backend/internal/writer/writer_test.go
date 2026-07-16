@@ -1,10 +1,12 @@
 package writer
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"gopkg.in/yaml.v3"
@@ -179,5 +181,53 @@ func TestInstanceRegistryLifecycle(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "instances/staging")); !os.IsNotExist(err) {
 		t.Error("deleted instance folder still exists")
+	}
+}
+
+// TestAddParametersBatch checks the batch writer: all valid params land in one
+// write, duplicates (existing or within the batch) are skipped, and a large
+// batch completes quickly (the O(n^2) per-param rewrite is gone).
+func TestAddParametersBatch(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".configer"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Seed one existing parameter to test collision skipping.
+	if err := AddParameter(root, model.Parameter{ID: "existing", Name: "a.b"}); err != nil {
+		t.Fatal(err)
+	}
+
+	const n = 3000
+	batch := make([]model.Parameter, 0, n+2)
+	for i := 0; i < n; i++ {
+		batch = append(batch, model.Parameter{ID: fmt.Sprintf("p%d", i), Name: fmt.Sprintf("x.p%d", i)})
+	}
+	batch = append(batch, model.Parameter{ID: "existing", Name: "dup-id"}) // dup id -> skip
+	batch = append(batch, model.Parameter{ID: "newid", Name: "a.b"})       // dup name -> skip
+
+	start := time.Now()
+	added, skipped, err := AddParameters(root, batch)
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added != n {
+		t.Fatalf("added = %d, want %d", added, n)
+	}
+	if len(skipped) != 2 {
+		t.Fatalf("skipped = %v, want 2", skipped)
+	}
+	if elapsed > 2*time.Second {
+		t.Fatalf("batch of %d took %v — expected well under 2s", n, elapsed)
+	}
+
+	// Everything persisted in one catalog.
+	var cat model.Catalog
+	b, _ := os.ReadFile(filepath.Join(root, ".configer", "parameters.yaml"))
+	if err := yaml.Unmarshal(b, &cat); err != nil {
+		t.Fatal(err)
+	}
+	if len(cat.Parameters) != n+1 {
+		t.Fatalf("catalog has %d params, want %d", len(cat.Parameters), n+1)
 	}
 }

@@ -89,7 +89,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       done(
         v.mode === "edit"
           ? "Instance updated (committed with attribution)"
-          : "Instance staged in your draft: its folder is scaffolded when you submit the changes for review",
+          : v.mode === "clone"
+            ? "Instance created as a copy — its folder and files are ready to edit"
+            : "Instance created (committed with attribution)",
       );
     },
     onError: (e: Error) => message.error(e.message),

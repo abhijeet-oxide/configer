@@ -96,3 +96,27 @@ func doJSON(t *testing.T, h http.Handler, method, path string, body, out any) {
 		}
 	}
 }
+
+// TestDeinit removes the .configer folder and commits the removal, returning
+// the repository to an un-onboarded state.
+func TestDeinit(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+	if !s.initialized() {
+		t.Fatal("fixture should start initialized")
+	}
+	rec := doRaw(t, h, http.MethodPost, "/api/deinit", map[string]any{})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("deinit status %d: %s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, ".configer")); !os.IsNotExist(err) {
+		t.Fatalf(".configer should be gone, stat err = %v", err)
+	}
+	if s.initialized() {
+		t.Fatal("repository should read as uninitialized after deinit")
+	}
+}

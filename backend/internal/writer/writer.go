@@ -128,6 +128,33 @@ func AddParameter(root string, param model.Parameter) error {
 	})
 }
 
+// AddParameters appends many parameters in a SINGLE catalog read + write.
+// Parameters whose id or name collides (with an existing one or an earlier one
+// in the batch) are skipped and their names returned. Onboarding a large repo
+// (thousands of settings) is then one file mutation instead of O(n²) rewrites.
+func AddParameters(root string, params []model.Parameter) (added int, skipped []string, err error) {
+	err = mutateCatalog(root, func(cat *model.Catalog) error {
+		haveID := make(map[string]bool, len(cat.Parameters)+len(params))
+		haveName := make(map[string]bool, len(cat.Parameters)+len(params))
+		for _, p := range cat.Parameters {
+			haveID[p.ID] = true
+			haveName[p.Name] = true
+		}
+		for _, p := range params {
+			if p.ID == "" || haveID[p.ID] || (p.Name != "" && haveName[p.Name]) {
+				skipped = append(skipped, p.Name)
+				continue
+			}
+			cat.Parameters = append(cat.Parameters, p)
+			haveID[p.ID] = true
+			haveName[p.Name] = true
+			added++
+		}
+		return nil
+	})
+	return added, skipped, err
+}
+
 // DeleteParameter retires a parameter everywhere: the catalog entry is removed
 // and the bound key/element is deleted from every real file it lives in, for
 // every instance, so the setting disappears from the whole repository.
@@ -256,6 +283,31 @@ func AddInstance(root string, inst model.Instance) error {
 			inst.Folder = inst.FolderOrDefault()
 		}
 		reg.Instances = append(reg.Instances, inst)
+		return nil
+	})
+}
+
+// AddInstances appends many instances in a SINGLE registry read + write (the
+// onboarding batch companion to AddInstance).
+func AddInstances(root string, insts []model.Instance) error {
+	return mutateRegistry(root, func(reg *model.InstanceRegistry) error {
+		have := make(map[string]bool, len(reg.Instances)+len(insts))
+		for _, i := range reg.Instances {
+			have[i.Name] = true
+		}
+		for _, inst := range insts {
+			if have[inst.Name] {
+				return fmt.Errorf("instance %q already exists", inst.Name)
+			}
+			if inst.Status == "" {
+				inst.Status = "active"
+			}
+			if inst.Folder == "" {
+				inst.Folder = inst.FolderOrDefault()
+			}
+			reg.Instances = append(reg.Instances, inst)
+			have[inst.Name] = true
+		}
 		return nil
 	})
 }

@@ -577,6 +577,8 @@ export const api = {
     metadata?: Record<string, string>;
     author?: string;
   }) => put<ApplicationDetails>(rp("/application"), p),
+  deinit: (author?: string) =>
+    send<{ ok: boolean; removed: boolean }>("POST", rp("/deinit"), { author }),
   discover: () => send<Discovery>("POST", rp("/discover")),
   initApp: (p: {
     name: string;

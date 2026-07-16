@@ -292,6 +292,80 @@ body {
   }
 }
 
+/* ---------------------------------------------------- group by value */
+
+/* When "group by value" is on, rows that share a value across every instance
+   are placed together and bracketed: a subtle tinted background plus a colored
+   left accent bar, with the top/bottom rows rounding the box. Colors cycle so
+   adjacent groups stay distinguishable. */
+.param-grid .ant-table-row.vgrp > .ant-table-cell {
+  background-image: linear-gradient(var(--vgrp-tint), var(--vgrp-tint)) !important;
+}
+.param-grid .ant-table-row.vgrp > .ant-table-cell-fix-left {
+  box-shadow: inset 3px 0 0 0 var(--vgrp-bar);
+}
+.param-grid .ant-table-row.vgrp-top > .ant-table-cell {
+  border-top: 1px solid var(--vgrp-bar);
+}
+.param-grid .ant-table-row.vgrp-bot > .ant-table-cell {
+  border-bottom: 1px solid var(--vgrp-bar);
+}
+.param-grid .ant-table-row.vgrp-c0 { --vgrp-tint: rgba(42, 120, 214, 0.07); --vgrp-bar: rgba(42, 120, 214, 0.55); }
+.param-grid .ant-table-row.vgrp-c1 { --vgrp-tint: rgba(27, 175, 122, 0.08); --vgrp-bar: rgba(27, 175, 122, 0.55); }
+.param-grid .ant-table-row.vgrp-c2 { --vgrp-tint: rgba(237, 161, 0, 0.09); --vgrp-bar: rgba(237, 161, 0, 0.6); }
+.param-grid .ant-table-row.vgrp-c3 { --vgrp-tint: rgba(124, 61, 244, 0.07); --vgrp-bar: rgba(124, 61, 244, 0.5); }
+.param-grid .ant-table-row.vgrp-c4 { --vgrp-tint: rgba(232, 123, 164, 0.09); --vgrp-bar: rgba(232, 123, 164, 0.6); }
+
+/* ---------------------------------------------------- init progress ring */
+
+/* A dot orbiting the progress ring to signal live activity while the
+   application is being committed. */
+@keyframes initOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.init-orbit {
+  transform-origin: 70px 70px;
+  animation: initOrbit 1.15s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .init-orbit { animation: none; }
+}
+
+/* ---------------------------------------------------- compact file trees */
+
+/* Tighter rows, indentation and icons so deep GitOps trees stay readable
+   without huge vertical gaps. Applies to the onboarding file picker and the
+   Files-tab explorer. */
+.compact-tree .ant-tree-treenode,
+.files-tree .ant-tree-treenode {
+  padding-bottom: 0 !important;
+  align-items: center;
+}
+.compact-tree .ant-tree-node-content-wrapper,
+.files-tree .ant-tree-node-content-wrapper {
+  min-height: 22px;
+  line-height: 22px;
+  padding-inline: 2px;
+}
+.compact-tree .ant-tree-indent-unit,
+.files-tree .ant-tree-indent-unit {
+  width: 12px;
+}
+.compact-tree .ant-tree-switcher,
+.files-tree .ant-tree-switcher {
+  width: 18px;
+  line-height: 22px;
+}
+.compact-tree .ant-tree-iconEle,
+.files-tree .ant-tree-iconEle {
+  line-height: 22px;
+  width: 18px;
+}
+.compact-tree .ant-tree-checkbox {
+  margin-block: 4px 0;
+}
+
 /* ---------------------------------------------------- files tree rows */
 
 /* Each file/folder row shows its name and, on hover, its manage actions. */

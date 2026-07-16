@@ -76,16 +76,20 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Batch the writes: one instances.yaml write and one parameters.yaml write,
+	// not one per entry. Onboarding a large GitOps repo (thousands of settings)
+	// used to rewrite the catalog file once per parameter (O(n²)); this makes
+	// it a single mutation, so initialization is fast.
 	for i := range req.Instances {
 		if req.Instances[i].Status == "" {
 			req.Instances[i].Status = "active"
 		}
-		if err := writer.AddInstance(s.RepoPath, req.Instances[i]); err != nil {
-			writeErr(w, err)
-			return
-		}
 	}
-	added := 0
+	if err := writer.AddInstances(s.RepoPath, req.Instances); err != nil {
+		writeErr(w, err)
+		return
+	}
+	valid := make([]model.Parameter, 0, len(req.Parameters))
 	var skipped []string
 	for _, pm := range req.Parameters {
 		if pm.ID == "" || pm.Name == "" || len(pm.Bindings) == 0 {
@@ -101,12 +105,14 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		if pm.Scope == "" {
 			pm.Scope = model.ScopeInstance
 		}
-		if err := writer.AddParameter(s.RepoPath, pm); err != nil {
-			skipped = append(skipped, pm.Name)
-			continue
-		}
-		added++
+		valid = append(valid, pm)
 	}
+	added, dropped, err := writer.AddParameters(s.RepoPath, valid)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	skipped = append(skipped, dropped...)
 	if len(req.IgnoreFiles) > 0 {
 		if err := writer.AddIgnoreFiles(s.RepoPath, req.IgnoreFiles); err != nil {
 			writeErr(w, err)

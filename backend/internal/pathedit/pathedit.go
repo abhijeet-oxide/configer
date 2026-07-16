@@ -18,7 +18,12 @@
 // between features.
 package pathedit
 
-import "github.com/abhijeet-oxide/configer/backend/internal/model"
+import (
+	"github.com/abhijeet-oxide/configer/backend/internal/model"
+
+	"github.com/beevik/etree"
+	"gopkg.in/yaml.v3"
+)
 
 // Get reads the value at path inside doc. The second return reports whether
 // the path resolved to a value.
@@ -27,6 +32,48 @@ func Get(doc []byte, format, path string) (any, bool, error) {
 		return getXML(doc, path)
 	}
 	return getTree(doc, path)
+}
+
+// Document is a parsed configuration file that can answer many Get calls
+// without re-parsing. Reading a whole grid resolves the same handful of files
+// for every (parameter, instance) cell; parsing once and caching the tree
+// turns thousands of repeated parses into one per file. Get is read-only and
+// safe to call repeatedly; a Document must not be shared across writes.
+type Document struct {
+	yaml  *yaml.Node
+	xml   *etree.Document
+	empty bool
+}
+
+// Parse builds a reusable Document from raw bytes. An empty document answers
+// every lookup with "not found".
+func Parse(doc []byte, format string) (*Document, error) {
+	if len(doc) == 0 {
+		return &Document{empty: true}, nil
+	}
+	if normFormat(format) == "xml" {
+		d := etree.NewDocument()
+		if err := d.ReadFromBytes(doc); err != nil {
+			return nil, err
+		}
+		return &Document{xml: d}, nil
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(doc, &root); err != nil {
+		return nil, err
+	}
+	return &Document{yaml: &root}, nil
+}
+
+// Get reads the value at path from an already-parsed Document.
+func (d *Document) Get(path string) (any, bool, error) {
+	if d == nil || d.empty {
+		return nil, false, nil
+	}
+	if d.xml != nil {
+		return getXMLFromDoc(d.xml, path)
+	}
+	return getTreeFromRoot(d.yaml, path)
 }
 
 // Set returns doc with value written at path, creating the file structure and

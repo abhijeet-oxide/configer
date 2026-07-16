@@ -22,29 +22,33 @@ type Resolved struct {
 	Set   bool   // whether any layer (including the default) supplied a value
 }
 
-// Resolver reads values from a repository working tree. It caches file
-// contents, so one Resolver instance is cheap to use across a whole grid
-// build; create a fresh one per request to observe new commits.
+// Resolver reads values from a repository working tree. It caches each file's
+// PARSED document, so one Resolver instance is cheap to use across a whole grid
+// build (every cell resolves the same handful of files, and each is parsed only
+// once). Create a fresh Resolver per request to observe new commits.
 type Resolver struct {
-	Root  string
-	files map[string][]byte
+	Root string
+	docs map[string]*pathedit.Document // keyed by repo-relative file path
 }
 
 // New returns a Resolver reading from the working tree rooted at root.
 func New(root string) *Resolver {
-	return &Resolver{Root: root, files: map[string][]byte{}}
+	return &Resolver{Root: root, docs: map[string]*pathedit.Document{}}
 }
 
-func (r *Resolver) read(file string) []byte {
-	if b, ok := r.files[file]; ok {
-		return b
+// doc returns the parsed document for a file, parsing (and caching) it on first
+// use. A missing or malformed file caches a nil document, so every lookup in it
+// cleanly misses without re-reading from disk.
+func (r *Resolver) doc(file, format string) *pathedit.Document {
+	if d, ok := r.docs[file]; ok {
+		return d
 	}
-	b, err := os.ReadFile(filepath.Join(r.Root, file))
-	if err != nil {
-		b = nil // missing file: every lookup in it misses
+	var d *pathedit.Document
+	if b, err := os.ReadFile(filepath.Join(r.Root, file)); err == nil {
+		d, _ = pathedit.Parse(b, format) // parse error -> nil doc (treated as empty)
 	}
-	r.files[file] = b
-	return b
+	r.docs[file] = d
+	return d
 }
 
 // Resolve returns the effective value of param for the given instance:
@@ -57,11 +61,8 @@ func (r *Resolver) Resolve(param model.Parameter, inst model.Instance) Resolved 
 	}
 	for _, layer := range model.LayerOrder {
 		for _, b := range param.BindingsOn(layer, inst) {
-			doc := r.read(b.File)
-			if len(doc) == 0 {
-				continue
-			}
-			v, ok, err := pathedit.Get(doc, b.Format, b.Path)
+			d := r.doc(b.File, b.Format)
+			v, ok, err := d.Get(b.Path)
 			if err != nil || !ok {
 				continue
 			}

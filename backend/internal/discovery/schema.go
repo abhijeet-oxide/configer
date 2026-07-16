@@ -20,9 +20,30 @@ func osReadFile(root, rel string) ([]byte, error) {
 	return os.ReadFile(filepath.Join(root, rel))
 }
 
+// schemaCache memoizes parsed JSON Schemas by repo-relative path across a whole
+// discovery run: many parameters share one schema file (values.schema.json), so
+// without this each parameter would re-read and re-parse the same file.
+type schemaCache map[string]map[string]any
+
+// load returns the parsed schema at rel, reading and parsing it at most once.
+// A missing or invalid schema caches nil, so later lookups skip the disk.
+func (c schemaCache) load(root, rel string) map[string]any {
+	if s, ok := c[rel]; ok {
+		return s
+	}
+	var schema map[string]any
+	if raw, err := osReadFile(root, rel); err == nil {
+		if json.Unmarshal(raw, &schema) != nil {
+			schema = nil
+		}
+	}
+	c[rel] = schema
+	return schema
+}
+
 // attachSchema fills p.Validation (and refines p.Type) from a schema file
 // covering the parameter's first binding, when one exists.
-func attachSchema(root string, p *model.Parameter, instances []model.Instance) {
+func attachSchema(root string, cache schemaCache, p *model.Parameter, instances []model.Instance) {
 	// JSON Schema does not describe XML documents: use the parameter's first
 	// YAML/JSON binding (a deduplicated parameter may lead with an XML one).
 	var b model.Binding
@@ -48,12 +69,8 @@ func attachSchema(root string, p *model.Parameter, instances []model.Instance) {
 
 	for _, concrete := range concretes {
 		for _, schemaRel := range schemaCandidates(concrete) {
-			raw, err := osReadFile(root, schemaRel)
-			if err != nil {
-				continue
-			}
-			var schema map[string]any
-			if json.Unmarshal(raw, &schema) != nil {
+			schema := cache.load(root, schemaRel)
+			if schema == nil {
 				continue
 			}
 			node, required := lookupSchema(schema, b.Path)

@@ -16,18 +16,24 @@ import (
 // (encoding/json maps would silently re-sort every key).
 
 func getTree(doc []byte, path string) (any, bool, error) {
+	if len(doc) == 0 {
+		return nil, false, nil
+	}
+	var root yaml.Node
+	if err := yaml.Unmarshal(doc, &root); err != nil {
+		return nil, false, err
+	}
+	return getTreeFromRoot(&root, path)
+}
+
+// getTreeFromRoot reads path from an already-parsed yaml.Node (the cached-doc
+// path). Read-only: it never mutates the node.
+func getTreeFromRoot(root *yaml.Node, path string) (any, bool, error) {
 	segs, err := ParsePath(path)
 	if err != nil {
 		return nil, false, err
 	}
-	var root yaml.Node
-	if len(doc) == 0 {
-		return nil, false, nil
-	}
-	if err := yaml.Unmarshal(doc, &root); err != nil {
-		return nil, false, err
-	}
-	cur := docRoot(&root)
+	cur := docRoot(root)
 	if cur == nil {
 		return nil, false, nil
 	}

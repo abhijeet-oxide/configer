@@ -14,13 +14,19 @@ import (
 // value's length.
 
 func getXML(doc []byte, path string) (any, bool, error) {
-	d := etree.NewDocument()
 	if len(doc) == 0 {
 		return nil, false, nil
 	}
+	d := etree.NewDocument()
 	if err := d.ReadFromBytes(doc); err != nil {
 		return nil, false, err
 	}
+	return getXMLFromDoc(d, path)
+}
+
+// getXMLFromDoc reads path from an already-parsed etree document (cached-doc
+// path). Read-only.
+func getXMLFromDoc(d *etree.Document, path string) (any, bool, error) {
 	if attr, elemPath, isAttr := splitAttrPath(path); isAttr {
 		el := findXML(d, elemPath)
 		if el == nil {

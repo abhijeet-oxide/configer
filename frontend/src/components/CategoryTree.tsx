@@ -9,7 +9,7 @@ import { envHex } from "../theme";
 
 // Left panel: two linked trees in resizable, collapsible panes (sizes are
 // remembered across sessions).
-// "Parameters" holds the parameter NAME hierarchy — a dotted name like
+// "Parameters" holds the parameter NAME hierarchy; a dotted name like
 // admin.rebuildslave.failretryInterval nests as admin › rebuildslave ›
 // failretryInterval, with each parameter a clickable leaf. Selecting one
 // scrolls the grid to that row; selecting a group filters to that name prefix;
@@ -236,7 +236,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                   const k = keys[0] as string | undefined;
                   if (!k) return;
                   if (k.startsWith("p:")) {
-                    // Parameter leaf: the grid keeps showing everything — just
+                    // Parameter leaf: the grid keeps showing everything; just
                     // scroll to the row and flash it. Only when an active name
                     // filter would hide the row is the filter cleared (never
                     // narrowed) so the jump can land.

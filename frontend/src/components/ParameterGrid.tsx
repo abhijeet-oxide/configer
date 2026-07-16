@@ -80,6 +80,7 @@ function EditableCell({
   onUndo,
   onFind,
   onReplace,
+  onOpenFile,
 }: {
   cell: Cell | undefined;
   param: Parameter;
@@ -96,6 +97,8 @@ function EditableCell({
   onUndo: () => void;
   onFind: (value: string) => void;
   onReplace: (value: string) => void;
+  /** open the file this cell's value lives in (Files workspace) */
+  onOpenFile?: () => void;
 }) {
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
@@ -147,6 +150,12 @@ function EditableCell({
           { key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` },
         ]
       : []),
+    ...(cell.file && onOpenFile
+      ? [
+          { type: "divider" as const },
+          { key: "openfile", label: `Open ${cell.file.split("/").pop()} in Files` },
+        ]
+      : []),
   ];
 
   const body =
@@ -179,6 +188,7 @@ function EditableCell({
           else if (key === "exclude") onAction("exclude");
           else if (key === "find") onFind(fmtValue(cell.value));
           else if (key === "replace") onReplace(fmtValue(cell.value));
+          else if (key === "openfile") onOpenFile?.();
           else if (key.startsWith("copy:")) onCopyTo(key.slice(5));
         },
       }}
@@ -278,7 +288,7 @@ function instanceHeader(inst: Instance) {
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus } =
+  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection } =
     useUI();
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
@@ -736,6 +746,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               setSearchScope("value");
             }}
             onReplace={(value) => setFindReplace({ find: value })}
+            onOpenFile={
+              cell?.file
+                ? () => {
+                    const b = bindingsOf(r.param).find((x) => x.path === cell.path);
+                    setFileFocus({ path: cell.file!, line: b?.line || undefined, instance: inst.name });
+                    setSection("files");
+                  }
+                : undefined
+            }
           />
         );
       },

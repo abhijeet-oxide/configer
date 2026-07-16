@@ -43,10 +43,10 @@ const findingMeta: Record<
   Finding["type"],
   { icon: React.ReactNode; color: string; hex: string; label: string }
 > = {
-  new_file: { icon: <FileAddOutlined />, color: "green", hex: "#0ca30c", label: "New files" },
-  file_changed: { icon: <EditOutlined />, color: "blue", hex: "#1677ff", label: "Changed" },
-  file_deleted: { icon: <DeleteOutlined />, color: "red", hex: "#d03b3b", label: "Deleted" },
-  file_renamed: { icon: <SwapOutlined />, color: "orange", hex: "#fa8c16", label: "Renamed" },
+  new_file: { icon: <FileAddOutlined />, color: "green", hex: "var(--c-ok)", label: "New files" },
+  file_changed: { icon: <EditOutlined />, color: "blue", hex: "var(--c-review)", label: "Changed" },
+  file_deleted: { icon: <DeleteOutlined />, color: "red", hex: "var(--c-danger)", label: "Deleted" },
+  file_renamed: { icon: <SwapOutlined />, color: "orange", hex: "var(--c-pending)", label: "Renamed" },
   new_folder: { icon: <FolderAddOutlined />, color: "purple", hex: "#6c3df4", label: "New folders" },
 };
 
@@ -188,7 +188,7 @@ export default function RepoChangesView() {
             <div style={{ textAlign: "center", padding: "28px 16px" }}>
               <CheckCircleFilled style={{ fontSize: 52, color: "var(--c-ok)" }} />
               <Typography.Title level={4} style={{ marginTop: 16, marginBottom: 6 }}>
-                No drift — you're all caught up
+                No drift; you're all caught up
               </Typography.Title>
               <Typography.Paragraph type="secondary" style={{ maxWidth: 400, margin: "0 auto" }}>
                 Nothing has been committed directly on Git since you last looked. New commits are

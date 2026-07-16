@@ -20,7 +20,7 @@ interface IconSpec {
 
 // Extension → glyph + color. Colors are chosen to be distinct in both themes.
 const BY_EXT: Record<string, IconSpec> = {
-  yaml: { icon: <FileTextOutlined />, color: "#cb4b16" }, // yaml/helm/flux — warm
+  yaml: { icon: <FileTextOutlined />, color: "#cb4b16" }, // yaml/helm/flux; warm
   yml: { icon: <FileTextOutlined />, color: "#cb4b16" },
   json: { icon: <CodeOutlined />, color: "#d9a400" }, // amber
   xml: { icon: <CodeOutlined />, color: "#7c3aed" }, // violet

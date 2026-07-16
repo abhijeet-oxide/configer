@@ -4,14 +4,14 @@ import { api, type AuthUser, type RoleName } from "../api";
 
 // MembersModal is where deployment admins assign per-application roles:
 // viewer (read only), editor (stage and submit changes), approver (may also
-// publish/merge). Everyone signed in sees every application — the registry
+// publish/merge). Everyone signed in sees every application; the registry
 // is shared; roles only decide what they can DO there. Users without an
 // explicit assignment get the deployment default.
 
 const roleOptions: { value: RoleName; label: string }[] = [
-  { value: "viewer", label: "viewer — read only" },
-  { value: "editor", label: "editor — stage & submit changes" },
-  { value: "approver", label: "approver — also publish (merge)" },
+  { value: "viewer", label: "viewer; read only" },
+  { value: "editor", label: "editor; stage & submit changes" },
+  { value: "approver", label: "approver; also publish (merge)" },
 ];
 
 const roleColor: Record<string, string> = { viewer: "default", editor: "blue", approver: "green" };

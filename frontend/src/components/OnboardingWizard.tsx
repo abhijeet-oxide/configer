@@ -41,7 +41,7 @@ import { TableSkeleton } from "./Skeletons";
 // OnboardingWizard turns a freshly connected repository into a managed
 // application: detect the layout, confirm the instances, CHOOSE WHICH FILES to
 // manage (a checkbox tree of the real folder structure), review the
-// deduplicated parameters, and initialize — ONE commit that adds .configer/
+// deduplicated parameters, and initialize; ONE commit that adds .configer/
 // metadata. Values never move: they stay in the repository's own files.
 
 const layoutLabels: Record<string, string> = {
@@ -356,7 +356,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       {step === 1 && (
         <>
           <Typography.Paragraph type="secondary">
-            Each folder below becomes one instance — a column in the parameter grid. Set the
+            Each folder below becomes one instance; a column in the parameter grid. Set the
             environment (pick a suggestion or type your own) and version; it lands in{" "}
             <span className="mono">.configer/instances.yaml</span>.
           </Typography.Paragraph>
@@ -410,7 +410,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             showIcon
             style={{ marginTop: 12 }}
             message="You can add more instances any time"
-            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances) — no need to get them all here."
+            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances); no need to get them all here."
           />
         </>
       )}
@@ -612,20 +612,20 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                 </Typography.Paragraph>
                 <ul style={{ textAlign: "left" }}>
                   <li>
-                    <span className="mono">application.yaml</span> — {appName} ·{" "}
+                    <span className="mono">application.yaml</span>; {appName} ·{" "}
                     {layoutLabels[d.detection.layout] ?? d.detection.layout}
                   </li>
                   <li>
-                    <span className="mono">instances.yaml</span> — {insts.length} instances
+                    <span className="mono">instances.yaml</span>; {insts.length} instances
                   </li>
                   <li>
-                    <span className="mono">parameters.yaml</span> — {chosenParams.length} parameters
+                    <span className="mono">parameters.yaml</span>; {chosenParams.length} parameters
                     (descriptions, types, validation, file mappings)
                   </li>
                 </ul>
                 <Typography.Paragraph type="secondary">
                   No configuration file changes. Anyone else opening this repository sees the same
-                  application — it is initialized once, for everyone, in Git.
+                  application; it is initialized once, for everyone, in Git.
                 </Typography.Paragraph>
               </div>
             }

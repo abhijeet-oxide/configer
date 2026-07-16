@@ -502,7 +502,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
         <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
         <div style={{ fontWeight: 500 }}>New application</div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Pick a GitHub repository and go — it is scanned right here afterwards.
+          Pick a GitHub repository and go; it is scanned right here afterwards.
         </Typography.Text>
       </Card>
       <NewApplicationWizard
@@ -547,7 +547,7 @@ function ScanStep({
 }) {
   if (!scan) {
     // Pre-scan: a full-width hero with the action, and the three promises of
-    // the import spelled out underneath — no dead space, nothing to fear.
+    // the import spelled out underneath; no dead space, nothing to fear.
     const promises: { icon: React.ReactNode; title: string; text: string }[] = [
       {
         icon: <FileSearchOutlined />,
@@ -575,7 +575,7 @@ function ScanStep({
                 Find configuration in your repository
               </Typography.Title>
               <Typography.Text type="secondary">
-                Configer detects the settings living in your files and offers them for management —
+                Configer detects the settings living in your files and offers them for management;
                 you stay in control of every single one.
               </Typography.Text>
             </div>

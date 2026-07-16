@@ -31,6 +31,7 @@ import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
+import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
@@ -389,9 +390,10 @@ export default function App() {
   }
 
   function body() {
-    // The workspace (portfolio) level does not depend on any one repo's grid,
-    // so it renders even while a repository is unavailable or none exists.
-    if (section === "workspace" || section === "home")
+    // The global level does not depend on any one repo's grid, so it renders
+    // even while a repository is unavailable or none exists.
+    if (section === "home") return <HomeView />;
+    if (section === "workspace")
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <WorkspaceView />

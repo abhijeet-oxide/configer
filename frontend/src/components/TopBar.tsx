@@ -86,13 +86,22 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
         <Breadcrumb
           items={[
-            {
-              title: (
-                <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
-                  Applications
-                </a>
-              ),
-            },
+            // The first crumb names the global level: Home is quiet (no
+            // breadcrumb noise on the start page), Approvals names itself,
+            // everything else roots at Applications.
+            ...(section === "home"
+              ? []
+              : section === "inbox"
+                ? [{ title: <span>Approvals</span> }]
+                : [
+                    {
+                      title: (
+                        <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
+                          Applications
+                        </a>
+                      ),
+                    },
+                  ]),
             // Inside an application: its name (a link back to the Overview tab,
             // the default) with a switcher, then the current tab.
             ...(inApp

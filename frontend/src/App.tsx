@@ -392,6 +392,14 @@ export default function App() {
         </div>
       );
     if (section === "plugins") return <PluginsView />;
+    // Workspace-wide approvals inbox: reviews for the active application
+    // today, reachable from anywhere (the rail badge and the bell).
+    if (section === "inbox")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <ApprovalsView />
+        </div>
+      );
     // Everything belonging to ONE application lives under the Configuration
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))
@@ -521,7 +529,7 @@ function CollapsedRail({
 }
 
 // CollapsibleSide wraps a side panel's content with a slim collapse gutter on
-// its inner edge — a chevron pointing the way the panel folds — so every panel
+// its inner edge (a chevron pointing the way the panel folds) so every panel
 // can be tucked away with one click without ever overlapping its content.
 function CollapsibleSide({
   side,

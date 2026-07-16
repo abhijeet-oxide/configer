@@ -156,7 +156,9 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           ]}
         />
       </div>
-      {inApp && (
+      {/* Context chips ride in the bar on every tab except Overview, where
+          the page header itself carries them (stated once per screen). */}
+      {inApp && section !== "overview" && (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
           <AppContextChips />
         </div>

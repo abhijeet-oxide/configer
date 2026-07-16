@@ -1,52 +1,56 @@
-import { Card, Col, Row, Statistic, Typography, Tag, List, Space, Button, Checkbox, Empty, Modal, Alert, App as AntApp } from "antd";
+import { Button, Checkbox, Dropdown, List, Modal, Tooltip, Typography, Alert, App as AntApp } from "antd";
 import {
-  CheckCircleTwoTone,
-  WarningTwoTone,
-  InboxOutlined,
-  EditOutlined,
-  RightOutlined,
-  BranchesOutlined,
-  TableOutlined,
+  CheckCircleFilled,
   WarningFilled,
-  SyncOutlined,
-  ApartmentOutlined,
-  FileAddOutlined,
-  FileTextOutlined,
-  DeleteOutlined,
-  SwapOutlined,
-  FolderAddOutlined,
+  EditOutlined,
+  ExportOutlined,
+  MoreOutlined,
+  PullRequestOutlined,
+  HistoryOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type Grid, type Finding } from "../api";
-import { StateTag } from "./CrSteps";
-import { ActivitySparkline, CategoryDonut, HealthTiles, STATUS, type TileDatum } from "./charts";
+import { api, type Grid } from "../api";
+import { useActivity } from "../activity";
+import { ActivitySparkline } from "./charts";
 import { useUI } from "../store";
 import { envHex } from "../theme";
-import EnvTag from "./EnvTag";
+import { StatTile, SectionCard, AttentionCard, AppContextChips, StatusPill } from "./ui";
+import EditApplicationModal from "./EditApplicationModal";
 
-// DashboardView is the application Overview: an operational command center that
-// answers, without navigating anywhere, is it healthy, is anything waiting,
-// is there drift, are versions consistent, and what changed recently. Each
-// signal appears exactly ONCE: the stat cards carry the actionable state, the
-// title row carries identity (sync state, size), and the health map, activity
-// and system panels fill the rest.
+// DashboardView is the application Overview: is it healthy, do I have unsent
+// edits, did the repository change, does anything need action, how are the
+// deployment targets, and what happened recently. Hierarchy over equal
+// cards: health and attention lead, activity and repository status support.
 
-// DeleteApplication removes an application from the workspace, and optionally
-// deletes the .configer metadata folder from the repository itself. The
-// repository's own configuration files are never touched.
-function DeleteApplication({
+export function relTime(iso?: string): string {
+  if (!iso) return "";
+  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+// DeleteApplicationModal removes an application from the workspace, and
+// optionally deletes the .configer metadata folder from the repository
+// itself. The repository's own configuration files are never touched.
+function DeleteApplicationModal({
+  open,
+  onClose,
   project,
   repoId,
   onRemoved,
 }: {
+  open: boolean;
+  onClose: () => void;
   project: string;
   repoId: string | null;
   onRemoved: () => void;
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [alsoConfiger, setAlsoConfiger] = useState(false);
 
   const remove = useMutation({
@@ -63,112 +67,91 @@ function DeleteApplication({
           : `"${project}" removed from the workspace. The repository is untouched.`,
       );
       qc.invalidateQueries({ queryKey: ["workspace"] });
-      setOpen(false);
+      onClose();
       onRemoved();
     },
     onError: (e: Error) => message.error(e.message, 6),
   });
 
   return (
-    <>
-      <Button danger icon={<DeleteOutlined />} onClick={() => setOpen(true)}>
-        Delete
-      </Button>
-      <Modal
-        open={open}
-        title={`Delete "${project}"?`}
-        okText={alsoConfiger ? "Delete metadata & remove" : "Remove"}
-        okButtonProps={{ danger: true, loading: remove.isPending }}
-        onOk={() => remove.mutate()}
-        onCancel={() => setOpen(false)}
-      >
-        <Typography.Paragraph>
-          This removes the application from your Configer workspace. By default the Git repository —
-          including your configuration files and the <span className="mono">.configer</span> metadata —
-          stays exactly as it is, and you can reconnect any time.
-        </Typography.Paragraph>
-        <Checkbox checked={alsoConfiger} onChange={(e) => setAlsoConfiger(e.target.checked)}>
-          Also delete the <span className="mono">.configer</span> folder from the repository
-        </Checkbox>
-        {alsoConfiger && (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginTop: 12 }}
-            message="This un-onboards the repository"
-            description={
-              <>
-                All Configer metadata (parameters, instances, application details) is deleted in a
-                commit. Your actual configuration files are <b>not</b> touched, but the repository
-                will need to be set up again to manage it here. This cannot be undone except through
-                Git history.
-              </>
-            }
-          />
-        )}
-      </Modal>
-    </>
+    <Modal
+      open={open}
+      title={`Delete "${project}"?`}
+      okText={alsoConfiger ? "Delete metadata & remove" : "Remove"}
+      okButtonProps={{ danger: true, loading: remove.isPending }}
+      onOk={() => remove.mutate()}
+      onCancel={onClose}
+    >
+      <Typography.Paragraph>
+        This removes the application from your Configer workspace. By default the Git repository,
+        including your configuration files and the <span className="mono">.configer</span> metadata,
+        stays exactly as it is, and you can reconnect any time.
+      </Typography.Paragraph>
+      <Checkbox checked={alsoConfiger} onChange={(e) => setAlsoConfiger(e.target.checked)}>
+        Also delete the <span className="mono">.configer</span> folder from the repository
+      </Checkbox>
+      {alsoConfiger && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginTop: 12 }}
+          message="This un-onboards the repository"
+          description={
+            <>
+              All Configer metadata (parameters, instances, application details) is deleted in a
+              commit. Your actual configuration files are <b>not</b> touched, but the repository
+              will need to be set up again to manage it here. This cannot be undone except through
+              Git history.
+            </>
+          }
+        />
+      )}
+    </Modal>
   );
 }
 
-export function relTime(iso?: string): string {
-  if (!iso) return "";
-  const s = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
-  return `${Math.floor(s / 86400)}d ago`;
-}
-
-// Compact one-line label/icon/color for a repository event, shared by the
-// events panel below (the full treatment lives in RepoChangesView).
-const findingBrief: Record<Finding["type"], { icon: React.ReactNode; color: string; label: string }> = {
-  new_file: { icon: <FileAddOutlined />, color: "#0ca30c", label: "New file" },
-  file_changed: { icon: <FileTextOutlined />, color: "#1677ff", label: "File changed" },
-  file_deleted: { icon: <DeleteOutlined />, color: "#d03b3b", label: "File deleted" },
-  file_renamed: { icon: <SwapOutlined />, color: "#fa8c16", label: "File renamed" },
-  new_folder: { icon: <FolderAddOutlined />, color: "#6c3df4", label: "New folder" },
-};
-
 export default function DashboardView({ grid }: { grid: Grid }) {
   const { setSection, setFilters, selectParam, selectInstance, setJump, repoId, setRepo } = useUI();
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
+  const activity = useActivity(6);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
 
-  // per-instance health for the tile map
-  const tiles: TileDatum[] = grid.instances.map((i) => {
+  const sync = useMutation({
+    mutationFn: api.repoSync,
+    onSuccess: () => {
+      message.success("Synchronized with the Git remote.");
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  // Per-instance health, reused by attention and the deployment targets.
+  const perInstance = grid.instances.map((i) => {
     let invalid = 0;
-    let pending = 0;
+    let bound = 0;
     for (const r of grid.rows) {
       const c = r.cells[i.name];
       if (!c) continue;
+      if (c.set) bound++;
       if (!c.valid) invalid++;
-      if (c.pending) pending++;
     }
-    return { name: i.name, environment: i.environment, version: i.softwareVersion, invalid, pending };
+    return { inst: i, invalid, bound };
   });
-  const invalid = tiles.reduce((s, t) => s + t.invalid, 0);
+  const invalid = perInstance.reduce((s, t) => s + t.invalid, 0);
 
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review") ?? [];
   const pending = draftQ.data?.draft?.items?.length ?? 0;
-  const recent = (changesQ.data ?? []).slice(0, 6);
   const st = statusQ.data;
   const findings = findingsQ.data?.findings ?? [];
-  const params = grid.rows.length;
-
-  // Distinct software versions in play: one is consistent, several is a spread
-  // worth surfacing (the honest signal we can compute without vendor metadata).
-  const versions = [...new Set(grid.instances.map((i) => i.softwareVersion).filter(Boolean))] as string[];
-
-  // Instances touched by any not-yet-published change, so "Your systems" can
-  // flag what moved recently without needing a new backend field.
-  const touched = new Set<string>();
-  for (const c of changesQ.data ?? []) {
-    if (c.state === "published" || c.state === "rejected") continue;
-    for (const it of c.items ?? []) if (it.instance) touched.add(it.instance);
-  }
+  const repo = wsQ.data?.repos.find((r) => r.id === repoId);
+  const gitUrl = repo?.origin?.startsWith("http") ? repo.origin : undefined;
 
   // change activity per day, last 14 days
   const days: { label: string; count: number }[] = [];
@@ -179,305 +162,343 @@ export default function DashboardView({ grid }: { grid: Grid }) {
     days.push({ label: key.slice(5), count });
   }
 
-  const donutData = grid.categories.map((c) => ({ label: c.title, value: c.count }));
+  // Jump straight to the first broken cell (the editor scrolls + flashes it).
+  const fixFirstInvalid = () => {
+    for (const t of perInstance) {
+      if (t.invalid === 0) continue;
+      const row = grid.rows.find((r) => {
+        const c = r.cells[t.inst.name];
+        return c && !c.valid;
+      });
+      if (row) {
+        selectInstance(t.inst.name);
+        selectParam(row.param.id);
+        setJump("cell", row.param.id, t.inst.name);
+        setFilters({ invalidOnly: true });
+        setSection("config");
+        return;
+      }
+    }
+    setSection("config");
+  };
 
-  const syncSignal = !st?.remote
-    ? { icon: <BranchesOutlined />, label: "Local only", color: "#8c8c8c" }
-    : st.upstreamGone
-      ? { icon: <WarningFilled />, label: "Branch removed on remote", color: STATUS.critical }
-      : st.behind > 0
-        ? { icon: <SyncOutlined />, label: `${st.behind} behind remote`, color: "#1677ff" }
-        : { icon: <SyncOutlined />, label: "Git live", color: STATUS.good };
+  type Attention = {
+    key: string;
+    severity: "warn" | "danger" | "info";
+    title: string;
+    sub: string;
+    actionLabel: string;
+    onAction: () => void;
+  };
+  const attention: Attention[] = [];
+  if (invalid > 0)
+    attention.push({
+      key: "invalid",
+      severity: "danger",
+      title: `${invalid} setting${invalid === 1 ? "" : "s"} failing validation`,
+      sub: "The editor opens on the first problem",
+      actionLabel: "Fix now",
+      onAction: fixFirstInvalid,
+    });
+  if (findings.length > 0)
+    attention.push({
+      key: "drift",
+      severity: "warn",
+      title: `${findings.length} repository change${findings.length === 1 ? "" : "s"} detected`,
+      sub: "Review and import changes made outside Configer",
+      actionLabel: "Review changes",
+      onAction: () => setSection("drift"),
+    });
+  if (pending > 0)
+    attention.push({
+      key: "drafts",
+      severity: "warn",
+      title: `${pending} local edit${pending === 1 ? "" : "s"} haven't been submitted`,
+      sub: "Create a change request to publish",
+      actionLabel: "Review edits",
+      onAction: () => setSection("config"),
+    });
+  if (awaiting.length > 0)
+    attention.push({
+      key: "review",
+      severity: "info",
+      title: `${awaiting.length} change request${awaiting.length === 1 ? "" : "s"} waiting for review`,
+      sub: "Approve or reject in the review workspace",
+      actionLabel: "Review",
+      onAction: () => setSection("approvals"),
+    });
+  if (st?.upstreamGone || st?.syncError)
+    attention.push({
+      key: "sync",
+      severity: st?.upstreamGone ? "danger" : "warn",
+      title: st?.upstreamGone ? "The branch was removed on the remote" : "Git synchronization issue",
+      sub: st?.syncError || "Your local work is safe",
+      actionLabel: "Sync now",
+      onAction: () => sync.mutate(),
+    });
 
   return (
-    <div style={{ padding: 20, height: "100%", overflow: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <Typography.Title level={4} style={{ margin: 0 }}>
-          {grid.project}
-        </Typography.Title>
-        {/* identity, not alerts: the sync state and the application's size */}
-        <Tag
-          icon={syncSignal.icon}
-          style={{
-            color: syncSignal.color,
-            background: `${syncSignal.color}14`,
-            borderColor: `${syncSignal.color}55`,
-            marginInlineEnd: 0,
-          }}
-        >
-          {syncSignal.label}
-        </Tag>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {params} parameter{params === 1 ? "" : "s"} · {grid.instances.length} instance
-          {grid.instances.length === 1 ? "" : "s"}
-        </Typography.Text>
-        <div style={{ flex: 1 }} />
-        <DeleteApplication project={grid.project} repoId={repoId} onRemoved={() => { setRepo(null); setSection("workspace"); }} />
-      </div>
+    <div style={{ padding: "var(--sp-5) var(--sp-6)", height: "100%", overflow: "auto", background: "var(--canvas)" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", display: "flex", flexDirection: "column", gap: "var(--sp-4)" }}>
+        {/* Identity row: name + persistent context, actions on the right. */}
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--sp-3)", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "var(--fs-20)", fontWeight: 650, color: "var(--text)" }}>{grid.project}</span>
+          <AppContextChips />
+          <div style={{ flex: 1 }} />
+          {gitUrl && (
+            <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
+              View in Git
+            </Button>
+          )}
+          <Dropdown
+            trigger={["click"]}
+            menu={{
+              items: [
+                { key: "edit", label: "Edit details" },
+                { key: "import", label: "Import settings" },
+                { type: "divider" },
+                { key: "delete", danger: true, label: "Delete application" },
+              ],
+              onClick: ({ key }) => {
+                if (key === "edit") setEditOpen(true);
+                if (key === "import") setSection("import");
+                if (key === "delete") setDeleteOpen(true);
+              },
+            }}
+          >
+            <Button size="small" icon={<MoreOutlined />} />
+          </Dropdown>
+        </div>
 
-      {/* One card per signal — the single place each of these is stated. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
-        <Card
-          size="small"
-          hoverable
-          className="stat-accent card-clickable"
-          style={{ "--accent": invalid ? "#d03b3b" : "#0ca30c" } as React.CSSProperties}
-          onClick={() => {
-            setFilters({ invalidOnly: invalid > 0 });
-            setSection("config");
-          }}
-        >
-          <Statistic
-            title="Configuration health"
-            value={invalid === 0 ? "All settings valid" : `${invalid} to fix`}
-            valueStyle={{ fontSize: 20, color: invalid ? "#cf1322" : "#389e0d" }}
-            prefix={invalid === 0 ? <CheckCircleTwoTone twoToneColor="#52c41a" /> : <WarningTwoTone twoToneColor="#faad14" />}
+        {/* The four operational numbers, each clickable to its source. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "var(--sp-4)" }}>
+          <StatTile
+            label="Configuration health"
+            value={
+              <span style={{ color: invalid ? "var(--c-danger)" : "var(--c-ok)", fontSize: "var(--fs-16)" }}>
+                {invalid === 0 ? "All settings valid" : `${invalid} to fix`}
+              </span>
+            }
+            sub={invalid === 0 ? "No issues found" : "Open the editor on the first problem"}
+            icon={
+              invalid === 0 ? (
+                <CheckCircleFilled style={{ color: "var(--c-ok)" }} />
+              ) : (
+                <WarningFilled style={{ color: "var(--c-danger)" }} />
+              )
+            }
+            onClick={invalid ? fixFirstInvalid : () => setSection("config")}
           />
-        </Card>
-        <Card
-          size="small"
-          hoverable
-          className="stat-accent card-clickable"
-          style={{ "--accent": "#1677ff" } as React.CSSProperties}
-          onClick={() => setSection("approvals")}
-        >
-          <Statistic
-            title="Waiting for approval"
-            value={awaiting.length}
-            valueStyle={{ fontSize: 20, color: awaiting.length ? "#1677ff" : undefined }}
-            prefix={<InboxOutlined />}
-            suffix={awaiting.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
-          />
-        </Card>
-        <Card
-          size="small"
-          hoverable
-          className="stat-accent card-clickable"
-          style={{ "--accent": "#fa8c16" } as React.CSSProperties}
-          onClick={() => setSection("config")}
-        >
-          <Statistic
-            title="Your unsent edits"
+          <StatTile
+            label="Unsent edits"
             value={pending}
-            valueStyle={{ fontSize: 20, color: pending ? "#fa8c16" : undefined }}
-            prefix={<EditOutlined />}
+            sub={pending ? "Waiting to be submitted" : "Nothing waiting"}
+            icon={<EditOutlined style={{ color: pending ? "var(--c-pending)" : "var(--text-3)" }} />}
+            onClick={() => setSection("config")}
           />
-        </Card>
-        <Card
-          size="small"
-          hoverable
-          className="stat-accent card-clickable"
-          style={{ "--accent": findings.length ? "#fa8c16" : "#0ca30c" } as React.CSSProperties}
-          onClick={() => setSection("drift")}
-        >
-          <Statistic
-            title="Repository changes"
-            value={findings.length === 0 ? "None" : findings.length}
-            valueStyle={{ fontSize: 20, color: findings.length ? "#fa8c16" : "#389e0d" }}
-            prefix={findings.length ? <WarningTwoTone twoToneColor="#faad14" /> : <CheckCircleTwoTone twoToneColor="#52c41a" />}
-            suffix={findings.length ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
+          <StatTile
+            label="Repository changes"
+            value={findings.length}
+            sub={findings.length ? "Made outside Configer" : "None outside Configer"}
+            icon={<PullRequestOutlined style={{ color: findings.length ? "var(--c-pending)" : "var(--text-3)" }} />}
+            onClick={() => setSection("drift")}
           />
-        </Card>
-        <Card
-          size="small"
-          hoverable
-          className="stat-accent card-clickable"
-          style={{ "--accent": versions.length > 1 ? "#fa8c16" : "#6c3df4" } as React.CSSProperties}
-          onClick={() => setSection("instances")}
-        >
-          <Statistic
-            title="Version spread"
-            value={versions.length === 1 ? versions[0] : versions.length ? `${versions.length} versions` : "not set"}
-            valueStyle={{ fontSize: 20, color: versions.length > 1 ? "#fa8c16" : undefined }}
-            prefix={<ApartmentOutlined />}
-            suffix={versions.length > 1 ? <RightOutlined style={{ fontSize: 12 }} /> : undefined}
+          <StatTile
+            label="Last sync"
+            value={st?.lastSync ? relTime(st.lastSync) : st?.remote ? "…" : "Local"}
+            sub={
+              !st?.remote
+                ? "Local repository, no remote"
+                : st.behind > 0
+                  ? `${st.behind} commit${st.behind === 1 ? "" : "s"} behind`
+                  : "Repository up to date"
+            }
+            icon={<HistoryOutlined style={{ color: "var(--text-3)" }} />}
+            onClick={() => sync.mutate()}
           />
-        </Card>
-      </div>
+        </div>
 
-      <Row gutter={[14, 14]}>
-        <Col xs={24} lg={14}>
-          <Card
-            size="small"
-            title="System health map"
-            styles={{ body: { minHeight: 120 } }}
+        {/* Attention + deployment targets: the two questions after health. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: "var(--sp-4)" }}>
+          <SectionCard title="Needs your attention">
+            {attention.length === 0 ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-2)", padding: "var(--sp-2) 0" }}>
+                <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
+                Nothing needs you right now.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {attention.map((a) => (
+                  <AttentionCard
+                    key={a.key}
+                    severity={a.severity}
+                    title={a.title}
+                    sub={a.sub}
+                    actionLabel={a.actionLabel}
+                    onAction={a.onAction}
+                    primary={a.severity !== "danger"}
+                  />
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          <SectionCard
+            title="Deployment targets"
             extra={
-              <Button size="small" type="link" icon={<TableOutlined />} onClick={() => setSection("config")}>
-                Open editor
-              </Button>
+              <a onClick={() => setSection("instances")} style={{ fontSize: "var(--fs-12)" }}>
+                View all instances
+              </a>
             }
           >
-            {/* A tile with a problem opens the editor ON the problem: no
-                filtering — the grid scrolls there and flashes the exact cell. */}
-            <HealthTiles
-              data={tiles}
-              onClick={(name) => {
-                const firstInvalid = grid.rows.find((r) => {
-                  const c = r.cells[name];
-                  return c && !c.valid;
-                });
-                selectInstance(name);
-                if (firstInvalid) {
-                  selectParam(firstInvalid.param.id);
-                  setJump("cell", firstInvalid.param.id, name);
-                } else {
-                  setJump("instance", name);
-                }
-                setSection("config");
-              }}
-            />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card size="small" title="Settings by category" styles={{ body: { minHeight: 120 } }}>
-            <CategoryDonut data={donutData} />
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={5}>
-          <Card size="small" title="Change activity (14 days)" styles={{ body: { minHeight: 120 } }}>
-            <ActivitySparkline days={days} width={230} height={78} />
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-              {(changesQ.data ?? []).length} change request{(changesQ.data ?? []).length === 1 ? "" : "s"} total
-            </Typography.Text>
-          </Card>
-        </Col>
-      </Row>
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {perInstance.map(({ inst, invalid: bad, bound }) => (
+                <div
+                  key={inst.name}
+                  onClick={() => {
+                    selectInstance(inst.name);
+                    setJump("instance", inst.name);
+                    setSection("config");
+                  }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "7px 0",
+                    borderBottom: "1px solid var(--border)",
+                    cursor: "pointer",
+                    minWidth: 0,
+                  }}
+                >
+                  <span
+                    style={{ width: 8, height: 8, borderRadius: 4, flexShrink: 0, background: envHex(inst.environment) }}
+                    title={inst.environment}
+                  />
+                  <span className="mono" style={{ fontSize: "var(--fs-12)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {inst.name}
+                  </span>
+                  {bad > 0 ? (
+                    <StatusPill tone="danger" size="sm">{bad} invalid</StatusPill>
+                  ) : (
+                    <StatusPill tone="ok" size="sm">Active</StatusPill>
+                  )}
+                  <span style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", width: 96, textAlign: "right" }}>
+                    {bound} parameter{bound === 1 ? "" : "s"}
+                  </span>
+                  <span className="mono" style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", width: 64, textAlign: "right" }}>
+                    {inst.softwareVersion ?? ""}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </SectionCard>
+        </div>
 
-      <Row gutter={[14, 14]} style={{ flex: 1, alignItems: "stretch" }}>
-        <Col xs={24} lg={8} style={{ display: "flex" }}>
-          <Card
-            size="small"
+        {/* Supporting band: what happened, how much, and the repository. */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: "var(--sp-4)" }}>
+          <SectionCard
             title="Recent activity"
-            style={{ flex: 1 }}
             extra={
-              <Button size="small" type="link" onClick={() => setSection("changes")}>
-                See all
-              </Button>
+              <a onClick={() => setSection("changes")} style={{ fontSize: "var(--fs-12)" }}>
+                View all activity
+              </a>
             }
           >
-            {recent.length === 0 ? (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes yet.">
-                <Button type="primary" size="small" onClick={() => setSection("config")}>
-                  Edit your first setting
-                </Button>
-              </Empty>
+            {activity.items.length === 0 ? (
+              <div style={{ color: "var(--text-3)", fontSize: "var(--fs-12)", padding: "var(--sp-2) 0" }}>
+                No activity yet. Edit a setting in the editor to start a draft.
+              </div>
             ) : (
               <List
                 size="small"
-                dataSource={recent}
-                renderItem={(cr) => (
+                dataSource={activity.items}
+                renderItem={(a) => (
                   <List.Item
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setSection(cr.state === "under_review" ? "approvals" : "changes")}
+                    style={{ cursor: a.section ? "pointer" : "default", paddingInline: 0 }}
+                    onClick={() => a.section && setSection(a.section)}
                   >
-                    <Space direction="vertical" size={0} style={{ width: "100%" }}>
-                      <Space wrap size={6}>
-                        <StateTag state={cr.state} />
-                        <b>{cr.title}</b>
-                      </Space>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        {cr.author} · {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"} · {relTime(cr.updatedAt)}
-                      </Typography.Text>
-                    </Space>
+                    <div style={{ display: "flex", gap: 8, minWidth: 0, width: "100%" }}>
+                      <UserOutlined style={{ color: "var(--text-3)", marginTop: 3 }} />
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontSize: "var(--fs-12)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {a.actor && <b>{a.actor} </b>}
+                          {a.text}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", flexShrink: 0 }}>{relTime(a.at)}</span>
+                    </div>
                   </List.Item>
                 )}
               />
             )}
-          </Card>
-        </Col>
+          </SectionCard>
 
-        <Col xs={24} lg={8} style={{ display: "flex" }}>
-          <Card
-            size="small"
-            title="Repository events"
-            style={{ flex: 1 }}
+          <SectionCard title="Changes over time (14 days)">
+            <ActivitySparkline days={days} width={280} height={90} />
+            <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: 4 }}>
+              {(changesQ.data ?? []).length} change request{(changesQ.data ?? []).length === 1 ? "" : "s"} total
+            </div>
+          </SectionCard>
+
+          <SectionCard
+            title="Repository status"
             extra={
-              <Button size="small" type="link" onClick={() => setSection("drift")}>
-                {findings.length ? "Review" : "Open"}
-              </Button>
+              gitUrl ? (
+                <a href={gitUrl} target="_blank" rel="noreferrer" style={{ fontSize: "var(--fs-12)" }}>
+                  View repository
+                </a>
+              ) : undefined
             }
           >
-            {findings.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="No changes on Git since you last looked."
-              />
-            ) : (
-              <List
-                size="small"
-                dataSource={findings.slice(0, 6)}
-                renderItem={(f) => {
-                  const m = findingBrief[f.type];
-                  return (
-                    <List.Item style={{ cursor: "pointer" }} onClick={() => setSection("drift")}>
-                      <Space size={8} align="start">
-                        <span style={{ color: m.color, marginTop: 2 }}>{m.icon}</span>
-                        <Space direction="vertical" size={0}>
-                          <Typography.Text style={{ fontSize: 13 }}>
-                            <Tag color={m.color} style={{ marginInlineEnd: 6 }}>{m.label}</Tag>
-                            <span className="mono" style={{ fontSize: 12 }}>{f.path.split("/").pop()}</span>
-                          </Typography.Text>
-                          {f.candidates ? (
-                            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                              {f.candidates} candidate setting{f.candidates === 1 ? "" : "s"}
-                            </Typography.Text>
-                          ) : null}
-                        </Space>
-                      </Space>
-                    </List.Item>
-                  );
-                }}
-              />
-            )}
-          </Card>
-        </Col>
-
-        <Col xs={24} lg={8} style={{ display: "flex" }}>
-          <Card size="small" title="Your systems" style={{ flex: 1 }}>
-            <List
-              size="small"
-              dataSource={grid.instances}
-              renderItem={(i) => (
-                <List.Item>
-                  <Space>
-                    <span
-                      style={{
-                        width: 8, height: 8, borderRadius: 4, display: "inline-block",
-                        background: envHex(i.environment),
-                      }}
-                    />
-                    {i.name}
-                    {touched.has(i.name) && <Tag color="orange" style={{ fontSize: 10, marginInlineStart: 2 }}>edited</Tag>}
-                  </Space>
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                    {i.softwareVersion} · {i.region ?? "-"}
-                  </Typography.Text>
-                </List.Item>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ fontWeight: 600, fontSize: "var(--fs-13)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {repo?.name ?? grid.project}
+              </div>
+              <div className="mono" style={{ fontSize: "var(--fs-12)", color: "var(--text-2)" }}>{st?.branch ?? "main"}</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {st?.upstreamGone ? (
+                  <StatusPill tone="danger">Branch removed</StatusPill>
+                ) : st?.syncError ? (
+                  <Tooltip title={st.syncError}>
+                    <span style={{ display: "inline-flex" }}>
+                      <StatusPill tone="pending">Sync issue</StatusPill>
+                    </span>
+                  </Tooltip>
+                ) : !st?.remote ? (
+                  <StatusPill tone="neutral">Local</StatusPill>
+                ) : st.behind > 0 ? (
+                  <StatusPill tone="pending">{st.behind} behind</StatusPill>
+                ) : (
+                  <StatusPill tone="ok">Synced</StatusPill>
+                )}
+                <span style={{ fontSize: "var(--fs-11)", color: "var(--text-3)" }}>
+                  {st?.lastSync ? relTime(st.lastSync) : ""}
+                </span>
+              </div>
+              {(st?.ahead ?? 0) > 0 && (
+                <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)" }}>
+                  {st?.ahead} commit{st?.ahead === 1 ? "" : "s"} ahead of the remote
+                </div>
               )}
-            />
-            <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {[...new Set(grid.instances.map((i) => i.environment ?? "unspecified"))].map((e) => (
-                <EnvTag
-                  key={e}
-                  env={e}
-                  count={grid.instances.filter((i) => (i.environment ?? "unspecified") === e).length}
-                />
-              ))}
+              <Button size="small" loading={sync.isPending} onClick={() => sync.mutate()} style={{ alignSelf: "flex-start" }}>
+                Sync now
+              </Button>
             </div>
-          </Card>
-        </Col>
-      </Row>
+          </SectionCard>
+        </div>
+      </div>
 
-      <Card size="small">
-        <Space wrap>
-          <BranchesOutlined />
-          <Typography.Text>
-            Everything here is stored in <b>Git</b>
-            {st?.remote ? <> and synced with your repository (branch <code>{st.branch}</code>)</> : <> (branch <code>{st?.branch ?? "main"}</code>)</>}.
-            {" "}Your edits become a <b>change request</b>, get reviewed, and only go live after approval; you can't break anything by exploring.
-          </Typography.Text>
-        </Space>
-      </Card>
+      <DeleteApplicationModal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        project={grid.project}
+        repoId={repoId}
+        onRemoved={() => {
+          setRepo(null);
+          setSection("workspace");
+        }}
+      />
+      {repoId && <EditApplicationModal open={editOpen} repoId={repoId} onClose={() => setEditOpen(false)} />}
     </div>
   );
 }

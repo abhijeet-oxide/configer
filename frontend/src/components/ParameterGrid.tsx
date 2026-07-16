@@ -28,6 +28,7 @@ import {
   GlobalOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
+  SwapOutlined,
   UpOutlined,
   DownOutlined,
 } from "@ant-design/icons";
@@ -77,6 +78,8 @@ function EditableCell({
   onAction,
   onCopyTo,
   onUndo,
+  onFind,
+  onReplace,
 }: {
   cell: Cell | undefined;
   param: Parameter;
@@ -91,6 +94,8 @@ function EditableCell({
   onAction: (action: "reset" | "exclude") => void;
   onCopyTo: (target: string) => void;
   onUndo: () => void;
+  onFind: (value: string) => void;
+  onReplace: (value: string) => void;
 }) {
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
@@ -135,6 +140,13 @@ function EditableCell({
             .map((n) => ({ key: `copy:${n}`, label: n })),
         }]
       : []),
+    ...(cell.set && cell.value != null
+      ? [
+          { type: "divider" as const },
+          { key: "find", label: `Find occurrences of "${fmtValue(cell.value)}"` },
+          { key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` },
+        ]
+      : []),
   ];
 
   const body =
@@ -159,11 +171,14 @@ function EditableCell({
       trigger={["contextMenu"]}
       menu={{
         items: menuItems,
-        onClick: ({ key }) => {
+        onClick: ({ key, domEvent }) => {
+          domEvent.stopPropagation();
           if (key === "undo") onUndo();
           else if (key === "edit") onStartEdit();
           else if (key === "reset") onAction("reset");
           else if (key === "exclude") onAction("exclude");
+          else if (key === "find") onFind(fmtValue(cell.value));
+          else if (key === "replace") onReplace(fmtValue(cell.value));
           else if (key.startsWith("copy:")) onCopyTo(key.slice(5));
         },
       }}
@@ -184,6 +199,13 @@ function matchesValue(r: Row, q: string): boolean {
     if (c.value != null && String(c.value).toLowerCase().includes(q)) return true;
   }
   return false;
+}
+
+// valueSig is a row's value fingerprint across instances: two rows share a
+// signature when they hold the same value in every instance (true "same
+// value"), so grouping never fuses rows that merely coincide in one column.
+function valueSig(r: Row, instances: Instance[]): string {
+  return JSON.stringify(instances.map((i) => r.cells[i.name]?.value ?? null));
 }
 
 function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
@@ -277,6 +299,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
   const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string } | null>(null);
+  // Find & Replace dialog (opened from the toolbar or a cell's right-click)
+  const [findReplace, setFindReplace] = useState<{ find: string } | null>(null);
   const tableRef = useRef<GetRef<typeof Table>>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -350,10 +374,45 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
-    return filtered.sort(
+    filtered.sort(
       (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
     );
-  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder]);
+    if (!prefs.groupByValue) return filtered;
+    // Group-by-value: cluster rows that share the same value signature (their
+    // per-instance values, identical across the board) adjacently, anchored at
+    // each group's first appearance so the overall order stays familiar.
+    const bySig = new Map<string, Row[]>();
+    const order: string[] = [];
+    for (const r of filtered) {
+      const s = valueSig(r, grid.instances);
+      if (!bySig.has(s)) {
+        bySig.set(s, []);
+        order.push(s);
+      }
+      bySig.get(s)!.push(r);
+    }
+    return order.flatMap((s) => bySig.get(s)!);
+  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder, prefs.groupByValue, grid.instances]);
+
+  // Visual metadata for group-by-value: for each row in a same-value group of
+  // more than one, its cycling color and whether it opens/closes the group box.
+  const groupMeta = useMemo(() => {
+    if (!prefs.groupByValue) return null;
+    const counts = new Map<string, number>();
+    const sigs = rows.map((r) => valueSig(r, grid.instances));
+    for (const s of sigs) counts.set(s, (counts.get(s) ?? 0) + 1);
+    const meta = new Map<string, { color: number; top: boolean; bot: boolean }>();
+    let color = -1;
+    for (let i = 0; i < rows.length; i++) {
+      const s = sigs[i];
+      if ((counts.get(s) ?? 0) < 2) continue;
+      const top = i === 0 || sigs[i - 1] !== s;
+      const bot = i === rows.length - 1 || sigs[i + 1] !== s;
+      if (top) color = (color + 1) % 5;
+      meta.set(rows[i].param.id, { color, top, bot });
+    }
+    return meta;
+  }, [rows, prefs.groupByValue, grid.instances]);
 
   // Auto-fit: each instance column gets at least what its longest visible
   // value needs (so "staging.example.internal" never truncates), and any
@@ -604,6 +663,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 instance: pendingItem?.scope === "global" ? "" : inst.name,
               })
             }
+            onFind={(value) => {
+              setLocalQ(value);
+              setSearchScope("value");
+            }}
+            onReplace={(value) => setFindReplace({ find: value })}
           />
         );
       },
@@ -761,11 +825,29 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <Checkbox checked={prefs.showDescCol} onChange={(e) => setPrefs({ showDescCol: e.target.checked })}>
                   Description
                 </Checkbox>
+                <Typography.Text type="secondary" style={{ fontSize: 11 }}>GROUPING</Typography.Text>
+                <Checkbox checked={prefs.groupByValue} onChange={(e) => setPrefs({ groupByValue: e.target.checked })}>
+                  Group by value
+                </Checkbox>
+                <Typography.Text type="secondary" style={{ fontSize: 11, lineHeight: 1.3 }}>
+                  Places parameters that hold the same value across all instances next to each other,
+                  bracketed so you can see at a glance what matches.
+                </Typography.Text>
               </div>
             }
           >
-            <Button size="small" icon={<SettingOutlined />} aria-label="View options" title="View: density & columns" />
+            <Button
+              size="small"
+              type={prefs.groupByValue ? "primary" : "default"}
+              ghost={prefs.groupByValue}
+              icon={<SettingOutlined />}
+              aria-label="View options"
+              title="View: density, columns & grouping"
+            />
           </Popover>
+          <Tooltip title="Find & replace values across instances">
+            <Button size="small" icon={<SwapOutlined />} aria-label="Find and replace" onClick={() => setFindReplace({ find: "" })} />
+          </Tooltip>
           <Tooltip title={editorFocus ? "Exit focus mode (Esc)" : "Focus mode: maximize the editor"}>
             <Button
               size="small"
@@ -779,6 +861,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Space>
       </div>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
+      {findReplace && (
+        <FindReplaceModal
+          grid={grid}
+          initialFind={findReplace.find}
+          onClose={() => setFindReplace(null)}
+        />
+      )}
       <GlobalPrompt
         ask={globalAsk}
         instanceCount={grid.instances.length}
@@ -819,11 +908,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           virtual
           scroll={{ x: scrollX, y: tableY }}
           pagination={false}
-          rowClassName={(r) =>
-            ((flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id
-              ? "row-flash "
-              : "") + (r.param.id === selectedParamId ? "row-selected" : "")
-          }
+          rowClassName={(r) => {
+            const g = groupMeta?.get(r.param.id);
+            return (
+              ((flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id ? "row-flash " : "") +
+              (r.param.id === selectedParamId ? "row-selected " : "") +
+              (g ? `vgrp vgrp-c${g.color}${g.top ? " vgrp-top" : ""}${g.bot ? " vgrp-bot" : ""}` : "")
+            ).trim();
+          }}
           onRow={(r) => ({
             onClick: () => selectParam(r.param.id),
             style: { cursor: "pointer" },
@@ -832,6 +924,159 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       </div>
       </div>
     </div>
+  );
+}
+
+// coerceToType turns the replacement string back into a parameter's declared
+// type, so replacing "3" in an integer parameter stores 3, not "3".
+function coerceToType(raw: string, type: string): unknown {
+  switch (type) {
+    case "integer":
+    case "number": {
+      const n = Number(raw);
+      return Number.isNaN(n) ? raw : n;
+    }
+    case "boolean":
+      return raw === "true";
+    case "list":
+      return raw.split(",").map((s) => s.trim()).filter(Boolean);
+    default:
+      return raw;
+  }
+}
+
+interface FRMatch {
+  paramId: string;
+  name: string;
+  instance: string;
+  type: string;
+  current: string;
+}
+
+// FindReplaceModal finds every editable cell whose value equals the search
+// term and replaces it in one action — the pragmatic tool for "these N
+// parameters all say X, change them together" without permanently merging
+// them. Each replacement is staged into the draft like a normal cell edit, so
+// it still flows through review. A preview shows exactly what will change.
+function FindReplaceModal({
+  grid,
+  initialFind,
+  onClose,
+}: {
+  grid: Grid;
+  initialFind: string;
+  onClose: () => void;
+}) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const [find, setFind] = useState(initialFind);
+  const [replace, setReplace] = useState("");
+  const [instances, setInstances] = useState<string[]>([]); // empty = all
+  const [caseSensitive, setCaseSensitive] = useState(true);
+
+  const matches = useMemo<FRMatch[]>(() => {
+    const needle = find.trim();
+    if (!needle) return [];
+    const targets = new Set(instances.length ? instances : grid.instances.map((i) => i.name));
+    const eq = (a: string) => (caseSensitive ? a === needle : a.toLowerCase() === needle.toLowerCase());
+    const out: FRMatch[] = [];
+    for (const r of grid.rows) {
+      for (const inst of grid.instances) {
+        if (!targets.has(inst.name)) continue;
+        const c = r.cells[inst.name];
+        if (!c || !c.editable || !c.set) continue;
+        const cur = fmtValue(c.value);
+        if (eq(cur)) out.push({ paramId: r.param.id, name: r.param.name, instance: inst.name, type: r.param.type, current: cur });
+      }
+    }
+    return out;
+  }, [grid, find, instances, caseSensitive]);
+
+  const apply = useMutation({
+    mutationFn: async () => {
+      // Sequential so validation errors surface per cell without racing writes.
+      for (const m of matches) {
+        await api.setValue({ instance: m.instance, paramId: m.paramId, value: coerceToType(replace, m.type) });
+      }
+    },
+    onSuccess: () => {
+      message.success(`Replaced ${matches.length} value${matches.length === 1 ? "" : "s"} — staged in your draft for review.`);
+      qc.invalidateQueries();
+      onClose();
+    },
+    onError: (e: Error) => message.error(`Replace failed: ${e.message}`, 6),
+  });
+
+  const byParam = matches.reduce((n, m) => n.add(m.paramId), new Set<string>()).size;
+
+  return (
+    <Modal
+      title={
+        <Space>
+          <SwapOutlined />
+          Find &amp; replace values
+        </Space>
+      }
+      open
+      onCancel={onClose}
+      width={620}
+      okText={matches.length ? `Replace ${matches.length}` : "Replace"}
+      okButtonProps={{ disabled: matches.length === 0 || replace === "", loading: apply.isPending }}
+      onOk={() => apply.mutate()}
+    >
+      <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+        <Input placeholder="Find value" value={find} onChange={(e) => setFind(e.target.value)} autoFocus />
+        <SwapOutlined style={{ alignSelf: "center", opacity: 0.5 }} />
+        <Input placeholder="Replace with" value={replace} onChange={(e) => setReplace(e.target.value)} />
+      </div>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", margin: "12px 0" }}>
+        <Checkbox checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)}>
+          Case sensitive
+        </Checkbox>
+        <Select
+          size="small"
+          mode="multiple"
+          allowClear
+          maxTagCount="responsive"
+          style={{ flex: 1, minWidth: 0 }}
+          placeholder="All instances"
+          value={instances}
+          onChange={setInstances}
+          options={grid.instances.map((i) => ({ value: i.name, label: i.name }))}
+        />
+      </div>
+      {find.trim() === "" ? (
+        <Typography.Text type="secondary">Enter a value to find its occurrences across the grid.</Typography.Text>
+      ) : matches.length === 0 ? (
+        <Typography.Text type="secondary">No editable cells currently hold that value.</Typography.Text>
+      ) : (
+        <>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {matches.length} cell{matches.length === 1 ? "" : "s"} across {byParam} parameter{byParam === 1 ? "" : "s"} will change
+            {replace !== "" && (
+              <>
+                {": "}
+                <span className="mono" style={{ textDecoration: "line-through", opacity: 0.6 }}>{find}</span>
+                {" → "}
+                <span className="mono" style={{ color: "#389e0d" }}>{replace}</span>
+              </>
+            )}
+          </Typography.Text>
+          <div style={{ maxHeight: 260, overflow: "auto", marginTop: 8, border: "1px solid rgba(127,137,160,0.22)", borderRadius: 8 }}>
+            <Table<FRMatch>
+              size="small"
+              rowKey={(m) => `${m.paramId}|${m.instance}`}
+              dataSource={matches.slice(0, 300)}
+              pagination={false}
+              columns={[
+                { title: "Parameter", dataIndex: "name", render: (v) => <span className="mono" style={{ fontSize: 12 }}>{v}</span> },
+                { title: "Instance", dataIndex: "instance", width: 150 },
+              ]}
+            />
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 

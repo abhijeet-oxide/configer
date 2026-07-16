@@ -1,4 +1,4 @@
-# dev — shared development instance.
+# dev - shared development instance.
 namespace: telco-dev
 network:
   service:

@@ -1,11 +1,11 @@
 // Package pathedit is the single engine for reading and surgically editing
 // values inside configuration documents. It understands three formats:
 //
-//   - YAML — comment-preserving node-tree edits: only the addressed value
+//   - YAML - comment-preserving node-tree edits: only the addressed value
 //     changes; comments, key order, and unmanaged content stay byte-for-byte.
-//   - JSON — the same order-preserving node tree, re-emitted as JSON (Go maps
+//   - JSON - the same order-preserving node tree, re-emitted as JSON (Go maps
 //     would re-sort keys and produce noisy diffs).
-//   - XML  — etree-based element/attribute edits; list parameters map to
+//   - XML  - etree-based element/attribute edits; list parameters map to
 //     repeated sibling elements.
 //
 // Paths are dotted for YAML/JSON ("$.service.ip", "servers[2]",
@@ -13,8 +13,8 @@
 // "/network/tls/@minVersion"). Removals prune now-empty parents so absence is
 // total: no key, no line, no empty husk remains.
 //
-// Every write path in Configer — cell edits, instance scaffolding, file-mode
-// previews — funnels through this package so edit semantics can never drift
+// Every write path in Configer - cell edits, instance scaffolding, file-mode
+// previews - funnels through this package so edit semantics can never drift
 // between features.
 package pathedit
 

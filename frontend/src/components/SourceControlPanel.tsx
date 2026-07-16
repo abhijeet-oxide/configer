@@ -19,7 +19,7 @@ import SubmitChangesButton from "./SubmitChangesButton";
 // SourceControlPanel is the VS Code "Source Control" view, translated for people
 // who never think about Git: the branch the work lands on, the active (still
 // uncommitted) changes grouped by the file each one touches, a one-click undo
-// per change, and pull-latest — all without exposing raw Git. Committing is the
+// per change, and pull-latest - all without exposing raw Git. Committing is the
 // same review-and-submit flow used elsewhere (SubmitChangesButton), so a change
 // becomes a branch + pull request behind the scenes.
 
@@ -136,7 +136,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
         </div>
         <Typography.Paragraph type="secondary" style={{ fontSize: 11.5, margin: "8px 0 0" }}>
           Your edits are saved for review, then published to <code>{targetBranch ?? "the main branch"}</code>.
-          You don't need to touch Git — Configer handles the branch and pull request.
+          You don't need to touch Git - Configer handles the branch and pull request.
         </Typography.Paragraph>
       </div>
 

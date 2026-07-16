@@ -297,7 +297,7 @@ useUI.subscribe((s) => {
 
 // Browser back/forward: re-read the URL and apply it to the store. A location
 // that does not name an application (the portfolio) keeps the remembered
-// repository in state so switching back into it still works — it just isn't in
+// repository in state so switching back into it still works - it just isn't in
 // the URL. Switching repositories still routes through setApiRepo.
 window.addEventListener("popstate", () => {
   const loc = parseLocation();

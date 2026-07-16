@@ -58,7 +58,7 @@ show instances/prod-us-east/network.xml | grep -q 'namespace="telco-prod-smoke"'
 show shared/platform.yaml | grep -q 'domain: smoke.example.com' \
   || fail "global edit missing in shared file"
 git -C "$WORK/repo" ls-tree -r --name-only configer/cr-1 | grep -q '^generated/' \
-  && fail "generated/ artifacts exist — write-back regression"
+  && fail "generated/ artifacts exist - write-back regression"
 show instances/prod-eu-west/values.yaml | grep -q '10.20.10.10' \
   || fail "untouched instance changed"
 

@@ -23,7 +23,7 @@ services:
       CONFIGER_GIT_EMAIL: bot@configer.local
       
       # Platform database: Postgres in this stack (an embedded SQLite file is
-      # the default when unset — fine for single-node deployments).
+      # the default when unset - fine for single-node deployments).
       DATABASE_URL: postgres://configer:configer@postgres:5432/configer
 
       # GitHub OAuth login (fill in to enable multi-user mode; the callback is

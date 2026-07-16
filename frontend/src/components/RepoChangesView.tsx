@@ -188,7 +188,7 @@ export default function RepoChangesView() {
             <div style={{ textAlign: "center", padding: "28px 16px" }}>
               <CheckCircleFilled style={{ fontSize: 52, color: "var(--c-ok)" }} />
               <Typography.Title level={4} style={{ marginTop: 16, marginBottom: 6 }}>
-                No drift — you're all caught up
+                No drift - you're all caught up
               </Typography.Title>
               <Typography.Paragraph type="secondary" style={{ maxWidth: 400, margin: "0 auto" }}>
                 Nothing has been committed directly on Git since you last looked. New commits are

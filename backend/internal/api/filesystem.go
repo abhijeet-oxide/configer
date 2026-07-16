@@ -6,8 +6,8 @@ package api
 // filesystem IS the user's filesystem, so a folder picker can be backed by a
 // simple directory listing: the browser navigates the tree and hands back the
 // real absolute path, which the workspace stores as a local pointer (the
-// application name + where it lives). Only directory NAMES are ever exposed —
-// never file contents — and this is no more powerful than the pre-existing
+// application name + where it lives). Only directory NAMES are ever exposed -
+// never file contents - and this is no more powerful than the pre-existing
 // "connect a local path" input it replaces.
 
 import (
@@ -62,7 +62,7 @@ func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
 
 	entries, err := os.ReadDir(abs)
 	if err != nil {
-		// A folder we can't read (permissions) isn't fatal — report it so the
+		// A folder we can't read (permissions) isn't fatal - report it so the
 		// picker can show the message and let the user step back out.
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "this folder can't be opened (permission denied)"})
 		return
@@ -74,7 +74,7 @@ func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
 		}
 		name := e.Name()
 		if strings.HasPrefix(name, ".") {
-			continue // hide dotfolders (.git, .config, …) — noise for picking a project
+			continue // hide dotfolders (.git, .config, …) - noise for picking a project
 		}
 		full := filepath.Join(abs, name)
 		folders = append(folders, folderEntry{

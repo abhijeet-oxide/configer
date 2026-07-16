@@ -83,8 +83,8 @@ function DeleteApplication({
         onCancel={() => setOpen(false)}
       >
         <Typography.Paragraph>
-          This removes the application from your Configer workspace. By default the Git repository —
-          including your configuration files and the <span className="mono">.configer</span> metadata —
+          This removes the application from your Configer workspace. By default the Git repository -
+          including your configuration files and the <span className="mono">.configer</span> metadata -
           stays exactly as it is, and you can reconnect any time.
         </Typography.Paragraph>
         <Checkbox checked={alsoConfiger} onChange={(e) => setAlsoConfiger(e.target.checked)}>
@@ -215,7 +215,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
         <DeleteApplication project={grid.project} repoId={repoId} onRemoved={() => { setRepo(null); setSection("workspace"); }} />
       </div>
 
-      {/* One card per signal — the single place each of these is stated. */}
+      {/* One card per signal - the single place each of these is stated. */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 14 }}>
         <Card
           size="small"
@@ -308,7 +308,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             }
           >
             {/* A tile with a problem opens the editor ON the problem: no
-                filtering — the grid scrolls there and flashes the exact cell. */}
+                filtering - the grid scrolls there and flashes the exact cell. */}
             <HealthTiles
               data={tiles}
               onClick={(name) => {

@@ -1,6 +1,6 @@
 // Package writer performs the .configer/ METADATA writes: parameter metadata
 // in parameters.yaml, instance metadata in instances.yaml, and ignore rules.
-// It never writes values — those live in the repository's own files and go
+// It never writes values - those live in the repository's own files and go
 // through the writeback engine. The metadata files are machine-managed YAML;
 // yaml.v3 marshals deterministically, so writes produce minimal diffs.
 package writer

@@ -2,7 +2,7 @@ package api
 
 // Application identity: the display name, description and free-form metadata
 // stored in .configer/application.yaml. Like every other .configer write this
-// is committed to Git with attribution — the repository stays the single
+// is committed to Git with attribution - the repository stays the single
 // source of truth for what the application is.
 
 import (
@@ -78,7 +78,7 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, "Update application details", author(r, req.Author), app)
 }
 
-// deinit removes the .configer folder — Configer's metadata — from the
+// deinit removes the .configer folder - Configer's metadata - from the
 // repository and commits the removal, returning the repository to an
 // unmanaged (un-onboarded) state. The repository's own configuration files
 // are untouched; only the .configer directory is deleted.

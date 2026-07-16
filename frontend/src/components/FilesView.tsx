@@ -254,7 +254,7 @@ export default function FilesView() {
       setDirty(null);
       if (r.staged === 0) message.info("No changes to save");
       else if (r.kind === "values")
-        message.success(`${r.staged} value edit(s) staged in your draft — visible in the grid too`);
+        message.success(`${r.staged} value edit(s) staged in your draft - visible in the grid too`);
       else message.success("File edit staged in your draft");
       qc.invalidateQueries();
     },
@@ -349,7 +349,7 @@ export default function FilesView() {
                   {managed.has(current.path) ? (
                     <Tag color="success">managed</Tag>
                   ) : (
-                    <Tooltip title="Not managed yet — add it to scan for settings">
+                    <Tooltip title="Not managed yet - add it to scan for settings">
                       <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
                         Add to managed
                       </Button>

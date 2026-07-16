@@ -1,7 +1,7 @@
 // Package auth implements GitHub OAuth login and cookie sessions. When no
 // OAuth client is configured (GITHUB_OAUTH_CLIENT_ID unset) the deployment
 // runs in single-user mode: every request acts as the anonymous local user
-// and no login surface appears — self-hosted simplicity stays intact.
+// and no login surface appears - self-hosted simplicity stays intact.
 package auth
 
 import (
@@ -51,7 +51,7 @@ type Service struct {
 	HTTP *http.Client
 
 	// tokens caches each signed-in user's GitHub access token, in memory
-	// only — never written to the store or sent to the browser. It lets the
+	// only - never written to the store or sent to the browser. It lets the
 	// server browse repositories and branches on the user's behalf (the New
 	// Application flow). After a server restart the cache is empty until the
 	// user signs in again, which is a plain re-login, not an error.

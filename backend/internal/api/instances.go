@@ -3,7 +3,7 @@ package api
 // Instance registry endpoints. Creating or retiring an instance is a
 // STRUCTURAL change: it stages into the draft change request and, on submit,
 // the CR branch carries the scaffolded folder (per the repository's layout
-// convention) plus the registry entry — reviewable like any other change.
+// convention) plus the registry entry - reviewable like any other change.
 // Metadata-only updates (version, region, labels, archive) commit directly
 // with attribution, like parameter metadata.
 
@@ -55,9 +55,9 @@ func derefLabels(p *map[string]string) map[string]string {
 // addInstance creates a new deployment target right away: when cloned, its
 // folder is scaffolded as a real parallel copy of the source's managed files
 // (per the repository's layout convention) and the registry entry is written,
-// all committed with attribution. The instance is therefore live immediately —
+// all committed with attribution. The instance is therefore live immediately -
 // visible in the Instances view with its own folder, and its cells editable in
-// the grid — instead of only materializing when a change request is submitted.
+// the grid - instead of only materializing when a change request is submitted.
 // Value edits made afterwards still go through the normal draft/review flow.
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq

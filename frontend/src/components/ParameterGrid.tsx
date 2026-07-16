@@ -954,7 +954,7 @@ interface FRMatch {
 }
 
 // FindReplaceModal finds every editable cell whose value equals the search
-// term and replaces it in one action — the pragmatic tool for "these N
+// term and replaces it in one action - the pragmatic tool for "these N
 // parameters all say X, change them together" without permanently merging
 // them. Each replacement is staged into the draft like a normal cell edit, so
 // it still flows through review. A preview shows exactly what will change.
@@ -1000,7 +1000,7 @@ function FindReplaceModal({
       }
     },
     onSuccess: () => {
-      message.success(`Replaced ${matches.length} value${matches.length === 1 ? "" : "s"} — staged in your draft for review.`);
+      message.success(`Replaced ${matches.length} value${matches.length === 1 ? "" : "s"} - staged in your draft for review.`);
       qc.invalidateQueries();
       onClose();
     },

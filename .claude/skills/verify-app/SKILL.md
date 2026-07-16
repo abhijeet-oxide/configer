@@ -1,6 +1,6 @@
 ---
 name: verify-app
-description: Verify a Configer change end-to-end — build, lint, unit tests, and the write-back smoke test against the bundled fixture. Use after any nontrivial backend or frontend change.
+description: Verify a Configer change end-to-end - build, lint, unit tests, and the write-back smoke test against the bundled fixture. Use after any nontrivial backend or frontend change.
 ---
 
 # Verify Configer
@@ -14,7 +14,7 @@ cd backend && go vet ./... && go test ./...
 cd ../frontend && npx tsc --noEmit && npx eslint src
 ```
 
-(CI also runs `golangci-lint run` in `backend/` — run it locally when available.)
+(CI also runs `golangci-lint run` in `backend/` - run it locally when available.)
 
 ## 2. End-to-end write-back smoke
 
@@ -25,7 +25,7 @@ cd ../frontend && npx tsc --noEmit && npx eslint src
 This boots the backend on a copy of `sample-repo/`, stages a cell edit, a
 deduplicated edit (fans out to YAML + XML), a global (shared-file) edit, and
 an invalid value (must 422), submits the draft, and asserts the
-`configer/cr-1` branch carries exactly the expected surgical diffs — inline
+`configer/cr-1` branch carries exactly the expected surgical diffs - inline
 comments preserved, no `generated/` artifacts, untouched instances unchanged.
 `SMOKE OK` is the pass signal.
 

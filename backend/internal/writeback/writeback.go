@@ -1,5 +1,5 @@
 // Package writeback edits configuration values directly in the repository's
-// own files — the write-back-native model where the real files remain the
+// own files - the write-back-native model where the real files remain the
 // source of truth and Configer's .configer/ folder holds only metadata and
 // mappings (see docs/VISION.md). Given (file, format, path, value) it reads
 // the target file, sets or removes the value at the mapped location via the

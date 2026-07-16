@@ -16,7 +16,7 @@ import EnvTag from "./EnvTag";
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
 // into the draft change request, and submitting produces a branch where the
 // instance folder is scaffolded (or removed) following the repository's own
-// layout convention — reviewable like any other change. Metadata edits
+// layout convention - reviewable like any other change. Metadata edits
 // (version, region, labels, archive) commit directly with attribution.
 
 // Status colors carry meaning (green = active, gold = deprecated, etc.); red is
@@ -90,7 +90,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         v.mode === "edit"
           ? "Instance updated (committed with attribution)"
           : v.mode === "clone"
-            ? "Instance created as a copy — its folder and files are ready to edit"
+            ? "Instance created as a copy - its folder and files are ready to edit"
             : "Instance created (committed with attribution)",
       );
     },

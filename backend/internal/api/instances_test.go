@@ -11,7 +11,7 @@ import (
 // TestAddInstanceCloneScaffoldsImmediately verifies that adding a cloned
 // instance creates a real parallel folder (a copy of the source's files) and a
 // registry entry right away, and that the new instance's cells are editable in
-// the grid — not deferred to a change-request submit.
+// the grid - not deferred to a change-request submit.
 func TestAddInstanceCloneScaffoldsImmediately(t *testing.T) {
 	root := minimalRepo(t) // has instance "staging" with instances/staging/values.yaml (app.port: 8080)
 	s, err := New(root)

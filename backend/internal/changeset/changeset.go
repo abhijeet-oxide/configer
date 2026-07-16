@@ -106,7 +106,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	wt := ws.Dir()
 
 	// 1) Apply every item by editing the repository's OWN files in the
-	//    isolated worktree — the write-back-native model. Each edit is
+	//    isolated worktree - the write-back-native model. Each edit is
 	//    surgical (comments, order and unmanaged content preserved), exactly
 	//    the diff a careful engineer would have produced by hand. Structural
 	//    items (add/remove instance) go first so value edits for a brand-new
@@ -194,7 +194,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 //     parameter lives in several).
 //   - "reset" and "exclude" remove the key from the instance's files: the
 //     value falls back to whatever the base layer supplies, or becomes truly
-//     absent — exactly what deleting the line by hand would mean.
+//     absent - exactly what deleting the line by hand would mean.
 func applyItem(root string, proj *project.Project, it change.Item) error {
 	param, ok := proj.ParamByID(it.ParamID)
 	if !ok {
@@ -245,7 +245,7 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 
 // applyStructural performs an instance-topology item in the worktree: a new
 // instance is scaffolded by the layout adapter (following the repository's
-// own convention) or an existing one is retired (folder + registry entry) —
+// own convention) or an existing one is retired (folder + registry entry) -
 // exactly what a careful engineer would do by hand.
 func applyStructural(root string, proj *project.Project, it change.Item) error {
 	switch it.Act() {
@@ -313,11 +313,11 @@ func prBody(cr *change.ChangeRequest) string {
 			if from, _ := it.Old.(string); from != "" {
 				src = "clone of " + from
 			}
-			fmt.Fprintf(&b, "| add instance | %s | — | %s |\n", inst, src)
+			fmt.Fprintf(&b, "| add instance | %s | - | %s |\n", inst, src)
 		case change.ActionRemoveInstance:
-			fmt.Fprintf(&b, "| remove instance | %s | — | — |\n", inst)
+			fmt.Fprintf(&b, "| remove instance | %s | - | - |\n", inst)
 		case change.ActionEditFile:
-			fmt.Fprintf(&b, "| edit file `%s` | %s | — | — |\n", it.File, inst)
+			fmt.Fprintf(&b, "| edit file `%s` | %s | - | - |\n", it.File, inst)
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 		}

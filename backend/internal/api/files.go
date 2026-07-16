@@ -138,7 +138,7 @@ func (e errInstanceNotFound) Error() string {
 // Monaco edit of one file, staged into the SAME draft as grid edits.
 //
 // Reverse sync: when the edit only changes MANAGED values, it is staged as
-// ordinary validated cell items — so a deduplicated parameter still fans out
+// ordinary validated cell items - so a deduplicated parameter still fans out
 // to its other locations on submit, and the grid shows the pending cells.
 // When unmanaged content changed too, the whole file content is staged as
 // one edit-file item (managed values are still validated first: an invalid

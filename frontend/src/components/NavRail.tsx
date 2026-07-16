@@ -8,7 +8,7 @@ import { useUI } from "../store";
 
 // The far-left navigation rail, kept to the two levels of the hierarchy:
 // Applications (the portfolio) and Configuration (everything about the
-// selected application — its views live as tabs on the Configuration page).
+// selected application - its views live as tabs on the Configuration page).
 // Admin-ish surfaces (Plugins) sit at the bottom. Badges sit on the icons so
 // the collapsed rail stays clean and readable.
 

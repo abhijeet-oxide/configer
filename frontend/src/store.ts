@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { setApiRepo } from "./api";
-import type { BrandKey, FontScale, Mode } from "./theme";
+import type { FontScale, Mode } from "./theme";
 
 // ------------------------------------------------------------------ routing
 // Sections that belong to ONE application (rendered as tabs on the
@@ -121,7 +121,6 @@ export interface RowFilters {
 
 interface UIState {
   mode: Mode;
-  brand: BrandKey;
   fontScale: FontScale;
   /** the active repository (workspace entry id); null until the workspace
    *  loads, then always set while any repository is connected */
@@ -154,7 +153,6 @@ interface UIState {
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
   setMode: (m: Mode) => void;
-  setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
   setRepo: (id: string | null) => void;
   setSection: (s: string) => void;
@@ -175,7 +173,6 @@ interface UIState {
 
 export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
-  brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   repoId: initialRepo,
   section: initialSection,
@@ -196,10 +193,6 @@ export const useUI = create<UIState>((set) => ({
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
-  },
-  setBrand: (brand) => {
-    localStorage.setItem("configer.brand", brand);
-    set({ brand });
   },
   setFontScale: (fontScale) => {
     localStorage.setItem("configer.fontScale", fontScale);

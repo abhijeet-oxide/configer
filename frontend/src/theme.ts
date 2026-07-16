@@ -1,39 +1,36 @@
-// Theme system: light/dark algorithms, company-brand token overrides, and a
-// comfort text-size scale (accessibility for less-technical / older users).
+// Theme system: one deliberate product identity (AT&T blue primary over a
+// neutral canvas) expressed twice: as CSS variables in tokens.css for custom
+// surfaces, and here as Ant Design tokens so the primitive layer matches.
+// Light is the design target; dark stays fully functional.
 import { theme as antdTheme, type ThemeConfig } from "antd";
 
 export type Mode = "light" | "dark";
-export type BrandKey = "configer" | "azure" | "emerald" | "violet";
 export type FontScale = "normal" | "large";
 
-export const brands: Record<BrandKey, { label: string; colorPrimary: string }> = {
-  configer: { label: "Configer", colorPrimary: "#2f6bff" },
-  azure: { label: "Azure", colorPrimary: "#0078d4" },
-  emerald: { label: "Emerald", colorPrimary: "#0f9d6e" },
-  violet: { label: "Violet", colorPrimary: "#7c3aed" },
-};
+// The single brand primary. Must stay in sync with --brand in tokens.css.
+export const BRAND = "#0057b8";
+const BRAND_DARK = "#4d94e8";
 
-// Semantic accents used consistently across the app (also mirrored in CSS):
-// green = live/valid · amber = pending · blue = in review · red = invalid/danger.
-// Red is reserved for errors, failures, and destructive actions ONLY; it never
-// denotes an environment (a healthy production instance is not an error).
+// Semantic accents used consistently across the app (mirrored in tokens.css):
+// green = healthy/valid, amber = attention/pending, blue = review/primary,
+// red = errors, failures and destructive actions ONLY; it never denotes an
+// environment (a healthy production instance is not an error).
 export const semantic = {
-  ok: "#0ca30c",
-  pending: "#fa8c16",
-  review: "#1677ff",
-  danger: "#d03b3b",
+  ok: "#067647",
+  pending: "#b54708",
+  review: "#0057b8",
+  danger: "#b42318",
 };
 
 // Environment identity colors. These label WHICH environment an instance runs
 // in; they are deliberately distinct from the status palette above so color
-// carries one meaning. Production is a serious indigo (not danger-red), staging
-// amber, development green. Single source of truth: import envHex/envColors
-// instead of hardcoding hexes per component.
+// carries one meaning. Production is a serious indigo (not danger-red).
+// Single source of truth: import envHex/envColors instead of hardcoding.
 export const envColors: Record<string, string> = {
   production: "#4338ca", // indigo: serious, high-stakes, but not an error
   prod: "#4338ca", // alias of production
-  staging: "#fa8c16", // amber
-  development: "#0ca30c", // green
+  staging: "#b54708", // amber
+  development: "#067647", // green
   lab: "#0f9d6e", // teal
   sandbox: "#7c3aed", // violet
   nonprod: "#0891b2", // cyan
@@ -41,45 +38,74 @@ export const envColors: Record<string, string> = {
 export const envHex = (env: string | undefined): string =>
   (env ? envColors[env.toLowerCase()] : undefined) ?? "#8c8c8c";
 
-// Suggested environment names offered in the pickers. The field is free text —
+// Suggested environment names offered in the pickers. The field is free text;
 // these are only defaults; any custom value is accepted.
 export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 
-export function buildTheme(mode: Mode, brand: BrandKey, scale: FontScale = "normal"): ThemeConfig {
+export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig {
   const base = scale === "large" ? 15 : 13;
   const dark = mode === "dark";
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
-      colorPrimary: brands[brand].colorPrimary,
-      borderRadius: 8,
+      colorPrimary: dark ? BRAND_DARK : BRAND,
+      colorInfo: dark ? BRAND_DARK : BRAND,
+      colorLink: dark ? BRAND_DARK : BRAND,
+      colorSuccess: dark ? "#4cc38a" : "#067647",
+      colorWarning: dark ? "#f2b13a" : "#b54708",
+      colorError: dark ? "#f0716a" : "#b42318",
+      borderRadius: 6,
+      controlHeight: 30,
       fontSize: base,
       fontFamily:
         `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
-      // clearer plane separation: page canvas vs raised cards
-      colorBgLayout: dark ? "#0f0f10" : "#f4f5f7",
-      colorBgContainer: dark ? "#17181a" : "#ffffff",
-      colorBorderSecondary: dark ? "#26272b" : "#e9eaee",
+      // three planes: page canvas < content surface < floating surface
+      colorBgLayout: dark ? "#0f1115" : "#f5f6f8",
+      colorBgContainer: dark ? "#16181d" : "#ffffff",
+      colorBgElevated: dark ? "#1b1e24" : "#ffffff",
+      colorBorder: dark ? "#343943" : "#d0d5dd",
+      colorBorderSecondary: dark ? "#262a31" : "#e4e7ec",
+      colorText: dark ? "#e6e9ee" : "#101828",
+      colorTextSecondary: dark ? "#a5adba" : "#475467",
+      colorTextTertiary: dark ? "#6c7684" : "#98a2b3",
     },
     components: {
       Layout: {
         headerHeight: 48,
         headerPadding: "0 16px",
       },
+      Button: {
+        fontWeight: 500,
+        primaryShadow: "none",
+        defaultShadow: "none",
+        dangerShadow: "none",
+      },
       Card: {
         boxShadowTertiary: dark
           ? "0 1px 2px rgba(0,0,0,0.5)"
-          : "0 1px 2px rgba(16,24,40,0.05), 0 1px 3px rgba(16,24,40,0.06)",
+          : "0 1px 2px rgba(16,24,40,0.05)",
+        headerFontSize: base,
       },
       Table: {
-        headerBg: dark ? "#1d1e21" : "#fafbfc",
+        headerBg: dark ? "#1b1e24" : "#fafbfc",
+        headerColor: dark ? "#a5adba" : "#475467",
+        headerSplitColor: "transparent",
+        cellPaddingBlock: 10,
         cellPaddingBlockSM: 4,
         cellPaddingInlineSM: 8,
-        rowHoverBg: dark ? "#202226" : "#f2f6ff",
+        rowHoverBg: dark ? "#1b1e24" : "#f5f8fc",
       },
-      Menu: {
-        itemBorderRadius: 8,
-        itemMarginInline: 8,
+      Tabs: {
+        titleFontSize: base,
+        horizontalItemPadding: "10px 4px",
+        horizontalMargin: "0",
+      },
+      Tag: {
+        defaultBg: dark ? "#1b1e24" : "#f2f4f7",
+        defaultColor: dark ? "#a5adba" : "#475467",
+      },
+      Tree: {
+        nodeSelectedBg: dark ? "rgba(77,148,232,0.16)" : "#e8f1fb",
       },
       Statistic: {
         contentFontSize: scale === "large" ? 24 : 20,

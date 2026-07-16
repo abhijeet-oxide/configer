@@ -7,20 +7,13 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Semantic accents, mirrored from theme.ts: green = live/valid, amber =
-   pending, blue = in review, red = invalid/production. */
-:root {
-  --c-ok: #0ca30c;
-  --c-pending: #fa8c16;
-  --c-review: #1677ff;
-  --c-danger: #d03b3b;
-}
+/* Semantic accent variables (--c-*) live in tokens.css together with the
+   full design token set: brand, surfaces, spacing, radius, elevation, motion. */
 
 /* ---------------------------------------------------------------- cells */
 

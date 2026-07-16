@@ -5,25 +5,25 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import { useUI } from './store'
 import { buildTheme } from './theme'
+import './tokens.css'
 import './index.css'
 
 const queryClient = new QueryClient()
 
-// ThemeRoot applies the design system: light/dark algorithm, brand primary
-// color and comfort font scale all come from the UI store, so the TopBar
-// toggles take effect app-wide. AntApp provides the message/notification
-// context that components consume via AntApp.useApp().
+// ThemeRoot applies the design system: light/dark algorithm and comfort font
+// scale come from the UI store, so the appearance controls take effect
+// app-wide. AntApp provides the message/notification context that components
+// consume via AntApp.useApp().
 function ThemeRoot() {
   const mode = useUI((s) => s.mode)
-  const brand = useUI((s) => s.brand)
   const fontScale = useUI((s) => s.fontScale)
   React.useEffect(() => {
-    // Expose the mode to plain CSS (index.css) for non-AntD surfaces.
+    // Expose the mode to plain CSS (tokens.css) for non-AntD surfaces.
     document.documentElement.dataset.theme = mode
     document.documentElement.style.colorScheme = mode
   }, [mode])
   return (
-    <ConfigProvider theme={buildTheme(mode, brand, fontScale)}>
+    <ConfigProvider theme={buildTheme(mode, fontScale)}>
       <AntApp>
         <App />
       </AntApp>

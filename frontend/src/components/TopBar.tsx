@@ -16,7 +16,6 @@ import {
   MoonOutlined,
   SunOutlined,
   BellOutlined,
-  BgColorsOutlined,
   SyncOutlined,
   CloudServerOutlined,
   FontSizeOutlined,
@@ -28,7 +27,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { brands, type BrandKey } from "../theme";
 import MembersModal from "./MembersModal";
 
 // Application header, kept deliberately light: an ellipsized breadcrumb that
@@ -66,7 +64,7 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 }
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { mode, setMode, brand, setBrand, fontScale, setFontScale, search, setSearch, setSection, repoId, section } =
+  const { mode, setMode, fontScale, setFontScale, search, setSearch, setSection, repoId, section } =
     useUI();
   const switchRepo = useSwitchRepo();
   const searchRef = useRef<InputRef>(null);
@@ -222,23 +220,6 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             onClick={() => setMode(mode === "light" ? "dark" : "light")}
           />
         </Tooltip>
-        <Dropdown
-          menu={{
-            selectedKeys: [brand],
-            items: Object.entries(brands).map(([k, v]) => ({
-              key: k,
-              label: (
-                <Space>
-                  <span style={{ width: 10, height: 10, borderRadius: 5, background: v.colorPrimary, display: "inline-block" }} />
-                  {v.label}
-                </Space>
-              ),
-            })),
-            onClick: ({ key }) => setBrand(key as BrandKey),
-          }}
-        >
-          <Button size="small" type="text" icon={<BgColorsOutlined />} />
-        </Dropdown>
         <Tooltip title={fontScale === "normal" ? "Larger text (easier reading)" : "Normal text size"}>
           <Button
             size="small"

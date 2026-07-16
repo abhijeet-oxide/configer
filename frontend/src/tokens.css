@@ -1,0 +1,130 @@
+/* Design tokens: the product's visual identity, one deliberate system above
+   Ant Design. Every custom surface reads these variables; AntD primitives get
+   the same values through buildTheme (theme.ts). Light is the design target;
+   the dark block keeps every variable functional in dark mode. */
+
+:root {
+  /* Brand: AT&T blue family. Used sparingly: primary actions, selection,
+     focus, links. The interface itself stays neutral. */
+  --brand: #0057b8;
+  --brand-strong: #004494;
+  --brand-soft: #e8f1fb;
+  --brand-border: #b2ccea;
+
+  /* Navigation rail: dark navy chrome, independent of light/dark mode. */
+  --nav-bg: #0a1f3c;
+  --nav-bg-hover: rgba(255, 255, 255, 0.06);
+  --nav-bg-active: #0f62d6;
+  --nav-fg: #b9c6d8;
+  --nav-fg-active: #ffffff;
+  --nav-border: rgba(255, 255, 255, 0.08);
+
+  /* Surfaces: canvas (page) < surface (content) < floating (menus, modals).
+     Exactly three planes; tonal differences stay subtle. */
+  --canvas: #f5f6f8;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --border: #e4e7ec;
+  --border-strong: #d0d5dd;
+
+  /* Text: primary / secondary / tertiary. */
+  --text: #101828;
+  --text-2: #475467;
+  --text-3: #98a2b3;
+
+  /* Semantic status triples (foreground / soft background / border).
+     Green = healthy, amber = attention, red = error only, blue = review. */
+  --c-ok: #067647;
+  --c-ok-bg: #ecfdf3;
+  --c-ok-bd: #abefc6;
+  --c-pending: #b54708;
+  --c-pending-bg: #fffaeb;
+  --c-pending-bd: #fedf89;
+  --c-review: #0057b8;
+  --c-review-bg: #e8f1fb;
+  --c-review-bd: #b2ccea;
+  --c-danger: #b42318;
+  --c-danger-bg: #fef3f2;
+  --c-danger-bd: #fecdca;
+
+  /* Spacing: engineered 4px scale. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 28px;
+  --sp-8: 32px;
+
+  /* Radius: restrained. Dense data stays crisp; pills are for status only. */
+  --r-sm: 4px;
+  --r-md: 6px;
+  --r-lg: 8px;
+  --r-xl: 12px;
+  --r-pill: 999px;
+
+  /* Elevation: exactly three levels. */
+  --el-1: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --el-2: 0 4px 8px -2px rgba(16, 24, 40, 0.1), 0 2px 4px -2px rgba(16, 24, 40, 0.06);
+  --el-3: 0 20px 24px -4px rgba(16, 24, 40, 0.1), 0 8px 8px -4px rgba(16, 24, 40, 0.04);
+
+  /* Motion: state change only, never decoration. */
+  --dur-hover: 120ms;
+  --dur-panel: 220ms;
+  --dur-view: 300ms;
+  --ease: cubic-bezier(0.2, 0.8, 0.4, 1);
+
+  /* Typography. */
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --fs-11: 11px;
+  --fs-12: 12px;
+  --fs-13: 13px;
+  --fs-14: 14px;
+  --fs-16: 16px;
+  --fs-20: 20px;
+  --fs-24: 24px;
+}
+
+[data-theme="dark"] {
+  --brand: #4d94e8;
+  --brand-strong: #74abec;
+  --brand-soft: rgba(77, 148, 232, 0.16);
+  --brand-border: rgba(77, 148, 232, 0.45);
+
+  --nav-bg: #081830;
+  --nav-bg-hover: rgba(255, 255, 255, 0.07);
+  --nav-bg-active: #0f62d6;
+  --nav-fg: #a8b6ca;
+  --nav-fg-active: #ffffff;
+  --nav-border: rgba(255, 255, 255, 0.08);
+
+  --canvas: #0f1115;
+  --surface: #16181d;
+  --surface-2: #1b1e24;
+  --border: #262a31;
+  --border-strong: #343943;
+
+  --text: #e6e9ee;
+  --text-2: #a5adba;
+  --text-3: #6c7684;
+
+  --c-ok: #4cc38a;
+  --c-ok-bg: rgba(23, 178, 106, 0.14);
+  --c-ok-bd: rgba(23, 178, 106, 0.4);
+  --c-pending: #f2b13a;
+  --c-pending-bg: rgba(247, 144, 9, 0.14);
+  --c-pending-bd: rgba(247, 144, 9, 0.4);
+  --c-review: #63a7f0;
+  --c-review-bg: rgba(77, 148, 232, 0.14);
+  --c-review-bd: rgba(77, 148, 232, 0.4);
+  --c-danger: #f0716a;
+  --c-danger-bg: rgba(240, 68, 56, 0.14);
+  --c-danger-bd: rgba(240, 68, 56, 0.4);
+
+  --el-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --el-2: 0 4px 8px -2px rgba(0, 0, 0, 0.55), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --el-3: 0 20px 24px -4px rgba(0, 0, 0, 0.6), 0 8px 8px -4px rgba(0, 0, 0, 0.45);
+}

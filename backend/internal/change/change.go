@@ -78,6 +78,15 @@ func (it Item) Act() Action {
 	return it.Action
 }
 
+// Comment is one review note on a change request, kept with the CR's
+// workflow state (not in Git: discussion is workflow, not configuration).
+type Comment struct {
+	ID        int       `json:"id"`
+	Author    string    `json:"author"`
+	Body      string    `json:"body"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // ChangeRequest is a reviewable unit of configuration change. While in draft
 // it accumulates items; on submit it becomes a git branch + commit (+ PR when
 // a provider is configured) and advances through the state machine.
@@ -99,8 +108,43 @@ type ChangeRequest struct {
 	Items        []Item    `json:"items"`
 	PRNumber     int       `json:"prNumber,omitempty"`
 	PRURL        string    `json:"prUrl,omitempty"`
-	CreatedAt    time.Time `json:"createdAt"`
-	UpdatedAt    time.Time `json:"updatedAt"`
+	// Reviewers are the logins asked to look at this CR. Display and routing
+	// only: approval rights stay role-based (approver merges).
+	Reviewers []string `json:"reviewers,omitempty"`
+	// Comments is the in-app review discussion, oldest first.
+	Comments  []Comment `json:"comments,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// AddComment appends a review note and returns it. IDs are per-CR and
+// monotonic so a comment stays addressable even after others are added.
+func (cr *ChangeRequest) AddComment(author, body string) Comment {
+	next := 1
+	for _, c := range cr.Comments {
+		if c.ID >= next {
+			next = c.ID + 1
+		}
+	}
+	c := Comment{ID: next, Author: author, Body: body, CreatedAt: time.Now().UTC()}
+	cr.Comments = append(cr.Comments, c)
+	return c
+}
+
+// SetReviewers replaces the reviewer list, trimming blanks and duplicates
+// while preserving the order reviewers were named in.
+func (cr *ChangeRequest) SetReviewers(logins []string) {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(logins))
+	for _, l := range logins {
+		l = strings.TrimSpace(l)
+		if l == "" || seen[l] {
+			continue
+		}
+		seen[l] = true
+		out = append(out, l)
+	}
+	cr.Reviewers = out
 }
 
 // UpsertItem adds or replaces the pending edit for (paramID, instance, file),

@@ -164,6 +164,14 @@ export interface ChangeItem {
   updatedAt: string;
 }
 
+/** One review note on a change request. */
+export interface ChangeComment {
+  id: number;
+  author: string;
+  body: string;
+  createdAt: string;
+}
+
 export interface ChangeRequest {
   id: number;
   title: string;
@@ -181,6 +189,10 @@ export interface ChangeRequest {
   items: ChangeItem[] | null;
   prNumber?: number;
   prUrl?: string;
+  /** logins asked to review (informational; approval stays role-based) */
+  reviewers?: string[];
+  /** in-app review discussion, oldest first */
+  comments?: ChangeComment[];
   createdAt: string;
   updatedAt: string;
 }
@@ -676,4 +688,8 @@ export const api = {
   ) => send<ChangeRequest>("POST", rp(`/changes/${id}/submit`), p),
   mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
   rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),
+  addComment: (id: number, body: string, author?: string) =>
+    send<ChangeRequest>("POST", rp(`/changes/${id}/comments`), { body, author }),
+  setReviewers: (id: number, reviewers: string[]) =>
+    put<ChangeRequest>(rp(`/changes/${id}/reviewers`), { reviewers }),
 };

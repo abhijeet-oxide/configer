@@ -152,6 +152,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/submit", s.submitChange)
 	mux.HandleFunc("POST /api/changes/{id}/merge", s.mergeChange)
 	mux.HandleFunc("POST /api/changes/{id}/reject", s.rejectChange)
+	mux.HandleFunc("POST /api/changes/{id}/comments", s.addChangeComment)
+	mux.HandleFunc("PUT /api/changes/{id}/reviewers", s.setChangeReviewers)
 	mux.HandleFunc("GET /api/repo/status", s.repoStatus)
 	mux.HandleFunc("GET /api/repo/refs", s.repoRefs)
 	mux.HandleFunc("GET /api/history", s.history)

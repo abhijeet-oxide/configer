@@ -455,6 +455,18 @@ body {
 .compact-tree .ant-tree-checkbox {
   margin-block: 4px 0;
 }
+/* keep icon + name on one flex line (see the files-tree note below) */
+.compact-tree .ant-tree-node-content-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.compact-tree .ant-tree-title {
+  flex: 1;
+  min-width: 0;
+}
 
 /* ---------------------------------------------------- files tree rows */
 

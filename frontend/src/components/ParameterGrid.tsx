@@ -8,7 +8,7 @@ import {
   Switch,
   Input,
   Select,
-  Popover,
+  Badge,
   Dropdown,
   Checkbox,
   Segmented,
@@ -18,8 +18,6 @@ import {
   type GetRef,
 } from "antd";
 import {
-  FilterOutlined,
-  SettingOutlined,
   LockOutlined,
   CloseCircleFilled,
   PlusOutlined,
@@ -31,6 +29,7 @@ import {
   SwapOutlined,
   UpOutlined,
   DownOutlined,
+  MoreOutlined,
 } from "@ant-design/icons";
 import AddParameterModal from "./AddParameterModal";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -63,6 +62,7 @@ import { envHex } from "../theme";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
+import { StatusPill } from "./ui";
 
 function EditableCell({
   cell,
@@ -296,11 +296,22 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [matchCursor, setMatchCursor] = useState(0);
   // pending "this is a global setting" question for a just-committed value
   const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
+  // Single-instance view: pick one instance and the matrix collapses to a
+  // Parameter / Value / Source / Changed sheet for that instance alone.
+  const [viewInstance, setViewInstance] = useState<string | null>(null);
+  // Environment filter: narrows the visible instance columns (and the
+  // instance picker) to one environment.
+  const [envFilter, setEnvFilter] = useState<string>("");
+  // Draft-status filter pills (All / Changed / Added / Removed).
+  const [pill, setPill] = useState<"all" | "changed" | "added" | "removed">("all");
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
   const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string } | null>(null);
   // Find & Replace dialog (opened from the toolbar or a cell's right-click)
   const [findReplace, setFindReplace] = useState<{ find: string } | null>(null);
+  // The single-row toolbar's overflow menu and the legend dialog.
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const tableRef = useRef<GetRef<typeof Table>>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -359,9 +370,38 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return order;
   }, [grid.rows]);
 
+  // The instance columns currently on screen (environment filter + the
+  // single-instance view). Widths stay derived from ALL instances so
+  // switching filters never re-lays-out the columns.
+  const visibleInstances = useMemo(
+    () =>
+      grid.instances.filter(
+        (i) =>
+          (!envFilter || (i.environment ?? "") === envFilter) &&
+          (!viewInstance || i.name === viewInstance),
+      ),
+    [grid.instances, envFilter, viewInstance],
+  );
+
+  // Draft items per parameter, for the status pills and the Changed column.
+  const pendingByParam = useMemo(() => {
+    const m = new Map<string, ChangeItem[]>();
+    for (const it of draftQ.data?.draft?.items ?? []) {
+      if (!it.paramId) continue;
+      const arr = m.get(it.paramId) ?? [];
+      arr.push(it);
+      m.set(it.paramId, arr);
+    }
+    return m;
+  }, [draftQ.data]);
+  const isAdded = (it: ChangeItem) =>
+    (it.old == null || it.old === "") && (!it.action || it.action === "set");
+  const isRemoved = (it: ChangeItem) =>
+    it.action === "exclude" || it.action === "reset" || it.action === "remove-instance";
+
   const q = search.trim().toLowerCase();
   const lq = localQ.trim().toLowerCase();
-  const rows = useMemo(() => {
+  const baseRows = useMemo(() => {
     const filtered = grid.rows.filter((r) => {
       // categoryKey is a dotted NAME prefix selected in the tree.
       if (categoryKey && r.param.name !== categoryKey && !r.param.name.startsWith(categoryKey + "."))
@@ -377,13 +417,40 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     filtered.sort(
       (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
     );
-    if (!prefs.groupByValue) return filtered;
+    return filtered;
+  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder]);
+
+  // Counts for the draft-status pills, taken before the pill filter applies
+  // so the numbers stay stable while switching between them.
+  const pillCounts = useMemo(() => {
+    let changed = 0;
+    let added = 0;
+    let removed = 0;
+    for (const r of baseRows) {
+      const items = pendingByParam.get(r.param.id) ?? [];
+      if (items.length > 0) changed++;
+      if (items.some(isAdded)) added++;
+      if (items.some(isRemoved)) removed++;
+    }
+    return { changed, added, removed };
+     
+  }, [baseRows, pendingByParam]);
+
+  const rows = useMemo(() => {
+    const pilled = baseRows.filter((r) => {
+      if (pill === "all") return true;
+      const items = pendingByParam.get(r.param.id) ?? [];
+      if (pill === "changed") return items.length > 0;
+      if (pill === "added") return items.some(isAdded);
+      return items.some(isRemoved);
+    });
+    if (!prefs.groupByValue) return pilled;
     // Group-by-value: cluster rows that share the same value signature (their
     // per-instance values, identical across the board) adjacently, anchored at
     // each group's first appearance so the overall order stays familiar.
     const bySig = new Map<string, Row[]>();
     const order: string[] = [];
-    for (const r of filtered) {
+    for (const r of pilled) {
       const s = valueSig(r, grid.instances);
       if (!bySig.has(s)) {
         bySig.set(s, []);
@@ -392,7 +459,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       bySig.get(s)!.push(r);
     }
     return order.flatMap((s) => bySig.get(s)!);
-  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder, prefs.groupByValue, grid.instances]);
+     
+  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances]);
 
   // Visual metadata for group-by-value: for each row in a same-value group of
   // more than one, its cycling color and whether it opens/closes the group box.
@@ -478,7 +546,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     // current horizontal position, so we delta from there to the target.
     const scrollToInstance = (name: string) => {
       let left = 0;
-      for (const inst of grid.instances) {
+      for (const inst of visibleInstances) {
         if (inst.name === name) break;
         left += instWidths[inst.name] ?? 150;
       }
@@ -595,8 +663,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       });
     }
     const instanceNames = grid.instances.map((i) => i.name);
-    const instCols: ColumnsType<Row> = grid.instances.map((inst) => ({
-      title: instanceHeader(inst),
+    const instCols: ColumnsType<Row> = visibleInstances.map((inst) => ({
+      title: viewInstance ? "Value" : instanceHeader(inst),
       key: inst.name,
       width: instWidths[inst.name] ?? 150,
       // Excel-like value filter per instance column: distinct effective
@@ -672,14 +740,55 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         );
       },
     }));
-    return [...base, ...instCols];
+    // Single-instance view: the reference sheet layout gains provenance and
+    // draft-status columns beside the one Value column.
+    const extraCols: ColumnsType<Row> = viewInstance
+      ? [
+          {
+            title: "Source",
+            key: "source",
+            width: 100,
+            render: (_v, r) => {
+              const c = r.cells[viewInstance];
+              if (!c || !c.set) return <span style={{ color: "var(--text-3)" }}>-</span>;
+              const label = c.source === "instance" ? "Local" : c.source === "base" ? "Base" : "Default";
+              return (
+                <span
+                  style={{
+                    fontSize: 12,
+                    color: c.source === "instance" ? "var(--c-review)" : "var(--text-2)",
+                    fontWeight: c.source === "instance" ? 600 : 400,
+                  }}
+                >
+                  {label}
+                </span>
+              );
+            },
+          },
+          {
+            title: "Changed",
+            key: "changed",
+            width: 90,
+            render: (_v, r) => {
+              const items = pendingByParam.get(r.param.id) ?? [];
+              const hit = items.some((it) => it.instance === viewInstance || it.scope === "global");
+              return hit ? (
+                <span style={{ color: "var(--c-danger)", fontWeight: 600, fontSize: 12 }}>Yes</span>
+              ) : (
+                <span style={{ color: "var(--text-3)", fontSize: 12 }}>No</span>
+              );
+            },
+          },
+        ]
+      : [];
+    return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, grid.rows, editing, presetsQ.data, pendingMap, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
-    PARAM_W + TYPE_W + SCOPE_W + DESC_W +
-    grid.instances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
+    PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
+    visibleInstances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
@@ -699,15 +808,80 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     setJump("param", r.param.id);
   };
 
+  const pendingCount = draftQ.data?.draft?.items?.length ?? 0;
+  const environments = [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[];
+  const pickerInstances = grid.instances.filter((i) => !envFilter || (i.environment ?? "") === envFilter);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, rowGap: 8, padding: "6px 12px", flexWrap: "wrap" }}>
-        {/* The search grows to fill the row so the toolbar reads as one balanced
-            band: scope + search on the left, actions on the right. The live
-            parameter count sits quietly inside the field (as a suffix) instead
-            of a floating tag. */}
-        <div style={{ display: "flex", flex: "1 1 300px", minWidth: 150, maxWidth: 820, alignItems: "center", gap: 8 }}>
-          <Space.Compact size="small" style={{ width: "100%" }}>
+      {/* ONE toolbar row: context (instance, environment), the draft-status
+          pills, search, an overflow menu for everything else, and the primary
+          action. It wraps only when space truly runs out. */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          rowGap: 6,
+          padding: "7px 12px",
+          flexWrap: "wrap",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {/* Left cluster: what you're looking at. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
+          <Tooltip title="View all instances side by side, or one instance as a single sheet">
+            <Select
+              size="small"
+              value={viewInstance ?? ""}
+              onChange={(v) => setViewInstance(v || null)}
+              style={{ width: 168 }}
+              options={[
+                { value: "", label: "All instances" },
+                ...pickerInstances.map((i) => ({ value: i.name, label: i.name })),
+              ]}
+            />
+          </Tooltip>
+          <Tooltip title="Show only instances of one environment">
+            <Select
+              size="small"
+              value={envFilter}
+              onChange={(v) => {
+                setEnvFilter(v);
+                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v)
+                  setViewInstance(null);
+              }}
+              style={{ width: 118 }}
+              options={[
+                { value: "", label: "All environments" },
+                ...environments.map((e) => ({ value: e, label: e })),
+              ]}
+            />
+          </Tooltip>
+          <span style={{ width: 1, height: 20, background: "var(--border)" }} />
+          <Segmented
+            size="small"
+            value={pill}
+            onChange={(v) => setPill(v as typeof pill)}
+            options={[
+              { value: "all", label: "All" },
+              { value: "changed", label: `Changed${pillCounts.changed ? ` (${pillCounts.changed})` : ""}` },
+              { value: "added", label: `Added${pillCounts.added ? ` (${pillCounts.added})` : ""}` },
+              { value: "removed", label: `Removed${pillCounts.removed ? ` (${pillCounts.removed})` : ""}` },
+            ]}
+          />
+          <span style={{ fontSize: 12, color: "var(--text-3)" }}>{rows.length}</span>
+          {q && (
+            <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
+              ⌘K: “{search.trim()}”
+            </Tag>
+          )}
+        </div>
+        {/* Right cluster: narrowing and acting. marginLeft:auto keeps it
+            flush-right on one row, and drops it whole (still right-aligned)
+            onto a clean second row only when space truly runs out. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", minWidth: 0 }}>
+          <Space.Compact size="small" style={{ flex: "0 1 260px", minWidth: 140 }}>
             <Select
               size="small"
               value={searchScope}
@@ -726,7 +900,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               size="small"
               allowClear
               prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-              suffix={!localQ && !hlq ? <span style={{ fontSize: 11, opacity: 0.4 }} title={`${rows.length} parameters`}>{rows.length}</span> : undefined}
               placeholder={categoryKey ? `Search in ${title}…` : "Search parameters…"}
               value={localQ}
               onChange={(e) => setLocalQ(e.target.value)}
@@ -746,120 +919,95 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </Tooltip>
             </Space>
           )}
-        </div>
-        {q && (
-          <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
-            ⌘K: “{search.trim()}”
-          </Tag>
-        )}
-        {/* All grid actions live in one right-aligned cluster. marginLeft:auto
-            keeps it flush-right whether it shares the first row or wraps to a
-            second one, so the toolbar is never two half-empty bars. */}
-        <Space size={4} style={{ marginLeft: "auto", flexShrink: 0 }}>
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            title="What do the marks mean?"
-            content={
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, width: 300, fontSize: 12 }}>
-                <span><span className="cell-pending mono">10.0.0.1</span>: your pending change (hover it to see before → after)</span>
-                <span><span className="cell-new mono">1.2</span>: newly introduced in this software version</span>
-                <span><span className="cell-deprecated mono">off</span>: deprecated; no longer editable</span>
-                <span><span className="cell-invalid mono">99999</span>: value breaks a rule (hover for why)</span>
-                <span><span className="cell-excluded">∅ excluded</span>: removed from this instance's files entirely</span>
-                <span><span className="cell-na">n/a</span>: doesn't exist in this software version yet</span>
-                <span>
-                  <span className="source-badge">glb</span> where a value comes from:{" "}
-                  glb = all instances · env = environment · zone/site = that area · def = built-in default
-                </span>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  Everything you edit is saved to Git and only goes live after approval.
-                </Typography.Text>
-              </div>
-            }
-          >
-            <Button size="small" type="text" icon={<QuestionCircleOutlined />} aria-label="Legend" title="Legend: what the cell marks mean" />
-          </Popover>
-          <Button size="small" type="primary" ghost icon={<PlusOutlined />} onClick={() => setAddOpen(true)}>
-            Add parameter
-          </Button>
-          <Dropdown
-            trigger={["click"]}
-            menu={{
-              items: [
-                { key: "invalidOnly", label: <Checkbox checked={filters.invalidOnly}>Only invalid</Checkbox> },
-                { key: "overriddenOnly", label: <Checkbox checked={filters.overriddenOnly}>Only instance overrides</Checkbox> },
-                { key: "hideNA", label: <Checkbox checked={filters.hideNA}>Hide fully n/a rows</Checkbox> },
-              ],
-              onClick: ({ key }) =>
-                setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>),
-            }}
-          >
-            <Button size="small" icon={<FilterOutlined />} aria-label="Filter" title="Filter rows">
-              {activeFilters ? activeFilters : ""}
-            </Button>
-          </Dropdown>
-          <Popover
-            trigger="click"
-            placement="bottomRight"
-            content={
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, width: 210 }}>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>DENSITY</Typography.Text>
-                <Segmented
-                  size="small"
-                  block
-                  value={prefs.density}
-                  options={[
-                    { value: "compact", label: "Compact" },
-                    { value: "comfortable", label: "Comfortable" },
-                  ]}
-                  onChange={(v) => setPrefs({ density: v as "compact" | "comfortable" })}
-                />
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>COLUMNS</Typography.Text>
-                <Checkbox checked={prefs.showTypeCol} onChange={(e) => setPrefs({ showTypeCol: e.target.checked })}>
-                  Type
-                </Checkbox>
-                <Checkbox checked={prefs.showScopeCol} onChange={(e) => setPrefs({ showScopeCol: e.target.checked })}>
-                  Scope
-                </Checkbox>
-                <Checkbox checked={prefs.showDescCol} onChange={(e) => setPrefs({ showDescCol: e.target.checked })}>
-                  Description
-                </Checkbox>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>GROUPING</Typography.Text>
-                <Checkbox checked={prefs.groupByValue} onChange={(e) => setPrefs({ groupByValue: e.target.checked })}>
-                  Group by value
-                </Checkbox>
-                <Typography.Text type="secondary" style={{ fontSize: 11, lineHeight: 1.3 }}>
-                  Places parameters that hold the same value across all instances next to each other,
-                  bracketed so you can see at a glance what matches.
-                </Typography.Text>
-              </div>
-            }
-          >
-            <Button
-              size="small"
-              type={prefs.groupByValue ? "primary" : "default"}
-              ghost={prefs.groupByValue}
-              icon={<SettingOutlined />}
-              aria-label="View options"
-              title="View: density, columns & grouping"
-            />
-          </Popover>
-          <Tooltip title="Find & replace values across instances">
-            <Button size="small" icon={<SwapOutlined />} aria-label="Find and replace" onClick={() => setFindReplace({ find: "" })} />
+          <Tooltip title="Add parameter">
+            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" />
           </Tooltip>
-          <Tooltip title={editorFocus ? "Exit focus mode (Esc)" : "Focus mode: maximize the editor"}>
-            <Button
-              size="small"
-              type={editorFocus ? "primary" : "default"}
-              ghost={editorFocus}
-              icon={editorFocus ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
-              onClick={() => setEditorFocus(!editorFocus)}
-            />
-          </Tooltip>
+        <Dropdown
+          trigger={["click"]}
+          open={moreOpen}
+          onOpenChange={setMoreOpen}
+          menu={{
+            items: [
+              { key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" },
+              { key: "legend", icon: <QuestionCircleOutlined />, label: "Legend: what the marks mean" },
+              {
+                key: "focus",
+                icon: editorFocus ? <FullscreenExitOutlined /> : <FullscreenOutlined />,
+                label: editorFocus ? "Exit focus mode" : "Focus mode",
+              },
+              { type: "divider" as const },
+              { key: "invalidOnly", label: <Checkbox checked={filters.invalidOnly}>Only invalid</Checkbox> },
+              { key: "overriddenOnly", label: <Checkbox checked={filters.overriddenOnly}>Only instance overrides</Checkbox> },
+              { key: "hideNA", label: <Checkbox checked={filters.hideNA}>Hide fully n/a rows</Checkbox> },
+              { type: "divider" as const },
+              {
+                key: "density",
+                label: <Checkbox checked={prefs.density === "comfortable"}>Comfortable density</Checkbox>,
+              },
+              { key: "showTypeCol", label: <Checkbox checked={prefs.showTypeCol}>Type column</Checkbox> },
+              { key: "showScopeCol", label: <Checkbox checked={prefs.showScopeCol}>Scope column</Checkbox> },
+              { key: "showDescCol", label: <Checkbox checked={prefs.showDescCol}>Description column</Checkbox> },
+              { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
+            ],
+            onClick: ({ key }) => {
+              if (key === "findreplace") {
+                setFindReplace({ find: "" });
+                setMoreOpen(false);
+              } else if (key === "legend") {
+                setLegendOpen(true);
+                setMoreOpen(false);
+              } else if (key === "focus") {
+                setEditorFocus(!editorFocus);
+                setMoreOpen(false);
+              } else if (key === "invalidOnly" || key === "overriddenOnly" || key === "hideNA") {
+                setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>);
+              } else if (key === "density") {
+                setPrefs({ density: prefs.density === "comfortable" ? "compact" : "comfortable" });
+              } else if (key === "showTypeCol" || key === "showScopeCol" || key === "showDescCol" || key === "groupByValue") {
+                setPrefs({ [key]: !prefs[key as keyof typeof prefs] } as Partial<typeof prefs>);
+              }
+            },
+          }}
+        >
+          <Badge dot={activeFilters > 0 || prefs.groupByValue} color="var(--c-review)" offset={[-2, 2]}>
+            <Button size="small" icon={<MoreOutlined />} aria-label="More editor options" title="Filters, view options and tools" />
+          </Badge>
+        </Dropdown>
+          <span style={{ width: 1, height: 20, background: "var(--border)" }} />
+          {pendingCount === 0 ? (
+            <StatusPill tone="ok">All changes saved</StatusPill>
+          ) : (
+            <StatusPill tone="pending">
+              {pendingCount} unsent edit{pendingCount === 1 ? "" : "s"}
+            </StatusPill>
+          )}
           <SubmitChangesButton instances={grid.instances} />
-        </Space>
+        </div>
       </div>
+
+      <Modal
+        title="What do the marks mean?"
+        open={legendOpen}
+        onCancel={() => setLegendOpen(false)}
+        footer={null}
+        width={420}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 12 }}>
+          <span><span className="cell-pending mono">10.0.0.1</span>: your pending change (hover it to see before and after)</span>
+          <span><span className="cell-new mono">1.2</span>: newly introduced in this software version</span>
+          <span><span className="cell-deprecated mono">off</span>: deprecated; no longer editable</span>
+          <span><span className="cell-invalid mono">99999</span>: value breaks a rule (hover for why)</span>
+          <span><span className="cell-excluded">∅ excluded</span>: removed from this instance's files entirely</span>
+          <span><span className="cell-na">n/a</span>: doesn't exist in this software version yet</span>
+          <span>
+            <span className="source-badge">glb</span> where a value comes from:{" "}
+            glb = all instances · env = environment · zone/site = that area · def = built-in default
+          </span>
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            Everything you edit is saved to Git and only goes live after approval.
+          </Typography.Text>
+        </div>
+      </Modal>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
       {findReplace && (
         <FindReplaceModal
@@ -954,7 +1102,7 @@ interface FRMatch {
 }
 
 // FindReplaceModal finds every editable cell whose value equals the search
-// term and replaces it in one action — the pragmatic tool for "these N
+// term and replaces it in one action, the pragmatic tool for "these N
 // parameters all say X, change them together" without permanently merging
 // them. Each replacement is staged into the draft like a normal cell edit, so
 // it still flows through review. A preview shows exactly what will change.
@@ -1000,7 +1148,7 @@ function FindReplaceModal({
       }
     },
     onSuccess: () => {
-      message.success(`Replaced ${matches.length} value${matches.length === 1 ? "" : "s"} — staged in your draft for review.`);
+      message.success(`Replaced ${matches.length} value${matches.length === 1 ? "" : "s"}; staged in your draft for review.`);
       qc.invalidateQueries();
       onClose();
     },

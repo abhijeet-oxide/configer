@@ -1,8 +1,8 @@
-import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined } from "@ant-design/icons";
+import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, bindingsOf, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
@@ -63,6 +63,7 @@ function DetailsTab({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { selectedInstance, setFileFocus, setSection } = useUI();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
   // A parameter can map to several locations (its bindings). It is in the
@@ -127,12 +128,28 @@ function DetailsTab({
         </Typography.Text>
       )}
       {allSources.map((s, i) => (
-        <div key={`${s.file}|${s.path}`}>
-          <span className="mono" style={{ fontSize: 12 }}>{s.file}</span>
-          {i === 0 && allSources.length > 1 && (
-            <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
-          )}
-          <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
+        <div key={`${s.file}|${s.path}`} style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <span className="mono" style={{ fontSize: 12 }}>{s.file}</span>
+            {i === 0 && allSources.length > 1 && (
+              <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
+            )}
+            <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
+          </div>
+          <Tooltip title="Open this file in the Files workspace">
+            <Button
+              size="small"
+              type="text"
+              icon={<FileTextOutlined />}
+              onClick={() => {
+                const inst =
+                  grid.instances.find((x) => x.name === selectedInstance) ?? grid.instances[0];
+                setFileFocus({ path: expandBinding(s, inst), instance: inst?.name });
+                setSection("files");
+              }}
+              aria-label="Open in Files"
+            />
+          </Tooltip>
         </div>
       ))}
       <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
@@ -221,7 +238,7 @@ function DetailsTab({
 // IdlePanel is the details panel's default state: selection-oriented, not a
 // second Overview. It says what selecting does, surfaces what needs the
 // user's hand right now (invalid cells, their own unsent edits), and stays
-// out of the way — the application-wide numbers live on the Overview tab.
+// out of the way; the application-wide numbers live on the Overview tab.
 function IdlePanel({ grid }: { grid: Grid }) {
   const { setFilters, selectParam, setJump } = useUI();
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -242,7 +259,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
   return (
     <div style={{ padding: 14, height: "100%", overflow: "auto" }}>
       <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>
-        Details
+        Inspector
       </Typography.Title>
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         Select a cell to see its value, the file it comes from and its rules. Selecting a row
@@ -569,7 +586,10 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
     <div style={{ padding: 12, height: "100%", overflow: "auto" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Typography.Title level={5} style={{ marginBottom: 0 }}>{p.name}</Typography.Title>
+          <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 600, letterSpacing: 0.4 }}>
+            INSPECTOR · PARAMETER DETAILS
+          </div>
+          <Typography.Title level={5} style={{ marginBottom: 0, marginTop: 2 }}>{p.name}</Typography.Title>
           <div style={{ marginTop: 4 }}>
             <Tag color="geekblue">{p.type}</Tag>
             {p.secret && <Tag color="gold">secret</Tag>}

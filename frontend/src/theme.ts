@@ -59,12 +59,12 @@ export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig
       fontSize: base,
       fontFamily:
         `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
-      // three planes: page canvas < content surface < floating surface
-      colorBgLayout: dark ? "#0f1115" : "#f5f6f8",
-      colorBgContainer: dark ? "#16181d" : "#ffffff",
-      colorBgElevated: dark ? "#1b1e24" : "#ffffff",
-      colorBorder: dark ? "#343943" : "#d0d5dd",
-      colorBorderSecondary: dark ? "#262a31" : "#e4e7ec",
+      // three planes: pastel page canvas < content surface < floating surface
+      colorBgLayout: dark ? "#101318" : "#eef1f6",
+      colorBgContainer: dark ? "#171b21" : "#ffffff",
+      colorBgElevated: dark ? "#1c2129" : "#ffffff",
+      colorBorder: dark ? "#353b45" : "#d5dbe4",
+      colorBorderSecondary: dark ? "#262b33" : "#e7ebf1",
       colorText: dark ? "#e6e9ee" : "#101828",
       colorTextSecondary: dark ? "#a5adba" : "#475467",
       colorTextTertiary: dark ? "#6c7684" : "#98a2b3",
@@ -82,8 +82,8 @@ export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig
       },
       Card: {
         boxShadowTertiary: dark
-          ? "0 1px 2px rgba(0,0,0,0.5)"
-          : "0 1px 2px rgba(16,24,40,0.05)",
+          ? "5px 5px 12px rgba(0,0,0,0.45), -4px -4px 10px rgba(255,255,255,0.035)"
+          : "5px 5px 12px rgba(163,177,198,0.28), -4px -4px 10px rgba(255,255,255,0.85)",
         headerFontSize: base,
       },
       Table: {

@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import { useUI } from './store'
 import { buildTheme } from './theme'
+import './styles.css'
 import './tokens.css'
 import './index.css'
 

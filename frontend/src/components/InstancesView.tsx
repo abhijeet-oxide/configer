@@ -11,6 +11,7 @@ import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { ENV_PRESETS } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
+import InstanceTopology from "./InstanceTopology";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -52,6 +53,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   const regQ = useQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
   const instances = useMemo(() => regQ.data?.instances ?? [], [regQ.data]);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
+  const [view, setView] = useState<"table" | "topology">("table");
   const [modal, setModal] = useState<{ mode: "add" | "edit" | "clone"; instance?: Instance } | null>(null);
   const [form] = Form.useForm<FormValues>();
 
@@ -163,20 +165,33 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         </div>
         <Space>
           <Segmented
-            value={statusFilter}
-            onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+            value={view}
+            onChange={(v) => setView(v as typeof view)}
             options={[
-              { value: "active", label: "Active" },
-              { value: "archived", label: "Archived" },
-              { value: "all", label: "All" },
+              { value: "table", label: "Table" },
+              { value: "topology", label: "Topology" },
             ]}
           />
+          {view === "table" && (
+            <Segmented
+              value={statusFilter}
+              onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+              options={[
+                { value: "active", label: "Active" },
+                { value: "archived", label: "Archived" },
+                { value: "all", label: "All" },
+              ]}
+            />
+          )}
           <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal("add")}>
             Add instance
           </Button>
         </Space>
       </div>
 
+      {view === "topology" ? (
+        <InstanceTopology grid={grid} />
+      ) : (
       <Table<Instance>
         rowKey="name"
         size="middle"
@@ -256,6 +271,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           },
         ]}
       />
+      )}
 
       <Modal
         open={!!modal}

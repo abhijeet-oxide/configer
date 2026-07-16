@@ -87,7 +87,7 @@ body {
   opacity: 0.75;
   border: 1px solid currentColor;
   vertical-align: middle;
-  /* the badge is atomic: it must never wrap mid-word inside a grid cell —
+  /* the badge is atomic: it must never wrap mid-word inside a grid cell -
      when space runs out the VALUE truncates, never the badge */
   display: inline-block;
   white-space: nowrap;
@@ -290,6 +290,42 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* ---------------------------------------------------- state illustrations */
+
+/* Gentle, professional motion for the SVG illustration kit (success, scan,
+   empty, offline). All effects respect prefers-reduced-motion. */
+.ill { display: block; }
+
+@keyframes illDraw { to { stroke-dashoffset: 0; } }
+.ill-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: illDraw 0.6s ease-out 0.25s forwards;
+}
+
+@keyframes illPop { 0% { transform: scale(0.6); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.ill-pop { animation: illPop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes illRipple { 0% { transform: scale(0.85); opacity: 0.18; } 70% { opacity: 0.05; } 100% { transform: scale(1.15); opacity: 0; } }
+.ill-ripple { transform-origin: center; animation: illRipple 2.4s ease-out infinite; }
+
+@keyframes illSpark { 0% { opacity: 0; transform: scale(0.3); } 40% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4); } }
+.ill-spark { transform-box: fill-box; transform-origin: center; animation: illSpark 1.8s ease-out infinite; }
+
+@keyframes illFloaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.ill-floaty { animation: illFloaty 3.2s ease-in-out infinite; }
+
+@keyframes illSweep { 0% { transform: translateY(0); } 100% { transform: translateY(56px); } }
+.ill-sweep { animation: illSweep 1.7s ease-in-out infinite alternate; }
+
+@keyframes illDash { to { stroke-dashoffset: -16; } }
+.ill-dash { animation: illDash 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ill-draw { animation: none; stroke-dashoffset: 0; }
+  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash { animation: none; }
 }
 
 /* ---------------------------------------------------- group by value */

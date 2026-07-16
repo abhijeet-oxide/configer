@@ -35,6 +35,7 @@ import { api, bindingsOf, type Binding, type Instance, type Parameter } from "..
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { fileIcon, folderIcon } from "./fileIcons";
+import InitProgress from "./InitProgress";
 import { TableSkeleton } from "./Skeletons";
 
 // OnboardingWizard turns a freshly connected repository into a managed
@@ -263,8 +264,11 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         `${appName} initialized: ${r.parameters} parameters across ${r.instances} instances, in one Git commit.`,
         6,
       );
-      qc.invalidateQueries();
-      setSection("config");
+      // Let the completion state (100% + check) land before switching views.
+      setTimeout(() => {
+        qc.invalidateQueries();
+        setSection("config");
+      }, 850);
     },
     onError: (e: Error) => message.error(e.message),
   });
@@ -583,52 +587,70 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         </div>
       )}
 
-      {step === 3 && (
-        <Result
-          icon={<CloudUploadOutlined style={{ color: "var(--ant-color-primary, #2f6bff)" }} />}
-          title={`Initialize ${appName}`}
-          subTitle={
-            <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>
-              <Typography.Paragraph>
-                This makes <b>one Git commit</b> adding metadata under <span className="mono">.configer/</span>:
-              </Typography.Paragraph>
-              <ul style={{ textAlign: "left" }}>
-                <li>
-                  <span className="mono">application.yaml</span> — {appName} ·{" "}
-                  {layoutLabels[d.detection.layout] ?? d.detection.layout}
-                </li>
-                <li>
-                  <span className="mono">instances.yaml</span> — {insts.length} instances
-                </li>
-                <li>
-                  <span className="mono">parameters.yaml</span> — {chosenParams.length} parameters
-                  (descriptions, types, validation, file mappings)
-                </li>
-              </ul>
-              <Typography.Paragraph type="secondary">
-                No configuration file changes. Anyone else opening this repository sees the same
-                application — it is initialized once, for everyone, in Git.
-              </Typography.Paragraph>
-            </div>
-          }
-          extra={
-            <Button type="primary" size="large" icon={<CloudUploadOutlined />} loading={init.isPending} onClick={() => init.mutate()}>
-              Initialize application
-            </Button>
-          }
-        />
-      )}
+      {step === 3 &&
+        (init.isPending || init.isSuccess ? (
+          // The mature, contextual progress experience while the commit runs.
+          <div style={{ maxWidth: 480, margin: "24px auto 0", textAlign: "center" }}>
+            <Typography.Title level={5} style={{ marginBottom: 18 }}>
+              {init.isSuccess ? `${appName} is ready` : `Setting up ${appName}…`}
+            </Typography.Title>
+            <InitProgress
+              instances={insts.length}
+              params={chosenParams.length}
+              running={init.isPending}
+              done={init.isSuccess}
+            />
+          </div>
+        ) : (
+          <Result
+            icon={<CloudUploadOutlined style={{ color: "var(--ant-color-primary, #2f6bff)" }} />}
+            title={`Initialize ${appName}`}
+            subTitle={
+              <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>
+                <Typography.Paragraph>
+                  This makes <b>one Git commit</b> adding metadata under <span className="mono">.configer/</span>:
+                </Typography.Paragraph>
+                <ul style={{ textAlign: "left" }}>
+                  <li>
+                    <span className="mono">application.yaml</span> — {appName} ·{" "}
+                    {layoutLabels[d.detection.layout] ?? d.detection.layout}
+                  </li>
+                  <li>
+                    <span className="mono">instances.yaml</span> — {insts.length} instances
+                  </li>
+                  <li>
+                    <span className="mono">parameters.yaml</span> — {chosenParams.length} parameters
+                    (descriptions, types, validation, file mappings)
+                  </li>
+                </ul>
+                <Typography.Paragraph type="secondary">
+                  No configuration file changes. Anyone else opening this repository sees the same
+                  application — it is initialized once, for everyone, in Git.
+                </Typography.Paragraph>
+              </div>
+            }
+            extra={
+              <Button type="primary" size="large" icon={<CloudUploadOutlined />} onClick={() => init.mutate()}>
+                Initialize application
+              </Button>
+            }
+          />
+        ))}
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-        <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
-          {step === 0 ? "Cancel" : "Back"}
-        </Button>
-        {step < 3 && (
-          <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-            Next
+      {/* The nav is hidden once initialization is under way, so the progress
+          view owns the screen. */}
+      {!(step === 3 && (init.isPending || init.isSuccess)) && (
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
+          <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
+            {step === 0 ? "Cancel" : "Back"}
           </Button>
-        )}
-      </div>
+          {step < 3 && (
+            <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
+              Next
+            </Button>
+          )}
+        </div>
+      )}
 
       <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>
         {chosenParams.length} settings selected across {insts.length} instances

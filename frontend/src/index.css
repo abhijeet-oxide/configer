@@ -292,6 +292,22 @@ body {
   }
 }
 
+/* ---------------------------------------------------- init progress ring */
+
+/* A dot orbiting the progress ring to signal live activity while the
+   application is being committed. */
+@keyframes initOrbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.init-orbit {
+  transform-origin: 70px 70px;
+  animation: initOrbit 1.15s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .init-orbit { animation: none; }
+}
+
 /* ---------------------------------------------------- compact file trees */
 
 /* Tighter rows, indentation and icons so deep GitOps trees stay readable

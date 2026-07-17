@@ -49,6 +49,17 @@
   --c-danger-bg: #fcebe9;
   --c-danger-bd: #f5c8c2;
 
+  /* Cell provenance (where a value comes from), read at a glance in the grid.
+     Violet = inherited from the shared base layer; neutral = a declared
+     default with no file behind it. An instance-set value (the norm) carries
+     no marker at all, so violet/neutral dots visually pick out inheritance. */
+  --c-base: #6941c6;
+  --c-base-bg: #f4f0fd;
+  --c-base-bd: #e0d3fa;
+  --c-inherit: #667085;
+  --c-inherit-bg: #f2f4f7;
+  --c-inherit-bd: #e0e4ea;
+
   /* Spacing: engineered 4px scale. */
   --sp-1: 4px;
   --sp-2: 8px;
@@ -128,6 +139,13 @@
   --c-danger: #f0716a;
   --c-danger-bg: rgba(240, 68, 56, 0.14);
   --c-danger-bd: rgba(240, 68, 56, 0.4);
+
+  --c-base: #b490f5;
+  --c-base-bg: rgba(148, 108, 230, 0.16);
+  --c-base-bd: rgba(148, 108, 230, 0.42);
+  --c-inherit: #98a2b3;
+  --c-inherit-bg: rgba(152, 162, 179, 0.14);
+  --c-inherit-bd: rgba(152, 162, 179, 0.34);
 
   --el-1: 5px 5px 12px rgba(0, 0, 0, 0.45), -4px -4px 10px rgba(255, 255, 255, 0.035);
   --el-2: 8px 8px 18px rgba(0, 0, 0, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.045);

@@ -100,38 +100,43 @@ body {
   opacity: 0.55;
 }
 .cell-new {
-  background: rgba(12, 163, 12, 0.12);
+  background: var(--c-ok-bg);
   border-radius: 4px;
   padding: 0 3px;
 }
-/* invalid: red left border + soft tint, readable in both modes */
+/* invalid: red left accent + soft tint, readable in both modes */
 .cell-invalid {
-  background: rgba(208, 59, 59, 0.1);
-  border-left: 3px solid var(--c-danger);
+  background: var(--c-danger-bg);
+  box-shadow: inset 2px 0 0 var(--c-danger);
   border-radius: 3px;
-  padding: 0 4px;
-  color: #d03b3b;
+  padding: 0 4px 0 5px;
+  color: var(--c-danger);
 }
-/* pending: dashed underline + softly pulsing amber dot */
+/* pending: a soft amber well with a solid left accent bar and a small
+   static marker dot. A calm fill (no pulsing) so a screen full of edits
+   reads instantly without flickering. */
 .cell-pending {
-  border-bottom: 2px dashed var(--c-pending);
-  padding-bottom: 1px;
+  background: var(--c-pending-bg);
+  box-shadow: inset 2px 0 0 var(--c-pending);
+  border-radius: 3px;
+  padding: 0 5px 0 6px;
   position: relative;
 }
 .cell-pending::after {
   content: "";
   display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 5px;
-  border-radius: 3px;
+  width: 5px;
+  height: 5px;
+  margin-left: 6px;
+  border-radius: 50%;
   background: var(--c-pending);
   vertical-align: middle;
-  animation: pendingPulse 2s ease-in-out infinite;
 }
-@keyframes pendingPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.45; transform: scale(0.8); }
+/* An invalid value keeps its red identity even while edited: the red well
+   dominates, and the left accent stays red rather than amber. */
+.cell-invalid.cell-pending {
+  background: var(--c-danger-bg);
+  box-shadow: inset 2px 0 0 var(--c-danger);
 }
 /* excluded: hatched wash, clearly "nothing here on purpose" */
 .cell-excluded {
@@ -146,18 +151,45 @@ body {
   padding: 0 5px;
 }
 
-.source-badge {
+/* Provenance chip: a leading colored dot plus a short label, tinted by where
+   the value comes from. The dot does the at-a-glance work (violet = base,
+   neutral = default); instance-set values carry no chip at all. The chip is
+   atomic and never wraps mid-cell; when space runs out the VALUE truncates. */
+.prov-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10px;
-  padding: 0 4px;
-  border-radius: 4px;
+  line-height: 1;
+  font-weight: 500;
+  padding: 1px 5px 1px 4px;
+  border-radius: 999px;
   margin-left: 6px;
-  opacity: 0.75;
-  border: 1px solid currentColor;
   vertical-align: middle;
-  /* the badge is atomic: it must never wrap mid-word inside a grid cell;
-     when space runs out the VALUE truncates, never the badge */
-  display: inline-block;
   white-space: nowrap;
+  border: 1px solid transparent;
+}
+.prov-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+.prov-base {
+  color: var(--c-base);
+  background: var(--c-base-bg);
+  border-color: var(--c-base-bd);
+}
+.prov-base .prov-dot {
+  background: var(--c-base);
+}
+.prov-default {
+  color: var(--c-inherit);
+  background: var(--c-inherit-bg);
+  border-color: var(--c-inherit-bd);
+}
+.prov-default .prov-dot {
+  background: var(--c-inherit);
 }
 
 .mono {

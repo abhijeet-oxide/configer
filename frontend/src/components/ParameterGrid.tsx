@@ -1240,8 +1240,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <span><span className="cell-excluded">∅ excluded</span>: removed from this instance's files entirely</span>
           <span><span className="cell-na">n/a</span>: doesn't exist in this software version yet</span>
           <span>
-            <span className="source-badge">glb</span> where a value comes from:{" "}
-            glb = all instances · env = environment · zone/site = that area · def = built-in default
+            <span className="prov-chip prov-base"><span className="prov-dot" />base</span>{" "}
+            inherited from a shared file every instance reads ·{" "}
+            <span className="prov-chip prov-default"><span className="prov-dot" />def</span>{" "}
+            a built-in default with no file behind it. A value set on the instance itself carries no mark.
           </span>
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
             Everything you edit is saved to Git and only goes live after approval.

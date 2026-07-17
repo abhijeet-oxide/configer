@@ -29,12 +29,17 @@ export const scopeColor: Record<string, string> = {
 };
 
 export function SourceBadge({ cell }: { cell: Cell }) {
-  // No badge for instance values (the norm): a badge marks values inherited
-  // from the shared base layer or the declared default.
+  // No badge for instance values (the norm): a chip marks values inherited
+  // from the shared base layer or the declared default. A leading colored dot
+  // carries the meaning so the matrix's inheritance shape reads at a glance;
+  // the short label stays for anyone reading a single cell.
   if (!cell.set || cell.source === "instance") return null;
   return (
     <Tooltip title={scopeExplain[cell.source]}>
-      <span className="source-badge">{scopeAbbrev[cell.source]}</span>
+      <span className={`prov-chip prov-${cell.source}`}>
+        <span className="prov-dot" />
+        {scopeAbbrev[cell.source]}
+      </span>
     </Tooltip>
   );
 }

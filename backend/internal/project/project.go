@@ -1,7 +1,7 @@
 // Package project loads and represents a Configer-managed Git working tree:
 // the application identity, parameter metadata (with real-file bindings), the
 // instance registry, and ignore rules found under .configer/. Values are never
-// loaded from .configer/ — they live in the repository's own files and are
+// loaded from .configer/ - they live in the repository's own files and are
 // read through the resolver.
 package project
 

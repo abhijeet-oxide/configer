@@ -3,8 +3,8 @@ package api
 // GitHub browsing for the New Application flow: which repositories can the
 // current user reach (their own and their orgs'), and which branches does one
 // repository have. This is what makes creating an application pick-and-click
-// instead of pasting URLs and tokens. Credentials are resolved server-side —
-// the signed-in user's OAuth token first, the server-wide token as fallback —
+// instead of pasting URLs and tokens. Credentials are resolved server-side -
+// the signed-in user's OAuth token first, the server-wide token as fallback -
 // and never travel to the browser.
 
 import (

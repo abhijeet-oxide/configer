@@ -1,11 +1,11 @@
-# Configer — Product Vision
+# Configer - Product Vision
 
 ## The one-sentence intent
 
 A user who has never thought about Git, YAML paths, Kustomize overlays, or
 kpt packages should be able to open Configer, connect a repository, and
 **edit configuration values for many deployment instances in a spreadsheet**
-— with validation and review built in — while every edit is, underneath, a
+- with validation and review built in - while every edit is, underneath, a
 real change to a real file, committed on a branch and merged via a pull
 request that Configer manages on their behalf.
 
@@ -26,7 +26,7 @@ definitions with their folder bindings. Values stay native in the
 repository's own files; a cell edit writes back surgically at the mapped
 locations; a deduplicated parameter (one setting in many files) fans out to
 all of them; creating an instance scaffolds a folder following the repo's
-own convention. There is no generated tree and no value database — Git is
+own convention. There is no generated tree and no value database - Git is
 the truth, and everything Configer does can also be done (and is detected
 when done) directly on Git.
 
@@ -44,15 +44,15 @@ publishing is approver-gated.
 
 ## Direction from here
 
-- **Helm values adapter** — the one major layout not yet interpreted
+- **Helm values adapter** - the one major layout not yet interpreted
   (values.yaml + per-env values files); the Adapter seam in
   `backend/internal/layout` is where it lands.
-- **OAuth-driven repository picker** — onboarding currently takes a URL /
+- **OAuth-driven repository picker** - onboarding currently takes a URL /
   local path; with login present, list the user's repositories and branches
   directly.
-- **Parameter-level conflict resolution** — merge conflicts between change
+- **Parameter-level conflict resolution** - merge conflicts between change
   requests surfaced as value choices, never raw git text.
-- **Webhook-driven sync** — replace the polling loop with push events where
+- **Webhook-driven sync** - replace the polling loop with push events where
   a GitHub App is installed.
-- **Secrets** — encrypted-at-rest values (SOPS-style) surfaced as masked
+- **Secrets** - encrypted-at-rest values (SOPS-style) surfaced as masked
   cells.

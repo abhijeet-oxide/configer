@@ -34,9 +34,9 @@ import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 
 // AppDetailsDrawer is the quick-glance side panel for one application: the
-// card on the Applications page stays lightweight, and everything deeper;
+// card on the Applications page stays lightweight, and everything deeper -
 // health per system (with a straight jump to any problem cell), description
-// and metadata from Git, environments, recent activity; lives here, one
+// and metadata from Git, environments, recent activity - lives here, one
 // click away. The deep dive is one more click, on the Configuration page.
 
 export default function AppDetailsDrawer({

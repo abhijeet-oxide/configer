@@ -46,7 +46,8 @@ test: ## Run backend tests + frontend typecheck
 	cd $(FRONTEND) && npx tsc --noEmit
 
 .PHONY: lint
-lint: ## go vet + ESLint + TypeScript typecheck
+lint: ## go vet + ESLint + TypeScript typecheck + no em-dashes
+	./scripts/no-emdash.sh
 	cd $(BACKEND) && go vet ./...
 	cd $(FRONTEND) && npx eslint src && npx tsc --noEmit
 

@@ -40,6 +40,10 @@ const (
 	// ActionRemoveInstance retires an instance: its folder and registry
 	// entry are removed. Instance carries the name.
 	ActionRemoveInstance Action = "remove-instance"
+	// ActionUpdateInstance edits an instance's registry metadata (environment,
+	// region, version, labels, status). Instance carries the name; New carries
+	// the writer.InstancePatch. No files under the instance folder move.
+	ActionUpdateInstance Action = "update-instance"
 	// ActionEditFile stages a direct file edit from file mode: New carries
 	// the full new content, Old the baseline, File the repository path.
 	// Applied before value items, so cell edits refine on top.
@@ -50,7 +54,7 @@ const (
 // than a value; structural items apply before value items on submit.
 func (it Item) Structural() bool {
 	a := it.Act()
-	return a == ActionAddInstance || a == ActionRemoveInstance
+	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance
 }
 
 // Item is one pending change: a (parameter, instance) cell edit, a

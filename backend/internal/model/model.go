@@ -72,8 +72,8 @@ const (
 )
 
 // Catalog is the parameter metadata model (.configer/parameters.yaml). It
-// describes every managed parameter — where it lives in the real files, its
-// type, validation rules, and lifecycle — but never its values.
+// describes every managed parameter - where it lives in the real files, its
+// type, validation rules, and lifecycle - but never its values.
 type Catalog struct {
 	APIVersion string      `yaml:"apiVersion" json:"apiVersion"`
 	Kind       string      `yaml:"kind" json:"kind"`
@@ -123,7 +123,7 @@ type Binding struct {
 	Layer string `yaml:"layer,omitempty" json:"layer,omitempty"`
 	// Line is the 1-based source line the value lives on, for display in the
 	// onboarding proposal. It is NEVER persisted (line numbers drift), only
-	// carried through the discovery JSON — hence yaml:"-".
+	// carried through the discovery JSON - hence yaml:"-".
 	Line int `yaml:"-" json:"line,omitempty"`
 }
 

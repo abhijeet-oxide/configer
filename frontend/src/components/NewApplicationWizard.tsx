@@ -128,7 +128,7 @@ export default function NewApplicationWizard({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-        An application manages the configuration living in one Git repository; remote or a
+        An application manages the configuration living in one Git repository - remote or a
         folder on this machine. Configer scans it for settings; nothing is written until you
         say so.
       </Typography.Paragraph>
@@ -183,7 +183,7 @@ export default function NewApplicationWizard({
 
 // ---- step: pick the source ---------------------------------------------------
 
-// Two big, equal choices; where does the configuration live?
+// Two big, equal choices - where does the configuration live?
 function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
   const card: React.CSSProperties = {
     flex: 1,
@@ -210,7 +210,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
             Connect a repository on GitHub (or any git URL). You'll authorize with GitHub and
-            pick from your repositories; no URLs or tokens to paste.
+            pick from your repositories - no URLs or tokens to paste.
           </Typography.Text>
           <Button type="primary" ghost size="small" style={{ marginTop: "auto" }}>
             Choose a repository <ArrowRightOutlined />
@@ -239,7 +239,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
 // The folder is CHOSEN, never typed: one button opens a modal folder picker
 // (FolderPickerModal) that browses the machine Configer runs on and hands back
 // the real path. The application takes the folder's name and a pointer to where
-// it lives; both kept in the workspace on this device. The backend opens the
+// it lives - both kept in the workspace on this device. The backend opens the
 // folder in place and initializes Git (with an initial import commit) when it
 // isn't a repository yet, so every edit is versioned from the very first one.
 type PickedFolder = { path: string; name: string; isRepo: boolean };
@@ -295,7 +295,7 @@ function LocalFolderStep({
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: 12.5, maxWidth: 420 }}>
             Browse the folders on this machine and choose one to manage. Configer reads the folder
-            in place; no files are uploaded.
+            in place - no files are uploaded.
           </Typography.Text>
         </div>
       ) : (
@@ -334,7 +334,7 @@ function LocalFolderStep({
 
       <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
         <FileSearchOutlined /> The folder is added as itself
-        {picked && !picked.isRepo && "; a local Git repository is initialized for it"}. Configer
+        {picked && !picked.isRepo && " - a local Git repository is initialized for it"}. Configer
         then scans it and shows the configuration files it found, so you choose what to manage.
       </Typography.Text>
 
@@ -534,8 +534,8 @@ function RepoStep({
           Connect your GitHub account
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ maxWidth: 440, margin: "0 auto 18px" }}>
-          Sign in once and Configer shows the repositories you have access to; yours and your
-          organizations'; so creating an application is a couple of clicks, with no URLs or
+          Sign in once and Configer shows the repositories you have access to - yours and your
+          organizations' - so creating an application is a couple of clicks, with no URLs or
           tokens to paste.
         </Typography.Paragraph>
         {status?.signInEnabled ? (
@@ -763,7 +763,7 @@ function FinishStep({
 
 // ---- manual fallback ---------------------------------------------------------
 
-// ConnectForm is the manual path (a git URL or a path on the server); also
+// ConnectForm is the manual path (a git URL or a path on the server) - also
 // used by the import wizard's connect step.
 export function ConnectForm({
   onDone,

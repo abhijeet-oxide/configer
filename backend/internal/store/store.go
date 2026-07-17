@@ -1,6 +1,6 @@
 // Package store persists Configer's PLATFORM data: users, sessions,
 // per-application roles, and the audit trail. Configuration itself never
-// lives here — Git remains the single source of truth for values and
+// lives here - Git remains the single source of truth for values and
 // metadata; this database is only about who may do what, and who did.
 //
 // The default backend is embedded SQLite (pure Go, zero external services,

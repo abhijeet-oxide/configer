@@ -67,7 +67,7 @@ namespace: prod
 			t.Errorf("configurable field %q should be imported", kept)
 		}
 	}
-	// The plain values file is untouched — "name"/"namespace" there are config.
+	// The plain values file is untouched - "name"/"namespace" there are config.
 	for _, kept := range []string{"image.tag", "name", "namespace"} {
 		if !names[kept] {
 			t.Errorf("values-file field %q should be imported", kept)

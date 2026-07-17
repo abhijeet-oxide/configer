@@ -14,7 +14,7 @@ Copy `.env.example` to `.env` and customize values:
 cp .env.example .env
 ```
 
-Never commit `.env` to version control—use `.env.example` as the template.
+Never commit `.env` to version control-use `.env.example` as the template.
 
 ## Backend Configuration
 
@@ -55,7 +55,7 @@ Never commit `.env` to version control—use `.env.example` as the template.
 
 Generic boolean flags: any `CONFIGER_FLAG_<NAME>=true` becomes flag `<name>`,
 readable in code via `cfg.Flags.Enabled("<name>")`. There are no built-in
-flags today — Swagger docs and offline resilience are always on, and access
+flags today - Swagger docs and offline resilience are always on, and access
 control is configured through the Platform variables above.
 
 ## Frontend Configuration

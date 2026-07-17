@@ -36,12 +36,12 @@ import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { fileIcon, folderIcon } from "./fileIcons";
 import InitProgress from "./InitProgress";
-import { TableSkeleton } from "./Skeletons";
+import { OfflineArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 
 // OnboardingWizard turns a freshly connected repository into a managed
 // application: detect the layout, confirm the instances, CHOOSE WHICH FILES to
 // manage (a checkbox tree of the real folder structure), review the
-// deduplicated parameters, and initialize; ONE commit that adds .configer/
+// deduplicated parameters, and initialize - ONE commit that adds .configer/
 // metadata. Values never move: they stay in the repository's own files.
 
 const layoutLabels: Record<string, string> = {
@@ -273,15 +273,32 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     onError: (e: Error) => message.error(e.message),
   });
 
-  if (discoverQ.isLoading) return <TableSkeleton />;
+  if (discoverQ.isLoading) {
+    return (
+      <div style={{ paddingTop: 32 }}>
+        <StatePanel
+          art={<ScanArt />}
+          title="Scanning the repository…"
+          subtitle="Detecting the layout, instances and settings. This only reads your files."
+        />
+      </div>
+    );
+  }
   if (discoverQ.isError || !d) {
     return (
-      <Result
-        status="warning"
-        title="Could not scan the repository"
-        subTitle={(discoverQ.error as Error | undefined)?.message}
-        extra={<Button onClick={() => discoverQ.refetch()}>Try again</Button>}
-      />
+      <div style={{ paddingTop: 40 }}>
+        <StatePanel
+          art={<OfflineArt />}
+          title="Couldn't scan the repository"
+          subtitle={(discoverQ.error as Error | undefined)?.message ?? "The scan didn't complete."}
+          actions={
+            <>
+              <Button type="primary" onClick={() => discoverQ.refetch()}>Try again</Button>
+              <Button onClick={() => setSection("workspace")}>Back to Applications</Button>
+            </>
+          }
+        />
+      </div>
     );
   }
 
@@ -356,7 +373,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       {step === 1 && (
         <>
           <Typography.Paragraph type="secondary">
-            Each folder below becomes one instance; a column in the parameter grid. Set the
+            Each folder below becomes one instance - a column in the parameter grid. Set the
             environment (pick a suggestion or type your own) and version; it lands in{" "}
             <span className="mono">.configer/instances.yaml</span>.
           </Typography.Paragraph>
@@ -410,7 +427,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             showIcon
             style={{ marginTop: 12 }}
             message="You can add more instances any time"
-            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances); no need to get them all here."
+            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances) - no need to get them all here."
           />
         </>
       )}
@@ -588,17 +605,26 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       )}
 
       {step === 3 &&
-        (init.isPending || init.isSuccess ? (
+        (init.isSuccess ? (
+          // A warm, illustrated completion before the editor opens.
+          <div style={{ paddingTop: 24 }}>
+            <StatePanel
+              art={<SuccessArt />}
+              title={`${appName} is ready`}
+              subtitle={`${chosenParams.length} parameter${chosenParams.length === 1 ? "" : "s"} across ${insts.length} instance${insts.length === 1 ? "" : "s"}, initialized in one Git commit. Opening the editor…`}
+            />
+          </div>
+        ) : init.isPending ? (
           // The mature, contextual progress experience while the commit runs.
           <div style={{ maxWidth: 480, margin: "24px auto 0", textAlign: "center" }}>
             <Typography.Title level={5} style={{ marginBottom: 18 }}>
-              {init.isSuccess ? `${appName} is ready` : `Setting up ${appName}…`}
+              Setting up {appName}…
             </Typography.Title>
             <InitProgress
               instances={insts.length}
               params={chosenParams.length}
-              running={init.isPending}
-              done={init.isSuccess}
+              running
+              done={false}
             />
           </div>
         ) : (
@@ -612,20 +638,20 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                 </Typography.Paragraph>
                 <ul style={{ textAlign: "left" }}>
                   <li>
-                    <span className="mono">application.yaml</span>; {appName} ·{" "}
+                    <span className="mono">application.yaml</span> - {appName} ·{" "}
                     {layoutLabels[d.detection.layout] ?? d.detection.layout}
                   </li>
                   <li>
-                    <span className="mono">instances.yaml</span>; {insts.length} instances
+                    <span className="mono">instances.yaml</span> - {insts.length} instances
                   </li>
                   <li>
-                    <span className="mono">parameters.yaml</span>; {chosenParams.length} parameters
+                    <span className="mono">parameters.yaml</span> - {chosenParams.length} parameters
                     (descriptions, types, validation, file mappings)
                   </li>
                 </ul>
                 <Typography.Paragraph type="secondary">
                   No configuration file changes. Anyone else opening this repository sees the same
-                  application; it is initialized once, for everyone, in Git.
+                  application - it is initialized once, for everyone, in Git.
                 </Typography.Paragraph>
               </div>
             }

@@ -1,4 +1,4 @@
-# staging — pre-production verification.
+# staging - pre-production verification.
 namespace: telco-staging
 network:
   service:

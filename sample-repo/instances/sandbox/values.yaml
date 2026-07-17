@@ -1,4 +1,4 @@
-# sandbox — experimentation, previous software train (v24.2.0).
+# sandbox - experimentation, previous software train (v24.2.0).
 namespace: telco-sandbox
 network:
   service:

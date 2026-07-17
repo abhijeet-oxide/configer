@@ -10,7 +10,7 @@ import (
 
 // XML paths are XPath-like: /root/section/leaf addresses element text,
 // /root/section/@attr an attribute. A list parameter maps to repeated sibling
-// elements at its path — one element per entry, so cardinality follows the
+// elements at its path - one element per entry, so cardinality follows the
 // value's length.
 
 func getXML(doc []byte, path string) (any, bool, error) {

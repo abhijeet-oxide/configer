@@ -1,4 +1,4 @@
-# dr — disaster-recovery site, Reno. Runs the previous software train
+# dr - disaster-recovery site, Reno. Runs the previous software train
 # (v24.2.0), so 24.3-only parameters do not apply here yet.
 namespace: telco-dr
 network:

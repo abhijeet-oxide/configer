@@ -13,7 +13,7 @@ import (
 // directory with a kustomization.yaml, and an overlays/ directory whose
 // children each carry a kustomization.yaml referencing the base. Each overlay
 // is one instance; the base is the shared layer. Scaffolding a new instance
-// copies an existing overlay directory — relative references like ../../base
+// copies an existing overlay directory - relative references like ../../base
 // stay valid because the copy lives at the same depth.
 type kustomizeAdapter struct{}
 

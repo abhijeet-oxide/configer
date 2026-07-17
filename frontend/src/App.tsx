@@ -35,6 +35,7 @@ import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
+import { OfflineArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
   TableSkeleton,
@@ -356,25 +357,26 @@ export default function App() {
       // No live data and no local snapshot: a calm, professional state, no
       // internal jargon, environment-aware, retries on its own.
       return (
-        <Result
-          status="warning"
-          icon={<CloudSyncOutlined style={{ color: token.colorPrimary }} />}
-          title="Can't connect to the Configer service"
-          subTitle={
-            <>
-              {meta
-                ? `The ${meta.environment} deployment (${meta.name} ${meta.version}) isn't responding right now.`
-                : "The service isn't responding right now."}{" "}
-              It may be restarting or briefly under maintenance. This page keeps retrying automatically;
-              your work is never lost, and any saved edits on this device will sync once it's back.
-            </>
-          }
-          extra={
-            <Button type="primary" loading={gridQ.isFetching} onClick={() => gridQ.refetch()}>
-              Try again now
-            </Button>
-          }
-        />
+        <div style={{ paddingTop: 48 }}>
+          <StatePanel
+            art={<OfflineArt />}
+            title="Can't reach the Configer service"
+            subtitle={
+              <>
+                {meta
+                  ? `The ${meta.environment} deployment (${meta.name} ${meta.version}) isn't responding right now.`
+                  : "The service isn't responding right now."}{" "}
+                It may be restarting or briefly under maintenance. This page keeps retrying on its own;
+                your work is never lost, and any saved edits on this device sync once it's back.
+              </>
+            }
+            actions={
+              <Button type="primary" loading={gridQ.isFetching} onClick={() => gridQ.refetch()}>
+                Try again now
+              </Button>
+            }
+          />
+        </div>
       );
     }
 

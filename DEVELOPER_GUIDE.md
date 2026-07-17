@@ -69,7 +69,7 @@ cd deploy && docker compose up --build
 
 The compose stack runs the backend (repo mounted read-write), the SPA behind
 nginx (:8088), and Postgres as the platform database. Single-node
-deployments can skip Postgres entirely — the platform store defaults to an
+deployments can skip Postgres entirely - the platform store defaults to an
 embedded SQLite file under `CONFIGER_DATA`.
 
 To enable multi-user mode, create a GitHub OAuth app (callback
@@ -78,13 +78,13 @@ plus `CONFIGER_ADMINS`; see `CONFIG.md`.
 
 ## Troubleshooting
 
-- **Backend won't start / "parameters.yaml not found"** — the repo isn't
+- **Backend won't start / "parameters.yaml not found"** - the repo isn't
   initialized; the UI routes to onboarding, or POST `/api/discover` +
   `/api/init` by hand.
-- **Grid empty after external commits** — check `GET /api/repo/status`;
+- **Grid empty after external commits** - check `GET /api/repo/status`;
   sync is polling (`CONFIGER_SYNC_SECONDS`), `POST /api/repo/sync` forces it.
-- **403 on merge** — publishing is approver-gated in multi-user mode;
+- **403 on merge** - publishing is approver-gated in multi-user mode;
   assign the role via People & roles (deployment admins only).
-- **Where is CR state?** — workflow state is a JSON file under
+- **Where is CR state?** - workflow state is a JSON file under
   `.git/configer/` (or the data dir for no-clone repos); it is a rebuildable
   cache, never the source of truth.

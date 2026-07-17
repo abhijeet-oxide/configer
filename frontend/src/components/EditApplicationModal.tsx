@@ -4,8 +4,8 @@ import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 
-// EditApplicationModal edits the application's identity; display name,
-// description, and free-form metadata (owner, team, ticket queue, anything);
+// EditApplicationModal edits the application's identity - display name,
+// description, and free-form metadata (owner, team, ticket queue, anything) -
 // and stores it in Git (.configer/application.yaml) as an attributed commit.
 // The workspace display name is kept in sync so cards and breadcrumbs follow.
 

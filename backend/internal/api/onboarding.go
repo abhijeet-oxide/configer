@@ -2,7 +2,7 @@ package api
 
 // Onboarding: discovery proposes an application from an existing repository
 // (read-only); initialization writes the accepted proposal into .configer/ as
-// ONE attributed commit — reviewable history from the very first action.
+// ONE attributed commit - reviewable history from the very first action.
 
 import (
 	"encoding/json"

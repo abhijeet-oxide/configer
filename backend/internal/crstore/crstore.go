@@ -67,8 +67,12 @@ func (s *Store) Draft(author, targetBranch string) (*change.ChangeRequest, error
 	}
 	s.data.Seq++
 	cr := &change.ChangeRequest{
-		ID:           s.data.Seq,
-		Title:        "Draft changes",
+		ID:    s.data.Seq,
+		Title: "Draft changes",
+		// Every draft rides its own feature branch from the very first edit,
+		// so the UI never shows the user editing "on main". The branch is
+		// named for real when the change request is submitted.
+		Branch:       "feature/unnamed",
 		Author:       author,
 		TargetBranch: targetBranch,
 		State:        change.StateDraft,

@@ -199,13 +199,13 @@ paths:
   /api/discover:
     post:
       tags: [Onboarding]
-      summary: Read-only proposal — detected layout, instances from folders, deduplicated parameters with schema validation
+      summary: Read-only proposal - detected layout, instances from folders, deduplicated parameters with schema validation
       responses:
         "200": { description: Discovery proposal }
   /api/init:
     post:
       tags: [Onboarding]
-      summary: Initialize the application — ONE attributed commit writing .configer/
+      summary: Initialize the application - ONE attributed commit writing .configer/
       responses:
         "200": { description: Initialized }
         "409": { description: Already initialized }

@@ -1,4 +1,4 @@
 # golangci-lint configuration. The default linter set (errcheck, gosimple,
-# govet, ineffassign, staticcheck, unused) — correctness only, no style bikeshed.
+# govet, ineffassign, staticcheck, unused) - correctness only, no style bikeshed.
 run:
   timeout: 5m

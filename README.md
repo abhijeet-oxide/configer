@@ -1,6 +1,6 @@
 # Configer
 
-**A UI for GitOps configuration — where your files stay the truth.**
+**A UI for GitOps configuration - where your files stay the truth.**
 
 Configer connects to an existing Git repository (kpt/KRM packages, Kustomize
 base+overlays, plain per-instance folders of YAML/JSON/XML), discovers its
@@ -12,12 +12,12 @@ The pivotal property is that Configer is **write-back-native**:
 
 - Your repository's own files are the single source of truth. Nothing is
   generated, nothing is copied, no parallel value store exists.
-- Editing a cell surgically edits the real file — comments, ordering and
+- Editing a cell surgically edits the real file - comments, ordering and
   unmanaged content preserved byte-for-byte. The diff is exactly what a
   careful engineer would have written by hand.
 - Everything the UI does is an ordinary Git operation: edits stage into a
   draft, submitting cuts a branch + commit (+ a real GitHub PR), approving
-  merges. If Configer is down, nothing is blocked — and commits made
+  merges. If Configer is down, nothing is blocked - and commits made
   directly on Git flow back into the grid automatically.
 - Configer's own footprint is one folder of **metadata only**:
 
@@ -25,7 +25,7 @@ The pivotal property is that Configer is **write-back-native**:
 .configer/
   application.yaml   name, description, detected layout
   parameters.yaml    parameter metadata: type, category, description,
-                     validation rules, lifecycle versions, and BINDINGS —
+                     validation rules, lifecycle versions, and BINDINGS -
                      the real-file locations each parameter lives at
   instances.yaml     instance metadata: folder binding, environment, region,
                      software version, labels, status
@@ -34,37 +34,37 @@ The pivotal property is that Configer is **write-back-native**:
 
 ## What it does
 
-**Onboarding** — point Configer at a repo and it proposes an application:
+**Onboarding** - point Configer at a repo and it proposes an application:
 the layout adapter detects the convention (kpt package variants, Kustomize
 overlays, or per-instance folders), derives the instances from the folder
 structure, extracts every candidate parameter, and **deduplicates** the same
-logical setting across files and instances — a `namespace` repeated in ten
+logical setting across files and instances - a `namespace` repeated in ten
 files becomes ONE row bound to ten locations. Initialization is a single
 reviewable commit adding `.configer/`; anyone else opening the repository
 sees the same application from then on.
 
-**The grid** — a virtualized parameter×instance matrix with typed cell
+**The grid** - a virtualized parameter×instance matrix with typed cell
 editors (numbers clamp to min/max, enums are dropdowns, booleans toggle,
 lists edit natively), per-cell provenance badges (own file / shared base
 file / declared default, with the exact file and path), and version-aware
 cells (`new` / `deprecated` / `n/a`) driven by each instance's software
 version. Editing a deduplicated parameter fans out to every bound file.
 
-**Validation, enforced** — rules come from JSON Schema files found next to
+**Validation, enforced** - rules come from JSON Schema files found next to
 the config (`values.schema.json`, `<file>.schema.json`,
 `.configer/schemas/`), from a built-in preset library (ipv4, cidr, port,
 fqdn, url, email, uuid, semver, …), or typed in by hand. The backend
-re-validates every write and rejects invalid values with `422` — in the grid
-AND in file mode — so Git never holds bad data.
+re-validates every write and rejects invalid values with `422` - in the grid
+AND in file mode - so Git never holds bad data.
 
-**File mode** — a VS Code-like editor over the instance's real files:
+**File mode** - a VS Code-like editor over the instance's real files:
 file tree with modified markers, a live side-by-side Monaco diff of
 committed vs draft-applied content, and full editing. Saving stages into
 the SAME draft as grid edits: changes to managed values become validated
 cell edits (the grid updates instantly), anything else stages as a file
 edit. Grid and files are two views of one draft.
 
-**Instances as reviewed changes** — creating an instance stages a
+**Instances as reviewed changes** - creating an instance stages a
 structural change: on submit, the branch carries a scaffolded folder
 following the repository's own convention (a Kustomize overlay copy with
 self-references renamed, a kpt package copy with its Kptfile renamed, a
@@ -72,28 +72,28 @@ plain folder copy) plus the registry entry. The grid previews the new
 column immediately; it publishes when the change merges. Retiring works
 the same way, in reverse.
 
-**Change requests** — drafts accumulate edits (cells, file edits, instance
+**Change requests** - drafts accumulate edits (cells, file edits, instance
 changes) shown in a Source Control panel grouped by file with one-click
 undo. Submit = branch `configer/cr-<n>` + one attributed commit + GitHub PR
 when configured; the state machine (`Draft → Under Review → Approved →
 Published / Rejected`) reflects PR activity both ways.
 
-**Compare** — semantic parameter-level diff between any two instances, at
+**Compare** - semantic parameter-level diff between any two instances, at
 the working tree or across git refs (branches, tags, commits), so
 "staging today vs prod at v24.2" is one dropdown away.
 
-**Always live** — a background sync keeps the working tree fast-forwarded;
+**Always live** - a background sync keeps the working tree fast-forwarded;
 external commits appear in the grid automatically, and the Repository
 Changes inbox surfaces new/changed/deleted config files with one-click
 import or retire.
 
-**Multi-user platform (optional)** — configure a GitHub OAuth app and
+**Multi-user platform (optional)** - configure a GitHub OAuth app and
 Configer becomes a shared deployment: sign-in, per-application roles
-(viewer / editor / **approver** — publishing is approver-gated), member
+(viewer / editor / **approver** - publishing is approver-gated), member
 management for deployment admins, an audit trail of every action, and
 commits attributed to the real person. Platform data lives in an embedded
 SQLite file by default (zero external services); set `DATABASE_URL` for
-PostgreSQL in production. Without OAuth configured, none of this surfaces —
+PostgreSQL in production. Without OAuth configured, none of this surfaces -
 the single-user self-hosted experience stays untouched.
 
 ## Run it
@@ -136,7 +136,7 @@ for contributors (human or AI): [`CLAUDE.md`](CLAUDE.md).
 | GET | `/api/repo/findings` | External-commit inbox (drift detection). |
 | GET | `/api/auth/me` · `/api/audit` · `/api/repos/{id}/members` | Platform: identity, audit trail, roles. |
 
-Full spec: `/api/openapi.yaml` (served) — every repo-scoped route also mounts
+Full spec: `/api/openapi.yaml` (served) - every repo-scoped route also mounts
 under `/api/repos/{id}/…` for multi-application workspaces.
 
 ## Repository layout

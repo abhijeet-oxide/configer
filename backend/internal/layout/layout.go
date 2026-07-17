@@ -1,7 +1,7 @@
 // Package layout interprets a repository's own convention: which directories
 // are deployment instances, which files form the shared base layer, and how a
-// new instance is scaffolded. Three adapters cover the common GitOps shapes —
-// kpt packages, kustomize base+overlays, and plain per-instance folders — and
+// new instance is scaffolded. Three adapters cover the common GitOps shapes -
+// kpt packages, kustomize base+overlays, and plain per-instance folders - and
 // detection scores them against a working tree so onboarding can propose the
 // right interpretation (always user-confirmable, never silently assumed).
 package layout

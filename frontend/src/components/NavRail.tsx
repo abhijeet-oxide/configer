@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Badge, Popover, Switch, Tooltip, Typography } from "antd";
 import {
   HomeOutlined,
@@ -9,7 +8,6 @@ import {
   CheckCircleOutlined,
   FileProtectOutlined,
   SettingOutlined,
-  QuestionCircleOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
 } from "../icons";
@@ -17,7 +15,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { envHex } from "../theme";
 import { useUI } from "../store";
-import MembersModal from "./MembersModal";
 
 // The navigation rail: the product's one piece of dark chrome. Global items
 // (Home, Applications, Approvals) work everywhere; application items
@@ -107,7 +104,6 @@ export default function NavRail({
 }) {
   const { section, setSection, repoId, mode, setMode, fontScale, setFontScale } = useUI();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const [membersOpen, setMembersOpen] = useState(false);
 
   const repos = wsQ.data?.repos ?? [];
   const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
@@ -126,6 +122,10 @@ export default function NavRail({
     { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit", needsApp: true },
   ];
 
+  // Settings keeps only what a user actually changes here: appearance.
+  // Dark mode also lives in the top bar; larger text sits beside it. Plugins
+  // and People & roles are administrative surfaces that were noise in this
+  // menu, so they are not surfaced here.
   const settingsContent = (
     <div style={{ width: 220 }}>
       <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-3)", marginBottom: 8 }}>
@@ -135,36 +135,10 @@ export default function NavRail({
         <span>Dark mode</span>
         <Switch size="small" checked={mode === "dark"} onChange={(v) => setMode(v ? "dark" : "light")} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span>Larger text</span>
         <Switch size="small" checked={fontScale === "large"} onChange={(v) => setFontScale(v ? "large" : "normal")} />
       </div>
-      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
-      <a onClick={() => setSection("plugins")} style={{ display: "block", padding: "4px 0" }}>
-        Plugins (admin)
-      </a>
-      {repoId && (
-        <a onClick={() => setMembersOpen(true)} style={{ display: "block", padding: "4px 0" }}>
-          People &amp; roles
-        </a>
-      )}
-    </div>
-  );
-
-  const helpContent = (
-    <div style={{ width: 250, fontSize: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Keyboard shortcuts</div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", color: "var(--text-2)" }}>
-        <span className="mono">⌘K</span> <span>Search everything</span>
-        <span className="mono">⌘B</span> <span>Toggle parameters panel</span>
-        <span className="mono">⌘⌥B</span> <span>Toggle inspector</span>
-        <span className="mono">⌘J</span> <span>Toggle systems pane</span>
-        <span className="mono">⌘⇧F</span> <span>Focus mode</span>
-      </div>
-      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
-      <span style={{ color: "var(--text-2)" }}>
-        Every edit becomes an ordinary Git change: draft, review, merge.
-      </span>
     </div>
   );
 
@@ -215,17 +189,6 @@ export default function NavRail({
         </Popover>
       </div>
       <div style={{ padding: "4px 8px 10px", borderTop: "1px solid var(--nav-border)" }}>
-        <Popover content={helpContent} placement="rightBottom" trigger="click">
-          <div>
-            <RailEntry
-              item={{ key: "help", label: "Help", icon: <QuestionCircleOutlined /> }}
-              active={false}
-              collapsed={collapsed}
-              disabled={false}
-              onClick={() => {}}
-            />
-          </div>
-        </Popover>
         <RailEntry
           item={{
             key: "collapse",
@@ -239,7 +202,6 @@ export default function NavRail({
         />
         {!collapsed && <DeploymentChip />}
       </div>
-      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </div>
   );
 }

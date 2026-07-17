@@ -49,6 +49,18 @@ body {
   z-index: 2147483646;
 }
 
+/* Two-per-row form grouping for compact modals: paired fields sit side by
+   side and wrap to their own row on narrow widths, so a form fits on screen
+   without scrolling. */
+.modal-2col {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.modal-2col > * {
+  min-width: 140px;
+}
+
 .icon-spin {
   animation: icon-spin 1s linear infinite;
 }

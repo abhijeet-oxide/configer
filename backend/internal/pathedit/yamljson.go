@@ -103,6 +103,35 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 	return b.String(), nil
 }
 
+// EditDoc parses a YAML document, hands the root mapping node to fn for a
+// surgical structural mutation (beyond what a single path edit expresses),
+// and re-encodes with the document's own indentation. It is the same
+// comment- and style-preserving round trip Set/Remove use; writer reaches
+// for it when editing .configer registry entries, so a one-field change
+// stays a one-line diff even in hand-formatted files.
+func EditDoc(doc []byte, fn func(root *yaml.Node) error) (string, error) {
+	var root yaml.Node
+	if len(doc) > 0 {
+		if err := yaml.Unmarshal(doc, &root); err != nil {
+			return "", err
+		}
+	}
+	top := ensureDocRoot(&root)
+	if err := fn(top); err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(detectIndent(doc))
+	if err := enc.Encode(&root); err != nil {
+		return "", err
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return b.String(), nil
+}
+
 // detectIndent reads the document's own indentation step (first indented line)
 // so re-serialization matches the file's existing style; 2 when the document
 // gives no signal.

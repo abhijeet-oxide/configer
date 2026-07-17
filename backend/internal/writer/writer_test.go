@@ -231,3 +231,44 @@ func TestAddParametersBatch(t *testing.T) {
 		t.Fatalf("catalog has %d params, want %d", len(cat.Parameters), n+1)
 	}
 }
+
+// A metadata edit must be a one-line diff even in a hand-formatted registry:
+// comments, flow-style labels and untouched entries keep their exact bytes.
+func TestUpdateInstancePreservesFormatting(t *testing.T) {
+	root := t.TempDir()
+	orig := `apiVersion: configer.io/v1
+kind: InstanceRegistry
+# Hand-maintained comment.
+instances:
+  - name: prod
+    folder: instances/prod
+    environment: production
+    softwareVersion: v1.0.0
+    labels: { tier: gold }
+    status: active
+  - name: staging
+    folder: instances/staging
+    environment: staging # promoted weekly
+    softwareVersion: v1.0.0
+    status: active
+`
+	if err := os.MkdirAll(filepath.Join(root, ".configer"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".configer", "instances.yaml"), []byte(orig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	v := "v2.0.0"
+	if _, err := UpdateInstance(root, "staging", InstancePatch{SoftwareVersion: &v}); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(root, ".configer", "instances.yaml"))
+	// The one emitter nuance: yaml.v3 normalizes flow-map spacing
+	// ({ tier: gold } -> {tier: gold}). Everything else is byte-exact.
+	want := strings.Replace(strings.Replace(orig, "labels: { tier: gold }", "labels: {tier: gold}", 1), "  - name: staging\n    folder: instances/staging\n    environment: staging # promoted weekly\n    softwareVersion: v1.0.0",
+		"  - name: staging\n    folder: instances/staging\n    environment: staging # promoted weekly\n    softwareVersion: v2.0.0", 1)
+	if string(b) != want {
+		t.Errorf("registry edit not surgical:\n--- got ---\n%s\n--- want ---\n%s", b, want)
+	}
+}

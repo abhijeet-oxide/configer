@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/writeback"
 	"gopkg.in/yaml.v3"
 )
@@ -219,27 +220,118 @@ type InstancePatch struct {
 	Labels          *map[string]string
 }
 
-// mutateRegistry loads .configer/instances.yaml, applies fn, and persists it.
-func mutateRegistry(root string, fn func(*model.InstanceRegistry) error) error {
+// editRegistry surgically edits .configer/instances.yaml through pathedit's
+// comment- and style-preserving node round trip: only the touched entry
+// changes, so an instance edit is a one-line Git diff even in hand-formatted
+// registries (never a whole-file re-marshal).
+func editRegistry(root string, fn func(instances *yaml.Node) error) error {
 	path := filepath.Join(root, ".configer", "instances.yaml")
-	var reg model.InstanceRegistry
-	if b, err := os.ReadFile(path); err == nil {
-		if err := yaml.Unmarshal(b, &reg); err != nil {
-			return fmt.Errorf("parse %s: %w", path, err)
+	doc, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	out, err := pathedit.EditDoc(doc, func(top *yaml.Node) error {
+		ensureScalar(top, "apiVersion", "configer.io/v1")
+		ensureScalar(top, "kind", "InstanceRegistry")
+		return fn(ensureSeq(top, "instances"))
+	})
+	if err != nil {
+		return fmt.Errorf("edit %s: %w", path, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, []byte(out), 0o644)
+}
+
+// --- yaml.Node helpers for the registry edits (structure only; the path
+// engine itself stays pathedit) -------------------------------------------
+
+func mapVal(m *yaml.Node, key string) *yaml.Node {
+	for i := 0; i+1 < len(m.Content); i += 2 {
+		if m.Content[i].Value == key {
+			return m.Content[i+1]
 		}
-	} else if !os.IsNotExist(err) {
-		return err
 	}
-	if reg.APIVersion == "" {
-		reg.APIVersion = "configer.io/v1"
+	return nil
+}
+
+// ensureScalar sets key to val only when the key is absent.
+func ensureScalar(m *yaml.Node, key, val string) {
+	if mapVal(m, key) != nil {
+		return
 	}
-	if reg.Kind == "" {
-		reg.Kind = "InstanceRegistry"
+	m.Content = append(m.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: val})
+}
+
+func ensureSeq(m *yaml.Node, key string) *yaml.Node {
+	if v := mapVal(m, key); v != nil {
+		if v.Kind == yaml.SequenceNode {
+			return v
+		}
+		nv := &yaml.Node{Kind: yaml.SequenceNode}
+		*v = *nv
+		return v
 	}
-	if err := fn(&reg); err != nil {
-		return err
+	v := &yaml.Node{Kind: yaml.SequenceNode}
+	m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}, v)
+	return v
+}
+
+// itemNamed finds the sequence element whose "name" equals name.
+func itemNamed(seq *yaml.Node, name string) (node *yaml.Node, idx int) {
+	for i, el := range seq.Content {
+		if v := mapVal(el, "name"); v != nil && v.Value == name {
+			return el, i
+		}
 	}
-	return writeYAML(path, reg)
+	return nil, -1
+}
+
+// setItemScalar sets key on an item mapping (replacing in place, comments
+// kept); an empty value removes the key entirely, matching omitempty.
+func setItemScalar(item *yaml.Node, key, val string) {
+	for i := 0; i+1 < len(item.Content); i += 2 {
+		if item.Content[i].Value == key {
+			if val == "" {
+				item.Content = append(item.Content[:i], item.Content[i+2:]...)
+				return
+			}
+			item.Content[i+1].SetString(val)
+			return
+		}
+	}
+	if val == "" {
+		return
+	}
+	item.Content = append(item.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: val})
+}
+
+// setItemLabels replaces the labels map, keeping the old node's style (flow
+// stays flow); an empty map removes the key.
+func setItemLabels(item *yaml.Node, labels map[string]string) {
+	if len(labels) == 0 {
+		for i := 0; i+1 < len(item.Content); i += 2 {
+			if item.Content[i].Value == "labels" {
+				item.Content = append(item.Content[:i], item.Content[i+2:]...)
+				return
+			}
+		}
+		return
+	}
+	nv := &yaml.Node{}
+	_ = nv.Encode(labels)
+	if old := mapVal(item, "labels"); old != nil {
+		nv.Style = old.Style
+		*old = *nv
+		return
+	}
+	item.Content = append(item.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "labels"}, nv)
 }
 
 // ApplyInstancePatch applies a partial metadata update to inst in place (nil
@@ -273,23 +365,35 @@ func applyInstancePatch(inst *model.Instance, patch InstancePatch) {
 	}
 }
 
+// instanceNode encodes a new registry entry (defaults applied) as a block
+// mapping node ready to append to the instances sequence.
+func instanceNode(inst model.Instance) (*yaml.Node, error) {
+	if inst.Status == "" {
+		inst.Status = "active"
+	}
+	if inst.Folder == "" {
+		inst.Folder = inst.FolderOrDefault()
+	}
+	n := &yaml.Node{}
+	if err := n.Encode(inst); err != nil {
+		return nil, err
+	}
+	return n, nil
+}
+
 // AddInstance appends a new instance to the registry (error if the name is
 // taken). Scaffolding the instance's folder is the caller's concern (the
 // layout adapter); the registry only records the binding.
 func AddInstance(root string, inst model.Instance) error {
-	return mutateRegistry(root, func(reg *model.InstanceRegistry) error {
-		for _, i := range reg.Instances {
-			if i.Name == inst.Name {
-				return fmt.Errorf("instance %q already exists", inst.Name)
-			}
+	return editRegistry(root, func(seq *yaml.Node) error {
+		if el, _ := itemNamed(seq, inst.Name); el != nil {
+			return fmt.Errorf("instance %q already exists", inst.Name)
 		}
-		if inst.Status == "" {
-			inst.Status = "active"
+		n, err := instanceNode(inst)
+		if err != nil {
+			return err
 		}
-		if inst.Folder == "" {
-			inst.Folder = inst.FolderOrDefault()
-		}
-		reg.Instances = append(reg.Instances, inst)
+		seq.Content = append(seq.Content, n)
 		return nil
 	})
 }
@@ -297,40 +401,52 @@ func AddInstance(root string, inst model.Instance) error {
 // AddInstances appends many instances in a SINGLE registry read + write (the
 // onboarding batch companion to AddInstance).
 func AddInstances(root string, insts []model.Instance) error {
-	return mutateRegistry(root, func(reg *model.InstanceRegistry) error {
-		have := make(map[string]bool, len(reg.Instances)+len(insts))
-		for _, i := range reg.Instances {
-			have[i.Name] = true
-		}
+	return editRegistry(root, func(seq *yaml.Node) error {
 		for _, inst := range insts {
-			if have[inst.Name] {
+			if el, _ := itemNamed(seq, inst.Name); el != nil {
 				return fmt.Errorf("instance %q already exists", inst.Name)
 			}
-			if inst.Status == "" {
-				inst.Status = "active"
+			n, err := instanceNode(inst)
+			if err != nil {
+				return err
 			}
-			if inst.Folder == "" {
-				inst.Folder = inst.FolderOrDefault()
-			}
-			reg.Instances = append(reg.Instances, inst)
-			have[inst.Name] = true
+			seq.Content = append(seq.Content, n)
 		}
 		return nil
 	})
 }
 
-// UpdateInstance patches one instance's metadata and returns it.
+// UpdateInstance patches one instance's metadata and returns it. The edit is
+// surgical: only the patched keys of that one entry change in the file.
 func UpdateInstance(root, name string, patch InstancePatch) (model.Instance, error) {
 	var out model.Instance
-	err := mutateRegistry(root, func(reg *model.InstanceRegistry) error {
-		for i := range reg.Instances {
-			if reg.Instances[i].Name == name {
-				applyInstancePatch(&reg.Instances[i], patch)
-				out = reg.Instances[i]
-				return nil
-			}
+	err := editRegistry(root, func(seq *yaml.Node) error {
+		el, _ := itemNamed(seq, name)
+		if el == nil {
+			return fmt.Errorf("instance %q not found", name)
 		}
-		return fmt.Errorf("instance %q not found", name)
+		if patch.Environment != nil {
+			setItemScalar(el, "environment", *patch.Environment)
+		}
+		if patch.Region != nil {
+			setItemScalar(el, "region", *patch.Region)
+		}
+		if patch.Zone != nil {
+			setItemScalar(el, "zone", *patch.Zone)
+		}
+		if patch.Site != nil {
+			setItemScalar(el, "site", *patch.Site)
+		}
+		if patch.SoftwareVersion != nil {
+			setItemScalar(el, "softwareVersion", *patch.SoftwareVersion)
+		}
+		if patch.Status != nil {
+			setItemScalar(el, "status", *patch.Status)
+		}
+		if patch.Labels != nil {
+			setItemLabels(el, *patch.Labels)
+		}
+		return el.Decode(&out)
 	})
 	return out, err
 }
@@ -339,19 +455,17 @@ func UpdateInstance(root, name string, patch InstancePatch) (model.Instance, err
 // so nothing stale is left behind.
 func DeleteInstance(root, name string) error {
 	var folder string
-	if err := mutateRegistry(root, func(reg *model.InstanceRegistry) error {
-		idx := -1
-		for i := range reg.Instances {
-			if reg.Instances[i].Name == name {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
+	if err := editRegistry(root, func(seq *yaml.Node) error {
+		el, idx := itemNamed(seq, name)
+		if el == nil {
 			return fmt.Errorf("instance %q not found", name)
 		}
-		folder = reg.Instances[idx].FolderOrDefault()
-		reg.Instances = append(reg.Instances[:idx], reg.Instances[idx+1:]...)
+		var inst model.Instance
+		if err := el.Decode(&inst); err != nil {
+			return err
+		}
+		folder = inst.FolderOrDefault()
+		seq.Content = append(seq.Content[:idx], seq.Content[idx+1:]...)
 		return nil
 	}); err != nil {
 		return err

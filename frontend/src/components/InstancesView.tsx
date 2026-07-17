@@ -5,7 +5,8 @@ import {
 import {
   PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined,
 } from "../icons";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
+import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { ENV_PRESETS } from "../theme";
@@ -44,6 +45,8 @@ interface FormValues {
   region?: string;
   softwareVersion?: string;
   status?: string;
+  /** copy configuration values from this instance ("" = start empty) */
+  baseInstance?: string;
   labels?: string;
 }
 
@@ -56,6 +59,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   const [view, setView] = useState<"table" | "topology">("table");
   const [modal, setModal] = useState<{ mode: "add" | "edit" | "clone"; instance?: Instance } | null>(null);
   const [form] = Form.useForm<FormValues>();
+  const nameRef = useRef<InputRef>(null);
 
   const environments = [...new Set(instances.map((i) => i.environment).filter(Boolean))] as string[];
 
@@ -123,13 +127,28 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             region: instance.region,
             softwareVersion: instance.softwareVersion,
             status: instance.status || "active",
+            baseInstance: mode === "clone" ? instance.name : "",
             labels: formatLabels(instance.labels),
           }
-        : { name: "", status: "active" },
+        : { name: "", status: "active", baseInstance: "" },
     );
   };
 
   const submit = (v: FormValues) => {
+    if (modal?.mode === "edit") {
+      // Send ONLY what actually changed: an untouched field must not turn
+      // into a registry write (and a spurious line in the Git diff).
+      const orig = modal.instance!;
+      const input: InstanceInput = { name: v.name, author: "demo-user" };
+      const diff = (a?: string, b?: string) => (a ?? "") !== (b ?? "");
+      if (diff(v.environment, orig.environment)) input.environment = v.environment ?? "";
+      if (diff(v.region, orig.region)) input.region = v.region ?? "";
+      if (diff(v.softwareVersion, orig.softwareVersion)) input.softwareVersion = v.softwareVersion ?? "";
+      if (diff(v.status, orig.status || "active")) input.status = v.status;
+      if (diff(v.labels, formatLabels(orig.labels))) input.labels = parseLabels(v.labels ?? "");
+      save.mutate({ mode: "edit", orig: orig.name, input });
+      return;
+    }
     const input: InstanceInput = {
       name: v.name,
       environment: v.environment,
@@ -139,7 +158,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       labels: v.labels ? parseLabels(v.labels) : undefined,
       author: "demo-user",
     };
-    if (modal?.mode === "clone") input.cloneFrom = modal.instance?.name;
+    if (v.baseInstance) input.cloneFrom = v.baseInstance;
     save.mutate({ mode: modal!.mode, orig: modal?.instance?.name, input });
   };
 
@@ -282,15 +301,23 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         okText="Stage in draft"
         confirmLoading={save.isPending}
         destroyOnHidden
+        afterOpenChange={(open) => {
+          // Focus lands in the first empty input the moment the modal is up.
+          if (open && modal?.mode !== "edit") nameRef.current?.focus();
+        }}
       >
         <Form form={form} layout="vertical" onFinish={submit} requiredMark={false} style={{ marginTop: 12 }}>
           <Form.Item
             name="name"
             label="Name"
             rules={[{ required: true, message: "A name is required" }]}
-            extra={modal?.mode === "clone" ? "A new instance copying the source's values." : undefined}
           >
-            <Input placeholder="e.g. prod-eu-central" disabled={modal?.mode === "edit"} className="mono" />
+            <Input
+              ref={nameRef}
+              placeholder="e.g. prod-eu-central"
+              disabled={modal?.mode === "edit"}
+              className="mono"
+            />
           </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="environment" label="Environment" style={{ flex: 1 }}>
@@ -320,6 +347,22 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               />
             </Form.Item>
           </div>
+          {modal?.mode !== "edit" && (
+            <Form.Item
+              name="baseInstance"
+              label="Base instance"
+              extra="The new instance's folder starts as a copy of the base instance's configuration files. Empty starts with no values; every parameter reads its default until you set it."
+            >
+              <Select
+                options={[
+                  { value: "", label: "Empty (no values copied)" },
+                  ...instances
+                    .filter((i) => (i.status || "active") !== "archived")
+                    .map((i) => ({ value: i.name, label: `Copy from ${i.name}` })),
+                ]}
+              />
+            </Form.Item>
+          )}
           <Form.Item name="labels" label="Labels" extra="Comma-separated key=value pairs, e.g. tier=gold, tenant=acme">
             <Input placeholder="tier=gold, tenant=acme" />
           </Form.Item>

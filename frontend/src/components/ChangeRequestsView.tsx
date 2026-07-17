@@ -57,6 +57,7 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
       rowKey={(it) => `${it.paramId}|${it.instance}|${it.file ?? ""}`}
       dataSource={items}
       pagination={false}
+      scroll={{ x: "max-content" }}
       columns={[
         {
           title: "Parameter",
@@ -120,7 +121,7 @@ export default function ChangeRequestsView() {
 
   return (
     <div style={{ padding: 16, height: "100%", overflow: "auto" }}>
-      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }}>
+      <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }} wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>
           <PullRequestOutlined /> Release history
         </Typography.Title>
@@ -133,6 +134,7 @@ export default function ChangeRequestsView() {
         size="middle"
         dataSource={q.data}
         pagination={false}
+        scroll={{ x: "max-content" }}
         locale={{
           emptyText: (
             <StatePanel

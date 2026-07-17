@@ -8,36 +8,36 @@ import { StatePill } from "./CrSteps";
 import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState } from "./ui";
-import { EmptyArt, InboxZeroArt } from "./illustrations";
-import UserAvatar from "./UserAvatar";
+import { EmptyArt } from "./illustrations";
 
-// InboxView is the WORKSPACE-WIDE approvals inbox behind the rail's
-// Approvals entry: one queue of change requests across every application,
-// filterable by application and state. Reviewing happens in the owning
-// application's approvals workspace (one review surface, one audit trail);
-// clicking a row switches there with the change request preselected.
+// ChangesOverview is the WORKSPACE-WIDE change history behind the rail's
+// Changes entry: every change request (any state) across every application
+// in one filterable list, so "what has been changing everywhere" is one
+// screen instead of one per application. Opening a row goes to that
+// application's Releases view.
 
-type StateFilter = "waiting" | "approved" | "published" | "rejected";
+type StateFilter = "all" | "draft" | "under_review" | "published" | "rejected";
 
-const FILTERS: { key: StateFilter; label: string; states: ChangeState[] }[] = [
-  { key: "waiting", label: "Waiting for review", states: ["under_review", "approved"] },
-  { key: "approved", label: "Approved", states: ["approved"] },
-  { key: "published", label: "Published", states: ["published"] },
-  { key: "rejected", label: "Rejected", states: ["rejected"] },
+const FILTERS: { key: StateFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "draft", label: "Drafts" },
+  { key: "under_review", label: "In review" },
+  { key: "published", label: "Published" },
+  { key: "rejected", label: "Rejected" },
 ];
 
-interface InboxRow {
+interface Row {
   key: string;
   repoId: string;
   repoName: string;
   cr: ChangeRequest;
 }
 
-export default function InboxView() {
-  const { repoId, setSection, setReviewCr } = useUI();
+export default function ChangesOverview() {
+  const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
-  const [filter, setFilter] = useState<StateFilter>("waiting");
-  const [app, setApp] = useState<string>("");
+  const [filter, setFilter] = useState<StateFilter>("all");
+  const [app, setApp] = useState("");
 
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
@@ -49,27 +49,27 @@ export default function InboxView() {
     })),
   });
 
-  // Aggregation is cheap (a handful of repos, dozens of CRs); no memo needed.
-  const all: InboxRow[] = [];
+  const all: Row[] = [];
   repos.forEach((r, i) => {
     for (const cr of changeQs[i]?.data ?? [])
       all.push({ key: `${r.id}:${cr.id}`, repoId: r.id, repoName: r.name, cr });
   });
   const inApp = app ? all.filter((r) => r.repoId === app) : all;
   const counts = Object.fromEntries(
-    FILTERS.map((f) => [f.key, inApp.filter((r) => f.states.includes(r.cr.state)).length]),
+    FILTERS.map((f) => [
+      f.key,
+      f.key === "all" ? inApp.length : inApp.filter((r) => r.cr.state === (f.key as ChangeState)).length,
+    ]),
   ) as Record<StateFilter, number>;
   const shown = inApp
-    .filter((r) => FILTERS.find((f) => f.key === filter)!.states.includes(r.cr.state))
+    .filter((r) => filter === "all" || r.cr.state === (filter as ChangeState))
     .sort((a, b) => (b.cr.updatedAt ?? "").localeCompare(a.cr.updatedAt ?? ""));
 
   const loading = wsQ.isLoading || (repos.length > 0 && changeQs.some((q) => q.isLoading));
 
-  // Reviewing lives in the owning application's approvals workspace.
-  const openReview = (row: InboxRow) => {
-    setReviewCr(row.cr.id);
+  const open = (row: Row) => {
     if (row.repoId !== repoId) switchRepo(row.repoId);
-    setSection("approvals");
+    setSection("changes");
   };
 
   if (loading) return <ApprovalsSkeleton />;
@@ -78,10 +78,9 @@ export default function InboxView() {
     <div className="flex h-full flex-col gap-4 overflow-auto bg-canvas px-6 py-5">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-xl font-semibold text-ink">Approvals</div>
+          <div className="text-xl font-semibold text-ink">Changes</div>
           <div className="text-[13px] text-ink-2">
-            Change requests across all your applications. Open one to review it in its application's
-            workspace.
+            Every change request across your applications. Open one to see its release history.
           </div>
         </div>
         <Select
@@ -89,10 +88,7 @@ export default function InboxView() {
           value={app}
           onChange={setApp}
           style={{ width: 200 }}
-          options={[
-            { value: "", label: "All applications" },
-            ...repos.map((r) => ({ value: r.id, label: r.name })),
-          ]}
+          options={[{ value: "", label: "All applications" }, ...repos.map((r) => ({ value: r.id, label: r.name }))]}
         />
       </div>
 
@@ -112,26 +108,24 @@ export default function InboxView() {
       {shown.length === 0 ? (
         <SectionCard>
           <EmptyState
-            art={filter === "waiting" ? <InboxZeroArt size={116} /> : <EmptyArt size={104} />}
-            title={filter === "waiting" ? "All caught up" : "Nothing here yet"}
+            art={<EmptyArt size={104} />}
+            title="No change requests yet"
             hint={
-              filter === "waiting"
-                ? app
-                  ? "Nothing is waiting for approval in this application."
-                  : "Nothing is waiting for approval in any application. New change requests appear here immediately."
-                : "Change requests in this state will appear here."
+              app
+                ? "This application has no change requests in this state."
+                : "Edit some cells in an application's editor to start a draft; it appears here immediately."
             }
           />
         </SectionCard>
       ) : (
         <SectionCard padded={false}>
-          <Table<InboxRow>
+          <Table<Row>
             className="cr-table"
             rowKey="key"
             size="small"
             dataSource={shown}
             pagination={false}
-            onRow={(row) => ({ onClick: () => openReview(row), style: { cursor: "pointer" } })}
+            onRow={(row) => ({ onClick: () => open(row), style: { cursor: "pointer" } })}
             columns={[
               {
                 title: "Change request",
@@ -145,24 +139,10 @@ export default function InboxView() {
                 ellipsis: true,
                 render: (_v, r) => <span className="text-ink-2">{r.repoName}</span>,
               },
-              {
-                title: "Created by",
-                width: 150,
-                ellipsis: true,
-                render: (_v, r) => (
-                  <span className="inline-flex items-center gap-1.5">
-                    <UserAvatar name={r.cr.author} size={18} />
-                    {r.cr.author}
-                  </span>
-                ),
-              },
-              { title: "Changes", width: 90, render: (_v, r) => r.cr.items?.length ?? 0 },
-              {
-                title: "Status",
-                width: 150,
-                render: (_v, r) => <StatePill state={r.cr.state} size="sm" />,
-              },
-              { title: "Created", width: 100, render: (_v, r) => relTime(r.cr.createdAt) },
+              { title: "Created by", width: 130, ellipsis: true, render: (_v, r) => r.cr.author },
+              { title: "Changes", width: 80, render: (_v, r) => r.cr.items?.length ?? 0 },
+              { title: "Status", width: 150, render: (_v, r) => <StatePill state={r.cr.state} size="sm" /> },
+              { title: "Updated", width: 100, render: (_v, r) => relTime(r.cr.updatedAt ?? r.cr.createdAt) },
             ]}
           />
         </SectionCard>

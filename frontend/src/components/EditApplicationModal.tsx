@@ -88,7 +88,7 @@ export default function EditApplicationModal({
           label="Name"
           rules={[{ required: true, whitespace: true, message: "Give the application a name" }]}
         >
-          <Input maxLength={80} placeholder="e.g. Network Platform" />
+          <Input maxLength={80} placeholder="e.g. Network Platform" autoFocus />
         </Form.Item>
         <Form.Item name="description" label="Description">
           <Input.TextArea

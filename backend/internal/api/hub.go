@@ -266,7 +266,11 @@ func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rest := strings.TrimPrefix(r.URL.Path, "/api/repos/"+id)
-	r2 := r.Clone(r.Context())
+	// Share an actor holder between the handler (which resolves the author)
+	// and the post-dispatch audit, so the trail records who acted.
+	ctx, _ := withActorHolder(r.Context())
+	r = r.WithContext(ctx)
+	r2 := r.Clone(ctx)
 	r2.URL.Path = "/api" + rest
 	rec := &statusRecorder{ResponseWriter: w}
 	hd.ServeHTTP(rec, r2)
@@ -288,6 +292,8 @@ func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
 	if !h.authorize(w, r, defaultID) {
 		return
 	}
+	ctx, _ := withActorHolder(r.Context())
+	r = r.WithContext(ctx)
 	rec := &statusRecorder{ResponseWriter: w}
 	hd.ServeHTTP(rec, r)
 	h.audit(r, defaultID, rec.status)

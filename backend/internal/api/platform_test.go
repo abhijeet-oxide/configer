@@ -162,7 +162,8 @@ func TestRoleEnforcement(t *testing.T) {
 	}
 	found := false
 	for _, e := range evs {
-		if e.Login == "eddy" && strings.Contains(e.Action, "/values") {
+		// The action is humanized; the raw endpoint stays in the detail.
+		if e.Login == "eddy" && strings.Contains(e.Detail, "/values") && e.Action == "Edited a configuration value" {
 			found = true
 		}
 	}
@@ -186,5 +187,24 @@ func TestSingleUserModeUnchanged(t *testing.T) {
 	}
 	if w := call(t, h, "GET", "/api/auth/me", "", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"enabled":false`) {
 		t.Errorf("auth/me = %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHumanizeAction(t *testing.T) {
+	cases := []struct{ method, path, want string }{
+		{"PUT", "/values", "Edited a configuration value"},
+		{"POST", "/instances", "Added an instance"},
+		{"DELETE", "/instances/dev", "Retired instance dev"},
+		{"POST", "/changes/3/submit", "Submitted change request #3 for review"},
+		{"POST", "/changes/3/merge", "Published change request #3"},
+		{"POST", "/changes/3/reject", "Rejected change request #3"},
+		{"POST", "/import", "Imported settings"},
+		{"POST", "/repo/sync", "Synchronized with Git"},
+		{"PUT", "/parameters/net-mtu", "Updated a parameter"},
+	}
+	for _, c := range cases {
+		if got := humanizeAction(c.method, c.path); got != c.want {
+			t.Errorf("humanizeAction(%q, %q) = %q, want %q", c.method, c.path, got, c.want)
+		}
 	}
 }

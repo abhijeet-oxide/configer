@@ -7,8 +7,8 @@ import {
   MoreOutlined,
   PullRequestOutlined,
   HistoryOutlined,
-  UserOutlined,
 } from "../icons";
+import UserAvatar from "./UserAvatar";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
@@ -417,8 +417,8 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                     style={{ cursor: a.section ? "pointer" : "default", paddingInline: 0 }}
                     onClick={() => a.section && setSection(a.section)}
                   >
-                    <div style={{ display: "flex", gap: 8, minWidth: 0, width: "100%" }}>
-                      <UserOutlined style={{ color: "var(--text-3)", marginTop: 3 }} />
+                    <div style={{ display: "flex", gap: 8, minWidth: 0, width: "100%", alignItems: "flex-start" }}>
+                      <UserAvatar name={a.actor} size={20} />
                       <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: "var(--fs-12)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {a.actor && <b>{a.actor} </b>}

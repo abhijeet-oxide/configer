@@ -118,7 +118,11 @@ func (h *Hub) authorize(w http.ResponseWriter, r *http.Request, repoID string) b
 	return true
 }
 
-// audit records a state-changing request outcome, best effort.
+// audit records a state-changing request outcome, best effort. The action is
+// a plain-language description of what happened (humanizeAction), and the raw
+// "METHOD /path" is kept in detail for anyone who wants the API truth. The
+// actor is the resolved author the handler recorded (never a bare
+// "anonymous" when the request carried an author).
 func (h *Hub) audit(r *http.Request, repoID string, status int) {
 	if h.platform == nil || status >= 400 || r.Method == http.MethodGet ||
 		r.Method == http.MethodHead || r.Method == http.MethodOptions {
@@ -127,9 +131,113 @@ func (h *Hub) audit(r *http.Request, repoID string, status int) {
 	login := "anonymous"
 	if u, ok := auth.UserFrom(r.Context()); ok {
 		login = u.Login
+	} else if hld, ok := r.Context().Value(actorKey).(*actorHolder); ok && hld.name != "" {
+		login = hld.name
 	}
-	action := r.Method + " " + strings.TrimPrefix(r.URL.Path, "/api/repos/"+repoID)
-	_ = h.platform.Audit(r.Context(), store.Event{Login: login, Repo: repoID, Action: action})
+	// Normalize both the scoped (/api/repos/<id>/<rest>) and the unscoped
+	// single-user (/api/<rest>) forms down to /<rest> so humanization keys off
+	// the resource, not the routing prefix.
+	rest := r.URL.Path
+	if p := strings.TrimPrefix(rest, "/api/repos/"+repoID); p != rest {
+		rest = p
+	} else {
+		rest = strings.TrimPrefix(rest, "/api")
+	}
+	_ = h.platform.Audit(r.Context(), store.Event{
+		Login:  login,
+		Repo:   repoID,
+		Action: humanizeAction(r.Method, rest),
+		Detail: r.Method + " " + rest,
+	})
+}
+
+// humanizeAction turns an HTTP method + path into a plain-language sentence a
+// non-engineer can read ("Edited a configuration value"), so the audit trail
+// says what happened, not which endpoint was called. The raw method/path
+// stays available as the event detail.
+func humanizeAction(method, path string) string {
+	seg := strings.Split(strings.Trim(path, "/"), "/")
+	head := ""
+	if len(seg) > 0 {
+		head = seg[0]
+	}
+	arg := ""
+	if len(seg) > 1 {
+		arg = seg[1]
+	}
+	tail := ""
+	if len(seg) > 2 {
+		tail = seg[2]
+	}
+	switch head {
+	case "values":
+		return "Edited a configuration value"
+	case "files":
+		return "Edited a file in the draft"
+	case "instances":
+		switch method {
+		case http.MethodPost:
+			return "Added an instance"
+		case http.MethodPut:
+			return "Updated instance " + arg
+		case http.MethodDelete:
+			return "Retired instance " + arg
+		}
+	case "parameters":
+		switch method {
+		case http.MethodPost:
+			return "Added a parameter"
+		case http.MethodPut:
+			return "Updated a parameter"
+		case http.MethodDelete:
+			return "Retired a parameter"
+		}
+	case "changes":
+		switch tail {
+		case "submit":
+			return "Submitted change request #" + arg + " for review"
+		case "merge":
+			return "Published change request #" + arg
+		case "reject":
+			return "Rejected change request #" + arg
+		case "comments":
+			return "Commented on change request #" + arg
+		case "reviewers":
+			return "Assigned reviewers on change request #" + arg
+		}
+		if method == http.MethodPost {
+			return "Staged a draft change"
+		}
+	case "import":
+		return "Imported settings"
+	case "init":
+		return "Initialized the application"
+	case "deinit":
+		return "Removed Configer from the repository"
+	case "application":
+		return "Updated application details"
+	case "repo":
+		if arg == "sync" {
+			return "Synchronized with Git"
+		}
+		if arg == "findings" {
+			return "Acknowledged repository changes"
+		}
+	case "reconcile":
+		return "Reconciled a repository change"
+	}
+	// Fall back to a readable generic rather than the raw path.
+	verb := map[string]string{
+		http.MethodPost: "Created", http.MethodPut: "Updated",
+		http.MethodPatch: "Updated", http.MethodDelete: "Removed",
+	}[method]
+	if verb == "" {
+		verb = "Changed"
+	}
+	if head == "" {
+		return verb + " a resource"
+	}
+	return verb + " " + head
 }
 
 // --- member management -----------------------------------------------------------

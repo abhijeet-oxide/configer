@@ -6,7 +6,6 @@ import {
   List,
   Popconfirm,
   Space,
-  Statistic,
   Tag,
   Tooltip,
   Typography,
@@ -30,7 +29,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
-import { AllClearArt, StatePanel } from "./illustrations";
+import { InSyncArt, StatePanel } from "./illustrations";
+import UserAvatar from "./UserAvatar";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
 // outside Configer: new config files, edits, deletions, renames and new
@@ -49,6 +49,53 @@ const findingMeta: Record<
   file_renamed: { icon: <SwapOutlined />, color: "orange", hex: "var(--c-pending)", label: "Renamed" },
   new_folder: { icon: <FolderAddOutlined />, color: "purple", hex: "#6c3df4", label: "New folders" },
 };
+
+// DriftTile is one filter chip in the drift summary: an icon in a soft tinted
+// well, a big count and a label, on the product's neumorphic surface. A count
+// of zero reads quiet and is not clickable; the active filter shows a colored
+// ring.
+function DriftTile({
+  icon,
+  hex,
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  hex: string;
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+}) {
+  const live = count > 0;
+  return (
+    <button
+      onClick={onClick}
+      disabled={!live}
+      className="flex items-center gap-3 rounded-card-lg bg-surface px-3.5 py-3 text-left shadow-neu transition-[box-shadow,transform]"
+      style={{
+        cursor: live ? "pointer" : "default",
+        opacity: live ? 1 : 0.6,
+        boxShadow: active ? `0 0 0 1.5px ${hex}, var(--el-1)` : undefined,
+      }}
+    >
+      <span
+        className="flex size-9 shrink-0 items-center justify-center rounded-full text-[17px]"
+        style={{ background: live ? `color-mix(in srgb, ${hex} 14%, transparent)` : "var(--surface-2)", color: live ? hex : "var(--text-3)" }}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-xl font-semibold leading-none" style={{ color: live ? "var(--text)" : "var(--text-3)" }}>
+          {count}
+        </span>
+        <span className="mt-1 block truncate text-[11px] text-ink-3">{label}</span>
+      </span>
+    </button>
+  );
+}
 
 export default function RepoChangesView() {
   const { message } = AntApp.useApp();
@@ -125,48 +172,28 @@ export default function RepoChangesView() {
       </div>
 
       {/* The shape of the drift at a glance; tiles filter the list below. */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 14 }}>
-        <Card
-          size="small"
-          hoverable
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12 }}>
+        <DriftTile
+          icon={<EyeOutlined />}
+          hex={findings.length ? "var(--c-pending)" : "var(--c-ok)"}
+          label="All changes"
+          count={findings.length}
+          active={filter === null}
           onClick={() => setFilter(null)}
-          className="stat-accent"
-          style={{
-            "--accent": findings.length ? "var(--c-pending)" : "var(--c-ok)",
-            borderColor: filter === null ? (findings.length ? "var(--c-pending)" : undefined) : undefined,
-          } as React.CSSProperties}
-        >
-          <Statistic
-            title="Pending events"
-            value={findings.length}
-            prefix={<EyeOutlined style={{ color: findings.length ? "var(--c-pending)" : "var(--c-ok)" }} />}
-            valueStyle={{ fontSize: 22, color: findings.length ? "var(--c-pending)" : undefined }}
-          />
-        </Card>
+        />
         {(Object.keys(findingMeta) as Finding["type"][]).map((t) => {
           const m = findingMeta[t];
           const n = countOf(t);
           return (
-            <Card
+            <DriftTile
               key={t}
-              size="small"
-              hoverable={n > 0}
+              icon={m.icon}
+              hex={m.hex}
+              label={m.label}
+              count={n}
+              active={filter === t}
               onClick={() => n > 0 && setFilter(filter === t ? null : t)}
-              className="stat-accent"
-              style={{
-                "--accent": m.hex,
-                opacity: n === 0 ? 0.55 : 1,
-                borderColor: filter === t ? m.hex : undefined,
-                cursor: n > 0 ? "pointer" : "default",
-              } as React.CSSProperties}
-            >
-              <Statistic
-                title={m.label}
-                value={n}
-                prefix={<span style={{ color: m.hex }}>{m.icon}</span>}
-                valueStyle={{ fontSize: 22, color: n ? m.hex : undefined }}
-              />
-            </Card>
+            />
           );
         })}
       </div>
@@ -186,7 +213,7 @@ export default function RepoChangesView() {
         <div style={{ display: "flex", gap: 14, alignItems: "stretch", flexWrap: "wrap", flex: 1 }}>
           <Card style={{ flex: "1 1 340px", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <StatePanel
-              art={<AllClearArt size={116} />}
+              art={<InSyncArt size={120} />}
               title="No drift; you're all caught up"
               subtitle={
                 <>
@@ -226,9 +253,10 @@ export default function RepoChangesView() {
                       <Typography.Text style={{ fontSize: 13 }} ellipsis>
                         {c.message}
                       </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                        <UserAvatar name={c.author} size={16} />
                         {c.author} · {relTime(c.date)}
-                      </Typography.Text>
+                      </span>
                     </Space>
                   </Space>
                 </List.Item>

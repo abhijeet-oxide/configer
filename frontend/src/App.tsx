@@ -26,6 +26,8 @@ import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import InboxView from "./components/InboxView";
 import InstancesOverview from "./components/InstancesOverview";
+import ChangesOverview from "./components/ChangesOverview";
+import RepositoriesOverview from "./components/RepositoriesOverview";
 import DashboardView from "./components/DashboardView";
 import ConfigurationPage, { APP_SECTIONS } from "./components/ConfigurationPage";
 import ImportWizard from "./components/ImportWizard";
@@ -35,6 +37,7 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
+import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { OfflineArt, StatePanel } from "./components/illustrations";
@@ -390,6 +393,7 @@ export default function App() {
     if (section === "compare") return <ComparePanel grid={grid} />;
     if (section === "instances") return <InstancesView grid={grid} />;
     if (section === "files") return <FilesView />;
+    if (section === "audit") return <AuditView />;
     return editorLayout();
   }
 
@@ -416,6 +420,18 @@ export default function App() {
       return (
         <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
           <InstancesOverview />
+        </div>
+      );
+    if (section === "changelog")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <ChangesOverview />
+        </div>
+      );
+    if (section === "repos")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <RepositoriesOverview />
         </div>
       );
     // A repository without a .configer application goes through onboarding

@@ -1,5 +1,5 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined } from "../icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
@@ -222,7 +222,20 @@ function DetailsTab({
         },
         { key: "type", label: "Data Type", children: <Tag>{p.type}{p.type === "list" && p.itemType ? ` of ${p.itemType}` : ""}</Tag> },
         { key: "category", label: "Category", children: p.category },
-        { key: "scope", label: "Scope", children: <Tag>{p.scope}</Tag> },
+        {
+          key: "scope",
+          label: "Scope",
+          children: (
+            <Tag>
+              {p.scope === "global" ? (
+                <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
+              ) : (
+                <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
+              )}
+              {p.scope}
+            </Tag>
+          ),
+        },
         { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">yes</Tag> : "no" },
         { key: "default", label: "Default Value", children: <span className="mono">{p.default === undefined || p.default === null ? "-" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default)}</span> },
         { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },

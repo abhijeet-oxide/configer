@@ -100,68 +100,77 @@ export default function AddParameterModal({
         layout="vertical"
         onFinish={(v) => create.mutate(v)}
         initialValues={{ type: "string", scope: "instance", category: categories[0], file: files[0], mode: "attach" }}
+        style={{ marginTop: 8 }}
       >
-        <Form.Item
-          name="name"
-          label="Parameter name (dotted path style)"
-          rules={[
-            { required: true, message: "Required" },
-            { pattern: /^[a-zA-Z0-9_.[\]-]+$/, message: "Letters, digits, dots, dashes" },
-          ]}
-        >
-          <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />
-        </Form.Item>
-        <Form.Item name="displayName" label="Display name">
-          <Input placeholder="NTP servers" />
-        </Form.Item>
-        <Form.Item name="description" label="Description (used by validation docs and AI assist)">
+        {/* Grouped two-per-row so the whole form fits on screen without
+            scrolling; only fields that read as a pair are paired. */}
+        <div className="modal-2col">
+          <Form.Item
+            name="name"
+            label="Parameter name"
+            style={{ flex: 2 }}
+            rules={[
+              { required: true, message: "Required" },
+              { pattern: /^[a-zA-Z0-9_.[\]-]+$/, message: "Letters, digits, dots, dashes" },
+            ]}
+          >
+            <Input ref={nameRef} placeholder="network.ntp.servers" className="mono" />
+          </Form.Item>
+          <Form.Item name="displayName" label="Display name" style={{ flex: 1 }}>
+            <Input placeholder="NTP servers" />
+          </Form.Item>
+        </div>
+        <Form.Item name="description" label="Description" style={{ marginBottom: 10 }}>
           <Input.TextArea rows={2} placeholder="What does this parameter control?" />
         </Form.Item>
-        <Form.Item name="category" label="Category" rules={[{ required: true }]}>
-          <Select
-            showSearch
-            options={categories.map((c) => ({ value: c, label: c }))}
-            popupMatchSelectWidth={false}
-          />
-        </Form.Item>
-        <Form.Item name="type" label="Data type" rules={[{ required: true }]}>
-          <Select options={types.map((t) => ({ value: t, label: t }))} />
-        </Form.Item>
+        <div className="modal-2col">
+          <Form.Item name="category" label="Category" style={{ flex: 1 }} rules={[{ required: true }]}>
+            <Select showSearch options={categories.map((c) => ({ value: c, label: c }))} popupMatchSelectWidth={false} />
+          </Form.Item>
+          <Form.Item name="type" label="Data type" style={{ flex: 1 }} rules={[{ required: true }]}>
+            <Select options={types.map((t) => ({ value: t, label: t }))} />
+          </Form.Item>
+        </div>
+        <div className="modal-2col">
+          <Form.Item name="scope" label="Scope" style={{ flex: 1 }} rules={[{ required: true }]}>
+            <Select options={scopes.map((s) => ({ value: s, label: s }))} />
+          </Form.Item>
+          {type === "list" ? (
+            <Form.Item name="itemType" label="List element type" style={{ flex: 1 }} initialValue="string">
+              <Select options={itemTypes.map((t) => ({ value: t, label: t }))} />
+            </Form.Item>
+          ) : (
+            <Form.Item name="secret" label="Secret" style={{ flex: 1 }} valuePropName="checked">
+              <Switch size="small" />
+            </Form.Item>
+          )}
+        </div>
         {type === "list" && (
-          <Form.Item name="itemType" label="List element type" initialValue="string">
-            <Select options={itemTypes.map((t) => ({ value: t, label: t }))} />
+          <Form.Item name="secret" label="Secret" valuePropName="checked" style={{ marginBottom: 10 }}>
+            <Switch size="small" />
           </Form.Item>
         )}
-        <Form.Item name="scope" label="Scope" rules={[{ required: true }]}>
-          <Select options={scopes.map((s) => ({ value: s, label: s }))} />
-        </Form.Item>
-        <Form.Item name="secret" label="Secret" valuePropName="checked">
-          <Switch size="small" />
-        </Form.Item>
-        <Form.Item name="mode" label="Where does it live?">
+        <Form.Item name="mode" label="Where does it live?" style={{ marginBottom: 10 }}>
           <Radio.Group>
             <Radio.Button value="attach">Attach to a file now</Radio.Button>
             <Radio.Button value="design">Design phase (no file yet)</Radio.Button>
           </Radio.Group>
         </Form.Item>
         {mode === "design" ? (
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -6 }}>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -4 }}>
             The configuration file hasn't arrived yet. The parameter behaves normally: set
             values per instance, validate, review; nothing renders until you attach it to a
-            real file later (details panel, one click per setting).
+            real file later.
           </Typography.Paragraph>
         ) : (
-          <>
-            <Form.Item name="file" label="Source file" rules={[{ required: true, message: "Pick a file, or switch to design phase" }]}>
+          <div className="modal-2col">
+            <Form.Item name="file" label="Source file" style={{ flex: 1 }} rules={[{ required: true, message: "Pick a file, or switch to design phase" }]}>
               <Select showSearch options={files.map((f) => ({ value: f, label: f }))} />
             </Form.Item>
-            <Form.Item
-              name="path"
-              label="Path in file (blank = derived from name; XPath required for XML)"
-            >
-              <Input placeholder="$.network.ntp.servers or /network/ntp/server" className="mono" />
+            <Form.Item name="path" label="Path in file (blank = from name)" style={{ flex: 1 }}>
+              <Input placeholder="$.network.ntp.servers" className="mono" />
             </Form.Item>
-          </>
+          </div>
         )}
       </Form>
     </Modal>

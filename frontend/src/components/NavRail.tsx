@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { Badge, Drawer, List, Popover, Switch, Tooltip, Typography } from "antd";
+import { Badge, Popover, Switch, Tooltip, Typography } from "antd";
 import {
   HomeOutlined,
   AppstoreOutlined,
@@ -9,7 +8,6 @@ import {
   CheckCircleOutlined,
   FileProtectOutlined,
   SettingOutlined,
-  QuestionCircleOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
 } from "../icons";
@@ -17,7 +15,6 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { envHex } from "../theme";
 import { useUI } from "../store";
-import MembersModal from "./MembersModal";
 
 // The navigation rail: the product's one piece of dark chrome. Global items
 // (Home, Applications, Approvals) work everywhere; application items
@@ -46,8 +43,10 @@ function railKey(section: string): string {
       return "instances";
     case "changes":
     case "drafts":
+    case "changelog":
       return "changes";
     case "drift":
+    case "repos":
       return "repositories";
     case "approvals":
     case "inbox":
@@ -105,27 +104,28 @@ export default function NavRail({
 }) {
   const { section, setSection, repoId, mode, setMode, fontScale, setFontScale } = useUI();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false, enabled: !!repoId });
-  const [auditOpen, setAuditOpen] = useState(false);
-  const [membersOpen, setMembersOpen] = useState(false);
 
   const repos = wsQ.data?.repos ?? [];
-  const activeRepo = repos.find((r) => r.id === repoId);
   const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
-  const activeChanges = (activeRepo?.drafts || 0) + (activeRepo?.openChanges || 0);
-  const findings = findingsQ.data?.findings?.length ?? 0;
+  // Workspace-wide count of change requests in flight (drafts + open) for the
+  // global Changes badge.
+  const changesInFlight = repos.reduce((n, r) => n + (r.drafts || 0) + (r.openChanges || 0), 0);
   const activeKey = railKey(section);
 
   const items: RailItem[] = [
     { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
     { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
     { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "estate" },
-    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changes", needsApp: true, badge: activeChanges },
-    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "drift", needsApp: true, badge: findings },
+    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changelog", badge: changesInFlight },
+    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "repos" },
     { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },
-    { key: "audit", label: "Audit", icon: <FileProtectOutlined /> },
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit", needsApp: true },
   ];
 
+  // Settings keeps only what a user actually changes here: appearance.
+  // Dark mode also lives in the top bar; larger text sits beside it. Plugins
+  // and People & roles are administrative surfaces that were noise in this
+  // menu, so they are not surfaced here.
   const settingsContent = (
     <div style={{ width: 220 }}>
       <div style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.4, color: "var(--text-3)", marginBottom: 8 }}>
@@ -135,36 +135,10 @@ export default function NavRail({
         <span>Dark mode</span>
         <Switch size="small" checked={mode === "dark"} onChange={(v) => setMode(v ? "dark" : "light")} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span>Larger text</span>
         <Switch size="small" checked={fontScale === "large"} onChange={(v) => setFontScale(v ? "large" : "normal")} />
       </div>
-      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
-      <a onClick={() => setSection("plugins")} style={{ display: "block", padding: "4px 0" }}>
-        Plugins (admin)
-      </a>
-      {repoId && (
-        <a onClick={() => setMembersOpen(true)} style={{ display: "block", padding: "4px 0" }}>
-          People &amp; roles
-        </a>
-      )}
-    </div>
-  );
-
-  const helpContent = (
-    <div style={{ width: 250, fontSize: 12 }}>
-      <div style={{ fontWeight: 600, marginBottom: 6 }}>Keyboard shortcuts</div>
-      <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "3px 10px", color: "var(--text-2)" }}>
-        <span className="mono">⌘K</span> <span>Search everything</span>
-        <span className="mono">⌘B</span> <span>Toggle parameters panel</span>
-        <span className="mono">⌘⌥B</span> <span>Toggle inspector</span>
-        <span className="mono">⌘J</span> <span>Toggle systems pane</span>
-        <span className="mono">⌘⇧F</span> <span>Focus mode</span>
-      </div>
-      <div style={{ borderTop: "1px solid var(--border)", margin: "8px 0" }} />
-      <span style={{ color: "var(--text-2)" }}>
-        Every edit becomes an ordinary Git change: draft, review, merge.
-      </span>
     </div>
   );
 
@@ -198,8 +172,7 @@ export default function NavRail({
             collapsed={collapsed}
             disabled={!!it.needsApp && !repoId}
             onClick={() => {
-              if (it.key === "audit") setAuditOpen(true);
-              else if (it.section) setSection(it.section);
+              if (it.section) setSection(it.section);
             }}
           />
         ))}
@@ -216,17 +189,6 @@ export default function NavRail({
         </Popover>
       </div>
       <div style={{ padding: "4px 8px 10px", borderTop: "1px solid var(--nav-border)" }}>
-        <Popover content={helpContent} placement="rightBottom" trigger="click">
-          <div>
-            <RailEntry
-              item={{ key: "help", label: "Help", icon: <QuestionCircleOutlined /> }}
-              active={false}
-              collapsed={collapsed}
-              disabled={false}
-              onClick={() => {}}
-            />
-          </div>
-        </Popover>
         <RailEntry
           item={{
             key: "collapse",
@@ -240,48 +202,11 @@ export default function NavRail({
         />
         {!collapsed && <DeploymentChip />}
       </div>
-      <Drawer title="Audit trail" width={480} open={auditOpen} onClose={() => setAuditOpen(false)}>
-        <AuditList open={auditOpen} />
-      </Drawer>
-      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </div>
   );
 }
 
 // AuditList shows who did what, newest first, across the workspace.
-function AuditList({ open }: { open: boolean }) {
-  const repoId = useUI((s) => s.repoId);
-  const auditQ = useQuery({
-    queryKey: ["audit", repoId],
-    queryFn: () => api.audit({ repo: repoId ?? undefined, limit: 100 }),
-    enabled: open,
-  });
-  const events = auditQ.data?.events ?? [];
-  if (!auditQ.isLoading && events.length === 0)
-    return (
-      <Typography.Text type="secondary">
-        No audit events recorded yet. State-changing actions appear here with who did them and when.
-      </Typography.Text>
-    );
-  return (
-    <List
-      size="small"
-      loading={auditQ.isLoading}
-      dataSource={events}
-      renderItem={(e) => (
-        <List.Item style={{ display: "block" }}>
-          <div style={{ fontSize: 13 }}>
-            <b>{e.login || "anonymous"}</b> {e.action}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            {e.detail} · {new Date(e.at).toLocaleString()}
-          </div>
-        </List.Item>
-      )}
-    />
-  );
-}
-
 // DeploymentChip identifies this installation (version + environment) so
 // support conversations and screenshots are unambiguous.
 function DeploymentChip() {

@@ -13,6 +13,7 @@ import {
   Checkbox,
   Segmented,
   Modal,
+  Popover,
   App as AntApp,
   theme as antdTheme,
   type GetRef,
@@ -24,9 +25,12 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   GlobalOutlined,
+  ScopeGlobalOutlined,
+  ScopeInstanceOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
   SwapOutlined,
+  TableOutlined,
   UpOutlined,
   DownOutlined,
   MoreOutlined,
@@ -263,9 +267,74 @@ function hl(text: string | undefined, q: string): React.ReactNode {
   return <>{parts}</>;
 }
 
-function instanceHeader(inst: Instance) {
+// ColumnManager is the popover behind the Columns button: per-instance
+// visibility, order (up/down) and a reset. Resize happens by dragging the
+// header edge, so this stays a compact list, not a width editor.
+function ColumnManager({
+  instances,
+  hidden,
+  widths,
+  onToggle,
+  onMove,
+  onReset,
+}: {
+  instances: Instance[];
+  hidden: Set<string>;
+  widths: Record<string, number>;
+  onToggle: (name: string) => void;
+  onMove: (name: string, dir: 1 | -1) => void;
+  onReset: () => void;
+}) {
+  const dirty = hidden.size > 0 || Object.keys(widths).length > 0;
   return (
-    <div style={{ lineHeight: 1.25 }}>
+    <div style={{ width: 246 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>Instance columns</span>
+        <a onClick={onReset} style={{ fontSize: 12, opacity: dirty ? 1 : 0.4, pointerEvents: dirty ? "auto" : "none" }}>
+          Reset
+        </a>
+      </div>
+      <div style={{ maxHeight: 300, overflow: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
+        {instances.map((inst, i) => {
+          const shown = !hidden.has(inst.name);
+          return (
+            <div
+              key={inst.name}
+              style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 2px" }}
+            >
+              <Checkbox checked={shown} onChange={() => onToggle(inst.name)} />
+              <span
+                style={{
+                  width: 7,
+                  height: 7,
+                  borderRadius: 4,
+                  background: envHex(inst.environment),
+                  flexShrink: 0,
+                }}
+              />
+              <span
+                className="mono"
+                style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, opacity: shown ? 1 : 0.5 }}
+                title={inst.name}
+              >
+                {inst.name}
+              </span>
+              <Button size="small" type="text" icon={<UpOutlined style={{ fontSize: 10 }} />} disabled={i === 0} onClick={() => onMove(inst.name, -1)} />
+              <Button size="small" type="text" icon={<DownOutlined style={{ fontSize: 10 }} />} disabled={i === instances.length - 1} onClick={() => onMove(inst.name, 1)} />
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }}>
+        Drag a column header's right edge to resize it.
+      </div>
+    </div>
+  );
+}
+
+function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) => void) {
+  return (
+    <div style={{ lineHeight: 1.25, position: "relative" }}>
       <Space size={5}>
         <span
           style={{
@@ -282,6 +351,20 @@ function instanceHeader(inst: Instance) {
         {inst.softwareVersion}
         {inst.region ? ` · ${inst.region}` : ""}
       </div>
+      {onResizeStart && (
+        // A thin drag strip on the column's right edge. Dragging resizes the
+        // column; the pointer-events guard keeps the header's select-column
+        // click from firing during a resize.
+        <span
+          className="col-resize-handle"
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            onResizeStart(e);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          title="Drag to resize this column"
+        />
+      )}
     </div>
   );
 }
@@ -317,6 +400,36 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // Environment filter: narrows the visible instance columns (and the
   // instance picker) to one environment.
   const [envFilter, setEnvFilter] = useState<string>("");
+  // Per-application column layout the user controls: which instance columns
+  // are hidden, their order, and manual width overrides (drag-resized). All
+  // persisted so a curated view survives reloads. Keyed by repo so switching
+  // applications never leaks one layout onto another.
+  const repoId = useUI.getState().repoId ?? "default";
+  const COLS_KEY = `configer.cols.${repoId}`;
+  const [colLayout, setColLayout] = useState<{
+    hidden: string[];
+    order: string[];
+    widths: Record<string, number>;
+  }>(() => {
+    try {
+      const raw = localStorage.getItem(COLS_KEY);
+      if (raw) return { hidden: [], order: [], widths: {}, ...JSON.parse(raw) };
+    } catch {
+      // corrupted layout: start fresh
+    }
+    return { hidden: [], order: [], widths: {} };
+  });
+  const patchColLayout = (p: Partial<typeof colLayout>) =>
+    setColLayout((c) => {
+      const next = { ...c, ...p };
+      localStorage.setItem(COLS_KEY, JSON.stringify(next));
+      return next;
+    });
+  const hiddenInstances = useMemo(() => new Set(colLayout.hidden), [colLayout.hidden]);
+  const [colsOpen, setColsOpen] = useState(false);
+  // Live drag width while resizing a column header (committed to colLayout on
+  // mouse-up); null when no resize is in progress.
+  const [resizing, setResizing] = useState<{ name: string; width: number } | null>(null);
   // Draft-status filter pills (All / Changed / Added / Removed).
   const [pill, setPill] = useState<"all" | "changed" | "added" | "removed">("all");
   // one-shot flash highlight after a jump from the left-hand trees, the
@@ -385,17 +498,26 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return order;
   }, [grid.rows]);
 
-  // The instance columns currently on screen (environment filter + the
-  // single-instance view). Widths stay derived from ALL instances so
-  // switching filters never re-lays-out the columns.
+  // The instance columns currently on screen: the user's chosen order and
+  // visibility, then the environment filter and single-instance view on top.
+  // The single-instance view ignores hide/order (it is exactly one column).
+  // Widths stay derived from ALL instances so switching filters never
+  // re-lays-out the columns.
+  const orderedInstances = useMemo(() => {
+    const pos = new Map(colLayout.order.map((n, i) => [n, i]));
+    return [...grid.instances].sort(
+      (a, b) => (pos.get(a.name) ?? 1e9) - (pos.get(b.name) ?? 1e9),
+    );
+  }, [grid.instances, colLayout.order]);
   const visibleInstances = useMemo(
     () =>
-      grid.instances.filter(
+      (viewInstance ? grid.instances : orderedInstances).filter(
         (i) =>
           (!envFilter || (i.environment ?? "") === envFilter) &&
-          (!viewInstance || i.name === viewInstance),
+          (!viewInstance || i.name === viewInstance) &&
+          (viewInstance ? true : !hiddenInstances.has(i.name)),
       ),
-    [grid.instances, envFilter, viewInstance],
+    [grid.instances, orderedInstances, envFilter, viewInstance, hiddenInstances],
   );
 
   // Draft items per parameter, for the status pills and the Changed column.
@@ -531,8 +653,34 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       const per = Math.floor(extra / grid.instances.length);
       for (const k of Object.keys(need)) need[k] += per;
     }
+    // A manually resized column wins over the auto width (and the live drag
+    // width wins over both), so the user's chosen widths are authoritative
+    // for the scroll math, the header and the body alike.
+    for (const [k, w] of Object.entries(colLayout.widths)) need[k] = w;
+    if (resizing) need[resizing.name] = resizing.width;
     return need;
-  }, [grid.instances, grid.rows, bodyW, TYPE_W, SCOPE_W, DESC_W]);
+  }, [grid.instances, grid.rows, bodyW, TYPE_W, SCOPE_W, DESC_W, colLayout.widths, resizing]);
+
+  // startResize begins a column-width drag: track the pointer, feed the live
+  // width into instWidths (so header + body + scroll math stay in lockstep),
+  // and commit to the persisted layout on mouse-up.
+  const startResize = (name: string, startWidth: number) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    let liveWidth = startWidth;
+    const onMove = (ev: MouseEvent) => {
+      liveWidth = Math.min(Math.max(startWidth + (ev.clientX - startX), 110), 520);
+      setResizing({ name, width: liveWidth });
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      patchColLayout({ widths: { ...colLayout.widths, [name]: Math.round(liveWidth) } });
+      setResizing(null);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
 
   // routeCommit: a value for a global-scope parameter that is still fed by
   // the shared/default chain asks the user what they mean before staging.
@@ -657,7 +805,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         render: (_v, r) => (
           <Tooltip title={scopeExplain[r.param.scope]}>
             <Tag color={scopeColor[r.param.scope]} style={{ marginInlineEnd: 0 }}>
-              {r.param.scope === "global" && <GlobalOutlined style={{ marginInlineEnd: 4 }} />}
+              {r.param.scope === "global" ? (
+                <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
+              ) : (
+                <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
+              )}
               {r.param.scope}
             </Tag>
           </Tooltip>
@@ -679,7 +831,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     }
     const instanceNames = grid.instances.map((i) => i.name);
     const instCols: ColumnsType<Row> = visibleInstances.map((inst) => ({
-      title: viewInstance ? "Value" : instanceHeader(inst),
+      title: viewInstance
+        ? "Value"
+        : instanceHeader(inst, startResize(inst.name, instWidths[inst.name] ?? 150)),
       key: inst.name,
       width: instWidths[inst.name] ?? 150,
       // Excel-like value filter per instance column: distinct effective
@@ -947,6 +1101,43 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
               </Tooltip>
             </Space>
+          )}
+          {!viewInstance && (
+            <Popover
+              open={colsOpen}
+              onOpenChange={setColsOpen}
+              trigger="click"
+              placement="bottomRight"
+              content={
+                <ColumnManager
+                  instances={orderedInstances}
+                  hidden={hiddenInstances}
+                  widths={colLayout.widths}
+                  onToggle={(name) =>
+                    patchColLayout({
+                      hidden: hiddenInstances.has(name)
+                        ? colLayout.hidden.filter((n) => n !== name)
+                        : [...colLayout.hidden, name],
+                    })
+                  }
+                  onMove={(name, dir) => {
+                    const order = orderedInstances.map((i) => i.name);
+                    const idx = order.indexOf(name);
+                    const to = idx + dir;
+                    if (to < 0 || to >= order.length) return;
+                    [order[idx], order[to]] = [order[to], order[idx]];
+                    patchColLayout({ order });
+                  }}
+                  onReset={() => patchColLayout({ hidden: [], order: [], widths: {} })}
+                />
+              }
+            >
+              <Tooltip title="Show, hide, reorder and resize instance columns">
+                <Badge dot={colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0} color="var(--c-review)" offset={[-2, 2]}>
+                  <Button size="small" icon={<TableOutlined />} aria-label="Columns" />
+                </Badge>
+              </Tooltip>
+            </Popover>
           )}
           <Tooltip title="Add parameter">
             <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" />

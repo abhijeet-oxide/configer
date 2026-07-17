@@ -1,5 +1,4 @@
 import {
-  Avatar,
   Button,
   Input,
   List,
@@ -16,8 +15,8 @@ import {
   LinkOutlined,
   BranchesOutlined,
   SendOutlined,
-  UserOutlined,
 } from "../icons";
+import UserAvatar from "./UserAvatar";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeRequest, type ChangeState } from "../api";
@@ -86,7 +85,8 @@ function CommentsPanel({ cr }: { cr: ChangeRequest }) {
           {comments.map((c) => (
             <div key={c.id} className="rounded-card bg-surface-2 p-2 shadow-neu-inset">
               <div className="flex items-center gap-1.5 text-[11px] text-ink-3">
-                <UserOutlined /> <b className="text-ink-2">{c.author || "anonymous"}</b> · {relTime(c.createdAt)}
+                <UserAvatar name={c.author} size={18} />
+                <b className="text-ink-2">{c.author || "Unknown"}</b> · {relTime(c.createdAt)}
               </div>
               <div className="mt-0.5 text-xs whitespace-pre-wrap text-ink">{c.body}</div>
             </div>
@@ -156,9 +156,7 @@ function ReviewersPanel({ cr, repoId }: { cr: ChangeRequest; repoId: string | nu
       <div className="flex flex-col gap-1.5">
         {(cr.reviewers ?? []).map((login) => (
           <div key={login} className="flex items-center gap-2 text-xs">
-            <Avatar size={20} style={{ background: "var(--brand)", fontSize: 10 }}>
-              {login.slice(0, 2).toUpperCase()}
-            </Avatar>
+            <UserAvatar name={login} size={20} />
             <span className="text-ink">
               {login}
               {login === me && " (You)"}
@@ -375,10 +373,10 @@ export default function ApprovalsView() {
                             dataSource={crActivity(selected)}
                             renderItem={(a) => (
                               <List.Item style={{ paddingInline: 0 }}>
-                                <div className="flex w-full gap-2">
-                                  <UserOutlined style={{ color: "var(--text-3)", marginTop: 3 }} />
+                                <div className="flex w-full items-start gap-2">
+                                  <UserAvatar name={a.actor} size={20} />
                                   <div className="min-w-0 flex-1 text-xs">
-                                    <b>{a.actor || "anonymous"}</b> {a.text}
+                                    <b>{a.actor || "Unknown"}</b> {a.text}
                                   </div>
                                   <span className="shrink-0 text-[11px] text-ink-3">{relTime(a.at)}</span>
                                 </div>

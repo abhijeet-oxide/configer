@@ -1,4 +1,4 @@
-import { CheckCircleFilled, LoadingOutlined } from "@ant-design/icons";
+import { CheckCircleFilled, LoadingOutlined } from "../icons";
 import { Typography, theme as antdTheme } from "antd";
 import { useEffect, useRef, useState } from "react";
 

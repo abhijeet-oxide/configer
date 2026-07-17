@@ -12,7 +12,7 @@ import {
   QuestionCircleOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { envHex } from "../theme";

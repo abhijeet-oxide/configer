@@ -24,7 +24,7 @@ import {
   RightOutlined,
   SyncOutlined,
   WarningFilled,
-} from "@ant-design/icons";
+} from "../icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RepoSummary } from "../api";
 import { useUI } from "../store";

@@ -1,5 +1,5 @@
 import { Button, Modal, App as AntApp } from "antd";
-import { PlusOutlined, AppstoreOutlined } from "@ant-design/icons";
+import { PlusOutlined, AppstoreOutlined } from "../icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type RepoSummary } from "../api";

@@ -5,6 +5,7 @@ import { Button } from "antd";
 // soft pressed well, a one-line title, a one-line hint and an optional action.
 export default function EmptyState({
   icon,
+  art,
   title,
   hint,
   actionLabel,
@@ -12,6 +13,8 @@ export default function EmptyState({
   children,
 }: {
   icon?: ReactNode;
+  /** a full illustration (from illustrations.tsx); replaces the icon well */
+  art?: ReactNode;
   title: ReactNode;
   hint?: ReactNode;
   actionLabel?: string;
@@ -20,7 +23,8 @@ export default function EmptyState({
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-      {icon && (
+      {art}
+      {!art && icon && (
         <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-brand-soft text-xl text-brand shadow-neu-inset">
           {icon}
         </div>

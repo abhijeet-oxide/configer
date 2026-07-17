@@ -1,5 +1,5 @@
 import { Button, Checkbox, Tooltip, Tree, Typography, Input, type GetRef } from "antd";
-import { DownOutlined, UpOutlined } from "@ant-design/icons";
+import { DownOutlined, UpOutlined } from "../icons";
 import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Grid } from "../api";

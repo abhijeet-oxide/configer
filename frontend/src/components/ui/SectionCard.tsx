@@ -28,7 +28,7 @@ export default function SectionCard({
         </div>
       )}
       <div
-        className={`min-w-0 flex-1 ${padded ? (title || extra ? "px-4 pb-4" : "p-4") : ""}`}
+        className={`min-w-0 flex-1 ${padded ? (title || extra ? "px-4 pb-4" : "p-4") : "overflow-hidden rounded-card-lg"}`}
         style={bodyStyle}
       >
         {children}

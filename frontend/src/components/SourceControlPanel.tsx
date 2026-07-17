@@ -8,7 +8,7 @@ import {
   ArrowRightOutlined,
   CloudServerOutlined,
   ExclamationCircleOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, type Grid } from "../api";

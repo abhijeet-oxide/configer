@@ -31,7 +31,8 @@ import {
   HddOutlined,
   BranchesOutlined,
   PlusOutlined,
-} from "@ant-design/icons";
+  ExclamationCircleOutlined,
+} from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
@@ -39,7 +40,8 @@ import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
-import { ScanArt, StatePanel, SuccessArt } from "./illustrations";
+import FileExplorer from "./FileExplorer";
+import { AllClearArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -656,66 +658,54 @@ function ScanStep({
         )}
       </Space>
       {totalNew === 0 ? (
-        <Alert
-          type="success"
-          showIcon
-          message="Everything the scan found is already managed."
-          description="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
+        <StatePanel
+          art={<AllClearArt size={116} />}
+          title="Everything the scan found is already managed"
+          subtitle="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
         />
       ) : (
         <>
           <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-            Untick any file you don't want to import from.
+            Untick any file you don't want to import from. Files whose settings are all managed
+            already are shown for context but cannot be imported again.
           </Typography.Paragraph>
-          <Table
-            size="small"
-            rowKey="file"
-            dataSource={files}
-            pagination={false}
-            columns={[
-              {
-                title: "",
-                width: 40,
-                render: (_, f) => (
-                  <Checkbox
-                    checked={included[f.file] !== false}
-                    disabled={(counts[f.file]?.fresh ?? 0) === 0}
-                    onChange={(e) => setIncluded({ ...included, [f.file]: e.target.checked })}
-                  />
-                ),
-              },
-              { title: "File", dataIndex: "file", render: (v: string) => <span className="mono">{v}</span> },
-              { title: "Format", dataIndex: "format", width: 90, render: (v?: string) => (v ? <Tag>{v}</Tag> : null) },
-              {
-                title: "New settings",
-                width: 120,
-                align: "right" as const,
-                render: (_, f) => {
-                  const n = counts[f.file]?.fresh ?? 0;
-                  return n > 0 ? <b style={{ color: "#1baf7a" }}>{n}</b> : <span style={{ opacity: 0.45 }}>0</span>;
-                },
-              },
-              {
-                title: "Already managed",
-                width: 140,
-                align: "right" as const,
-                render: (_, f) => {
-                  const n = counts[f.file]?.already ?? 0;
-                  return n > 0 ? n : <span style={{ opacity: 0.45 }}>0</span>;
-                },
-              },
-              {
-                title: "",
-                width: 160,
-                render: (_, f) =>
-                  f.error ? (
-                    <Tooltip title={f.error}>
-                      <Tag color="warning">could not be read fully</Tag>
-                    </Tooltip>
-                  ) : null,
-              },
-            ]}
-          />
+          <div
+            style={{
+              border: "1px solid rgba(127,137,160,0.28)",
+              borderRadius: 10,
+              padding: "6px 4px",
+              maxHeight: 380,
+              overflow: "auto",
+            }}
+          >
+            <FileExplorer
+              files={files.map((f) => f.file)}
+              checked={new Set(files.filter((f) => included[f.file] !== false && (counts[f.file]?.fresh ?? 0) > 0).map((f) => f.file))}
+              checkDisabled={new Set(files.filter((f) => (counts[f.file]?.fresh ?? 0) === 0).map((f) => f.file))}
+              onCheck={(next) => {
+                const inc: Record<string, boolean> = {};
+                for (const f of files) inc[f.file] = next.has(f.file) || (included[f.file] !== false && (counts[f.file]?.fresh ?? 0) === 0);
+                setIncluded(inc);
+              }}
+              meta={(path) => {
+                const f = files.find((x) => x.file === path);
+                const c = counts[path];
+                return (
+                  <>
+                    {f?.error && (
+                      <Tooltip title={`Could not be read fully: ${f.error}`}>
+                        <ExclamationCircleOutlined style={{ color: "var(--c-pending)" }} />
+                      </Tooltip>
+                    )}
+                    {(c?.fresh ?? 0) > 0 && (
+                      <span style={{ color: "var(--c-ok)", fontWeight: 600 }}>{c!.fresh} new</span>
+                    )}
+                    {(c?.already ?? 0) > 0 && <span>{c!.already} managed</span>}
+                  </>
+                );
+              }}
+            />
+          </div>
           {anyUnchecked && (
             <Checkbox
               style={{ marginTop: 12 }}

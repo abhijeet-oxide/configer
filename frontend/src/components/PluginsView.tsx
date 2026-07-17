@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, List, Tag, Typography } from "antd";
-import { ApiOutlined } from "@ant-design/icons";
+import { ApiOutlined } from "../icons";
 import { api } from "../api";
 import { PluginsSkeleton } from "./Skeletons";
 

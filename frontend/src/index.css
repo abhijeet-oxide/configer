@@ -20,6 +20,34 @@ body {
   display: inline-block;
 }
 
+/* Base .anticon layout for the icon registry (src/icons.tsx). The registry
+   renders span.anticon wrappers itself, and AntD spacing rules key off this
+   class, so define the baseline here instead of relying on @ant-design/icons
+   injecting it at runtime. */
+.anticon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-style: normal;
+  line-height: 0;
+  text-align: center;
+  text-transform: none;
+  vertical-align: -0.125em;
+}
+.icon-spin {
+  animation: icon-spin 1s linear infinite;
+}
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-spin {
+    animation-duration: 2.5s;
+  }
+}
+
 /* Semantic accent variables (--c-*) live in tokens.css together with the
    full design token set: brand, surfaces, spacing, radius, elevation, motion. */
 
@@ -591,6 +619,23 @@ body {
   gap: 4px;
   flex-shrink: 0;
 }
+/* Checkable mode (wizards): a compact tri-state checkbox per row. */
+.fx-check {
+  flex-shrink: 0;
+}
+.fx-check .ant-checkbox-inner {
+  width: 14px;
+  height: 14px;
+}
+/* Right-aligned per-file annotation (counts, tags) in wizard trees. */
+.fx-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .fx-dot {
   width: 6px;
   height: 6px;
@@ -818,8 +863,36 @@ body {
 }
 
 /* Selected row highlight for the approvals queue table. */
+/* The Approvals queue table: quiet header, soft hover, and a selected row
+   marked with a brand left accent plus a faint tint instead of a heavy
+   full-row fill. The table sits flush inside its card (no inner shadow or
+   double background), so the card's rounding does the framing. */
+.cr-table .ant-table,
+.cr-table .ant-table-container,
+.cr-table .ant-table-content {
+  background: transparent;
+}
+.cr-table .ant-table-thead > tr > th {
+  background: transparent !important;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3) !important;
+}
+.cr-table .ant-table-tbody > tr > td {
+  transition: background var(--dur-hover) var(--ease);
+}
+.cr-table .ant-table-tbody > tr:hover > td {
+  background: var(--surface-2) !important;
+}
 .cr-table .ant-table-row.row-selected > td {
-  background: var(--brand-soft) !important;
+  background: color-mix(in srgb, var(--brand) 6%, var(--surface)) !important;
+}
+.cr-table .ant-table-row.row-selected > td:first-child {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+.cr-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
 }
 
 /* Source Control change rows (VS Code-style hover highlight). */

@@ -1,5 +1,5 @@
 import { Steps, Tag, Tooltip } from "antd";
-import { EditOutlined, EyeOutlined, CheckCircleOutlined } from "@ant-design/icons";
+import { EditOutlined, EyeOutlined, CheckCircleOutlined } from "../icons";
 import type { ChangeState } from "../api";
 import { StatusPill, type PillTone } from "./ui";
 

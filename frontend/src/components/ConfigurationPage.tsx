@@ -1,5 +1,5 @@
 import { Dropdown, Badge } from "antd";
-import { DownOutlined } from "@ant-design/icons";
+import { DownOutlined } from "../icons";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";

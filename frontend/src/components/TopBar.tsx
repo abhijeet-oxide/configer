@@ -10,7 +10,7 @@ import {
   Typography,
   type InputRef,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined } from "@ant-design/icons";
+import { SearchOutlined, BellOutlined, ExportOutlined } from "../icons";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";

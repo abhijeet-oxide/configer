@@ -17,14 +17,15 @@ import {
   LinkOutlined,
   EyeOutlined,
   RightOutlined,
-} from "@ant-design/icons";
-import { EditOutlined } from "@ant-design/icons";
+} from "../icons";
+import { EditOutlined } from "../icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, structuralLabel, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { ChangeChip, type ChangeKind } from "./ui";
 import { TableSkeleton } from "./Skeletons";
+import { EmptyArt, StatePanel } from "./illustrations";
 
 // ChangeRequestsView is the Release history: every draft, in-review,
 // published and rejected change request with its parameter-level diff. It is
@@ -132,7 +133,15 @@ export default function ChangeRequestsView() {
         size="middle"
         dataSource={q.data}
         pagination={false}
-        locale={{ emptyText: <Empty description="No change requests yet. Edit some cells in the Editor to start a draft." /> }}
+        locale={{
+          emptyText: (
+            <StatePanel
+              art={<EmptyArt size={104} />}
+              title="No change requests yet"
+              subtitle="Edit some cells in the Editor to start a draft; submitting it creates the first change request."
+            />
+          ),
+        }}
         expandable={{
           expandedRowRender: (cr) => (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

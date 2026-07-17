@@ -12,7 +12,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { PullRequestOutlined, ArrowRightOutlined, DeleteOutlined } from "@ant-design/icons";
+import { PullRequestOutlined, ArrowRightOutlined, DeleteOutlined } from "../icons";
 import { useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";

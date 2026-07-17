@@ -1,5 +1,5 @@
 import { Tag, Tooltip, Input, InputNumber, Select, Popover, Button, Space, Typography } from "antd";
-import { CheckCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled } from "../../icons";
 import { useRef, useState } from "react";
 import type { Cell, ChangeItem } from "../../api";
 import { validateString, fmtValue, type Rules } from "../../rules";

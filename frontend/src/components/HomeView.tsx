@@ -1,11 +1,11 @@
-import { PlusOutlined, AppstoreOutlined, CheckCircleFilled } from "@ant-design/icons";
+import { PlusOutlined, AppstoreOutlined, CheckCircleFilled } from "../icons";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { attentionOf } from "../attention";
-import { StatTile, SectionCard, AttentionCard, EmptyState } from "./ui";
+import { StatTile, SectionCard, AttentionCard, EmptyState, Stagger, StaggerItem } from "./ui";
 import { HomeAppCard } from "./AppCard";
 import NewApplicationWizard from "./NewApplicationWizard";
 import { STEP_HANDOFF } from "./ImportWizard";
@@ -78,9 +78,9 @@ export default function HomeView() {
             />
           </SectionCard>
         ) : (
-          <>
+          <Stagger>
             {/* Attention + system health, side by side like the reference. */}
-            <div className="mb-5 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
+            <StaggerItem className="mb-5 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
               <SectionCard title="Needs your attention">
                 {attention.length === 0 ? (
                   <div className="flex items-center gap-2.5 py-2 text-ink-2">
@@ -136,11 +136,11 @@ export default function HomeView() {
                   ))}
                 </div>
               </SectionCard>
-            </div>
+            </StaggerItem>
 
             {/* The application collection, compact. */}
-            <div className="mb-3 text-[13px] font-semibold text-ink">Your applications</div>
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
+            <StaggerItem className="mb-3 text-[13px] font-semibold text-ink">Your applications</StaggerItem>
+            <StaggerItem className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))" }}>
               {repos.map((r) => (
                 <HomeAppCard key={r.id} r={r} onOpen={() => goto(r.id, "overview")} />
               ))}
@@ -153,8 +153,8 @@ export default function HomeView() {
                 <div className="mt-1.5 font-medium text-brand">New application</div>
                 <div className="text-xs text-ink-3">Import or create a new application</div>
               </div>
-            </div>
-          </>
+            </StaggerItem>
+          </Stagger>
         )}
       </div>
 

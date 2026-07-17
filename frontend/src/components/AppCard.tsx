@@ -9,7 +9,7 @@ import {
   RightOutlined,
   StarOutlined,
   StarFilled,
-} from "@ant-design/icons";
+} from "../icons";
 import type { RepoSummary } from "../api";
 import { StatusPill, MonoChip } from "./ui";
 import EnvTag from "./EnvTag";

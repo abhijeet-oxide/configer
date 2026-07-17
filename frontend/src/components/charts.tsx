@@ -12,9 +12,9 @@ const CAT_LIGHT = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e349
 const CAT_DARK = ["#3987e5", "#199e70", "#c98500", "#008300", "#9085e9", "#e66767", "#d55181", "#d95926"];
 
 export const STATUS = {
-  good: "#0ca30c",
-  warning: "#fab219",
-  critical: "#d03b3b",
+  good: "#067647",
+  warning: "#b54708",
+  critical: "#b42318",
 };
 
 export function useCatPalette(): string[] {

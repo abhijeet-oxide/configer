@@ -20,14 +20,15 @@ import {
 } from "@ant-design/icons";
 import { EditOutlined } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
+import { api, structuralLabel, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
-import CrSteps, { StateTag } from "./CrSteps";
+import CrSteps, { StatePill } from "./CrSteps";
+import { ChangeChip, type ChangeKind } from "./ui";
 import { TableSkeleton } from "./Skeletons";
 
 // ChangeRequestsView is the Release history: every draft, in-review,
 // published and rejected change request with its parameter-level diff. It is
-// deliberately read-only for reviews - approving or rejecting is Approvals'
+// deliberately read-only for reviews; approving or rejecting is Approvals'
 // job (one place, one audit trail); rows under review link there. Drafts are
 // authoring, not reviewing, so their submit/discard actions stay here.
 
@@ -40,16 +41,27 @@ export const categoryColor: Record<string, string> = {
   other: "default",
 };
 
+// The change kind of one item, for the reference's Change chips.
+export function itemKind(it: ChangeItem): ChangeKind {
+  if (it.action === "exclude" || it.action === "reset" || it.action === "remove-instance") return "removed";
+  if (it.old == null || it.old === "") return "added";
+  return "modified";
+}
+
 export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
   if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
   return (
     <Table<ChangeItem>
       size="small"
-      rowKey={(it) => `${it.paramId}|${it.instance}`}
+      rowKey={(it) => `${it.paramId}|${it.instance}|${it.file ?? ""}`}
       dataSource={items}
       pagination={false}
       columns={[
-        { title: "Parameter", dataIndex: "paramId", render: (v) => <span className="mono">{v}</span> },
+        {
+          title: "Parameter",
+          dataIndex: "paramId",
+          render: (v, it) => <span className="mono">{v || it.file}</span>,
+        },
         {
           title: "Instance",
           dataIndex: "instance",
@@ -57,14 +69,23 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
             it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
         },
         {
-          title: "Old value",
+          title: "Left (current)",
           dataIndex: "old",
           render: (v) => <span className="mono" style={{ opacity: 0.65 }}>{String(v ?? "-")}</span>,
         },
         {
-          title: "New value",
+          title: "Right (proposed)",
           dataIndex: "new",
-          render: (v) => <span className="mono" style={{ color: "#389e0d" }}>{String(v ?? "-")}</span>,
+          render: (v, it) => (
+            <span className="mono" style={{ color: "var(--c-ok)" }}>
+              {structuralLabel(it) || String(v ?? "-")}
+            </span>
+          ),
+        },
+        {
+          title: "Change",
+          width: 100,
+          render: (_v, it) => <ChangeChip kind={itemKind(it)} />,
         },
       ]}
     />
@@ -121,7 +142,12 @@ export default function ChangeRequestsView() {
           ),
         }}
         columns={[
-          { title: "#", dataIndex: "id", width: 56, render: (id) => <b>#{id}</b> },
+          {
+            title: "Change request",
+            dataIndex: "id",
+            width: 110,
+            render: (id) => <span className="mono font-semibold text-brand">CR-{id}</span>,
+          },
           {
             title: "Title",
             dataIndex: "title",
@@ -145,10 +171,10 @@ export default function ChangeRequestsView() {
             ),
           },
           {
-            title: "State",
+            title: "Status",
             dataIndex: "state",
-            width: 130,
-            render: (s: ChangeState) => <StateTag state={s} />,
+            width: 140,
+            render: (s: ChangeState) => <StatePill state={s} size="sm" />,
           },
           {
             title: "Changes",
@@ -179,7 +205,7 @@ export default function ChangeRequestsView() {
             width: 230,
             render: (_v, cr) => {
               if (cr.state === "under_review" || cr.state === "approved") {
-                // Deciding happens in Approvals - one place for approvals,
+                // Deciding happens in Approvals: one place for approvals,
                 // one audit trail. History only links there.
                 return (
                   <Space size={4}>

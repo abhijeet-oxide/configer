@@ -21,14 +21,13 @@ import SourceControlPanel from "./SourceControlPanel";
 // the "show only invalid cells" toggle. It makes the Git reality visible to
 // anyone who wants it, without demanding they learn Git to edit a value.
 //
-// Deliberately CHARCOAL, not the brand color: the bar is chrome (git plumbing
+// Deliberately DARK, not the brand color: the bar is chrome (git plumbing
 // + status), so it must not read as a primary surface or compete with the
-// grid. The one accent it carries is the active invalid-only filter.
-
-// Charcoal is fixed in both light and dark: the bar anchors the bottom of the
-// editor as a neutral, quiet band regardless of theme.
-const CHARCOAL = "#2b2f36";
-const CHARCOAL_ACTIVE = "#3a3f48";
+// grid. It anchors the bottom of the editor in the same navy family as the
+// navigation rail, regardless of light/dark mode. The one accent it carries
+// is the active invalid-only filter.
+const BAR_BG = "var(--nav-bg)";
+const BAR_ACTIVE = "var(--nav-bg-hover)";
 
 export default function EditorStatusBar({ grid }: { grid: Grid }) {
   const { token } = antdTheme.useToken();
@@ -73,7 +72,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           alignItems: "center",
           height: 26,
           flexShrink: 0,
-          background: CHARCOAL,
+          background: BAR_BG,
           color: "#fff",
           fontSize: 12,
         }}
@@ -84,7 +83,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
             <span className="mono">{st?.branch ?? "…"}</span>
           </span>
         </Tooltip>
-        <Tooltip title={st?.remote ? (st.behind > 0 ? `${st.behind} behind - click to pull` : "Up to date - click to pull") : "Local only"}>
+        <Tooltip title={st?.remote ? (st.behind > 0 ? `${st.behind} behind; click to pull` : "Up to date; click to pull") : "Local only"}>
           <span
             style={{ ...item, opacity: st?.remote ? 1 : 0.7 }}
             onClick={() => st?.remote && sync.mutate()}
@@ -104,6 +103,9 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           </span>
         </Tooltip>
         <div style={{ flex: 1 }} />
+        <span style={{ ...item, cursor: "default", opacity: 0.85 }}>
+          {grid.rows.length} parameters · {grid.instances.length} instances
+        </span>
         {/* Validity readout doubles as the "show only invalid cells" toggle.
             Clicking flips filters.invalidOnly; clicking again clears it (so
             there is always a way to undo the selection). The active state is
@@ -111,16 +113,16 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
         <Tooltip
           title={
             invalidOnly
-              ? "Showing only invalid cells - click to show everything again"
+              ? "Showing only invalid cells; click to show everything again"
               : invalid
-                ? `${invalid} edited value(s) fail validation - click to show only invalid cells`
+                ? `${invalid} edited value(s) fail validation; click to show only invalid cells`
                 : "All edited values are valid"
           }
         >
           <span
             style={{
               ...item,
-              background: invalidOnly ? token.colorError : invalid ? CHARCOAL_ACTIVE : undefined,
+              background: invalidOnly ? token.colorError : invalid ? BAR_ACTIVE : undefined,
               fontWeight: invalidOnly ? 600 : undefined,
             }}
             onClick={() => setFilters({ invalidOnly: !invalidOnly })}

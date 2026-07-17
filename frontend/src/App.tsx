@@ -31,6 +31,7 @@ import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
+import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
@@ -226,6 +227,20 @@ export default function App() {
   // Focus mode strips the workspace chrome (nav rail + header) so the editor
   // fills the screen; it only applies while the editor is the active view.
   const focusMode = editorFocus && section === "config";
+
+  // The rail folds to icons inside an application so the working surface
+  // dominates (like the reference), and re-expands at the global level. A
+  // manual toggle pins the user's choice for the rest of the session.
+  const manualRail = useRef(false);
+  useEffect(() => {
+    if (manualRail.current) return;
+    const shouldCollapse = APP_SECTIONS.has(section);
+    setNavCollapsed(shouldCollapse);
+  }, [section, setNavCollapsed]);
+  const toggleRail = () => {
+    manualRail.current = true;
+    setNavCollapsed(!navCollapsed);
+  };
   const border = `1px solid ${token.colorBorderSecondary}`;
   const panelBg = { background: token.colorBgContainer };
 
@@ -377,9 +392,10 @@ export default function App() {
   }
 
   function body() {
-    // The workspace (portfolio) level does not depend on any one repo's grid,
-    // so it renders even while a repository is unavailable or none exists.
-    if (section === "workspace" || section === "home")
+    // The global level does not depend on any one repo's grid, so it renders
+    // even while a repository is unavailable or none exists.
+    if (section === "home") return <HomeView />;
+    if (section === "workspace")
       return (
         <div style={{ height: "100%", ...panelBg }}>
           <WorkspaceView />
@@ -394,6 +410,14 @@ export default function App() {
         </div>
       );
     if (section === "plugins") return <PluginsView />;
+    // Workspace-wide approvals inbox: reviews for the active application
+    // today, reachable from anywhere (the rail badge and the bell).
+    if (section === "inbox")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <ApprovalsView />
+        </div>
+      );
     // Everything belonging to ONE application lives under the Configuration
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))
@@ -409,8 +433,8 @@ export default function App() {
   // Phone tier: single column with a bottom tab bar, no side rail, no tabs row.
   if (phone) {
     const tabs = [
-      { key: "workspace", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Settings" },
+      { key: "home", icon: <HomeOutlined />, label: "Home" },
+      { key: "config", icon: <TableOutlined />, label: "Editor" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
     ];
@@ -448,16 +472,14 @@ export default function App() {
     <Layout style={{ height: "100vh" }}>
       {!focusMode && (
         <Sider
-          width={210}
-          collapsedWidth={56}
+          width={216}
+          collapsedWidth={60}
           collapsible
           collapsed={navCollapsed}
-          onCollapse={setNavCollapsed}
-          breakpoint="xxl"
-          theme="light"
-          style={{ borderRight: border }}
+          trigger={null}
+          style={{ background: "var(--nav-bg)" }}
         >
-          <NavRail collapsed={navCollapsed} />
+          <NavRail collapsed={navCollapsed} onToggleCollapse={toggleRail} />
         </Sider>
       )}
       <Layout style={{ minWidth: 0 }}>
@@ -523,7 +545,7 @@ function CollapsedRail({
 }
 
 // CollapsibleSide wraps a side panel's content with a slim collapse gutter on
-// its inner edge - a chevron pointing the way the panel folds - so every panel
+// its inner edge (a chevron pointing the way the panel folds) so every panel
 // can be tucked away with one click without ever overlapping its content.
 function CollapsibleSide({
   side,

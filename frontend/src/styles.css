@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+/* Map the product tokens (tokens.css) onto Tailwind utility names. `inline`
+   keeps the var() references live, so the [data-theme="dark"] variable flips
+   in tokens.css carry through every utility with no dark: variants needed.
+   Naming: ink = text colors, line = borders, neu = the soft-UI elevation. */
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-brand-border: var(--brand-border);
+
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+
+  --color-ink: var(--text);
+  --color-ink-2: var(--text-2);
+  --color-ink-3: var(--text-3);
+
+  --color-ok: var(--c-ok);
+  --color-ok-bg: var(--c-ok-bg);
+  --color-ok-bd: var(--c-ok-bd);
+  --color-pending: var(--c-pending);
+  --color-pending-bg: var(--c-pending-bg);
+  --color-pending-bd: var(--c-pending-bd);
+  --color-review: var(--c-review);
+  --color-review-bg: var(--c-review-bg);
+  --color-review-bd: var(--c-review-bd);
+  --color-danger: var(--c-danger);
+  --color-danger-bg: var(--c-danger-bg);
+  --color-danger-bd: var(--c-danger-bd);
+
+  --color-nav: var(--nav-bg);
+  --color-nav-fg: var(--nav-fg);
+  --color-nav-fg-active: var(--nav-fg-active);
+  --color-nav-active: var(--nav-bg-active);
+
+  --shadow-neu: var(--el-1);
+  --shadow-neu-lg: var(--el-2);
+  --shadow-neu-xl: var(--el-3);
+  --shadow-neu-inset: var(--el-inset);
+
+  --radius-card: var(--r-lg);
+  --radius-card-lg: var(--r-xl);
+
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}

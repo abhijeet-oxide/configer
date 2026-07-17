@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { setApiRepo } from "./api";
-import type { BrandKey, FontScale, Mode } from "./theme";
+import type { FontScale, Mode } from "./theme";
 
 // ------------------------------------------------------------------ routing
 // Sections that belong to ONE application (rendered as tabs on the
@@ -42,16 +42,25 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
     return { repoId: decodeURIComponent(segs[1]), section, param, inst };
   }
   if (segs[0] === "plugins") return { repoId: null, section: "plugins", param, inst };
-  return { repoId: null, section: "workspace", param, inst };
+  // The applications collection ("/applications"; "/overview" is the legacy
+  // alias so old links keep resolving).
+  if (segs[0] === "applications" || segs[0] === "overview")
+    return { repoId: null, section: "workspace", param, inst };
+  // Workspace-wide approvals inbox.
+  if (segs[0] === "approvals") return { repoId: null, section: "inbox", param, inst };
+  // The operational start page; the root path canonicalizes here.
+  return { repoId: null, section: "home", param, inst };
 }
 
 // The active repository survives reloads; the API client is kept in sync so
 // every repo-scoped call goes to the selected configuration.
 //
 // URLs are path-based and human-readable so any view is shareable:
-//   /overview                    the applications portfolio (no app selected)
+//   /home                        the operational start page (root canonicalizes here)
+//   /applications                the applications collection (alias: /overview)
+//   /approvals                   workspace-wide approvals inbox
 //   /application/<id>            one application, Overview (the default tab)
-//   /application/<id>/<tab>      a specific tab (editor, files, compare, …)
+//   /application/<id>/<tab>      a specific tab (editor, files, compare, ...)
 //   /plugins                     the plugins admin surface
 // A selected parameter/instance rides in the query string (?param=&inst=) as a
 // refinement of the current view. Legacy ?app=&view= links still resolve.
@@ -121,7 +130,6 @@ export interface RowFilters {
 
 interface UIState {
   mode: Mode;
-  brand: BrandKey;
   fontScale: FontScale;
   /** the active repository (workspace entry id); null until the workspace
    *  loads, then always set while any repository is connected */
@@ -150,11 +158,13 @@ interface UIState {
    *  instance column, or one cell (kind "cell": id=paramId, inst=instance)
    *  and flash-highlight it (n makes repeats re-trigger) */
   jump: { kind: "param" | "instance" | "cell"; id: string; inst?: string; n: number } | null;
+  /** one-shot handoff into the Files workspace: open this file (optionally
+   *  for a given instance) and reveal a line; the mirror image of `jump` */
+  fileFocus: { path: string; line?: number; instance?: string; n: number } | null;
   /** one-shot handoff: the change request Approvals should select on open
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
   setMode: (m: Mode) => void;
-  setBrand: (b: BrandKey) => void;
   setFontScale: (f: FontScale) => void;
   setRepo: (id: string | null) => void;
   setSection: (s: string) => void;
@@ -170,12 +180,12 @@ interface UIState {
   togglePanel: (which: keyof PanelsOpen) => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance" | "cell", id: string, inst?: string) => void;
+  setFileFocus: (f: { path: string; line?: number; instance?: string } | null) => void;
   setReviewCr: (id: number | null) => void;
 }
 
 export const useUI = create<UIState>((set) => ({
   mode: (localStorage.getItem("configer.mode") as Mode) || "light",
-  brand: (localStorage.getItem("configer.brand") as BrandKey) || "configer",
   fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
   repoId: initialRepo,
   section: initialSection,
@@ -192,14 +202,11 @@ export const useUI = create<UIState>((set) => ({
   panels: loadPanels(),
   importFocus: null,
   jump: null,
+  fileFocus: null,
   reviewCrId: null,
   setMode: (mode) => {
     localStorage.setItem("configer.mode", mode);
     set({ mode });
-  },
-  setBrand: (brand) => {
-    localStorage.setItem("configer.brand", brand);
-    set({ brand });
   },
   setFontScale: (fontScale) => {
     localStorage.setItem("configer.fontScale", fontScale);
@@ -219,6 +226,7 @@ export const useUI = create<UIState>((set) => ({
       compareLeft: null,
       compareRight: null,
       jump: null,
+      fileFocus: null,
       importFocus: null,
     });
   },
@@ -245,6 +253,8 @@ export const useUI = create<UIState>((set) => ({
     }),
   setImportFocus: (importFocus) => set({ importFocus }),
   setJump: (kind, id, inst) => set((s) => ({ jump: { kind, id, inst, n: (s.jump?.n ?? 0) + 1 } })),
+  setFileFocus: (f) =>
+    set((s) => ({ fileFocus: f ? { ...f, n: (s.fileFocus?.n ?? 0) + 1 } : null })),
   setReviewCr: (reviewCrId) => set({ reviewCrId }),
 }));
 
@@ -261,13 +271,15 @@ function pathFor(s: UIState): string {
 
   const section = s.section === "drafts" ? "changes" : s.section;
   if (section === "plugins") return `/plugins${qs}`;
-  // Portfolio level: the application never appears in the URL.
-  if (section === "workspace" || section === "home" || !s.repoId) return `/overview${qs}`;
+  if (section === "home") return `/home${qs}`;
+  if (section === "inbox") return `/approvals${qs}`;
+  // Collection level: the application never appears in the URL.
+  if (section === "workspace" || !s.repoId) return `/applications${qs}`;
   if (APP_SECTIONS_SET.has(section)) {
     const slug = SECTION_TO_SLUG[section]; // undefined for overview -> default tab
     return `/application/${encodeURIComponent(s.repoId)}${slug ? `/${slug}` : ""}${qs}`;
   }
-  return `/overview${qs}`;
+  return `/home${qs}`;
 }
 
 // A "navigation" (a distinct Back/Forward stop) is a change of application or
@@ -296,8 +308,8 @@ useUI.subscribe((s) => {
 });
 
 // Browser back/forward: re-read the URL and apply it to the store. A location
-// that does not name an application (the portfolio) keeps the remembered
-// repository in state so switching back into it still works - it just isn't in
+// that does not name an application (the global level) keeps the remembered
+// repository in state so switching back into it still works; it just isn't in
 // the URL. Switching repositories still routes through setApiRepo.
 window.addEventListener("popstate", () => {
   const loc = parseLocation();

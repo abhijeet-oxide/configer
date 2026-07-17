@@ -7,20 +7,21 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
-    Arial, sans-serif;
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Semantic accents, mirrored from theme.ts: green = live/valid, amber =
-   pending, blue = in review, red = invalid/production. */
-:root {
-  --c-ok: #0ca30c;
-  --c-pending: #fa8c16;
-  --c-review: #1677ff;
-  --c-danger: #d03b3b;
+/* Tailwind's preflight sets svg { display: block }, which stacks Ant Design's
+   inline icons onto their own line (menus, trees, buttons). Icons are inline
+   glyphs in this product; restore that. */
+.anticon svg,
+.ant-tree .ant-tree-iconEle svg {
+  display: inline-block;
 }
+
+/* Semantic accent variables (--c-*) live in tokens.css together with the
+   full design token set: brand, surfaces, spacing, radius, elevation, motion. */
 
 /* ---------------------------------------------------------------- cells */
 
@@ -87,7 +88,7 @@ body {
   opacity: 0.75;
   border: 1px solid currentColor;
   vertical-align: middle;
-  /* the badge is atomic: it must never wrap mid-word inside a grid cell -
+  /* the badge is atomic: it must never wrap mid-word inside a grid cell;
      when space runs out the VALUE truncates, never the badge */
   display: inline-block;
   white-space: nowrap;
@@ -101,29 +102,118 @@ body {
 
 /* ------------------------------------------------------------------ nav */
 
-.nav-rail .ant-menu-item {
-  height: 34px;
-  line-height: 34px;
-  margin: 2px 6px !important;
-  width: auto;
-  transition: background 0.15s ease, color 0.15s ease;
+/* The dark navy navigation rail: the product's one piece of dark chrome.
+   Items are quiet by default, lighten on hover, and the active item becomes
+   a brand-filled pill (like the reference). */
+.rail {
+  background: var(--nav-bg);
+  color: var(--nav-fg);
 }
-.nav-rail .ant-menu-item-selected {
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  margin: 2px 0;
+  border-radius: var(--r-md);
+  color: var(--nav-fg);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.rail-item:hover {
+  background: var(--nav-bg-hover);
+  color: var(--nav-fg-active);
+}
+.rail-item-active,
+.rail-item-active:hover {
+  background: var(--nav-bg-active);
+  color: var(--nav-fg-active);
   font-weight: 600;
+}
+.rail-item-disabled,
+.rail-item-disabled:hover {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--nav-fg);
+}
+.rail-item-icon {
+  font-size: 16px;
+  display: inline-flex;
+  color: inherit;
+}
+.rail-item-label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* badge counts must stay readable on the navy surface */
+.rail .ant-badge {
+  color: inherit;
+}
+.rail .ant-badge .ant-badge-count {
+  box-shadow: 0 0 0 1px var(--nav-bg);
 }
 
 .logo-tile {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: linear-gradient(135deg, #2f6bff 0%, #6c3df4 100%);
+  background: var(--brand);
   color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(47, 107, 255, 0.35);
+}
+
+/* ------------------------------------------------------------- app tabs */
+
+/* The application tab strip: quiet text tabs with a 2px brand underline on
+   the active one, matching the reference. Buttons, not links, so the
+   hand-rolled router stays in charge. */
+.app-tabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-5);
+  padding: 0 var(--sp-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  overflow-x: auto;
+  flex-shrink: 0;
+  scrollbar-width: none;
+}
+.app-tabs::-webkit-scrollbar {
+  display: none;
+}
+.app-tab {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 11px 2px 9px;
+  margin: 0;
+  font-size: var(--fs-13);
+  font-family: inherit;
+  color: var(--text-2);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 2px solid transparent;
+  transition: color var(--dur-hover) var(--ease), border-color var(--dur-hover) var(--ease);
+}
+.app-tab:hover {
+  color: var(--text);
+}
+.app-tab-active {
+  color: var(--brand);
+  font-weight: 600;
+  border-bottom-color: var(--brand);
 }
 
 /* ------------------------------------------------------------- surfaces */
@@ -147,7 +237,7 @@ body {
 .rrp-handle:hover,
 .rrp-handle[data-resize-handle-state="hover"],
 .rrp-handle[data-resize-handle-state="drag"] {
-  background: rgba(47, 107, 255, 0.35);
+  background: rgba(0, 87, 184, 0.35);
 }
 
 .ant-table-wrapper .ant-table {
@@ -163,22 +253,22 @@ body {
 
 /* environment-tinted instance column headers */
 .th-env-production {
-  box-shadow: inset 0 3px 0 rgba(245, 34, 45, 0.55);
+  box-shadow: inset 0 3px 0 rgba(67, 56, 202, 0.55);
 }
 .th-env-staging {
   box-shadow: inset 0 3px 0 rgba(250, 140, 22, 0.6);
 }
 .th-env-development {
-  box-shadow: inset 0 3px 0 rgba(82, 196, 26, 0.6);
+  box-shadow: inset 0 3px 0 rgba(6, 118, 71, 0.6);
 }
 
-/* cards lift slightly on hover when clickable */
+/* cards lift slightly on hover when clickable (soft-UI: deeper dual shadow) */
 .card-clickable {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
 }
 .card-clickable:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(16, 24, 40, 0.1);
+  box-shadow: var(--el-2);
 }
 
 /* gradient accent strip on dashboard stat cards */
@@ -401,10 +491,145 @@ body {
 .compact-tree .ant-tree-checkbox {
   margin-block: 4px 0;
 }
+/* keep icon + name on one flex line (see the files-tree note below) */
+.compact-tree .ant-tree-node-content-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.compact-tree .ant-tree-title {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ------------------------------------------------ VS Code-style explorer */
+
+/* The hand-built Files explorer: 22px rows, indent guides, quiet hover,
+   selected-row accent, hover-revealed actions, right-aligned state badges. */
+.fx {
+  font-size: 13px;
+  user-select: none;
+}
+.fx-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 6px 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 0;
+  position: relative;
+  color: var(--text);
+  transition: background var(--dur-hover) var(--ease);
+}
+.fx-row:hover {
+  background: rgba(127, 137, 160, 0.13);
+}
+.fx-selected,
+.fx-selected:hover {
+  background: var(--brand-soft);
+  box-shadow: inset 2px 0 0 var(--brand);
+  font-weight: 500;
+}
+.fx-cursor {
+  box-shadow: inset 0 0 0 1px var(--brand-border);
+}
+.fx-guide {
+  display: inline-block;
+  width: 10px;
+  align-self: stretch;
+  flex-shrink: 0;
+  border-inline-start: 1px solid rgba(127, 137, 160, 0.22);
+  margin-inline-start: 5px;
+}
+.fx-chevron {
+  width: 14px;
+  flex-shrink: 0;
+  display: inline-flex;
+  justify-content: center;
+  color: var(--text-3);
+  transition: transform var(--dur-hover) var(--ease);
+}
+.fx-chevron-open {
+  transform: rotate(90deg);
+}
+.fx-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fx-created {
+  color: var(--c-ok);
+  font-style: italic;
+}
+.fx-modified {
+  color: var(--c-pending);
+  font-weight: 600;
+}
+.fx-actions {
+  display: none;
+  flex-shrink: 0;
+}
+.fx-row:hover .fx-actions {
+  display: inline-flex;
+}
+.fx-row:hover .fx-badges .fx-dot {
+  display: none; /* the hover action replaces the dot's space */
+}
+.fx-actions .ant-btn {
+  height: 18px;
+  width: 18px;
+  min-width: 18px;
+}
+.fx-badges {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.fx-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--c-ok);
+}
+.fx-mark {
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+.fx-mark-m {
+  color: var(--c-pending);
+}
+.fx-mark-u {
+  color: var(--c-ok);
+}
 
 /* ---------------------------------------------------- files tree rows */
 
-/* Each file/folder row shows its name and, on hover, its manage actions. */
+/* Each row is one flex line: icon, then the title (name + hover actions).
+   The wrapper must be the flex container; otherwise the full-width title
+   box wraps under the icon (visible since Tailwind's preflight made svg
+   glyphs block-level). */
+.files-tree .ant-tree-node-content-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.files-tree .ant-tree-title {
+  flex: 1;
+  min-width: 0;
+}
+.files-tree .ant-tree-treenode {
+  display: flex;
+  width: 100%;
+}
 .files-tree .file-node {
   display: flex;
   align-items: center;
@@ -509,7 +734,7 @@ body {
 
 /* Flash a row after clicking a parameter in the left tree. */
 @keyframes rowFlash {
-  0% { background: rgba(47, 107, 255, 0.28); }
+  0% { background: rgba(0, 87, 184, 0.28); }
   100% { background: transparent; }
 }
 .param-grid .ant-table-row.row-flash > .ant-table-cell,
@@ -520,8 +745,8 @@ body {
 /* Flash ONE cell (a jump straight to a problem: row + column + the cell
    itself, strongest on the cell so the eye lands there). */
 @keyframes cellFlash {
-  0% { box-shadow: inset 0 0 0 2px #2f6bff; background: rgba(47, 107, 255, 0.35); }
-  70% { box-shadow: inset 0 0 0 2px #2f6bff; }
+  0% { box-shadow: inset 0 0 0 2px #0057b8; background: rgba(0, 87, 184, 0.35); }
+  70% { box-shadow: inset 0 0 0 2px #0057b8; }
   100% { box-shadow: inset 0 0 0 0 transparent; background: transparent; }
 }
 .param-grid .ant-table-cell.cell-flash {
@@ -530,7 +755,7 @@ body {
 
 /* Flash a column header after clicking a system in the left tree. */
 @keyframes thFlash {
-  0% { box-shadow: inset 0 -3px 0 0 #2f6bff; background: rgba(47, 107, 255, 0.22); }
+  0% { box-shadow: inset 0 -3px 0 0 #0057b8; background: rgba(0, 87, 184, 0.22); }
   100% { box-shadow: inset 0 0 0 0 transparent; }
 }
 .param-grid .ant-table-thead th.th-flash {
@@ -565,14 +790,14 @@ body {
    so the tint also shows on sticky cells (as a gradient over the opaque
    background). */
 .param-grid .ant-table-row.row-selected .ant-table-cell {
-  background-image: linear-gradient(rgba(47, 107, 255, 0.10), rgba(47, 107, 255, 0.10)) !important;
+  background-image: linear-gradient(rgba(0, 87, 184, 0.10), rgba(0, 87, 184, 0.10)) !important;
 }
 .param-grid .ant-table-cell.col-selected {
-  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+  background-image: linear-gradient(rgba(0, 87, 184, 0.08), rgba(0, 87, 184, 0.08)) !important;
 }
 .param-grid th.col-selected-h {
-  box-shadow: inset 0 -3px 0 rgba(47, 107, 255, 0.75);
-  background-image: linear-gradient(rgba(47, 107, 255, 0.08), rgba(47, 107, 255, 0.08)) !important;
+  box-shadow: inset 0 -3px 0 rgba(0, 87, 184, 0.75);
+  background-image: linear-gradient(rgba(0, 87, 184, 0.08), rgba(0, 87, 184, 0.08)) !important;
 }
 
 /* ---------------------------------------------------- left trees (editor) */
@@ -592,26 +817,9 @@ body {
   white-space: nowrap;
 }
 
-/* ------------------------------------------------- collapsed nav polish */
-
-.nav-rail.ant-menu-inline-collapsed .ant-menu-item,
-.nav-rail.ant-menu-inline-collapsed .ant-menu-submenu-title {
-  padding-inline: calc(50% - 9px) !important;
-}
-.nav-rail.ant-menu-inline-collapsed .ant-menu-title-content {
-  display: none;
-}
-.nav-rail .nav-ic {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: -0.2em;
-}
-.nav-rail .nav-ic svg {
-  display: block;
-}
-.nav-rail .ant-menu-item .ant-badge,
-.nav-rail .ant-menu-submenu-title .ant-badge {
-  color: inherit;
+/* Selected row highlight for the approvals queue table. */
+.cr-table .ant-table-row.row-selected > td {
+  background: var(--brand-soft) !important;
 }
 
 /* Source Control change rows (VS Code-style hover highlight). */
@@ -624,4 +832,40 @@ body {
 /* Keep the editor status bar text crisp on the accent background. */
 .editor-statusbar .anticon {
   vertical-align: -0.12em;
+}
+
+/* ---------------------------------------------------- state illustrations */
+
+/* Gentle, professional motion for the SVG illustration kit (success, scan,
+   empty, offline). All effects respect prefers-reduced-motion. */
+.ill { display: block; }
+
+@keyframes illDraw { to { stroke-dashoffset: 0; } }
+.ill-draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: illDraw 0.6s ease-out 0.25s forwards;
+}
+
+@keyframes illPop { 0% { transform: scale(0.6); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+.ill-pop { animation: illPop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+
+@keyframes illRipple { 0% { transform: scale(0.85); opacity: 0.18; } 70% { opacity: 0.05; } 100% { transform: scale(1.15); opacity: 0; } }
+.ill-ripple { transform-origin: center; animation: illRipple 2.4s ease-out infinite; }
+
+@keyframes illSpark { 0% { opacity: 0; transform: scale(0.3); } 40% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4); } }
+.ill-spark { transform-box: fill-box; transform-origin: center; animation: illSpark 1.8s ease-out infinite; }
+
+@keyframes illFloaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+.ill-floaty { animation: illFloaty 3.2s ease-in-out infinite; }
+
+@keyframes illSweep { 0% { transform: translateY(0); } 100% { transform: translateY(56px); } }
+.ill-sweep { animation: illSweep 1.7s ease-in-out infinite alternate; }
+
+@keyframes illDash { to { stroke-dashoffset: -16; } }
+.ill-dash { animation: illDash 1s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .ill-draw { animation: none; stroke-dashoffset: 0; }
+  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash { animation: none; }
 }

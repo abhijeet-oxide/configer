@@ -10,7 +10,6 @@ import {
   Popover,
   Result,
   Space,
-  Steps,
   Table,
   Tag,
   Tooltip,
@@ -33,6 +32,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
+import { Stepper } from "./ui";
 import FileExplorer from "./FileExplorer";
 import InitProgress from "./InitProgress";
 import { OfflineArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
@@ -247,10 +247,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   }
 
   const steps = [
-    { title: "Layout", icon: <FileSearchOutlined /> },
-    { title: "Instances", icon: <ApartmentOutlined /> },
-    { title: "Files & parameters", icon: <TableOutlined /> },
-    { title: "Initialize", icon: <CheckCircleOutlined /> },
+    { label: "Layout", icon: <FileSearchOutlined /> },
+    { label: "Instances", icon: <ApartmentOutlined /> },
+    { label: "Parameters", icon: <TableOutlined /> },
+    { label: "Initialize", icon: <CheckCircleOutlined /> },
   ];
 
   const canNext =
@@ -280,7 +280,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         final step, which makes one reviewable Git commit adding metadata under{" "}
         <span className="mono">.configer/</span>. Your configuration files stay exactly where they are.
       </Typography.Paragraph>
-      <Steps size="small" current={step} items={steps} style={{ marginBottom: 20 }} />
+      <div className="mb-5 rounded-card-lg bg-surface px-5 py-4 shadow-neu">
+        <Stepper current={step} steps={steps} />
+      </div>
 
       {step === 0 && (
         <>

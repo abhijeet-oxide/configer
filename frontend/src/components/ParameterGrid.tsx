@@ -991,23 +991,40 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   };
 
   const environments = [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[];
-  const pickerInstances = grid.instances.filter((i) => !envFilter || (i.environment ?? "") === envFilter);
 
   // Priority overflow: measure the toolbar and fold the lowest-priority
   // controls into the ⋮ menu, in order, as width tightens. Before the first
   // measurement (width 0) everything shows, so there is no collapse flash.
-  // A control that carries active state (an environment filter, customized
-  // columns) stays pinned to the bar so its state is never hidden.
+  // Only the column manager folds now (and only when it carries no active
+  // customization); the row filter degrades to a compact select before that.
   const w = barW || 9999;
   const colsCustomized =
     colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0;
-  const showEnv = environments.length > 0 && (envFilter !== "" || w >= 1090);
-  const showColumns = !viewInstance && (colsCustomized || w >= 965);
-  const showAdd = w >= 920;
-  const showFilterSeg = w >= 880;
-  const foldedEnv = environments.length > 0 && !showEnv;
+  const showColumns = !viewInstance && (colsCustomized || w >= 950);
+  const showFilterSeg = w >= 820;
   const foldedColumns = !viewInstance && !showColumns;
-  const anyFolded = foldedEnv || foldedColumns || !showAdd;
+  const anyFolded = foldedColumns;
+
+  // One control governs both "which instances" (all, or one environment) and
+  // "single sheet vs matrix" (one instance). The value encodes the mode:
+  // "" = all, env:<name> = an environment, inst:<name> = a single instance.
+  const viewValue = viewInstance ? `inst:${viewInstance}` : envFilter ? `env:${envFilter}` : "";
+  const onViewChange = (val: string) => {
+    if (val.startsWith("inst:")) {
+      const name = val.slice(5);
+      setEnvFilter("");
+      setViewInstance(name);
+      selectInstance(name);
+    } else if (val.startsWith("env:")) {
+      setEnvFilter(val.slice(4));
+      setViewInstance(null);
+      selectInstance(null);
+    } else {
+      setEnvFilter("");
+      setViewInstance(null);
+      selectInstance(null);
+    }
+  };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
@@ -1026,45 +1043,38 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           borderBottom: "1px solid var(--border)",
         }}
       >
-        {/* Context: the instance sheet you are viewing. Always visible. */}
-        <Tooltip title="View all instances side by side, or one instance as a single sheet">
+        {/* One control for what you are looking at: all instances, a whole
+            environment (matrix, scoped), or a single instance (one sheet). */}
+        <Tooltip title="Choose what you are viewing: all instances, one environment, or a single instance as a sheet">
           <Select
             size="small"
-            value={viewInstance ?? ""}
-            onChange={(v) => {
-              setViewInstance(v || null);
-              selectInstance(v || null);
-            }}
-            style={{ width: 168, flexShrink: 0 }}
+            value={viewValue}
+            onChange={onViewChange}
+            showSearch
+            optionFilterProp="label"
+            style={{ width: 210, flexShrink: 0 }}
             options={[
               { value: "", label: "All instances" },
-              ...pickerInstances.map((i) => ({ value: i.name, label: i.name })),
+              ...(environments.length
+                ? [
+                    {
+                      label: "Filter by environment",
+                      title: "environment",
+                      options: environments.map((e) => ({ value: `env:${e}`, label: `All ${e}` })),
+                    },
+                  ]
+                : []),
+              {
+                label: "Single instance",
+                title: "instance",
+                options: grid.instances.map((i) => ({
+                  value: `inst:${i.name}`,
+                  label: i.environment ? `${i.name}  ·  ${i.environment}` : i.name,
+                })),
+              },
             ]}
           />
         </Tooltip>
-        {/* Environment filter: folds into the ⋮ menu when narrow, but stays
-            visible whenever a filter is actually active (so a narrowed grid
-            never hides why it is showing fewer instances). */}
-        {showEnv && (
-          <Tooltip title="Show only instances of one environment">
-            <Select
-              size="small"
-              value={envFilter}
-              onChange={(v) => {
-                setEnvFilter(v);
-                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v) {
-                  setViewInstance(null);
-                  selectInstance(null);
-                }
-              }}
-              style={{ width: 118, flexShrink: 0 }}
-              options={[
-                { value: "", label: "All environments" },
-                ...environments.map((e) => ({ value: e, label: e })),
-              ]}
-            />
-          </Tooltip>
-        )}
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Row filter: the full segmented when there is room, a compact select
             (same options and counts) when space is tight. Never removed. */}
@@ -1158,42 +1168,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             </Badge>
           </Tooltip>
         )}
-        {showAdd && (
-          <Tooltip title="Add parameter">
-            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
-          </Tooltip>
-        )}
         <Dropdown
           trigger={["click"]}
           open={moreOpen}
           onOpenChange={setMoreOpen}
           menu={{
             items: [
-              // Controls that folded off the toolbar reappear here first, so
-              // nothing is ever unreachable at a narrow width.
-              ...(foldedEnv
-                ? [
-                    {
-                      key: "env",
-                      icon: <GlobalOutlined />,
-                      label: `Environment: ${envFilter || "All"}`,
-                      children: [
-                        { key: "env:", label: "All environments" },
-                        ...environments.map((e) => ({ key: `env:${e}`, label: e })),
-                      ],
-                    },
-                  ]
-                : []),
+              // The column manager is the only control that folds off the bar;
+              // it reappears here first so it is never unreachable when narrow.
               ...(foldedColumns ? [{ key: "columns", icon: <TableOutlined />, label: "Manage columns…" }] : []),
-              ...(!showAdd ? [{ key: "add", icon: <PlusOutlined />, label: "Add parameter…" }] : []),
               ...(anyFolded ? [{ type: "divider" as const }] : []),
               { key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" },
               { key: "legend", icon: <QuestionCircleOutlined />, label: "Legend: what the marks mean" },
-              {
-                key: "focus",
-                icon: editorFocus ? <FullscreenExitOutlined /> : <FullscreenOutlined />,
-                label: editorFocus ? "Exit focus mode" : "Focus mode",
-              },
               { type: "divider" as const },
               { key: "invalidOnly", label: <Checkbox checked={filters.invalidOnly}>Only invalid</Checkbox> },
               { key: "overriddenOnly", label: <Checkbox checked={filters.overriddenOnly}>Only instance overrides</Checkbox> },
@@ -1209,28 +1195,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
             ],
             onClick: ({ key }) => {
-              if (key.startsWith("env:")) {
-                const v = key.slice(4);
-                setEnvFilter(v);
-                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v) {
-                  setViewInstance(null);
-                  selectInstance(null);
-                }
-                setMoreOpen(false);
-              } else if (key === "columns") {
+              if (key === "columns") {
                 setColsOpen(true);
-                setMoreOpen(false);
-              } else if (key === "add") {
-                setAddOpen(true);
                 setMoreOpen(false);
               } else if (key === "findreplace") {
                 setFindReplace({ find: "" });
                 setMoreOpen(false);
               } else if (key === "legend") {
                 setLegendOpen(true);
-                setMoreOpen(false);
-              } else if (key === "focus") {
-                setEditorFocus(!editorFocus);
                 setMoreOpen(false);
               } else if (key === "invalidOnly" || key === "overriddenOnly" || key === "hideNA") {
                 setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>);
@@ -1247,6 +1219,21 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           </Badge>
         </Dropdown>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+        {/* Add parameter and full-screen focus are first-class, always-visible
+            actions rather than buried in the overflow menu. */}
+        <Tooltip title="Add parameter">
+          <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
+        </Tooltip>
+        <Tooltip title={editorFocus ? "Exit full screen (Esc)" : "Full screen: just the configuration"}>
+          <Button
+            size="small"
+            type={editorFocus ? "primary" : "default"}
+            icon={editorFocus ? <FullscreenExitOutlined /> : <FullscreenOutlined />}
+            onClick={() => setEditorFocus(!editorFocus)}
+            aria-label={editorFocus ? "Exit full screen" : "Full screen"}
+            style={{ flexShrink: 0 }}
+          />
+        </Tooltip>
         {/* Primary action, always visible and never shrinks. Its badge is the
             single source of truth for how many edits are waiting. */}
         <SubmitChangesButton instances={grid.instances} />

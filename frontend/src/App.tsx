@@ -229,9 +229,29 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [section, editorFocus, togglePanel, setEditorFocus]);
 
-  // Focus mode strips the workspace chrome (nav rail + header) so the editor
-  // fills the screen; it only applies while the editor is the active view.
+  // Focus mode strips ALL workspace chrome (nav rail, header, and the tab
+  // strip) so only the configuration surface remains; it applies while the
+  // editor is the active view.
   const focusMode = editorFocus && section === "config";
+
+  // Truly full screen: while focus mode is on, also request native browser
+  // fullscreen (best-effort) so even the browser chrome steps aside. Leaving
+  // native fullscreen (Esc/F11) turns focus mode back off so the two never
+  // drift out of sync.
+  useEffect(() => {
+    if (focusMode && !document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else if (!focusMode && document.fullscreenElement) {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, [focusMode]);
+  useEffect(() => {
+    const onFsChange = () => {
+      if (!document.fullscreenElement && editorFocus) setEditorFocus(false);
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, [editorFocus, setEditorFocus]);
 
   // The rail folds to icons inside an application so the working surface
   // dominates (like the reference), and re-expands at the global level. A
@@ -443,6 +463,9 @@ export default function App() {
         </div>
       );
     if (section === "plugins") return <PluginsView />;
+    // Focus mode shows only the configuration surface: skip the tab strip
+    // entirely so the editor is truly full screen, not merely widened.
+    if (focusMode) return appBody();
     // Everything belonging to ONE application lives under the Configuration
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))

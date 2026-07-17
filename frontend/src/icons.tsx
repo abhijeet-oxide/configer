@@ -104,6 +104,8 @@ import phUser from "@iconify-icons/ph/user";
 import phWarningFill from "@iconify-icons/ph/warning-fill";
 import phSun from "@iconify-icons/ph/sun";
 import phMoon from "@iconify-icons/ph/moon";
+import phGlobeHemisphereWest from "@iconify-icons/ph/globe-hemisphere-west";
+import phMapPin from "@iconify-icons/ph/map-pin";
 
 export interface AppIconProps {
   className?: string;
@@ -139,6 +141,10 @@ export const ClusterOutlined = make("cluster", phStack);
 export const TableOutlined = make("table", phTable);
 export const InboxOutlined = make("inbox", phTray);
 export const GlobalOutlined = make("global", phGlobe);
+// Scope glyphs: a filled hemisphere globe for global (shared everywhere) and
+// a map pin for instance (a specific deployment target).
+export const ScopeGlobalOutlined = make("scope-global", phGlobeHemisphereWest);
+export const ScopeInstanceOutlined = make("scope-instance", phMapPin);
 export const SettingOutlined = make("setting", phGear);
 export const SunOutlined = make("sun", phSun);
 export const MoonOutlined = make("moon", phMoon);

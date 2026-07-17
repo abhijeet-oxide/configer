@@ -24,6 +24,8 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   GlobalOutlined,
+  ScopeGlobalOutlined,
+  ScopeInstanceOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
   SwapOutlined,
@@ -657,7 +659,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         render: (_v, r) => (
           <Tooltip title={scopeExplain[r.param.scope]}>
             <Tag color={scopeColor[r.param.scope]} style={{ marginInlineEnd: 0 }}>
-              {r.param.scope === "global" && <GlobalOutlined style={{ marginInlineEnd: 4 }} />}
+              {r.param.scope === "global" ? (
+                <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
+              ) : (
+                <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
+              )}
               {r.param.scope}
             </Tag>
           </Tooltip>

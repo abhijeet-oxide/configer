@@ -143,6 +143,12 @@ export type ItemAction =
   | "update-instance"
   | "edit-file";
 
+/** File contents equal ignoring end-of-file whitespace: a trailing-newline
+ *  delta is a formatting artifact, never a configuration change, so diff
+ *  surfaces (Files badges, Compare) treat such contents as identical. */
+export const sameContent = (a?: string, b?: string): boolean =>
+  a === b || (a ?? "").replace(/\s+$/, "") === (b ?? "").replace(/\s+$/, "");
+
 /** Human label for a structural item ("" for plain cell edits). */
 export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
   if (it.action === "add-instance")

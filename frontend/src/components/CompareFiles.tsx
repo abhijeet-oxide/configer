@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Segmented } from "antd";
-import { api, type Grid } from "../api";
+import { api, sameContent, type Grid } from "../api";
 import { useUI } from "../store";
 import { vsFileIcon } from "./vsIcons";
 import { AllClearArt, EmptyArt } from "./illustrations";
@@ -82,7 +82,7 @@ export default function CompareFiles({
       if (e) {
         e.rightPath = f.path;
         e.right = f.content;
-        e.kind = e.left === f.content ? "unchanged" : "modified";
+        e.kind = sameContent(e.left, f.content) ? "unchanged" : "modified";
       } else {
         map.set(r, { role: r, rightPath: f.path, right: f.content, kind: "added" });
       }

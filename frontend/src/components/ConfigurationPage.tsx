@@ -40,7 +40,7 @@ const MORE: { key: string; label: string }[] = [
   { key: "import", label: "Import settings" },
 ];
 
-function CountPill({ n }: { n: number }) {
+function CountPill({ n, tone = "review" }: { n: number; tone?: "review" | "pending" }) {
   if (!n) return null;
   return (
     <span
@@ -49,9 +49,9 @@ function CountPill({ n }: { n: number }) {
         height: 16,
         padding: "0 5px",
         borderRadius: "var(--r-pill)",
-        background: "var(--c-review-bg)",
-        border: "1px solid var(--c-review-bd)",
-        color: "var(--c-review)",
+        background: `var(--c-${tone}-bg)`,
+        border: `1px solid var(--c-${tone}-bd)`,
+        color: `var(--c-${tone})`,
         fontSize: 10.5,
         fontWeight: 600,
         display: "inline-flex",
@@ -75,8 +75,10 @@ export default function ConfigurationPage({
   const { setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
+  const draftItems = draftQ.data?.draft?.items?.length ?? 0;
 
   // "drafts" is a legacy alias of the Releases view.
   const active = section === "drafts" ? "changes" : section;
@@ -95,6 +97,7 @@ export default function ConfigurationPage({
           >
             {t.label}
             {t.key === "approvals" && <CountPill n={awaiting} />}
+            {t.key === "files" && <CountPill n={draftItems} tone="pending" />}
           </button>
         ))}
         <Dropdown

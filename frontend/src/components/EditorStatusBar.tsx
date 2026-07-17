@@ -38,7 +38,8 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const st = statusQ.data;
-  const changes = draftQ.data?.draft?.items?.length ?? 0;
+  const draft = draftQ.data?.draft;
+  const changes = draft?.items?.length ?? 0;
 
   const invalid = useMemo(() => {
     let n = 0;
@@ -77,10 +78,24 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           fontSize: 12,
         }}
       >
-        <Tooltip title="This is the branch your saved edits build on. Configer commits them to a review branch for you.">
+        <Tooltip
+          title={
+            changes > 0
+              ? `Your ${changes} unsent edit(s) build on ${st?.branch ?? "the base branch"} and will be committed to the review branch shown - visible the moment you stage a change.`
+              : "This is the branch your saved edits build on. Configer commits them to a review branch for you."
+          }
+        >
           <span style={item} onClick={() => setScmOpen(true)}>
             <BranchesOutlined />
             <span className="mono">{st?.branch ?? "…"}</span>
+            {changes > 0 && draft?.branch && (
+              <>
+                <span style={{ opacity: 0.6 }}>→</span>
+                <span className="mono" style={{ color: token.colorWarning }}>
+                  {draft.branch}
+                </span>
+              </>
+            )}
           </span>
         </Tooltip>
         <Tooltip title={st?.remote ? (st.behind > 0 ? `${st.behind} behind; click to pull` : "Up to date; click to pull") : "Local only"}>

@@ -1,5 +1,6 @@
 import {
   Alert, Button, Dropdown, Input, Select, Switch, Tag, Tooltip, App as AntApp,
+  theme as antdTheme,
 } from "antd";
 import {
   CopyOutlined,
@@ -20,7 +21,7 @@ import {
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { api } from "../api";
+import { api, sameContent } from "../api";
 import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
@@ -51,6 +52,7 @@ const TREE_KEY = "configer.filesTreeOpen";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
+  const { token } = antdTheme.useToken();
   const qc = useQueryClient();
   const mode = useUI((s) => s.mode);
   const setSection = useUI((s) => s.setSection);
@@ -140,7 +142,7 @@ export default function FilesView() {
     const s = new Set<string>();
     for (const f of allFiles) {
       if (!committedOf.has(f.path)) continue; // created, not changed
-      if (committedOf.get(f.path) !== f.content) s.add(f.path);
+      if (!sameContent(committedOf.get(f.path), f.content)) s.add(f.path);
     }
     return s;
   }, [allFiles, committedOf]);
@@ -224,6 +226,12 @@ export default function FilesView() {
   };
 
   const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 30_000 });
+  // The same draft the editor's status bar shows: staging any change makes
+  // the review branch appear here immediately, so both workspaces tell one
+  // consistent Git story.
+  const crDraftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const crDraft = crDraftQ.data?.draft;
+  const draftItems = crDraft?.items?.length ?? 0;
 
   if (projectQ.isLoading || (instance && draftQ.isLoading)) {
     return (
@@ -492,6 +500,24 @@ export default function FilesView() {
             className="flex h-[26px] shrink-0 items-center gap-4 px-3 text-xs text-white"
             style={{ background: "var(--nav-bg)" }}
           >
+            <Tooltip
+              title={
+                draftItems > 0
+                  ? `Your ${draftItems} unsent edit(s) build on ${statusQ.data?.branch ?? "the base branch"} and will be committed to the review branch shown.`
+                  : "The branch your saved edits build on."
+              }
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <BranchesOutlined />
+                <span className="mono">{statusQ.data?.branch ?? "…"}</span>
+                {draftItems > 0 && crDraft?.branch && (
+                  <>
+                    <span style={{ opacity: 0.6 }}>→</span>
+                    <span className="mono" style={{ color: token.colorWarning }}>{crDraft.branch}</span>
+                  </>
+                )}
+              </span>
+            </Tooltip>
             <span>
               Ln {cursor.ln}, Col {cursor.col}
             </span>

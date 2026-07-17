@@ -349,7 +349,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
 
   return (
     <div className="h-full overflow-auto bg-canvas">
-      <div className="mx-auto flex max-w-[880px] flex-col gap-5 px-6 py-6">
+      <div className="flex flex-col gap-5 px-6 py-6">
         <div>
           <div className="text-xl font-semibold text-ink">Import settings</div>
           <div className="mt-0.5 text-[13px] text-ink-2">

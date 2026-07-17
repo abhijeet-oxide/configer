@@ -239,7 +239,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
 
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
-      <Stagger className="mx-auto flex max-w-[1240px] flex-col gap-4">
+      <Stagger className="flex flex-col gap-4">
         {/* Identity row: name + persistent context, actions on the right. */}
         <StaggerItem className="flex flex-wrap items-center gap-3">
           <span className="text-xl font-semibold text-ink">{grid.project}</span>

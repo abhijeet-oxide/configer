@@ -50,7 +50,7 @@ export default function HomeView() {
 
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
-      <div className="mx-auto max-w-[1240px]">
+      <div>
         {/* Greeting + estate numbers, restrained like the reference. */}
         <div className="mb-5 flex flex-wrap items-start gap-4">
           <div className="min-w-60 flex-1">

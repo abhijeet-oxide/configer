@@ -42,6 +42,7 @@ function railKey(section: string): string {
     case "home":
       return "home";
     case "instances":
+    case "estate":
       return "instances";
     case "changes":
     case "drafts":
@@ -118,7 +119,7 @@ export default function NavRail({
   const items: RailItem[] = [
     { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
     { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
-    { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "instances", needsApp: true },
+    { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "estate" },
     { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changes", needsApp: true, badge: activeChanges },
     { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "drift", needsApp: true, badge: findings },
     { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },

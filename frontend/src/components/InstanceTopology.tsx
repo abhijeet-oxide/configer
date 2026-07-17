@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { ApartmentOutlined, FileTextOutlined } from "../icons";
-import { bindingsOf, type Grid } from "../api";
+import { Button, Modal } from "antd";
+import { FileTextOutlined, TableOutlined } from "../icons";
+import { bindingsOf, type Grid, type Instance } from "../api";
 import { useUI } from "../store";
 import { envHex } from "../theme";
-import { EmptyState, StatusPill } from "./ui";
+import { StatusPill } from "./ui";
 
 // InstanceTopology answers relationship questions the table cannot: which
 // shared base files do instances inherit from, which instances share a
@@ -11,7 +12,10 @@ import { EmptyState, StatusPill } from "./ui";
 // the grid's real bindings and cell provenance; nothing is invented. Base
 // files sit left, instances right (grouped by environment); an edge's weight
 // is how many parameters flow across it. Clicking a file opens it in the
-// Files workspace; clicking an instance jumps to its column in the editor.
+// Files workspace; clicking an instance opens a small dossier with an
+// "Open configuration" action that lands on the editor filtered to it.
+// Without a shared base layer there are no edges to draw, but the instances
+// still show as standalone blocks - the map never goes blank.
 
 interface BaseNode {
   file: string;
@@ -82,18 +86,152 @@ const NODE_W = 250;
 const ROW_H = 60;
 const PAD = 16;
 
+// The dossier behind an instance click: what this instance is, then the
+// explicit decision to jump into its filtered configuration sheet.
+function InstanceDossier({
+  node,
+  meta,
+  onClose,
+}: {
+  node: InstNode | null;
+  meta?: Instance;
+  onClose: () => void;
+}) {
+  const { setSection, selectInstance, setJump } = useUI();
+  const rows: { label: string; value: React.ReactNode }[] = node
+    ? [
+        {
+          label: "Environment",
+          value: node.environment ? (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="size-2 rounded-full" style={{ background: envHex(node.environment) }} />
+              {node.environment}
+            </span>
+          ) : (
+            <span className="text-ink-3">not set</span>
+          ),
+        },
+        ...(meta?.softwareVersion ? [{ label: "Software version", value: <span className="mono">{meta.softwareVersion}</span> }] : []),
+        ...(meta?.region ? [{ label: "Region", value: meta.region }] : []),
+        ...(meta?.folder ? [{ label: "Folder", value: <span className="mono text-xs">{meta.folder}</span> }] : []),
+        { label: "Inherited from base", value: `${node.inherited} parameter${node.inherited === 1 ? "" : "s"}` },
+        { label: "Local overrides", value: `${node.overrides} parameter${node.overrides === 1 ? "" : "s"}` },
+      ]
+    : [];
+  return (
+    <Modal
+      open={!!node}
+      onCancel={onClose}
+      title={
+        node && (
+          <span className="inline-flex items-center gap-2">
+            <span className="size-2 rounded-full" style={{ background: envHex(node.environment) }} />
+            <span className="mono">{node.name}</span>
+          </span>
+        )
+      }
+      footer={
+        <div className="flex justify-end gap-2">
+          <Button onClick={onClose}>Close</Button>
+          <Button
+            type="primary"
+            icon={<TableOutlined />}
+            onClick={() => {
+              if (!node) return;
+              selectInstance(node.name);
+              setJump("instance", node.name);
+              setSection("config");
+              onClose();
+            }}
+          >
+            Open configuration
+          </Button>
+        </div>
+      }
+      width={420}
+    >
+      <div className="flex flex-col gap-2 py-1">
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-baseline justify-between gap-4 text-[13px]">
+            <span className="text-ink-3">{r.label}</span>
+            <span className="text-right text-ink">{r.value}</span>
+          </div>
+        ))}
+        <div className="mt-1 text-xs text-ink-3">
+          Opening the configuration filters the editor to this instance only.
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function InstanceCard({
+  node,
+  style,
+  className,
+  onHover,
+  onClick,
+}: {
+  node: InstNode;
+  style?: React.CSSProperties;
+  className?: string;
+  onHover?: (on: boolean) => void;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      className={`card-clickable flex cursor-pointer items-center gap-2 rounded-card bg-surface px-3 py-2 shadow-neu ${className ?? ""}`}
+      style={style}
+      onMouseEnter={() => onHover?.(true)}
+      onMouseLeave={() => onHover?.(false)}
+      onClick={onClick}
+      title={`${node.name}: instance details`}
+    >
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ background: envHex(node.environment) }}
+        title={node.environment}
+      />
+      <div className="min-w-0 flex-1">
+        <div className="mono overflow-hidden text-xs text-ellipsis whitespace-nowrap">{node.name}</div>
+        <div className="text-[11px] text-ink-3">{node.inherited} inherited</div>
+      </div>
+      {node.overrides > 0 && (
+        <StatusPill tone="review" size="sm" dot={false}>
+          {node.overrides}
+        </StatusPill>
+      )}
+    </div>
+  );
+}
+
 export default function InstanceTopology({ grid }: { grid: Grid }) {
-  const { setSection, setFileFocus, selectInstance, setJump } = useUI();
+  const { setSection, setFileFocus } = useUI();
   const [hover, setHover] = useState<{ kind: "base" | "inst"; key: string } | null>(null);
+  const [selInst, setSelInst] = useState<InstNode | null>(null);
   const { bases, insts, edges } = useMemo(() => derive(grid), [grid]);
 
+  const metaOf = (name: string) => grid.instances.find((i) => i.name === name);
+  const dossier = (
+    <InstanceDossier node={selInst} meta={selInst ? metaOf(selInst.name) : undefined} onClose={() => setSelInst(null)} />
+  );
+
   if (bases.length === 0) {
+    // No shared base layer: there is nothing to connect, but the instances
+    // themselves are still the map - show them as standalone blocks.
     return (
-      <EmptyState
-        icon={<ApartmentOutlined />}
-        title="No shared base layer to visualize"
-        hint="Every parameter here is instance-scoped, so there are no inheritance relationships between files and instances. The table view carries everything."
-      />
+      <div className="h-full overflow-auto">
+        <div className="mb-3 px-1 text-xs text-ink-3">
+          No shared base layer: every parameter here lives in the instance's own files, so there are
+          no inheritance edges to draw. Each instance stands alone; click one for details.
+        </div>
+        <div className="flex flex-wrap gap-3 px-1">
+          {insts.map((x) => (
+            <InstanceCard key={x.name} node={x} style={{ width: NODE_W }} onClick={() => setSelInst(x)} />
+          ))}
+        </div>
+        {dossier}
+      </div>
     );
   }
 
@@ -172,36 +310,17 @@ export default function InstanceTopology({ grid }: { grid: Grid }) {
           </div>
         ))}
         {insts.map((x, i) => (
-          <div
+          <InstanceCard
             key={x.name}
-            className="card-clickable absolute flex cursor-pointer items-center gap-2 rounded-card bg-surface px-3 py-2 shadow-neu"
+            node={x}
+            className="absolute"
             style={{ left: rightX, top: yFor(i, insts.length) - 22, width: NODE_W, height: 44 }}
-            onMouseEnter={() => setHover({ kind: "inst", key: x.name })}
-            onMouseLeave={() => setHover(null)}
-            onClick={() => {
-              selectInstance(x.name);
-              setJump("instance", x.name);
-              setSection("config");
-            }}
-            title={`${x.name}: open its column in the editor`}
-          >
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ background: envHex(x.environment) }}
-              title={x.environment}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="mono overflow-hidden text-xs text-ellipsis whitespace-nowrap">{x.name}</div>
-              <div className="text-[11px] text-ink-3">{x.inherited} inherited</div>
-            </div>
-            {x.overrides > 0 && (
-              <StatusPill tone="review" size="sm" dot={false}>
-                {x.overrides}
-              </StatusPill>
-            )}
-          </div>
+            onHover={(on) => setHover(on ? { kind: "inst", key: x.name } : null)}
+            onClick={() => setSelInst(x)}
+          />
         ))}
       </div>
+      {dossier}
     </div>
   );
 }

@@ -248,8 +248,12 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                     setJump("param", id);
                     return;
                   }
-                  // A group node filters the grid to that name prefix.
+                  // A group node filters the grid to that name prefix. It also
+                  // clears the parameter selection: "All Parameters" (or any
+                  // category) means the whole view again, so the ?param=
+                  // refinement must leave the URL too.
                   setCategory(k === "__all__" ? null : k);
+                  selectParam(null);
                 }}
                 filterTreeNode={filter ? (node) => node.searchText.includes(filter) : undefined}
               />

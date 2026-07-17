@@ -308,7 +308,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
   // Single-instance view: pick one instance and the matrix collapses to a
   // Parameter / Value / Source / Changed sheet for that instance alone.
-  const [viewInstance, setViewInstance] = useState<string | null>(null);
+  // Single-instance view. It initializes from the ?inst= selection so a
+  // handoff ("open the configuration for THIS instance", from topology or the
+  // global Instances page) lands on an already-filtered sheet, and it writes
+  // back through selectInstance so the URL always reflects the filter.
+  const [viewInstance, setViewInstance] = useState<string | null>(
+    () => useUI.getState().selectedInstance,
+  );
   // Environment filter: narrows the visible instance columns (and the
   // instance picker) to one environment.
   const [envFilter, setEnvFilter] = useState<string>("");
@@ -853,7 +859,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             <Select
               size="small"
               value={viewInstance ?? ""}
-              onChange={(v) => setViewInstance(v || null)}
+              onChange={(v) => {
+                setViewInstance(v || null);
+                selectInstance(v || null);
+              }}
               style={{ width: 168 }}
               options={[
                 { value: "", label: "All instances" },
@@ -867,8 +876,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               value={envFilter}
               onChange={(v) => {
                 setEnvFilter(v);
-                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v)
+                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v) {
                   setViewInstance(null);
+                  selectInstance(null);
+                }
               }}
               style={{ width: 118 }}
               options={[

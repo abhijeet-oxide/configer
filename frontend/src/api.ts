@@ -686,6 +686,13 @@ export const api = {
   repoStatus: () => get<RepoStatus>(rp("/repo/status")),
   repoSync: () => send<RepoStatus>("POST", rp("/repo/sync")),
   changes: () => snapGet<ChangeRequest[]>(rp("/changes"), snapKey("changes")),
+  // Explicit-repo reads for the global (cross-application) views: the inbox
+  // and the instances estate aggregate over every repository, not just the
+  // active one, so they cannot go through rp().
+  changesOf: (repoId: string) =>
+    get<ChangeRequest[]>(`/repos/${encodeURIComponent(repoId)}/changes`),
+  instancesOf: (repoId: string) =>
+    get<{ instances: Instance[] | null }>(`/repos/${encodeURIComponent(repoId)}/instances`),
   draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
   change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
   submitChange: (

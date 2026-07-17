@@ -93,6 +93,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
               ? []
               : section === "inbox"
                 ? [{ title: <span>Approvals</span> }]
+                : section === "estate"
+                ? [{ title: <span>Instances</span> }]
                 : [
                     {
                       title: (

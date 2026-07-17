@@ -24,6 +24,8 @@ import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
+import InboxView from "./components/InboxView";
+import InstancesOverview from "./components/InstancesOverview";
 import DashboardView from "./components/DashboardView";
 import ConfigurationPage, { APP_SECTIONS } from "./components/ConfigurationPage";
 import ImportWizard from "./components/ImportWizard";
@@ -401,6 +403,21 @@ export default function App() {
           <WorkspaceView />
         </div>
       );
+    // Workspace-wide approvals inbox and instances estate: global levels that
+    // aggregate over every application, so they render before (and regardless
+    // of) the active repository's state.
+    if (section === "inbox")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <InboxView />
+        </div>
+      );
+    if (section === "estate")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <InstancesOverview />
+        </div>
+      );
     // A repository without a .configer application goes through onboarding
     // before any other view makes sense.
     if (uninitialized)
@@ -410,14 +427,6 @@ export default function App() {
         </div>
       );
     if (section === "plugins") return <PluginsView />;
-    // Workspace-wide approvals inbox: reviews for the active application
-    // today, reachable from anywhere (the rail badge and the bell).
-    if (section === "inbox")
-      return (
-        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
-          <ApprovalsView />
-        </div>
-      );
     // Everything belonging to ONE application lives under the Configuration
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))

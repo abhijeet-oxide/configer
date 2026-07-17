@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Drawer, List, Popover, Switch, Tooltip, Typography } from "antd";
+import { Badge, Popover, Switch, Tooltip, Typography } from "antd";
 import {
   HomeOutlined,
   AppstoreOutlined,
@@ -107,7 +107,6 @@ export default function NavRail({
 }) {
   const { section, setSection, repoId, mode, setMode, fontScale, setFontScale } = useUI();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const [auditOpen, setAuditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
 
   const repos = wsQ.data?.repos ?? [];
@@ -124,7 +123,7 @@ export default function NavRail({
     { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changelog", badge: changesInFlight },
     { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "repos" },
     { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },
-    { key: "audit", label: "Audit", icon: <FileProtectOutlined /> },
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit", needsApp: true },
   ];
 
   const settingsContent = (
@@ -199,8 +198,7 @@ export default function NavRail({
             collapsed={collapsed}
             disabled={!!it.needsApp && !repoId}
             onClick={() => {
-              if (it.key === "audit") setAuditOpen(true);
-              else if (it.section) setSection(it.section);
+              if (it.section) setSection(it.section);
             }}
           />
         ))}
@@ -241,48 +239,12 @@ export default function NavRail({
         />
         {!collapsed && <DeploymentChip />}
       </div>
-      <Drawer title="Audit trail" width={480} open={auditOpen} onClose={() => setAuditOpen(false)}>
-        <AuditList open={auditOpen} />
-      </Drawer>
       {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </div>
   );
 }
 
 // AuditList shows who did what, newest first, across the workspace.
-function AuditList({ open }: { open: boolean }) {
-  const repoId = useUI((s) => s.repoId);
-  const auditQ = useQuery({
-    queryKey: ["audit", repoId],
-    queryFn: () => api.audit({ repo: repoId ?? undefined, limit: 100 }),
-    enabled: open,
-  });
-  const events = auditQ.data?.events ?? [];
-  if (!auditQ.isLoading && events.length === 0)
-    return (
-      <Typography.Text type="secondary">
-        No audit events recorded yet. State-changing actions appear here with who did them and when.
-      </Typography.Text>
-    );
-  return (
-    <List
-      size="small"
-      loading={auditQ.isLoading}
-      dataSource={events}
-      renderItem={(e) => (
-        <List.Item style={{ display: "block" }}>
-          <div style={{ fontSize: 13 }}>
-            <b>{e.login || "anonymous"}</b> {e.action}
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-3)" }}>
-            {e.detail} · {new Date(e.at).toLocaleString()}
-          </div>
-        </List.Item>
-      )}
-    />
-  );
-}
-
 // DeploymentChip identifies this installation (version + environment) so
 // support conversations and screenshots are unambiguous.
 function DeploymentChip() {

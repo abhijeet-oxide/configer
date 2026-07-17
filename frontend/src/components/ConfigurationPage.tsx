@@ -22,6 +22,7 @@ export const APP_SECTIONS = new Set([
   "files",
   "drift",
   "import",
+  "audit",
 ]);
 
 const TABS: { key: string; label: string }[] = [
@@ -37,6 +38,7 @@ const TABS: { key: string; label: string }[] = [
 // Lower-traffic surfaces fold under More so the strip stays calm.
 const MORE: { key: string; label: string }[] = [
   { key: "drift", label: "Repository changes" },
+  { key: "audit", label: "Audit" },
   { key: "import", label: "Import settings" },
 ];
 

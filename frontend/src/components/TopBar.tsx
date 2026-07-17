@@ -28,7 +28,7 @@ import MembersModal from "./MembersModal";
 // The application-scoped sections and their human tab labels, for the
 // breadcrumb (Applications / <name> / <tab>).
 const APP_BREADCRUMB_SECTIONS = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "audit",
 ]);
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
@@ -41,6 +41,7 @@ const TAB_LABELS: Record<string, string> = {
   instances: "Instances",
   drift: "Repository changes",
   import: "Import settings",
+  audit: "Audit",
 };
 
 function ellipsis(maxWidth: number): React.CSSProperties {

@@ -9,6 +9,7 @@ import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState } from "./ui";
 import { EmptyArt, InboxZeroArt } from "./illustrations";
+import UserAvatar from "./UserAvatar";
 
 // InboxView is the WORKSPACE-WIDE approvals inbox behind the rail's
 // Approvals entry: one queue of change requests across every application,
@@ -144,7 +145,17 @@ export default function InboxView() {
                 ellipsis: true,
                 render: (_v, r) => <span className="text-ink-2">{r.repoName}</span>,
               },
-              { title: "Created by", width: 130, ellipsis: true, render: (_v, r) => r.cr.author },
+              {
+                title: "Created by",
+                width: 150,
+                ellipsis: true,
+                render: (_v, r) => (
+                  <span className="inline-flex items-center gap-1.5">
+                    <UserAvatar name={r.cr.author} size={18} />
+                    {r.cr.author}
+                  </span>
+                ),
+              },
               { title: "Changes", width: 90, render: (_v, r) => r.cr.items?.length ?? 0 },
               {
                 title: "Status",

@@ -31,6 +31,7 @@ import { api, type Finding } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
 import { AllClearArt, StatePanel } from "./illustrations";
+import UserAvatar from "./UserAvatar";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
 // outside Configer: new config files, edits, deletions, renames and new
@@ -226,9 +227,10 @@ export default function RepoChangesView() {
                       <Typography.Text style={{ fontSize: 13 }} ellipsis>
                         {c.message}
                       </Typography.Text>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                        <UserAvatar name={c.author} size={16} />
                         {c.author} · {relTime(c.date)}
-                      </Typography.Text>
+                      </span>
                     </Space>
                   </Space>
                 </List.Item>

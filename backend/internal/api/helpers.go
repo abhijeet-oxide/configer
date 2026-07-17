@@ -14,10 +14,36 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 )
 
+// actorHolder is a per-request slot the author() helper fills with the
+// resolved actor, so the audit trail (which runs after the handler, without
+// the request body) records WHO acted instead of "anonymous". The hub
+// installs the holder into the request context before dispatch; because the
+// dispatched request shares that context, the handler's author() call and the
+// post-dispatch audit see the same holder.
+type actorHolder struct{ name string }
+
+type actorKeyT struct{}
+
+var actorKey actorKeyT
+
+func withActorHolder(ctx context.Context) (context.Context, *actorHolder) {
+	h := &actorHolder{}
+	return context.WithValue(ctx, actorKey, h), h
+}
+
 // author resolves who is making a change: the authenticated session user
 // always wins (never trust a body field when login is enabled); the request
-// body's author is the single-user-mode fallback.
+// body's author is the single-user-mode fallback. The resolved actor is also
+// recorded into the request's audit holder when one is installed.
 func author(r *http.Request, fallback string) string {
+	a := resolveAuthor(r, fallback)
+	if h, ok := r.Context().Value(actorKey).(*actorHolder); ok && h.name == "" {
+		h.name = a
+	}
+	return a
+}
+
+func resolveAuthor(r *http.Request, fallback string) string {
 	if u, ok := auth.UserFrom(r.Context()); ok {
 		if u.Name != "" && u.Email != "" {
 			return u.Name + " <" + u.Email + ">"

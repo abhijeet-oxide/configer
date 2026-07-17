@@ -37,6 +37,7 @@ import RepoChangesView from "./components/RepoChangesView";
 import WorkspaceView from "./components/WorkspaceView";
 import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
+import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { OfflineArt, StatePanel } from "./components/illustrations";
@@ -392,6 +393,7 @@ export default function App() {
     if (section === "compare") return <ComparePanel grid={grid} />;
     if (section === "instances") return <InstancesView grid={grid} />;
     if (section === "files") return <FilesView />;
+    if (section === "audit") return <AuditView />;
     return editorLayout();
   }
 

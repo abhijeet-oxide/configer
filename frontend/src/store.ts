@@ -6,7 +6,7 @@ import type { FontScale, Mode } from "./theme";
 // Sections that belong to ONE application (rendered as tabs on the
 // Configuration page). "overview" is the default tab and has no URL slug.
 const APP_SECTIONS_SET = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "audit",
 ]);
 // Section <-> URL slug. Overview is intentionally absent: it is the default
 // tab, so its path is just /application/<id> with no suffix.
@@ -19,6 +19,7 @@ const SECTION_TO_SLUG: Record<string, string> = {
   instances: "instances",
   drift: "repository-changes",
   import: "import",
+  audit: "audit",
 };
 const SLUG_TO_SECTION: Record<string, string> = Object.fromEntries(
   Object.entries(SECTION_TO_SLUG).map(([s, slug]) => [slug, s]),

@@ -199,7 +199,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
     gap: 10,
   };
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 14 }}>
       <Typography.Text strong style={{ fontSize: 15, textAlign: "center" }}>
         Where does the configuration live?
       </Typography.Text>

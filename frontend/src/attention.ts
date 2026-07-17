@@ -45,7 +45,7 @@ export function attentionOf(r: RepoSummary): AttentionItem[] {
     out.push({
       key: "setup",
       severity: "warn",
-      text: "Not set up yet",
+      text: "Setup incomplete",
       actionLabel: "Finish setup",
       section: "overview",
     });
@@ -61,7 +61,7 @@ export function attentionOf(r: RepoSummary): AttentionItem[] {
     out.push({
       key: "drafts",
       severity: "warn",
-      text: "Local edits haven't been submitted",
+      text: "Unsubmitted local edits",
       actionLabel: "Review edits",
       section: "config",
     });

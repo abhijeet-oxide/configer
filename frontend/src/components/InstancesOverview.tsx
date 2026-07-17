@@ -119,8 +119,8 @@ export default function InstancesOverview() {
         <div className="min-w-0 flex-1">
           <div className="text-xl font-semibold text-ink">Instances</div>
           <div className="text-[13px] text-ink-2">
-            Every deployment target across your applications
-            {all.length > 0 && ` - ${all.length} instance${all.length === 1 ? "" : "s"} in ${repos.length} application${repos.length === 1 ? "" : "s"}`}
+            All deployment targets across your applications
+            {all.length > 0 && `: ${all.length} instance${all.length === 1 ? "" : "s"} across ${repos.length} application${repos.length === 1 ? "" : "s"}`}
             .
           </div>
         </div>
@@ -163,11 +163,11 @@ export default function InstancesOverview() {
         <SectionCard>
           <EmptyState
             art={<EmptyArt size={104} />}
-            title={all.length === 0 ? "No instances yet" : "Nothing matches these filters"}
+            title={all.length === 0 ? "No instances" : "No matching instances"}
             hint={
               all.length === 0
-                ? "Connect an application and its per-instance folders appear here."
-                : "Clear the application, environment or search filter to see everything."
+                ? "Connect an application to manage its deployment targets."
+                : "Adjust the application, environment or search filter to see more."
             }
           />
         </SectionCard>

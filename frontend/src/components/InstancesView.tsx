@@ -179,8 +179,8 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>Instances</Typography.Title>
           <Typography.Text type="secondary">
-            The deployment targets of this application. Each is a column in the configuration grid and
-            is stored in <code>.configer/instances.yaml</code>.
+            The deployment targets for this application. Each appears as a column in the
+            configuration editor.
           </Typography.Text>
         </div>
         <Space wrap>

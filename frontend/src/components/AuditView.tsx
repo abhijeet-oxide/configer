@@ -75,7 +75,7 @@ export default function AuditView() {
       <div>
         <div className="text-xl font-semibold text-ink">Audit</div>
         <div className="text-[13px] text-ink-2">
-          Everything that changed this application, in plain language, newest first.
+          A record of every change made to this application, most recent first.
         </div>
       </div>
 

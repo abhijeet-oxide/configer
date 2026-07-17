@@ -229,7 +229,7 @@ export default function ApprovalsView() {
         <div className="min-w-0 flex-1">
           <div className="text-xl font-semibold text-ink">Approvals</div>
           <div className="text-[13px] text-ink-2">
-            Review and approve change requests with full context. Approving publishes to Git.
+            Review and approve change requests. Approval publishes the change to Git.
           </div>
         </div>
         {hasDraft && (
@@ -260,10 +260,10 @@ export default function ApprovalsView() {
         <SectionCard>
           <EmptyState
             art={filter === "waiting" ? <InboxZeroArt size={116} /> : <EmptyArt size={104} />}
-            title={filter === "waiting" ? "All caught up" : "Nothing here yet"}
+            title={filter === "waiting" ? "No pending approvals" : "No change requests"}
             hint={
               filter === "waiting"
-                ? "Nothing is waiting for approval. When someone submits a change request it appears here immediately."
+                ? "No change requests are awaiting approval in this application."
                 : "Change requests in this state will appear here."
             }
           />

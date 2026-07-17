@@ -356,8 +356,8 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
               Import settings
             </Typography.Title>
             <Typography.Text type="secondary">
-              Bring settings from your repository files under management. Scanning only reads files;
-              nothing is written to Git until you confirm at the end.
+              Bring settings from your repository files under management. Scanning is read-only; no
+              changes are committed until you confirm.
             </Typography.Text>
           </div>
           <Steps

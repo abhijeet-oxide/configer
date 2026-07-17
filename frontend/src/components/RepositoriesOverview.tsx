@@ -48,7 +48,7 @@ export default function RepositoriesOverview() {
       <div>
         <div className="text-xl font-semibold text-ink">Repositories</div>
         <div className="text-[13px] text-ink-2">
-          The Git repository behind each application, with its branch and sync state.
+          The Git repository for each application, with its branch and synchronization status.
         </div>
       </div>
 

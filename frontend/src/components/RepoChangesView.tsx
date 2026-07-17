@@ -148,9 +148,8 @@ export default function RepoChangesView() {
             Repository changes
           </Typography.Title>
           <Typography.Text type="secondary">
-            Anything committed directly on Git, outside Configer, shows up here so nothing happens
-            behind your back. Acting on an item is optional; the repository is already the source
-            of truth.
+            Changes committed to the repository outside Configer. Acting on an item is optional; the
+            repository remains the source of truth.
           </Typography.Text>
         </div>
         <Space>
@@ -214,10 +213,10 @@ export default function RepoChangesView() {
           <Card style={{ flex: "1 1 340px", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <StatePanel
               art={<InSyncArt size={120} />}
-              title="No drift; you're all caught up"
+              title="No repository changes detected"
               subtitle={
                 <>
-                  Nothing has been committed directly on Git since you last looked. New commits are
+                  No commits have been made to the repository outside Configer. New commits are
                   checked automatically
                   {data && (
                     <>

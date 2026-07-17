@@ -324,7 +324,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             {attention.length === 0 ? (
               <div className="flex items-center gap-2.5 py-2 text-ink-2">
                 <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
-                Nothing needs you right now.
+                No items require attention.
               </div>
             ) : (
               <div className="flex flex-col gap-2">

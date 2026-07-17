@@ -3,17 +3,17 @@ import {
   App as AntApp,
   Input,
   Modal,
-  Select,
   Table,
   Tag,
   Tooltip,
   Typography,
 } from "antd";
-import { SearchOutlined, LinkOutlined, FileTextOutlined } from "../icons";
+import { SearchOutlined, LinkOutlined } from "../icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, primaryBinding, type Grid, type Parameter, type ScanCandidate } from "../api";
 import { fmtValue } from "../rules";
+import FileExplorer from "./FileExplorer";
 
 // PathPicker is the interactive attach flow: the user never hunts for a
 // JSONPath or XPath. Pick a configuration file, see the settings it contains
@@ -96,58 +96,70 @@ export default function PathPicker({
       open={open}
       onCancel={onClose}
       footer={null}
-      width={760}
+      width={960}
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
         Pick the configuration file, then click the setting this parameter should live at; the
         path is mapped for you. One commit updates the catalog
         {isDesign ? ", and values you already set start rendering immediately." : "."}
       </Typography.Paragraph>
-      <div style={{ display: "flex", gap: 10, marginBottom: 10 }}>
-        <Select
-          style={{ flex: 1 }}
-          loading={scanQ.isLoading}
-          value={activeFile ?? undefined}
-          placeholder="Choose a configuration file"
-          showSearch
-          filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
-          onChange={(v) => setFile(v)}
-          options={files.map((f) => ({
-            value: f.file,
-            label: (
-              <span>
-                <FileTextOutlined style={{ opacity: 0.6, marginInlineEnd: 6 }} />
-                <span className="mono">{f.file}</span>
-                <span style={{ opacity: 0.5, fontSize: 12, marginInlineStart: 8 }}>
-                  {f.candidates?.length ?? 0} settings
-                </span>
-              </span>
-            ),
-          }))}
-        />
-        <Input
-          style={{ width: 220 }}
-          allowClear
-          prefix={<SearchOutlined />}
-          placeholder="Filter settings"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-      </div>
-      {!isDesign && (
-        <Alert
-          type="info"
-          showIcon
-          style={{ marginBottom: 10 }}
-          message={
-            <>
-              Currently attached to <span className="mono">{primaryBinding(param).file}</span> at{" "}
-              <span className="mono">{primaryBinding(param).path}</span>. Selecting a new spot re-points it.
-            </>
-          }
-        />
-      )}
-      <Table<ScanCandidate>
+      <div style={{ display: "flex", gap: 12, alignItems: "stretch" }}>
+        <div
+          style={{
+            width: 250,
+            flexShrink: 0,
+            border: "1px solid rgba(127,137,160,0.28)",
+            borderRadius: 10,
+            display: "flex",
+            flexDirection: "column",
+            maxHeight: 470,
+          }}
+        >
+          <div
+            style={{
+              padding: "7px 10px",
+              borderBottom: "1px solid rgba(127,137,160,0.18)",
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Configuration files
+          </div>
+          <div style={{ flex: 1, overflow: "auto", padding: "4px 2px" }}>
+            <FileExplorer
+              files={files.map((f) => f.file)}
+              selected={activeFile}
+              onSelect={(p) => setFile(p)}
+              meta={(p) => {
+                const n = files.find((f) => f.file === p)?.candidates?.length ?? 0;
+                return <span>{n}</span>;
+              }}
+            />
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Input
+            style={{ width: "100%", marginBottom: 10 }}
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="Filter settings"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+          />
+          {!isDesign && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 10 }}
+              message={
+                <>
+                  Currently attached to <span className="mono">{primaryBinding(param).file}</span> at{" "}
+                  <span className="mono">{primaryBinding(param).path}</span>. Selecting a new spot re-points it.
+                </>
+              }
+            />
+          )}
+          <Table<ScanCandidate>
         size="small"
         rowKey={(c) => `${c.file}|${c.path}`}
         loading={scanQ.isLoading}
@@ -207,7 +219,9 @@ export default function PathPicker({
             },
           },
         ]}
-      />
+          />
+        </div>
+      </div>
     </Modal>
   );
 }

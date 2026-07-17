@@ -14,7 +14,6 @@ import {
   Table,
   Tag,
   Tooltip,
-  Tree,
   Typography,
 } from "antd";
 import {
@@ -34,7 +33,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
-import { fileIcon, folderIcon } from "./fileIcons";
+import FileExplorer from "./FileExplorer";
 import InitProgress from "./InitProgress";
 import { OfflineArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 
@@ -73,55 +72,6 @@ function filesOfParam(p: Parameter, insts: Instance[]): string[] {
   const set = new Set<string>();
   for (const b of bindingsOf(p)) for (const f of filesOfBinding(b, insts)) set.add(f);
   return [...set];
-}
-
-interface FileNode {
-  key: string;
-  title: string;
-  isLeaf?: boolean;
-  children?: FileNode[];
-}
-
-// Build a folder/file tree from a flat list of repo-relative paths.
-function buildFileTree(files: string[]): { nodes: FileNode[]; fileKeys: string[]; folderKeys: string[] } {
-  const root: FileNode[] = [];
-  const fileKeys: string[] = [];
-  const folderKeys = new Set<string>();
-  for (const f of [...files].sort()) {
-    const parts = f.split("/");
-    let level = root;
-    let prefix = "";
-    parts.forEach((part, idx) => {
-      prefix = prefix ? `${prefix}/${part}` : part;
-      const isLeaf = idx === parts.length - 1;
-      let node = level.find((n) => n.key === prefix);
-      if (!node) {
-        node = isLeaf ? { key: prefix, title: part, isLeaf: true } : { key: prefix, title: part, children: [] };
-        level.push(node);
-      }
-      if (isLeaf) fileKeys.push(prefix);
-      else {
-        folderKeys.add(prefix);
-        level = node.children!;
-      }
-    });
-  }
-  return { nodes: root, fileKeys, folderKeys: [...folderKeys] };
-}
-
-function pruneTree(nodes: FileNode[], q: string): FileNode[] {
-  if (!q) return nodes;
-  const out: FileNode[] = [];
-  for (const n of nodes) {
-    if (n.key.toLowerCase().includes(q)) {
-      out.push(n); // a matching folder keeps its whole subtree
-      continue;
-    }
-    if (n.isLeaf) continue;
-    const kids = pruneTree(n.children ?? [], q);
-    if (kids.length) out.push({ ...n, children: kids });
-  }
-  return out;
 }
 
 // Pretty binding: the file (instance templates shown without the {folder}/
@@ -206,21 +156,15 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const allFiles = useMemo(() => {
     const s = new Set<string>();
     for (const files of filesByParam.values()) for (const f of files) s.add(f);
-    return [...s];
+    return [...s].sort();
   }, [filesByParam]);
-  const { nodes: treeNodes, fileKeys, folderKeys } = useMemo(() => buildFileTree(allFiles), [allFiles]);
 
-  // Ant Tree wants the fully-checked keys: every still-selected file, plus a
-  // folder only when ALL of its descendant files are selected (a partially
-  // selected folder is left out so the tree renders it indeterminate).
-  const checkedKeys = useMemo(() => {
-    const files = fileKeys.filter((k) => !uncheckedFiles.has(k));
-    const folders = folderKeys.filter((fk) => {
-      const kids = fileKeys.filter((f) => f.startsWith(fk + "/"));
-      return kids.length > 0 && kids.every((f) => !uncheckedFiles.has(f));
-    });
-    return [...files, ...folders];
-  }, [fileKeys, folderKeys, uncheckedFiles]);
+  // The explorer works with the checked set directly; uncheckedFiles stays
+  // the source of truth so a rescan that finds new files keeps them selected.
+  const checkedFiles = useMemo(
+    () => new Set(allFiles.filter((f) => !uncheckedFiles.has(f))),
+    [allFiles, uncheckedFiles],
+  );
 
   // A parameter survives if at least one of its files is still selected.
   const includedByFiles = (p: Parameter): boolean => {
@@ -317,8 +261,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         : true;
 
   // --- tree interactions ---
-  const treeData = pruneTree(treeNodes, treeQ.trim().toLowerCase());
-  const setAllFiles = (checked: boolean) => setUncheckedFiles(checked ? new Set() : new Set(fileKeys));
+  const treeNeedle = treeQ.trim().toLowerCase();
+  const shownFiles = treeNeedle ? allFiles.filter((f) => f.toLowerCase().includes(treeNeedle)) : allFiles;
+  const setAllFiles = (checked: boolean) => setUncheckedFiles(checked ? new Set() : new Set(allFiles));
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
@@ -449,7 +394,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               >
                 <RightOutlined style={{ fontSize: 11, opacity: 0.7 }} />
                 <span style={{ writingMode: "vertical-rl", fontSize: 12, opacity: 0.7 }}>
-                  Files ({fileKeys.length - uncheckedFiles.size}/{fileKeys.length})
+                  Files ({checkedFiles.size}/{allFiles.length})
                 </span>
               </div>
             </Tooltip>
@@ -482,28 +427,19 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                 {allFiles.length === 0 ? (
                   <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No files detected." />
                 ) : (
-                  <Tree
-                    className="compact-tree"
-                    checkable
-                    selectable={false}
-                    defaultExpandAll
-                    treeData={treeData}
-                    checkedKeys={checkedKeys}
-                    {...(treeQ ? { expandedKeys: folderKeys, autoExpandParent: true } : {})}
-                    showIcon
-                    icon={(node) => {
-                      const n = node as unknown as FileNode;
-                      return n.isLeaf ? fileIcon(n.title) : folderIcon();
-                    }}
-                    onCheck={(checked) => {
-                      const set = new Set(checked as React.Key[]);
-                      setUncheckedFiles(new Set(fileKeys.filter((k) => !set.has(k))));
+                  <FileExplorer
+                    files={shownFiles}
+                    checked={checkedFiles}
+                    onCheck={(next) => {
+                      // Only the visible files were toggleable; carry the
+                      // hidden ones' state over unchanged.
+                      setUncheckedFiles(new Set(allFiles.filter((f) => !next.has(f))));
                     }}
                   />
                 )}
               </div>
               <div style={{ padding: "6px 10px", borderTop: "1px solid rgba(127,137,160,0.18)", fontSize: 12, opacity: 0.7 }}>
-                {fileKeys.length - uncheckedFiles.size} of {fileKeys.length} files kept
+                {checkedFiles.size} of {allFiles.length} files kept
               </div>
             </div>
           )}

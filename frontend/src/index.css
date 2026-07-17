@@ -619,6 +619,23 @@ body {
   gap: 4px;
   flex-shrink: 0;
 }
+/* Checkable mode (wizards): a compact tri-state checkbox per row. */
+.fx-check {
+  flex-shrink: 0;
+}
+.fx-check .ant-checkbox-inner {
+  width: 14px;
+  height: 14px;
+}
+/* Right-aligned per-file annotation (counts, tags) in wizard trees. */
+.fx-meta {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
 .fx-dot {
   width: 6px;
   height: 6px;

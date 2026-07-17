@@ -105,7 +105,7 @@ type remoteWorkspace struct {
 
 func (w *remoteWorkspace) Dir() string { return w.dir }
 
-func (w *remoteWorkspace) Commit(ctx context.Context, message string) (string, error) {
+func (w *remoteWorkspace) Commit(ctx context.Context, message string, author Author) (string, error) {
 	changed, deletes, err := diffAgainst(w.dir, w.baseline)
 	if err != nil {
 		return "", err
@@ -113,7 +113,7 @@ func (w *remoteWorkspace) Commit(ctx context.Context, message string) (string, e
 	if len(changed) == 0 && len(deletes) == 0 {
 		return "", fmt.Errorf("no changes to commit")
 	}
-	return w.client.CommitPaths(ctx, w.branch, w.baseSHA, message, w.dir, changed, deletes)
+	return w.client.CommitPathsAs(ctx, w.branch, w.baseSHA, message, w.dir, changed, deletes, author.Name, author.Email)
 }
 
 func (w *remoteWorkspace) Close() { _ = os.RemoveAll(w.dir) }
@@ -144,7 +144,7 @@ func (b *RemoteBackend) MergeBranch(ctx context.Context, target, crBranch, messa
 	return err
 }
 
-func (b *RemoteBackend) CommitWorking(ctx context.Context, message string) (string, bool, error) {
+func (b *RemoteBackend) CommitWorking(ctx context.Context, message string, author Author) (string, bool, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	changed, deletes, err := diffAgainst(b.root, b.baseline)
@@ -154,7 +154,7 @@ func (b *RemoteBackend) CommitWorking(ctx context.Context, message string) (stri
 	if len(changed) == 0 && len(deletes) == 0 {
 		return "", false, nil
 	}
-	sha, err := b.client.CommitPaths(ctx, b.branch, b.baseSHA, message, b.root, changed, deletes)
+	sha, err := b.client.CommitPathsAs(ctx, b.branch, b.baseSHA, message, b.root, changed, deletes, author.Name, author.Email)
 	if err != nil {
 		return "", false, err
 	}

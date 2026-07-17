@@ -110,7 +110,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *cr
 		Registry:    reg,
 		Backend:     backend,
 		Store:       store,
-		Changes:     &changeset.Service{Backend: backend, Store: store},
+		Changes:     &changeset.Service{Backend: backend, Store: store, Bot: bot()},
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
 	}

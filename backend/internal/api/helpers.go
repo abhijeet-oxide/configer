@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
+	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 )
 
 // author resolves who is making a change: the authenticated session user
@@ -32,15 +33,54 @@ func author(r *http.Request, fallback string) string {
 	return fallback
 }
 
+// identity resolves the git author for a UI-made commit: the authenticated
+// session user (the identity behind the Git approval) with their real email,
+// falling back to a GitHub noreply address for OAuth users without a public
+// email. In single-user mode the request body's author string becomes the
+// author with a clearly synthetic address; an unknown user leaves the zero
+// Author, keeping the machine identity as author.
+func identity(r *http.Request, fallback string) repobackend.Author {
+	if u, ok := auth.UserFrom(r.Context()); ok {
+		name := u.Name
+		if name == "" {
+			name = u.Login
+		}
+		email := u.Email
+		if email == "" {
+			email = u.Login + "@users.noreply.github.com"
+		}
+		return repobackend.Author{Name: name, Email: email}
+	}
+	if fallback == "" || fallback == "anonymous" {
+		return repobackend.Author{}
+	}
+	return repobackend.Author{Name: fallback, Email: slugify(fallback) + "@users.noreply.configer.local"}
+}
+
+// bot is the machine identity (committer) used for co-author credit.
+func bot() repobackend.Author {
+	return repobackend.Author{
+		Name:  getenv("CONFIGER_GIT_NAME", "Configer Bot"),
+		Email: getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost"),
+	}
+}
+
 // commitCatalogChange commits a .configer metadata operation (and any
 // accompanying real-file edits, e.g. a retired parameter's keys) directly
-// onto the working branch with attribution, then writes the response.
-func (s *Server) commitCatalogChange(w http.ResponseWriter, title, author string, response any) {
-	if author == "" {
-		author = "anonymous"
+// onto the working branch, then writes the response. The session user is the
+// git author (Changed-by trailer as before); the machine identity commits
+// and takes co-author credit.
+func (s *Server) commitCatalogChange(w http.ResponseWriter, r *http.Request, title, authorFallback string, response any) {
+	who := author(r, authorFallback)
+	if who == "" {
+		who = "anonymous"
 	}
-	msg := title + "\n\nChanged-by: " + author + "\n"
-	if _, _, err := s.Backend.CommitWorking(context.Background(), msg); err != nil {
+	ident := identity(r, authorFallback)
+	msg := title + "\n\nChanged-by: " + who + "\n"
+	if !ident.Empty() {
+		msg += "Co-authored-by: " + bot().Sig() + "\n"
+	}
+	if _, _, err := s.Backend.CommitWorking(context.Background(), msg, ident); err != nil {
 		writeErr(w, err)
 		return
 	}

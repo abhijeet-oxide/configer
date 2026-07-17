@@ -10,7 +10,8 @@ import {
   Typography,
   type InputRef,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined } from "../icons";
+import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined } from "../icons";
+import { toggleThemeWithReveal } from "../themeTransition";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
@@ -54,7 +55,7 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 }
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { search, setSearch, setSection, repoId, section } = useUI();
+  const { search, setSearch, setSection, repoId, section, mode } = useUI();
   const switchRepo = useSwitchRepo();
   const searchRef = useRef<InputRef>(null);
 
@@ -182,6 +183,15 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             View in Git
           </Button>
         )}
+        <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+          <Button
+            size="small"
+            type="text"
+            aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
+            onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+          />
+        </Tooltip>
         <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
           <Badge count={awaiting} size="small" color="var(--c-review)">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />

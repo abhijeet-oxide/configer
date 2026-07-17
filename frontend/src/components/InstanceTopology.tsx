@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ApartmentOutlined, FileTextOutlined } from "@ant-design/icons";
+import { ApartmentOutlined, FileTextOutlined } from "../icons";
 import { bindingsOf, type Grid } from "../api";
 import { useUI } from "../store";
 import { envHex } from "../theme";

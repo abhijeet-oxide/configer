@@ -5,7 +5,7 @@ import {
   CloseCircleFilled,
   CheckCircleFilled,
   InfoCircleFilled,
-} from "@ant-design/icons";
+} from "../../icons";
 
 // AttentionCard is one "Needs your attention" row from the reference: a
 // severity icon, a title with a supporting line, and a right-aligned action.

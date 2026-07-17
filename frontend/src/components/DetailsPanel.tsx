@@ -1,5 +1,5 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined } from "@ant-design/icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";

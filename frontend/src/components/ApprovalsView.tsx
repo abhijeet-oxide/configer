@@ -18,7 +18,7 @@ import {
   BranchesOutlined,
   SendOutlined,
   UserOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeRequest, type ChangeState } from "../api";

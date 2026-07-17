@@ -11,7 +11,7 @@ import {
   FolderOpenFilled,
   SettingOutlined,
   LockOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 
 interface IconSpec {
   icon: React.ReactNode;

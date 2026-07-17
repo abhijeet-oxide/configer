@@ -17,8 +17,8 @@ import {
   LinkOutlined,
   EyeOutlined,
   RightOutlined,
-} from "@ant-design/icons";
-import { EditOutlined } from "@ant-design/icons";
+} from "../icons";
+import { EditOutlined } from "../icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, structuralLabel, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";

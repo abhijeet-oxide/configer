@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Tooltip } from "antd";
-import { BranchesOutlined, ClusterOutlined } from "@ant-design/icons";
+import { BranchesOutlined, ClusterOutlined } from "../../icons";
 import { api } from "../../api";
 import { useUI } from "../../store";
 import { StatusPill, type PillTone } from "./StatusPill";

@@ -20,6 +20,34 @@ body {
   display: inline-block;
 }
 
+/* Base .anticon layout for the icon registry (src/icons.tsx). The registry
+   renders span.anticon wrappers itself, and AntD spacing rules key off this
+   class, so define the baseline here instead of relying on @ant-design/icons
+   injecting it at runtime. */
+.anticon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  font-style: normal;
+  line-height: 0;
+  text-align: center;
+  text-transform: none;
+  vertical-align: -0.125em;
+}
+.icon-spin {
+  animation: icon-spin 1s linear infinite;
+}
+@keyframes icon-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .icon-spin {
+    animation-duration: 2.5s;
+  }
+}
+
 /* Semantic accent variables (--c-*) live in tokens.css together with the
    full design token set: brand, surfaces, spacing, radius, elevation, motion. */
 

@@ -25,7 +25,7 @@ import {
   TableOutlined,
   EyeOutlined,
   HistoryOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding } from "../api";

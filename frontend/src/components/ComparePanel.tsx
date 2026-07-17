@@ -1,5 +1,5 @@
 import { Select, Segmented, Space, Table, Input } from "antd";
-import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined, DiffOutlined } from "@ant-design/icons";
+import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined, DiffOutlined } from "../icons";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";

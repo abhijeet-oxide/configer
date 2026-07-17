@@ -1,5 +1,5 @@
 import { Button, Form, Input, Modal, Space, Typography, App as AntApp } from "antd";
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import { DeleteOutlined, PlusOutlined } from "../icons";
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";

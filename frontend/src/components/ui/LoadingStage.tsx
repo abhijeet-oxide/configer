@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { LoadingOutlined } from "@ant-design/icons";
+import { LoadingOutlined } from "../../icons";
 
 // LoadingStage makes waiting informative: the existing skeleton keeps the
 // page's shape while a stage line says what is actually happening

@@ -8,7 +8,7 @@ import {
   CloudSyncOutlined,
   LeftOutlined,
   RightOutlined,
-} from "@ant-design/icons";
+} from "./icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";

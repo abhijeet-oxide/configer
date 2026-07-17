@@ -30,7 +30,7 @@ import {
   UpOutlined,
   DownOutlined,
   MoreOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";

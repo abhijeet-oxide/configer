@@ -5,7 +5,7 @@
 // - status colors are reserved for state and always paired with icon + label;
 // - thin marks, 2px gaps between fills, one axis, no dual scales.
 import { Tooltip, Typography } from "antd";
-import { CheckCircleFilled, WarningFilled, CloseCircleFilled } from "@ant-design/icons";
+import { CheckCircleFilled, WarningFilled, CloseCircleFilled } from "../icons";
 import { useUI } from "../store";
 
 const CAT_LIGHT = ["#2a78d6", "#1baf7a", "#eda100", "#008300", "#4a3aa7", "#e34948", "#e87ba4", "#eb6834"];

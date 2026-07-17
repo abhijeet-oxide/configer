@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Button, Popconfirm, Tooltip } from "antd";
-import { PlusCircleOutlined, MinusCircleOutlined, RightOutlined } from "@ant-design/icons";
+import { PlusCircleOutlined, MinusCircleOutlined, RightOutlined } from "../icons";
 import { vsFileIcon, vsFolderIcon } from "./vsIcons";
 
 // FileExplorer is a hand-built, VS Code-grade file tree: 22px rows, compact

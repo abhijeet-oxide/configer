@@ -4,7 +4,7 @@ import {
 } from "antd";
 import {
   PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";

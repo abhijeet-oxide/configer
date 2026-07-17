@@ -1,4 +1,4 @@
-import { PlusOutlined, AppstoreOutlined, CheckCircleFilled } from "@ant-design/icons";
+import { PlusOutlined, AppstoreOutlined, CheckCircleFilled } from "../icons";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";

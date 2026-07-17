@@ -8,7 +8,7 @@ import {
   PullRequestOutlined,
   HistoryOutlined,
   UserOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";

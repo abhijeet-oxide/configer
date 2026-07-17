@@ -9,7 +9,7 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { SearchOutlined, LinkOutlined, FileTextOutlined } from "@ant-design/icons";
+import { SearchOutlined, LinkOutlined, FileTextOutlined } from "../icons";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, primaryBinding, type Grid, type Parameter, type ScanCandidate } from "../api";

@@ -1,5 +1,5 @@
 import { Card, Input, Tag, Typography, Empty } from "antd";
-import { SearchOutlined } from "@ant-design/icons";
+import { SearchOutlined } from "../icons";
 import { useMemo } from "react";
 import type { Grid, Row } from "../api";
 import { fmtValue } from "../rules";

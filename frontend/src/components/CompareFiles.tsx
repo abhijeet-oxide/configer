@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Segmented } from "antd";
-import { FileOutlined } from "@ant-design/icons";
+import { FileOutlined } from "../icons";
 import { api, type Grid } from "../api";
 import { useUI } from "../store";
 import { vsFileIcon } from "./vsIcons";

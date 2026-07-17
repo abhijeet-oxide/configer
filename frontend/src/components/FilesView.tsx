@@ -16,7 +16,7 @@ import {
   FolderAddOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";

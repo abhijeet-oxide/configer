@@ -31,7 +31,7 @@ import {
   HddOutlined,
   BranchesOutlined,
   PlusOutlined,
-} from "@ant-design/icons";
+} from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";

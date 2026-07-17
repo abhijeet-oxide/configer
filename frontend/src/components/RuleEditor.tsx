@@ -8,7 +8,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { SaveOutlined } from "@ant-design/icons";
+import { SaveOutlined } from "../icons";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Parameter, type Validation } from "../api";

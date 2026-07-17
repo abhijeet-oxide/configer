@@ -1052,7 +1052,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             onChange={onViewChange}
             showSearch
             optionFilterProp="label"
-            style={{ width: 210, flexShrink: 0 }}
+            style={{ width: 158, flexShrink: 0 }}
             options={[
               { value: "", label: "All instances" },
               ...(environments.length
@@ -1119,7 +1119,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         )}
         {/* Search grows to fill the gap, keeping the actions flush right, and
             shrinks first (down to its minimum) before anything folds. */}
-        <Space.Compact size="small" style={{ flex: "1 1 auto", minWidth: 130, maxWidth: 300 }}>
+        <Space.Compact size="small" style={{ flex: "1 1 auto", minWidth: 180, maxWidth: 460 }}>
           <Select
             size="small"
             value={searchScope}

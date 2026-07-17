@@ -197,9 +197,9 @@ export default function AppCard({
       {/* Footer actions: info opens the side panel; the arrow (like the card
           itself) goes straight inside the application. */}
       <div className="mt-auto flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-        <Tooltip title="Details: health, environments, recent activity">
-          <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails} aria-label="Application details" />
-        </Tooltip>
+        <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails}>
+          Details
+        </Button>
         <Button size="small" type="primary" ghost={!r.needsSetup} onClick={onOpen}>
           {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: 10 }} />
         </Button>

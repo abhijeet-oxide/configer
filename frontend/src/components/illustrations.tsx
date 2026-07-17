@@ -175,6 +175,47 @@ export function InboxZeroArt({ size = 132 }: { size?: number }) {
   );
 }
 
+// InSyncArt: a git graph whose two branches have converged, with a soft check
+// where they meet - Configer and the repository are in step, nothing has
+// drifted. A friendlier "all caught up" than a security shield.
+export function InSyncArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="In sync" className="ill">
+      <defs>
+        <linearGradient id="sync-ok" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={OK2} />
+          <stop offset="1" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle cx="66" cy="66" r="50" fill={OK} opacity="0.07" className="ill-ripple" />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 66px" }}>
+        {/* the trunk */}
+        <line x1="42" y1="34" x2="42" y2="98" stroke={BLUE2} strokeWidth="3" strokeLinecap="round" opacity="0.55" />
+        {/* a branch that leaves and merges back */}
+        <path d="M42 52 C42 44, 84 44, 84 62 C84 80, 42 80, 42 88" fill="none" stroke={BLUE} strokeWidth="3" strokeLinecap="round" opacity="0.5" />
+        {[34, 70, 98].map((cy) => (
+          <circle key={cy} cx="42" cy={cy} r="5.5" fill="#fff" stroke={BLUE} strokeWidth="2.5" />
+        ))}
+        <circle cx="84" cy="62" r="5.5" fill="#fff" stroke={BLUE} strokeWidth="2.5" />
+        {/* the convergence check */}
+        <circle cx="84" cy="62" r="15" fill="#fff" stroke="url(#sync-ok)" strokeWidth="3" className="ill-pop" style={{ transformOrigin: "84px 62px" }} />
+        <path
+          d="M77 62.5 L82 67.5 L91.5 56.5"
+          fill="none"
+          stroke="url(#sync-ok)"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="ill-draw"
+          pathLength={1}
+        />
+      </g>
+      <circle cx="104" cy="40" r="3" fill={OK2} className="ill-spark" style={{ animationDelay: "0.5s" }} />
+      <circle cx="28" cy="76" r="2.5" fill={BLUE2} className="ill-spark" style={{ animationDelay: "0.9s" }} />
+    </svg>
+  );
+}
+
 // OfflineArt: a cloud with a gently pulsing dashed link - the service is
 // briefly unreachable, not broken.
 export function OfflineArt({ size = 132 }: { size?: number }) {

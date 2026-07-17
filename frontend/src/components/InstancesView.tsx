@@ -174,16 +174,16 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   if (regQ.isLoading) return <TableSkeleton />;
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "20px 28px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 }}>
-        <div>
+    <div className="view-pad" style={{ height: "100%", overflow: "auto" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 240px", minWidth: 0 }}>
           <Typography.Title level={4} style={{ margin: 0 }}>Instances</Typography.Title>
           <Typography.Text type="secondary">
             The deployment targets of this application. Each is a column in the configuration grid and
             is stored in <code>.configer/instances.yaml</code>.
           </Typography.Text>
         </div>
-        <Space>
+        <Space wrap>
           <Segmented
             value={view}
             onChange={(v) => setView(v as typeof view)}
@@ -217,6 +217,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         size="middle"
         dataSource={shown}
         pagination={false}
+        scroll={{ x: "max-content" }}
         locale={{ emptyText: "No instances. Add one to start managing its configuration." }}
         columns={[
           { title: "Instance", dataIndex: "name", render: (n) => <b>{n}</b> },

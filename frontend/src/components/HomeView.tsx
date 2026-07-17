@@ -79,17 +79,14 @@ export default function HomeView() {
           </SectionCard>
         ) : (
           <Stagger>
-            {/* Attention + system health, side by side like the reference. */}
-            <StaggerItem className="mb-5 grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))" }}>
-              <SectionCard title="Needs your attention">
-                {attention.length === 0 ? (
-                  <div className="flex items-center gap-2.5 py-2 text-ink-2">
-                    <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
-                    Nothing needs you right now.
-                  </div>
-                ) : (
+            {/* Attention is shown ONLY when something actually needs the
+                user; a clean estate simply omits the card (no "nothing needs
+                you" noise) and leads with system health. */}
+            {attention.length > 0 && (
+              <StaggerItem className="mb-5">
+                <SectionCard title="Needs your attention">
                   <div className="flex flex-col gap-2">
-                    {attention.slice(0, 4).map(({ r, it }) => (
+                    {attention.slice(0, 5).map(({ r, it }) => (
                       <AttentionCard
                         key={`${r.id}-${it.key}`}
                         severity={it.severity}
@@ -101,9 +98,11 @@ export default function HomeView() {
                       />
                     ))}
                   </div>
-                )}
-              </SectionCard>
+                </SectionCard>
+              </StaggerItem>
+            )}
 
+            <StaggerItem className="mb-5">
               <SectionCard title="System health">
                 <div className="mb-3 flex items-center gap-2.5">
                   {attention.length === 0 ? (
@@ -119,7 +118,7 @@ export default function HomeView() {
                       <div className="text-[13px] font-semibold">
                         {attention.length} item{attention.length === 1 ? "" : "s"} to look at
                       </div>
-                      <div className="text-[11px] text-ink-3">Listed on the left, each with its next step</div>
+                      <div className="text-[11px] text-ink-3">Listed above, each with its next step</div>
                     </div>
                   )}
                 </div>

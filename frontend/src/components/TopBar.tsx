@@ -96,6 +96,10 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                 ? [{ title: <span>Approvals</span> }]
                 : section === "estate"
                 ? [{ title: <span>Instances</span> }]
+                : section === "changelog"
+                ? [{ title: <span>Changes</span> }]
+                : section === "repos"
+                ? [{ title: <span>Repositories</span> }]
                 : [
                     {
                       title: (

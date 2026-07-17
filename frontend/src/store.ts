@@ -50,6 +50,9 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
   if (segs[0] === "approvals") return { repoId: null, section: "inbox", param, inst };
   // Workspace-wide instances estate.
   if (segs[0] === "instances") return { repoId: null, section: "estate", param, inst };
+  // Workspace-wide change history and repository list.
+  if (segs[0] === "changes") return { repoId: null, section: "changelog", param, inst };
+  if (segs[0] === "repositories") return { repoId: null, section: "repos", param, inst };
   // The operational start page; the root path canonicalizes here.
   return { repoId: null, section: "home", param, inst };
 }
@@ -62,6 +65,8 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
 //   /applications                the applications collection (alias: /overview)
 //   /approvals                   workspace-wide approvals inbox
 //   /instances                   workspace-wide instances estate
+//   /changes                     workspace-wide change history
+//   /repositories                workspace-wide repository list
 //   /application/<id>            one application, Overview (the default tab)
 //   /application/<id>/<tab>      a specific tab (editor, files, compare, ...)
 //   /plugins                     the plugins admin surface
@@ -277,6 +282,8 @@ function pathFor(s: UIState): string {
   if (section === "home") return `/home${qs}`;
   if (section === "inbox") return `/approvals${qs}`;
   if (section === "estate") return `/instances${qs}`;
+  if (section === "changelog") return `/changes${qs}`;
+  if (section === "repos") return `/repositories${qs}`;
   // Collection level: the application never appears in the URL.
   if (section === "workspace" || !s.repoId) return `/applications${qs}`;
   if (APP_SECTIONS_SET.has(section)) {

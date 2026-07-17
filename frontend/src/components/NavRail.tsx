@@ -46,8 +46,10 @@ function railKey(section: string): string {
       return "instances";
     case "changes":
     case "drafts":
+    case "changelog":
       return "changes";
     case "drift":
+    case "repos":
       return "repositories";
     case "approvals":
     case "inbox":
@@ -105,23 +107,22 @@ export default function NavRail({
 }) {
   const { section, setSection, repoId, mode, setMode, fontScale, setFontScale } = useUI();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false, enabled: !!repoId });
   const [auditOpen, setAuditOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
 
   const repos = wsQ.data?.repos ?? [];
-  const activeRepo = repos.find((r) => r.id === repoId);
   const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
-  const activeChanges = (activeRepo?.drafts || 0) + (activeRepo?.openChanges || 0);
-  const findings = findingsQ.data?.findings?.length ?? 0;
+  // Workspace-wide count of change requests in flight (drafts + open) for the
+  // global Changes badge.
+  const changesInFlight = repos.reduce((n, r) => n + (r.drafts || 0) + (r.openChanges || 0), 0);
   const activeKey = railKey(section);
 
   const items: RailItem[] = [
     { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
     { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
     { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "estate" },
-    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changes", needsApp: true, badge: activeChanges },
-    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "drift", needsApp: true, badge: findings },
+    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changelog", badge: changesInFlight },
+    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "repos" },
     { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },
     { key: "audit", label: "Audit", icon: <FileProtectOutlined /> },
   ];

@@ -26,6 +26,8 @@ import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import InboxView from "./components/InboxView";
 import InstancesOverview from "./components/InstancesOverview";
+import ChangesOverview from "./components/ChangesOverview";
+import RepositoriesOverview from "./components/RepositoriesOverview";
 import DashboardView from "./components/DashboardView";
 import ConfigurationPage, { APP_SECTIONS } from "./components/ConfigurationPage";
 import ImportWizard from "./components/ImportWizard";
@@ -416,6 +418,18 @@ export default function App() {
       return (
         <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
           <InstancesOverview />
+        </div>
+      );
+    if (section === "changelog")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <ChangesOverview />
+        </div>
+      );
+    if (section === "repos")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <RepositoriesOverview />
         </div>
       );
     // A repository without a .configer application goes through onboarding

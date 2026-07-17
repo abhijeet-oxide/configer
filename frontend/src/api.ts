@@ -699,6 +699,10 @@ export const api = {
     get<ChangeRequest[]>(`/repos/${encodeURIComponent(repoId)}/changes`),
   instancesOf: (repoId: string) =>
     get<{ instances: Instance[] | null }>(`/repos/${encodeURIComponent(repoId)}/instances`),
+  findingsOf: (repoId: string) =>
+    get<FindingsResult>(`/repos/${encodeURIComponent(repoId)}/repo/findings`),
+  repoStatusOf: (repoId: string) =>
+    get<RepoStatus>(`/repos/${encodeURIComponent(repoId)}/repo/status`),
   draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
   change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
   submitChange: (

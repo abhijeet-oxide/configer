@@ -239,7 +239,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
 
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
-      <Stagger className="mx-auto flex max-w-[1240px] flex-col gap-4">
+      <Stagger className="flex flex-col gap-4">
         {/* Identity row: name + persistent context, actions on the right. */}
         <StaggerItem className="flex flex-wrap items-center gap-3">
           <span className="text-xl font-semibold text-ink">{grid.project}</span>
@@ -324,7 +324,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             {attention.length === 0 ? (
               <div className="flex items-center gap-2.5 py-2 text-ink-2">
                 <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
-                Nothing needs you right now.
+                No items require attention.
               </div>
             ) : (
               <div className="flex flex-col gap-2">

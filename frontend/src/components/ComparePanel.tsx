@@ -7,7 +7,7 @@ import { DiffMiniBar } from "./charts";
 import { useUI } from "../store";
 import { CompareSkeleton } from "./Skeletons";
 import { ChangeChip, EmptyState, LoadingStage } from "./ui";
-import { AllClearArt, EmptyArt } from "./illustrations";
+import { InSyncArt, EmptyArt } from "./illustrations";
 import CompareFiles, { COMMITTED } from "./CompareFiles";
 
 // Compare view: pick two sides, each an instance at a version (working
@@ -283,7 +283,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
               <LoadingStage stage="Computing configuration differences…" skeleton={<CompareSkeleton toolbar={false} />} />
             ) : rows.length === 0 ? (
               <EmptyState
-                art={pill === "changed" ? <AllClearArt size={104} /> : <EmptyArt size={96} />}
+                art={pill === "changed" ? <InSyncArt size={112} /> : <EmptyArt size={96} />}
                 title={pill === "changed" ? "No differences between these sides." : "Nothing matches."}
                 hint={
                   pill === "changed" ? "Every parameter resolves to the same value on both sides." : undefined

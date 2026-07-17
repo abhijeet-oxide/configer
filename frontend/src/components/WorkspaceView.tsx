@@ -99,7 +99,7 @@ export default function WorkspaceView() {
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
       <PageHeader
         title="Applications"
-        description="Every configuration you manage, straight from Git. Click a card to open it."
+        description="The applications you manage. Select one to open it."
         actions={
           <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
             New application
@@ -116,7 +116,7 @@ export default function WorkspaceView() {
           <EmptyState
             icon={<AppstoreOutlined />}
             title="Connect your first application"
-            hint="Point Configer at a Git repository or a local folder and it becomes a managed application: parameters, instances, drafts, reviews."
+            hint="Connect a Git repository or local folder to begin managing its configuration."
             actionLabel="New application"
             onAction={() => setWizardOpen(true)}
           />

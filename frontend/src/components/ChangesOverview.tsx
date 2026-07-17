@@ -80,7 +80,7 @@ export default function ChangesOverview() {
         <div className="min-w-0 flex-1">
           <div className="text-xl font-semibold text-ink">Changes</div>
           <div className="text-[13px] text-ink-2">
-            Every change request across your applications. Open one to see its release history.
+            All change requests across your applications. Select one to view its release history.
           </div>
         </div>
         <Select
@@ -109,11 +109,11 @@ export default function ChangesOverview() {
         <SectionCard>
           <EmptyState
             art={<EmptyArt size={104} />}
-            title="No change requests yet"
+            title="No change requests"
             hint={
               app
                 ? "This application has no change requests in this state."
-                : "Edit some cells in an application's editor to start a draft; it appears here immediately."
+                : "Edit a value in an application's editor to create a draft change request."
             }
           />
         </SectionCard>

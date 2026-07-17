@@ -4,7 +4,7 @@ import { Segmented } from "antd";
 import { api, sameContent, type Grid } from "../api";
 import { useUI } from "../store";
 import { vsFileIcon } from "./vsIcons";
-import { AllClearArt, EmptyArt } from "./illustrations";
+import { InSyncArt, EmptyArt } from "./illustrations";
 import { FilesSkeleton } from "./Skeletons";
 import { ChangeChip, EmptyState, LoadingStage, type ChangeKind } from "./ui";
 
@@ -144,7 +144,7 @@ export default function CompareFiles({
       </div>
       {visible.length === 0 ? (
         <EmptyState
-          art={pill === "changed" ? <AllClearArt size={104} /> : <EmptyArt size={96} />}
+          art={pill === "changed" ? <InSyncArt size={112} /> : <EmptyArt size={96} />}
           title={pill === "changed" ? "No file differences between these sides." : "No files to show."}
           hint={pill === "changed" ? "The rendered repository content is identical." : undefined}
         />

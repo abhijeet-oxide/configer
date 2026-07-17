@@ -8,7 +8,6 @@ import {
   Modal,
   Select,
   Space,
-  Steps,
   Tag,
   Tooltip,
   Typography,
@@ -33,6 +32,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { relTime } from "./DashboardView";
+import { Stepper } from "./ui";
 import { InlineListSkeleton } from "./Skeletons";
 
 // NewApplicationWizard is the seamless "New application" flow. It opens on a
@@ -105,13 +105,13 @@ export default function NewApplicationWizard({
   const stepItems =
     source === "local"
       ? [
-          { title: "Source", icon: <FolderOpenOutlined /> },
-          { title: "Folder, name & create", icon: <ThunderboltOutlined /> },
+          { label: "Source", icon: <FolderOpenOutlined /> },
+          { label: "Create", icon: <ThunderboltOutlined /> },
         ]
       : [
-          { title: "Source", icon: <FolderOpenOutlined /> },
-          { title: "Repository", icon: <GithubOutlined /> },
-          { title: "Branch, name & create", icon: <ThunderboltOutlined /> },
+          { label: "Source", icon: <FolderOpenOutlined /> },
+          { label: "Repository", icon: <GithubOutlined /> },
+          { label: "Create", icon: <ThunderboltOutlined /> },
         ];
   const currentStep = source === null ? 0 : source === "local" ? 1 : 1 + step;
 
@@ -128,11 +128,12 @@ export default function NewApplicationWizard({
       destroyOnClose
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
-        An application manages the configuration living in one Git repository - remote or a
-        folder on this machine. Configer scans it for settings; nothing is written until you
-        say so.
+        An application manages the configuration in one Git repository, remote or a folder on this
+        machine. Configer scans it for settings; no changes are made until you confirm.
       </Typography.Paragraph>
-      <Steps size="small" current={currentStep} style={{ margin: "8px 0 20px" }} items={stepItems} />
+      <div className="mb-5 mt-2 rounded-card-lg bg-surface-2 px-4 py-3">
+        <Stepper current={currentStep} steps={stepItems} />
+      </div>
       {/* fixed floor so the dialog chrome and buttons never jump between steps */}
       <div style={{ minHeight: 380, display: "flex", flexDirection: "column" }}>
         {source === null && <SourceStep onPick={setSource} />}
@@ -198,7 +199,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
     gap: 10,
   };
   return (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center", gap: 14 }}>
+    <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 14 }}>
       <Typography.Text strong style={{ fontSize: 15, textAlign: "center" }}>
         Where does the configuration live?
       </Typography.Text>

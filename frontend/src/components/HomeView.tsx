@@ -50,15 +50,13 @@ export default function HomeView() {
 
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
-      <div className="mx-auto max-w-[1240px]">
+      <div>
         {/* Greeting + estate numbers, restrained like the reference. */}
         <div className="mb-5 flex flex-wrap items-start gap-4">
           <div className="min-w-60 flex-1">
-            <div className="text-xl font-semibold text-ink">
-              {greeting(firstName)} <span aria-hidden>👋</span>
-            </div>
+            <div className="text-xl font-semibold text-ink">{greeting(firstName)}</div>
             <div className="mt-0.5 text-[13px] text-ink-2">
-              Here's what's happening across your applications.
+              An overview of your applications and anything requiring attention.
             </div>
           </div>
           <div className="flex gap-3">
@@ -72,7 +70,7 @@ export default function HomeView() {
             <EmptyState
               icon={<AppstoreOutlined />}
               title="Connect your first application"
-              hint="Point Configer at a Git repository or a local folder and it becomes a managed application: parameters, instances, drafts, reviews."
+              hint="Connect a Git repository or local folder to begin managing its configuration."
               actionLabel="New application"
               onAction={() => setWizardOpen(true)}
             />
@@ -110,7 +108,7 @@ export default function HomeView() {
                       <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 18 }} />
                       <div>
                         <div className="text-[13px] font-semibold">All systems operational</div>
-                        <div className="text-[11px] text-ink-3">Everything synchronized with Git</div>
+                        <div className="text-[11px] text-ink-3">All applications synchronized with Git</div>
                       </div>
                     </>
                   ) : (

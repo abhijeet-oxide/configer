@@ -80,8 +80,7 @@ export default function InboxView() {
         <div className="min-w-0 flex-1">
           <div className="text-xl font-semibold text-ink">Approvals</div>
           <div className="text-[13px] text-ink-2">
-            Change requests across all your applications. Open one to review it in its application's
-            workspace.
+            Change requests awaiting review across your applications. Select one to review it.
           </div>
         </div>
         <Select
@@ -113,12 +112,12 @@ export default function InboxView() {
         <SectionCard>
           <EmptyState
             art={filter === "waiting" ? <InboxZeroArt size={116} /> : <EmptyArt size={104} />}
-            title={filter === "waiting" ? "All caught up" : "Nothing here yet"}
+            title={filter === "waiting" ? "No pending approvals" : "No change requests"}
             hint={
               filter === "waiting"
                 ? app
-                  ? "Nothing is waiting for approval in this application."
-                  : "Nothing is waiting for approval in any application. New change requests appear here immediately."
+                  ? "No change requests are awaiting approval in this application."
+                  : "No change requests are awaiting approval."
                 : "Change requests in this state will appear here."
             }
           />

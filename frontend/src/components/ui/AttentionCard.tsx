@@ -9,8 +9,8 @@ import {
 
 // AttentionCard is one "Needs your attention" row from the reference: a
 // severity icon, a title with a supporting line, and a right-aligned action.
-// It sits INSIDE a SectionCard, so it uses a soft inset well, not another
-// floating surface.
+// It sits INSIDE a SectionCard, so it reads as a flat, hairline-bordered row
+// rather than a pressed-in well or another floating surface.
 export type AttentionSeverity = "warn" | "danger" | "ok" | "info";
 
 const ICON: Record<AttentionSeverity, ReactNode> = {
@@ -39,7 +39,7 @@ export default function AttentionCard({
   extra?: ReactNode;
 }) {
   return (
-    <div className="flex min-w-0 items-center gap-3 rounded-card bg-surface-2 p-3 shadow-neu-inset">
+    <div className="flex min-w-0 items-center gap-3 rounded-card border border-line bg-surface-2 p-3">
       <span className="inline-flex shrink-0">{ICON[severity]}</span>
       <div className="min-w-0 flex-1">
         <div className="overflow-hidden text-[13px] font-semibold text-ellipsis whitespace-nowrap text-ink">

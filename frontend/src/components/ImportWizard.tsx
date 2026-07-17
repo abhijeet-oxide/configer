@@ -9,7 +9,6 @@ import {
   Select,
   Space,
   Statistic,
-  Steps,
   Switch,
   Table,
   Tag,
@@ -41,7 +40,8 @@ import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
 import FileExplorer from "./FileExplorer";
-import { AllClearArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
+import { InSyncArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
+import { Stepper } from "./ui";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -348,28 +348,26 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   }
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <Space direction="vertical" size={16} style={{ width: "100%" }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 24, flexWrap: "wrap" }}>
-          <div style={{ flex: "1 1 380px" }}>
-            <Typography.Title level={4} style={{ margin: 0 }}>
-              Import settings
-            </Typography.Title>
-            <Typography.Text type="secondary">
-              Bring settings from your repository files under management. Scanning only reads files;
-              nothing is written to Git until you confirm at the end.
-            </Typography.Text>
+    <div className="h-full overflow-auto bg-canvas">
+      <div className="flex flex-col gap-5 px-6 py-6">
+        <div>
+          <div className="text-xl font-semibold text-ink">Import settings</div>
+          <div className="mt-0.5 text-[13px] text-ink-2">
+            Bring settings from your repository files under management. Scanning is read-only; no
+            changes are committed until you confirm.
           </div>
-          <Steps
-            size="small"
+        </div>
+        {/* The one clean progress row: short single-line labels, brand fill as
+            you advance, no wrapping. */}
+        <div className="rounded-card-lg bg-surface px-5 py-4 shadow-neu">
+          <Stepper
             current={step}
-            items={[
-              { title: "Connect repository", icon: <ApiOutlined /> },
-              { title: "Scan repository", icon: <FileSearchOutlined /> },
-              { title: "Choose parameters", icon: <CheckSquareOutlined /> },
-              { title: "Review & initialize", icon: <RocketOutlined /> },
+            steps={[
+              { label: "Repository", icon: <ApiOutlined /> },
+              { label: "Scan", icon: <FileSearchOutlined /> },
+              { label: "Parameters", icon: <CheckSquareOutlined /> },
+              { label: "Review", icon: <RocketOutlined /> },
             ]}
-            style={{ flex: "1 1 520px", marginTop: 4 }}
           />
         </div>
         {step === 0 && <ConnectStep onNext={() => setStep(1)} />}
@@ -413,7 +411,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
             onImport={() => doImport.mutate()}
           />
         )}
-      </Space>
+      </div>
     </div>
   );
 }
@@ -504,7 +502,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
         <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
         <div style={{ fontWeight: 500 }}>New application</div>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          Pick a GitHub repository and go - it is scanned right here afterwards.
+          Connect a GitHub repository; it is scanned here immediately afterwards.
         </Typography.Text>
       </Card>
       <NewApplicationWizard
@@ -659,7 +657,7 @@ function ScanStep({
       </Space>
       {totalNew === 0 ? (
         <StatePanel
-          art={<AllClearArt size={116} />}
+          art={<InSyncArt size={120} />}
           title="Everything the scan found is already managed"
           subtitle="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
         />

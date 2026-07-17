@@ -13,7 +13,6 @@ import {
   Checkbox,
   Segmented,
   Modal,
-  Popover,
   App as AntApp,
   theme as antdTheme,
   type GetRef,
@@ -440,6 +439,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // The single-row toolbar's overflow menu and the legend dialog.
   const [moreOpen, setMoreOpen] = useState(false);
   const [legendOpen, setLegendOpen] = useState(false);
+  // The toolbar keeps to exactly one row: its width is measured and the
+  // lowest-priority controls fold into the overflow (⋮) menu, in order, as
+  // space runs out. Essentials (instance, filters, search, the primary
+  // action) always stay visible.
+  const { ref: barRef, width: barW } = useElementSize<HTMLDivElement>();
   const tableRef = useRef<GetRef<typeof Table>>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -986,9 +990,24 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     setJump("param", r.param.id);
   };
 
-  const pendingCount = draftQ.data?.draft?.items?.length ?? 0;
   const environments = [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[];
   const pickerInstances = grid.instances.filter((i) => !envFilter || (i.environment ?? "") === envFilter);
+
+  // Priority overflow: measure the toolbar and fold the lowest-priority
+  // controls into the ⋮ menu, in order, as width tightens. Before the first
+  // measurement (width 0) everything shows, so there is no collapse flash.
+  // A control that carries active state (an environment filter, customized
+  // columns) stays pinned to the bar so its state is never hidden.
+  const w = barW || 9999;
+  const colsCustomized =
+    colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0;
+  const showEnv = environments.length > 0 && (envFilter !== "" || w >= 1090);
+  const showColumns = !viewInstance && (colsCustomized || w >= 965);
+  const showAdd = w >= 920;
+  const showFilterSeg = w >= 880;
+  const foldedEnv = environments.length > 0 && !showEnv;
+  const foldedColumns = !viewInstance && !showColumns;
+  const anyFolded = foldedEnv || foldedColumns || !showAdd;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
@@ -996,33 +1015,37 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           pills, search, an overflow menu for everything else, and the primary
           action. It wraps only when space truly runs out. */}
       <div
+        ref={barRef}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
-          rowGap: 6,
           padding: "7px 12px",
-          flexWrap: "wrap",
+          flexWrap: "nowrap",
+          overflow: "hidden",
           borderBottom: "1px solid var(--border)",
         }}
       >
-        {/* Left cluster: what you're looking at. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flexShrink: 0 }}>
-          <Tooltip title="View all instances side by side, or one instance as a single sheet">
-            <Select
-              size="small"
-              value={viewInstance ?? ""}
-              onChange={(v) => {
-                setViewInstance(v || null);
-                selectInstance(v || null);
-              }}
-              style={{ width: 168 }}
-              options={[
-                { value: "", label: "All instances" },
-                ...pickerInstances.map((i) => ({ value: i.name, label: i.name })),
-              ]}
-            />
-          </Tooltip>
+        {/* Context: the instance sheet you are viewing. Always visible. */}
+        <Tooltip title="View all instances side by side, or one instance as a single sheet">
+          <Select
+            size="small"
+            value={viewInstance ?? ""}
+            onChange={(v) => {
+              setViewInstance(v || null);
+              selectInstance(v || null);
+            }}
+            style={{ width: 168, flexShrink: 0 }}
+            options={[
+              { value: "", label: "All instances" },
+              ...pickerInstances.map((i) => ({ value: i.name, label: i.name })),
+            ]}
+          />
+        </Tooltip>
+        {/* Environment filter: folds into the ⋮ menu when narrow, but stays
+            visible whenever a filter is actually active (so a narrowed grid
+            never hides why it is showing fewer instances). */}
+        {showEnv && (
           <Tooltip title="Show only instances of one environment">
             <Select
               size="small"
@@ -1034,18 +1057,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   selectInstance(null);
                 }
               }}
-              style={{ width: 118 }}
+              style={{ width: 118, flexShrink: 0 }}
               options={[
                 { value: "", label: "All environments" },
                 ...environments.map((e) => ({ value: e, label: e })),
               ]}
             />
           </Tooltip>
-          <span style={{ width: 1, height: 20, background: "var(--border)" }} />
+        )}
+        <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+        {/* Row filter: the full segmented when there is room, a compact select
+            (same options and counts) when space is tight. Never removed. */}
+        {showFilterSeg ? (
           <Segmented
             size="small"
             value={pill}
             onChange={(v) => setPill(v as typeof pill)}
+            style={{ flexShrink: 0 }}
             options={[
               { value: "all", label: "All" },
               { value: "changed", label: `Changed${pillCounts.changed ? ` (${pillCounts.changed})` : ""}` },
@@ -1053,101 +1081,112 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { value: "removed", label: `Removed${pillCounts.removed ? ` (${pillCounts.removed})` : ""}` },
             ]}
           />
-          <span style={{ fontSize: 12, color: "var(--text-3)" }}>{rows.length}</span>
-          {q && (
-            <Tag color="blue" closable closeIcon={<CloseCircleFilled />} onClose={() => setSearch("")}>
-              ⌘K: “{search.trim()}”
-            </Tag>
-          )}
-        </div>
-        {/* Right cluster: narrowing and acting. marginLeft:auto keeps it
-            flush-right on one row, and drops it whole (still right-aligned)
-            onto a clean second row only when space truly runs out. */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginLeft: "auto", minWidth: 0 }}>
-          <Space.Compact size="small" style={{ flex: "0 1 260px", minWidth: 140 }}>
-            <Select
-              size="small"
-              value={searchScope}
-              onChange={(v) => setSearchScope(v)}
-              style={{ width: 64, flexShrink: 0 }}
-              popupMatchSelectWidth={96}
-              title="Search in"
-              options={[
-                { value: "all", label: "All" },
-                { value: "param", label: "Name" },
-                { value: "desc", label: "Desc" },
-                { value: "value", label: "Value" },
-              ]}
-            />
-            <Input
-              size="small"
-              allowClear
-              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-              placeholder={categoryKey ? `Search in ${title}…` : "Search parameters…"}
-              value={localQ}
-              onChange={(e) => setLocalQ(e.target.value)}
-              style={{ flex: 1, minWidth: 0 }}
-            />
-          </Space.Compact>
-          {hlq && (
-            <Space size={2} style={{ flexShrink: 0 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                {rows.length} match{rows.length === 1 ? "" : "es"}
-              </Typography.Text>
-              <Tooltip title="Previous match">
-                <Button size="small" type="text" icon={<UpOutlined />} disabled={!rows.length} onClick={() => gotoMatch(-1)} />
-              </Tooltip>
-              <Tooltip title="Next match">
-                <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
-              </Tooltip>
-            </Space>
-          )}
-          {!viewInstance && (
-            <Popover
-              open={colsOpen}
-              onOpenChange={setColsOpen}
-              trigger="click"
-              placement="bottomRight"
-              content={
-                <ColumnManager
-                  instances={orderedInstances}
-                  hidden={hiddenInstances}
-                  widths={colLayout.widths}
-                  onToggle={(name) =>
-                    patchColLayout({
-                      hidden: hiddenInstances.has(name)
-                        ? colLayout.hidden.filter((n) => n !== name)
-                        : [...colLayout.hidden, name],
-                    })
-                  }
-                  onMove={(name, dir) => {
-                    const order = orderedInstances.map((i) => i.name);
-                    const idx = order.indexOf(name);
-                    const to = idx + dir;
-                    if (to < 0 || to >= order.length) return;
-                    [order[idx], order[to]] = [order[to], order[idx]];
-                    patchColLayout({ order });
-                  }}
-                  onReset={() => patchColLayout({ hidden: [], order: [], widths: {} })}
-                />
-              }
+        ) : (
+          <Select
+            size="small"
+            value={pill}
+            onChange={(v) => setPill(v as typeof pill)}
+            style={{ width: 130, flexShrink: 0 }}
+            options={[
+              { value: "all", label: "All" },
+              { value: "changed", label: `Changed${pillCounts.changed ? ` (${pillCounts.changed})` : ""}` },
+              { value: "added", label: `Added${pillCounts.added ? ` (${pillCounts.added})` : ""}` },
+              { value: "removed", label: `Removed${pillCounts.removed ? ` (${pillCounts.removed})` : ""}` },
+            ]}
+          />
+        )}
+        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0 }}>{rows.length}</span>
+        {q && (
+          <Tag
+            color="blue"
+            closable
+            closeIcon={<CloseCircleFilled />}
+            onClose={() => setSearch("")}
+            style={{ flexShrink: 0, marginInlineEnd: 0 }}
+          >
+            ⌘K: “{search.trim()}”
+          </Tag>
+        )}
+        {/* Search grows to fill the gap, keeping the actions flush right, and
+            shrinks first (down to its minimum) before anything folds. */}
+        <Space.Compact size="small" style={{ flex: "1 1 auto", minWidth: 130, maxWidth: 300 }}>
+          <Select
+            size="small"
+            value={searchScope}
+            onChange={(v) => setSearchScope(v)}
+            style={{ width: 64, flexShrink: 0 }}
+            popupMatchSelectWidth={96}
+            title="Search in"
+            options={[
+              { value: "all", label: "All" },
+              { value: "param", label: "Name" },
+              { value: "desc", label: "Desc" },
+              { value: "value", label: "Value" },
+            ]}
+          />
+          <Input
+            size="small"
+            allowClear
+            prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+            placeholder={categoryKey ? `Search in ${title}…` : "Search parameters…"}
+            value={localQ}
+            onChange={(e) => setLocalQ(e.target.value)}
+            style={{ flex: 1, minWidth: 0 }}
+          />
+        </Space.Compact>
+        {hlq && (
+          <Space size={2} style={{ flexShrink: 0 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              {rows.length} match{rows.length === 1 ? "" : "es"}
+            </Typography.Text>
+            <Tooltip title="Previous match">
+              <Button size="small" type="text" icon={<UpOutlined />} disabled={!rows.length} onClick={() => gotoMatch(-1)} />
+            </Tooltip>
+            <Tooltip title="Next match">
+              <Button size="small" type="text" icon={<DownOutlined />} disabled={!rows.length} onClick={() => gotoMatch(1)} />
+            </Tooltip>
+          </Space>
+        )}
+        {showColumns && (
+          <Tooltip title="Show, hide, reorder and resize instance columns">
+            <Badge
+              dot={colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0}
+              color="var(--c-review)"
+              offset={[-2, 2]}
             >
-              <Tooltip title="Show, hide, reorder and resize instance columns">
-                <Badge dot={colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0} color="var(--c-review)" offset={[-2, 2]}>
-                  <Button size="small" icon={<TableOutlined />} aria-label="Columns" />
-                </Badge>
-              </Tooltip>
-            </Popover>
-          )}
-          <Tooltip title="Add parameter">
-            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" />
+              <Button size="small" icon={<TableOutlined />} aria-label="Columns" onClick={() => setColsOpen(true)} style={{ flexShrink: 0 }} />
+            </Badge>
           </Tooltip>
+        )}
+        {showAdd && (
+          <Tooltip title="Add parameter">
+            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
+          </Tooltip>
+        )}
         <Dropdown
           trigger={["click"]}
           open={moreOpen}
           onOpenChange={setMoreOpen}
           menu={{
             items: [
+              // Controls that folded off the toolbar reappear here first, so
+              // nothing is ever unreachable at a narrow width.
+              ...(foldedEnv
+                ? [
+                    {
+                      key: "env",
+                      icon: <GlobalOutlined />,
+                      label: `Environment: ${envFilter || "All"}`,
+                      children: [
+                        { key: "env:", label: "All environments" },
+                        ...environments.map((e) => ({ key: `env:${e}`, label: e })),
+                      ],
+                    },
+                  ]
+                : []),
+              ...(foldedColumns ? [{ key: "columns", icon: <TableOutlined />, label: "Manage columns…" }] : []),
+              ...(!showAdd ? [{ key: "add", icon: <PlusOutlined />, label: "Add parameter…" }] : []),
+              ...(anyFolded ? [{ type: "divider" as const }] : []),
               { key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" },
               { key: "legend", icon: <QuestionCircleOutlined />, label: "Legend: what the marks mean" },
               {
@@ -1170,7 +1209,21 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
             ],
             onClick: ({ key }) => {
-              if (key === "findreplace") {
+              if (key.startsWith("env:")) {
+                const v = key.slice(4);
+                setEnvFilter(v);
+                if (v && viewInstance && grid.instances.find((i) => i.name === viewInstance)?.environment !== v) {
+                  setViewInstance(null);
+                  selectInstance(null);
+                }
+                setMoreOpen(false);
+              } else if (key === "columns") {
+                setColsOpen(true);
+                setMoreOpen(false);
+              } else if (key === "add") {
+                setAddOpen(true);
+                setMoreOpen(false);
+              } else if (key === "findreplace") {
                 setFindReplace({ find: "" });
                 setMoreOpen(false);
               } else if (key === "legend") {
@@ -1190,39 +1243,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           }}
         >
           <Badge dot={activeFilters > 0 || prefs.groupByValue} color="var(--c-review)" offset={[-2, 2]}>
-            <Button size="small" icon={<MoreOutlined />} aria-label="More editor options" title="Filters, view options and tools" />
+            <Button size="small" icon={<MoreOutlined />} aria-label="More editor options" title="Filters, view options and tools" style={{ flexShrink: 0 }} />
           </Badge>
         </Dropdown>
-          <span style={{ width: 1, height: 20, background: "var(--border)" }} />
-          {/* Save state as a single dot: green = saved, orange = unsent
-              edits. The words live in the tooltip so the toolbar keeps to
-              one row. */}
-          <Tooltip
-            title={
-              pendingCount === 0
-                ? "All changes saved"
-                : `${pendingCount} unsent edit${pendingCount === 1 ? "" : "s"}: create a change request to submit`
-            }
-          >
-            <span
-              role="status"
-              aria-label={pendingCount === 0 ? "All changes saved" : `${pendingCount} unsent edits`}
-              style={{
-                width: 9,
-                height: 9,
-                borderRadius: 5,
-                flexShrink: 0,
-                background: pendingCount === 0 ? "var(--c-ok)" : "var(--c-pending)",
-                boxShadow: `0 0 0 3px ${pendingCount === 0 ? "var(--c-ok-bg)" : "var(--c-pending-bg)"}`,
-                cursor: "default",
-              }}
-            />
-          </Tooltip>
-          {pendingCount > 0 && (
-            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-pending)" }}>{pendingCount}</span>
-          )}
-          <SubmitChangesButton instances={grid.instances} />
-        </div>
+        <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+        {/* Primary action, always visible and never shrinks. Its badge is the
+            single source of truth for how many edits are waiting. */}
+        <SubmitChangesButton instances={grid.instances} />
       </div>
 
       <Modal
@@ -1251,6 +1278,33 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </div>
       </Modal>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
+      {/* Column manager lives in a modal so it opens the same way from the
+          toolbar button or from the ⋮ menu when the button has folded away. */}
+      {!viewInstance && (
+        <Modal title={null} open={colsOpen} onCancel={() => setColsOpen(false)} footer={null} width={320}>
+          <ColumnManager
+            instances={orderedInstances}
+            hidden={hiddenInstances}
+            widths={colLayout.widths}
+            onToggle={(name) =>
+              patchColLayout({
+                hidden: hiddenInstances.has(name)
+                  ? colLayout.hidden.filter((n) => n !== name)
+                  : [...colLayout.hidden, name],
+              })
+            }
+            onMove={(name, dir) => {
+              const order = orderedInstances.map((i) => i.name);
+              const idx = order.indexOf(name);
+              const to = idx + dir;
+              if (to < 0 || to >= order.length) return;
+              [order[idx], order[to]] = [order[to], order[idx]];
+              patchColLayout({ order });
+            }}
+            onReset={() => patchColLayout({ hidden: [], order: [], widths: {} })}
+          />
+        </Modal>
+      )}
       {findReplace && (
         <FindReplaceModal
           grid={grid}

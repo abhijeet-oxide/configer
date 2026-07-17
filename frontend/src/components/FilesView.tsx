@@ -1,12 +1,10 @@
 import {
-  Button, Dropdown, Input, Popconfirm, Select, Switch, Tooltip, Tree, App as AntApp,
+  Alert, Button, Dropdown, Input, Select, Switch, Tag, Tooltip, App as AntApp,
 } from "antd";
-import type { DataNode } from "antd/es/tree";
 import {
   CopyOutlined,
   DownloadOutlined,
   PlusCircleOutlined,
-  MinusCircleOutlined,
   SaveOutlined,
   UndoOutlined,
   SearchOutlined,
@@ -15,6 +13,9 @@ import {
   TableOutlined,
   BranchesOutlined,
   FileTextOutlined,
+  FolderAddOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
 } from "@ant-design/icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,127 +23,19 @@ import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { api } from "../api";
 import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
-import { fileIcon, folderIcon } from "./fileIcons";
 import { FilesSkeleton } from "./Skeletons";
 import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
 import { languageFor } from "../monaco";
+import FileExplorer from "./FileExplorer";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
 
 // FilesView is file mode: a focused developer workspace over the instance's
 // REAL repository files (its folder plus shared config). The editor
-// dominates; the tree is subordinate, searchable and resizable. Files
-// Configer manages carry a dot; management is added or dropped from the row
-// actions. Saving stages into the draft, exactly like a grid edit.
-
-interface RFile {
-  path: string;
-  content: string;
-}
-
-// changedMark renders a file name with a VS Code-style "modified" marker.
-function changedMark(name: string, changed: boolean): React.ReactNode {
-  if (!changed) return <span>{name}</span>;
-  return (
-    <span style={{ color: "var(--c-pending)", fontWeight: 600 }}>
-      {name}
-      <span style={{ marginInlineStart: 6, fontSize: 11 }}>M</span>
-    </span>
-  );
-}
-
-interface TreeCtx {
-  changed: Set<string>;
-  managed: Set<string>;
-  onAdd: (prefix: string) => void;
-  onRemove: (file: string) => void;
-}
-
-// nodeTitle renders one file/folder row: name (+ modified marker), a "managed"
-// dot for managed files, and hover actions (+ to manage, − to stop managing).
-function nodeTitle(name: string, key: string, isFile: boolean, ctx: TreeCtx): React.ReactNode {
-  const managed = isFile && ctx.managed.has(key);
-  return (
-    <span className="file-node">
-      <span className="inline-flex min-w-0 items-center gap-1.5">
-        {managed && (
-          <Tooltip title="Managed: parameters map into this file">
-            <span className="size-[7px] shrink-0 rounded-full" style={{ background: "var(--c-ok)" }} />
-          </Tooltip>
-        )}
-        {changedMark(name, ctx.changed.has(key))}
-      </span>
-      <span className="file-node-actions" onClick={(e) => e.stopPropagation()}>
-        {isFile ? (
-          managed ? (
-            <Popconfirm
-              title="Stop managing this file?"
-              description="Its parameters are retired (removed from the catalog); the file itself is untouched."
-              okText="Stop managing"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => ctx.onRemove(key)}
-            >
-              <Tooltip title="Stop managing (retire its parameters)">
-                <Button size="small" type="text" icon={<MinusCircleOutlined />} />
-              </Tooltip>
-            </Popconfirm>
-          ) : (
-            <Tooltip title="Add to managed: scan this file for settings">
-              <Button size="small" type="text" icon={<PlusCircleOutlined />} onClick={() => ctx.onAdd(key)} />
-            </Tooltip>
-          )
-        ) : (
-          <Tooltip title="Add this folder to managed: scan it for settings">
-            <Button size="small" type="text" icon={<PlusCircleOutlined />} onClick={() => ctx.onAdd(key)} />
-          </Tooltip>
-        )}
-      </span>
-    </span>
-  );
-}
-
-// buildTree folds flat file paths into a folder tree for the explorer.
-function buildTree(files: RFile[], ctx: TreeCtx): DataNode[] {
-  interface Dir {
-    dirs: Map<string, Dir>;
-    files: string[];
-  }
-  const root: Dir = { dirs: new Map(), files: [] };
-  for (const f of files) {
-    const parts = f.path.split("/");
-    let cur = root;
-    for (const seg of parts.slice(0, -1)) {
-      if (!cur.dirs.has(seg)) cur.dirs.set(seg, { dirs: new Map(), files: [] });
-      cur = cur.dirs.get(seg)!;
-    }
-    cur.files.push(f.path);
-  }
-  const toNodes = (d: Dir, prefix: string): DataNode[] => {
-    const dirNodes = [...d.dirs.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([name, sub]) => {
-        const key = `${prefix}${name}/`;
-        return {
-          key,
-          title: nodeTitle(name, key, false, ctx),
-          icon: folderIcon(),
-          selectable: false,
-          children: toNodes(sub, key),
-        };
-      });
-    const fileNodes = d.files.sort().map((full) => {
-      const base = full.split("/").pop() ?? full;
-      return {
-        key: full,
-        title: nodeTitle(base, full, true, ctx),
-        icon: fileIcon(base),
-        isLeaf: true,
-      };
-    });
-    return [...dirNodes, ...fileNodes];
-  };
-  return toNodes(root, "");
-}
+// dominates; the explorer is a VS Code-grade tree: compact, searchable,
+// resizable AND collapsible to a thin rail. Files Configer manages carry a
+// dot; management is added or dropped from the row actions. Saving stages
+// into the draft, exactly like a grid edit.
 
 // detectIndent reports the file's indentation width (a best effort from the
 // first indented line), for the status strip.
@@ -153,6 +46,8 @@ function detectIndent(content: string): number {
   }
   return 2;
 }
+
+const TREE_KEY = "configer.filesTreeOpen";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
@@ -165,20 +60,41 @@ export default function FilesView() {
   const selectInstance = useUI((s) => s.selectInstance);
   const fileFocus = useUI((s) => s.fileFocus);
   const projectQ = useQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
-  const instances = useMemo(() => projectQ.data?.instances ?? [], [projectQ.data]);
+  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
   const [instance, setInstance] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyManaged, setOnlyManaged] = useState(true);
   const [dirty, setDirty] = useState<string | null>(null);
   const [treeQ, setTreeQ] = useState("");
+  const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
   const [reveal, setReveal] = useState<number | undefined>(undefined);
   const [cursor, setCursor] = useState<{ ln: number; col: number }>({ ln: 1, col: 1 });
+
+  const toggleTree = () => {
+    setTreeOpen((v) => {
+      localStorage.setItem(TREE_KEY, v ? "0" : "1");
+      return !v;
+    });
+  };
+
+  // The instance list comes from the grid so it includes instances that only
+  // exist as a pending draft add (status "draft"); the committed registry is
+  // the fallback before the grid loads.
+  const instances = useMemo(() => {
+    const g = gridQ.data?.instances;
+    if (g && g.length) return g.map((i) => ({ name: i.name, status: i.status }));
+    return (projectQ.data?.instances ?? []).map((i) => ({ name: i.name, status: undefined as string | undefined }));
+  }, [gridQ.data, projectQ.data]);
+  const pendingInstances = useMemo(
+    () => new Set(instances.filter((i) => i.status === "draft").map((i) => i.name)),
+    [instances],
+  );
+  const instancePending = !!instance && pendingInstances.has(instance);
 
   useEffect(() => {
     if (!instance && instances.length > 0) setInstance(instances[0].name);
   }, [instances, instance]);
 
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
   const draftQ = useQuery({
     queryKey: ["files-draft", instance],
     queryFn: () => api.render(instance!),
@@ -188,7 +104,9 @@ export default function FilesView() {
   const committedQ = useQuery({
     queryKey: ["files-committed", instance],
     queryFn: () => api.render(instance!, { draft: false }),
-    enabled: !!instance,
+    // A pending instance has no committed files yet; skip the fetch (it would
+    // fail) so every file reads as newly added.
+    enabled: !!instance && !instancePending,
     refetchInterval: 15_000,
   });
   const allFiles = useMemo(() => draftQ.data?.files ?? [], [draftQ.data]);
@@ -208,9 +126,22 @@ export default function FilesView() {
     return q ? base.filter((f) => f.path.toLowerCase().includes(q)) : base;
   }, [allFiles, onlyManaged, managed, treeQ]);
 
+  // A file is "created" when it has no committed counterpart (a pending
+  // instance's whole folder, or a new file staged in the draft); "changed"
+  // when it exists committed but the draft-applied content differs.
+  const createdFiles = useMemo(() => {
+    const s = new Set<string>();
+    if (committedQ.isLoading && !instancePending) return s;
+    for (const f of allFiles) if (!committedOf.has(f.path)) s.add(f.path);
+    return s;
+  }, [allFiles, committedOf, committedQ.isLoading, instancePending]);
+
   const changedFiles = useMemo(() => {
     const s = new Set<string>();
-    for (const f of allFiles) if (committedOf.get(f.path) !== f.content) s.add(f.path);
+    for (const f of allFiles) {
+      if (!committedOf.has(f.path)) continue; // created, not changed
+      if (committedOf.get(f.path) !== f.content) s.add(f.path);
+    }
     return s;
   }, [allFiles, committedOf]);
 
@@ -229,13 +160,6 @@ export default function FilesView() {
     setImportFocus(prefix);
     setSection("import");
   };
-
-  const ctx: TreeCtx = useMemo(
-    () => ({ changed: changedFiles, managed, onAdd: addToManaged, onRemove: (f) => retire.mutate(f) }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [changedFiles, managed],
-  );
-  const tree = useMemo(() => buildTree(files, ctx), [files, ctx]);
 
   // Cross-navigation: another view asked to open a file (optionally at a
   // line, for an instance). One-shot; consumed by n.
@@ -263,19 +187,6 @@ export default function FilesView() {
   const current = files.find((f) => f.path === selected);
   const committed = current ? committedOf.get(current.path) : undefined;
   const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
-
-  const allDirs = useMemo(() => {
-    const keys = new Set<string>();
-    for (const f of files) {
-      const parts = f.path.split("/");
-      let p = "";
-      for (const seg of parts.slice(0, -1)) {
-        p += seg + "/";
-        keys.add(p);
-      }
-    }
-    return [...keys];
-  }, [files]);
 
   const save = useMutation({
     mutationFn: (content: string) =>
@@ -329,6 +240,41 @@ export default function FilesView() {
 
   const managedCount = allFiles.filter((f) => managed.has(f.path)).length;
 
+  const explorerPanel = (
+    <div className="flex h-full min-w-0 flex-col border-r border-line">
+      <div className="flex h-8 shrink-0 items-center gap-1 pr-1 pl-3">
+        <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">Explorer</span>
+        <span className="ml-auto" />
+        <Tooltip title="Hide the explorer">
+          <Button size="small" type="text" icon={<DoubleLeftOutlined style={{ fontSize: 10 }} />} onClick={toggleTree} />
+        </Tooltip>
+      </div>
+      <div className="px-2 pb-1.5">
+        <Input
+          size="small"
+          allowClear
+          prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+          placeholder="Search files…"
+          value={treeQ}
+          onChange={(e) => setTreeQ(e.target.value)}
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto pb-2">
+        <FileExplorer
+          files={files.map((f) => f.path)}
+          selected={selected}
+          state={{ changed: changedFiles, created: createdFiles, managed }}
+          onSelect={(p) => {
+            setSelected(p);
+            setReveal(undefined);
+          }}
+          onAdd={addToManaged}
+          onRemove={(f) => retire.mutate(f)}
+        />
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex h-full min-w-0 flex-col">
       {/* The workspace toolbar: branch, instance, managed filter on the left;
@@ -340,13 +286,26 @@ export default function FilesView() {
           )}
           <Select
             size="small"
-            style={{ width: 190 }}
+            style={{ width: 210 }}
             value={instance ?? undefined}
             placeholder="Choose an instance"
             showSearch
             filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
             onChange={(v) => setInstance(v)}
-            options={instances.map((i) => ({ value: i.name, label: i.name }))}
+            options={instances.map((i) => ({
+              value: i.name,
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  {i.name}
+                  {i.status === "draft" && (
+                    <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>new</Tag>
+                  )}
+                  {i.status === "retiring" && (
+                    <Tag color="warning" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>retiring</Tag>
+                  )}
+                </span>
+              ),
+            }))}
           />
           <Tooltip title="Show only files Configer manages, or the whole repository">
             <span className="inline-flex items-center gap-1.5 text-[13px]">
@@ -366,6 +325,13 @@ export default function FilesView() {
                   <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
                     Add to managed
                   </Button>
+                </Tooltip>
+              )}
+              {createdFiles.has(current.path) && (
+                <Tooltip title="New file: it will be created on the feature branch when you submit">
+                  <span className="inline-flex">
+                    <StatusPill tone="ok" icon={<FolderAddOutlined />}>New in draft</StatusPill>
+                  </span>
                 </Tooltip>
               )}
               {changedFiles.has(current.path) && (
@@ -435,6 +401,22 @@ export default function FilesView() {
         </div>
       </div>
 
+      {instancePending && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<FolderAddOutlined />}
+          message={
+            <span>
+              <b className="mono">{instance}</b> is a pending new instance. This whole folder will be
+              created on the feature branch when you submit the change request; nothing is written to
+              the repository yet.
+            </span>
+          }
+          style={{ padding: "6px 12px" }}
+        />
+      )}
+
       {files.length === 0 ? (
         <EmptyState
           icon={<FileTextOutlined />}
@@ -455,39 +437,33 @@ export default function FilesView() {
         />
       ) : (
         <>
-          <div className="min-h-0 flex-1">
-            <PanelGroup direction="horizontal" autoSaveId="configer-files" className="h-full">
-              <Panel id="tree" order={1} defaultSize={22} minSize={12} maxSize={45}>
-                <div className="flex h-full flex-col border-r border-line">
-                  <div className="p-2">
-                    <Input
-                      size="small"
-                      allowClear
-                      prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
-                      placeholder="Search files…"
-                      value={treeQ}
-                      onChange={(e) => setTreeQ(e.target.value)}
-                    />
-                  </div>
-                  <div className="min-h-0 flex-1 overflow-auto px-1 pb-2">
-                    <Tree.DirectoryTree
-                      className="files-tree"
-                      showIcon
-                      selectedKeys={selected ? [selected] : []}
-                      defaultExpandedKeys={allDirs}
-                      onSelect={(keys) => {
-                        const k = String(keys[0] ?? "");
-                        if (k && !k.endsWith("/")) {
-                          setSelected(k);
-                          setReveal(undefined);
-                        }
-                      }}
-                      treeData={tree}
-                    />
-                  </div>
-                </div>
-              </Panel>
-              <PanelResizeHandle className="rrp-handle rrp-handle-v" />
+          <div className="flex min-h-0 flex-1">
+            {/* Collapsed: a thin rail brings the explorer back (like the
+                editor's side panels), so the file dominates completely. */}
+            {!treeOpen && (
+              <div
+                className="panel-rail flex w-[26px] shrink-0 cursor-pointer flex-col items-center gap-2 border-r border-line pt-2"
+                onClick={toggleTree}
+                title="Show the explorer"
+              >
+                <DoubleRightOutlined style={{ fontSize: 10, opacity: 0.7 }} />
+                <span
+                  className="text-xs text-ink-3"
+                  style={{ writingMode: "vertical-rl", letterSpacing: 0.3 }}
+                >
+                  Explorer
+                </span>
+              </div>
+            )}
+            <PanelGroup direction="horizontal" autoSaveId="configer-files" className="h-full min-w-0 flex-1">
+              {treeOpen && (
+                <>
+                  <Panel id="tree" order={1} defaultSize={22} minSize={12} maxSize={45}>
+                    {explorerPanel}
+                  </Panel>
+                  <PanelResizeHandle className="rrp-handle rrp-handle-v" />
+                </>
+              )}
               <Panel id="editor" order={2} minSize={40}>
                 {current ? (
                   <Suspense fallback={<FilesSkeleton />}>
@@ -495,7 +471,7 @@ export default function FilesView() {
                       key={`${instance}|${current.path}`}
                       path={current.path}
                       content={dirty ?? current.content}
-                      original={committed}
+                      original={createdFiles.has(current.path) ? undefined : committed}
                       dark={mode === "dark"}
                       editable
                       revealLine={reveal}
@@ -510,8 +486,8 @@ export default function FilesView() {
               </Panel>
             </PanelGroup>
           </div>
-          {/* The reference's editor status strip: position, indentation,
-              language, and how much of the estate is on screen. */}
+          {/* The editor status strip: position, indentation, language, and
+              how much of the estate is on screen. */}
           <div
             className="flex h-[26px] shrink-0 items-center gap-4 px-3 text-xs text-white"
             style={{ background: "var(--nav-bg)" }}
@@ -523,7 +499,8 @@ export default function FilesView() {
             <span className="uppercase">{current ? languageFor(current.path) : ""}</span>
             <span className="ml-auto opacity-85">
               {files.length} file{files.length === 1 ? "" : "s"}
-              {changedFiles.size > 0 && ` · ${changedFiles.size} with pending changes`}
+              {changedFiles.size > 0 && ` · ${changedFiles.size} modified`}
+              {createdFiles.size > 0 && ` · ${createdFiles.size} new`}
             </span>
           </div>
         </>

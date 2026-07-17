@@ -4,7 +4,7 @@ import { Segmented } from "antd";
 import { FileOutlined } from "@ant-design/icons";
 import { api, type Grid } from "../api";
 import { useUI } from "../store";
-import { fileIcon } from "./fileIcons";
+import { vsFileIcon } from "./vsIcons";
 import { FilesSkeleton } from "./Skeletons";
 import { ChangeChip, EmptyState, LoadingStage, type ChangeKind } from "./ui";
 
@@ -159,7 +159,7 @@ export default function CompareFiles({
                   current?.role === r.role ? "bg-brand-soft" : "hover:bg-surface-2"
                 }`}
               >
-                {fileIcon(r.role.split("/").pop() ?? r.role)}
+                {vsFileIcon(r.role.split("/").pop() ?? r.role)}
                 <span className="mono min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap" title={r.role}>
                   {r.role}
                 </span>

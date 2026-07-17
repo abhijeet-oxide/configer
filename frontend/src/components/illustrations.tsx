@@ -1,4 +1,5 @@
 import { Typography } from "antd";
+import { FadeIn } from "./ui/motion";
 
 // A small kit of modern, dependency-free SVG illustrations with gentle,
 // reduced-motion-aware animations (keyframes live in index.css). They replace
@@ -86,6 +87,94 @@ export function EmptyArt({ size = 120 }: { size?: number }) {
   );
 }
 
+// AllClearArt: a shield with a drawn check and calm ripple - everything is in
+// order (no drift, nothing failing, nothing waiting).
+export function AllClearArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="All clear" className="ill">
+      <defs>
+        <linearGradient id="clear-shield" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={OK2} />
+          <stop offset="1" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle cx="66" cy="66" r="52" fill={OK} opacity="0.08" className="ill-ripple" />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 66px" }}>
+        <path
+          d="M66 30 l28 10 v22 c0 18 -12 30 -28 38 c-16 -8 -28 -20 -28 -38 v-22 Z"
+          fill="#fff"
+          stroke="url(#clear-shield)"
+          strokeWidth="3.5"
+          strokeLinejoin="round"
+        />
+        <path
+          d="M66 30 l28 10 v22 c0 18 -12 30 -28 38 c-16 -8 -28 -20 -28 -38 v-22 Z"
+          fill={OK}
+          opacity="0.07"
+        />
+        <path
+          d="M54 66 L63 75 L80 55"
+          fill="none"
+          stroke="url(#clear-shield)"
+          strokeWidth="6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="ill-draw"
+          pathLength={1}
+        />
+      </g>
+      <circle cx="102" cy="42" r="3" fill={OK2} className="ill-spark" style={{ animationDelay: "0.5s" }} />
+      <circle cx="30" cy="58" r="2.5" fill={OK} className="ill-spark" style={{ animationDelay: "0.8s" }} />
+    </svg>
+  );
+}
+
+// InboxZeroArt: an open tray with a small check floating in - the queue is
+// empty in a good way (nothing waiting for you).
+export function InboxZeroArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Nothing waiting" className="ill">
+      <defs>
+        <linearGradient id="zero-ok" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={OK2} />
+          <stop offset="1" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle cx="66" cy="70" r="44" fill={BLUE} opacity="0.05" className="ill-ripple" />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 72px" }}>
+        <ellipse cx="66" cy="106" rx="36" ry="6" fill={BLUE} opacity="0.08" />
+        <path
+          d="M34 66 h20 l6 9 h12 l6 -9 h20 l-7 30 a6 6 0 0 1 -6 5 H47 a6 6 0 0 1 -6 -5 Z"
+          fill="#fff"
+          stroke={BLUE}
+          strokeWidth="2.5"
+          strokeLinejoin="round"
+          opacity="0.9"
+        />
+        <path
+          d="M34 66 h20 l6 9 h12 l6 -9 h20 l-7 30 a6 6 0 0 1 -6 5 H47 a6 6 0 0 1 -6 -5 Z"
+          fill={BLUE}
+          opacity="0.08"
+        />
+        <path d="M44 66 v-14 a5 5 0 0 1 5 -5 h34 a5 5 0 0 1 5 5 v14" fill="none" stroke={BLUE} strokeWidth="2.5" opacity="0.55" />
+        <circle cx="66" cy="38" r="14" fill="#fff" stroke="url(#zero-ok)" strokeWidth="3" className="ill-pop" style={{ transformOrigin: "66px 38px" }} />
+        <path
+          d="M59 38.5 L64 43.5 L73.5 32.5"
+          fill="none"
+          stroke="url(#zero-ok)"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="ill-draw"
+          pathLength={1}
+        />
+      </g>
+      <circle cx="100" cy="52" r="3" fill={BLUE2} className="ill-spark" style={{ animationDelay: "0.4s" }} />
+      <circle cx="32" cy="84" r="2.5" fill={OK2} className="ill-spark" style={{ animationDelay: "0.9s" }} />
+    </svg>
+  );
+}
+
 // OfflineArt: a cloud with a gently pulsing dashed link - the service is
 // briefly unreachable, not broken.
 export function OfflineArt({ size = 132 }: { size?: number }) {
@@ -124,7 +213,7 @@ export function StatePanel({
   style?: React.CSSProperties;
 }) {
   return (
-    <div
+    <FadeIn
       style={{
         display: "flex",
         flexDirection: "column",
@@ -148,6 +237,6 @@ export function StatePanel({
       )}
       {children}
       {actions && <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "center", marginTop: 8 }}>{actions}</div>}
-    </div>
+    </FadeIn>
   );
 }

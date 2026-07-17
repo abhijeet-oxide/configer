@@ -16,7 +16,7 @@ import { useActivity } from "../activity";
 import { ActivitySparkline } from "./charts";
 import { useUI } from "../store";
 import { envHex } from "../theme";
-import { StatTile, SectionCard, AttentionCard, AppContextChips, StatusPill } from "./ui";
+import { StatTile, SectionCard, AttentionCard, AppContextChips, StatusPill, Stagger, StaggerItem } from "./ui";
 import EditApplicationModal from "./EditApplicationModal";
 
 // DashboardView is the application Overview: is it healthy, do I have unsent
@@ -239,9 +239,9 @@ export default function DashboardView({ grid }: { grid: Grid }) {
 
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
-      <div className="mx-auto flex max-w-[1240px] flex-col gap-4">
+      <Stagger className="mx-auto flex max-w-[1240px] flex-col gap-4">
         {/* Identity row: name + persistent context, actions on the right. */}
-        <div className="flex flex-wrap items-center gap-3">
+        <StaggerItem className="flex flex-wrap items-center gap-3">
           <span className="text-xl font-semibold text-ink">{grid.project}</span>
           <AppContextChips />
           <div style={{ flex: 1 }} />
@@ -268,10 +268,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           >
             <Button size="small" icon={<MoreOutlined />} />
           </Dropdown>
-        </div>
+        </StaggerItem>
 
         {/* The four operational numbers, each clickable to its source. */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        <StaggerItem className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <StatTile
             label="Configuration health"
             value={
@@ -316,10 +316,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             icon={<HistoryOutlined style={{ color: "var(--text-3)" }} />}
             onClick={() => sync.mutate()}
           />
-        </div>
+        </StaggerItem>
 
         {/* Attention + deployment targets: the two questions after health. */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
+        <StaggerItem className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))" }}>
           <SectionCard title="Needs your attention">
             {attention.length === 0 ? (
               <div className="flex items-center gap-2.5 py-2 text-ink-2">
@@ -392,10 +392,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               ))}
             </div>
           </SectionCard>
-        </div>
+        </StaggerItem>
 
         {/* Supporting band: what happened, how much, and the repository. */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
+        <StaggerItem className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))" }}>
           <SectionCard
             title="Recent activity"
             extra={
@@ -485,8 +485,8 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               </Button>
             </div>
           </SectionCard>
-        </div>
-      </div>
+        </StaggerItem>
+      </Stagger>
 
       <DeleteApplicationModal
         open={deleteOpen}

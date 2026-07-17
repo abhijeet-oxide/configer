@@ -20,7 +20,6 @@ import {
   FolderAddOutlined,
   ReloadOutlined,
   CheckOutlined,
-  CheckCircleFilled,
   DownloadOutlined,
   TableOutlined,
   EyeOutlined,
@@ -31,6 +30,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Finding } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
+import { AllClearArt, StatePanel } from "./illustrations";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
 // outside Configer: new config files, edits, deletions, renames and new
@@ -185,22 +185,22 @@ export default function RepoChangesView() {
         // page proves it is alive instead of standing empty.
         <div style={{ display: "flex", gap: 14, alignItems: "stretch", flexWrap: "wrap", flex: 1 }}>
           <Card style={{ flex: "1 1 340px", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <div style={{ textAlign: "center", padding: "28px 16px" }}>
-              <CheckCircleFilled style={{ fontSize: 52, color: "var(--c-ok)" }} />
-              <Typography.Title level={4} style={{ marginTop: 16, marginBottom: 6 }}>
-                No drift; you're all caught up
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" style={{ maxWidth: 400, margin: "0 auto" }}>
-                Nothing has been committed directly on Git since you last looked. New commits are
-                checked automatically
-                {data && (
-                  <>
-                    {" "}(currently at <code>{data.headSha.slice(0, 7)}</code>)
-                  </>
-                )}
-                .
-              </Typography.Paragraph>
-            </div>
+            <StatePanel
+              art={<AllClearArt size={116} />}
+              title="No drift; you're all caught up"
+              subtitle={
+                <>
+                  Nothing has been committed directly on Git since you last looked. New commits are
+                  checked automatically
+                  {data && (
+                    <>
+                      {" "}(currently at <code>{data.headSha.slice(0, 7)}</code>)
+                    </>
+                  )}
+                  .
+                </>
+              }
+            />
           </Card>
           <Card
             size="small"

@@ -41,7 +41,7 @@ import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
 import FileExplorer from "./FileExplorer";
-import { ScanArt, StatePanel, SuccessArt } from "./illustrations";
+import { AllClearArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -658,11 +658,10 @@ function ScanStep({
         )}
       </Space>
       {totalNew === 0 ? (
-        <Alert
-          type="success"
-          showIcon
-          message="Everything the scan found is already managed."
-          description="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
+        <StatePanel
+          art={<AllClearArt size={116} />}
+          title="Everything the scan found is already managed"
+          subtitle="New files committed to Git later will show up in Repository changes, and you can rescan here any time."
         />
       ) : (
         <>

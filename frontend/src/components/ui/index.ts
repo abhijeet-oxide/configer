@@ -11,3 +11,4 @@ export { default as Toolbar } from "./Toolbar";
 export { default as EmptyState } from "./EmptyState";
 export { default as LoadingStage } from "./LoadingStage";
 export { default as AppContextChips, MonoChip } from "./AppContextChips";
+export { FadeIn, Stagger, StaggerItem } from "./motion";

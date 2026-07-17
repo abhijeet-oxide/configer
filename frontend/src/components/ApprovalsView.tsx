@@ -11,7 +11,6 @@ import {
   App as AntApp,
 } from "antd";
 import {
-  CheckCircleFilled,
   CheckCircleOutlined,
   CloseCircleOutlined,
   LinkOutlined,
@@ -27,7 +26,8 @@ import CrSteps, { StatePill } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
 import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
-import { SectionCard, EmptyState, MonoChip } from "./ui";
+import { SectionCard, EmptyState, MonoChip, FadeIn } from "./ui";
+import { EmptyArt, InboxZeroArt } from "./illustrations";
 
 // ApprovalsView is the review workspace: state tabs over a compact queue
 // table, and the selected change request in full underneath: its changes,
@@ -261,7 +261,7 @@ export default function ApprovalsView() {
       {shown.length === 0 ? (
         <SectionCard>
           <EmptyState
-            icon={<CheckCircleFilled />}
+            art={filter === "waiting" ? <InboxZeroArt size={116} /> : <EmptyArt size={104} />}
             title={filter === "waiting" ? "All caught up" : "Nothing here yet"}
             hint={
               filter === "waiting"
@@ -312,6 +312,7 @@ export default function ApprovalsView() {
           </SectionCard>
 
           {selected && (
+            <FadeIn key={selected.id} y={6}>
             <SectionCard>
               {/* Identity row of the selected change request. */}
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
@@ -419,6 +420,7 @@ export default function ApprovalsView() {
                 </div>
               )}
             </SectionCard>
+            </FadeIn>
           )}
         </>
       )}

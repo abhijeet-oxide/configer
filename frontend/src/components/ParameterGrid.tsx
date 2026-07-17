@@ -62,7 +62,6 @@ import { envHex } from "../theme";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
-import { StatusPill } from "./ui";
 
 function EditableCell({
   cell,
@@ -1004,12 +1003,32 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           </Badge>
         </Dropdown>
           <span style={{ width: 1, height: 20, background: "var(--border)" }} />
-          {pendingCount === 0 ? (
-            <StatusPill tone="ok">All changes saved</StatusPill>
-          ) : (
-            <StatusPill tone="pending">
-              {pendingCount} unsent edit{pendingCount === 1 ? "" : "s"}
-            </StatusPill>
+          {/* Save state as a single dot: green = saved, orange = unsent
+              edits. The words live in the tooltip so the toolbar keeps to
+              one row. */}
+          <Tooltip
+            title={
+              pendingCount === 0
+                ? "All changes saved"
+                : `${pendingCount} unsent edit${pendingCount === 1 ? "" : "s"}: create a change request to submit`
+            }
+          >
+            <span
+              role="status"
+              aria-label={pendingCount === 0 ? "All changes saved" : `${pendingCount} unsent edits`}
+              style={{
+                width: 9,
+                height: 9,
+                borderRadius: 5,
+                flexShrink: 0,
+                background: pendingCount === 0 ? "var(--c-ok)" : "var(--c-pending)",
+                boxShadow: `0 0 0 3px ${pendingCount === 0 ? "var(--c-ok-bg)" : "var(--c-pending-bg)"}`,
+                cursor: "default",
+              }}
+            />
+          </Tooltip>
+          {pendingCount > 0 && (
+            <span style={{ fontSize: 12, fontWeight: 600, color: "var(--c-pending)" }}>{pendingCount}</span>
           )}
           <SubmitChangesButton instances={grid.instances} />
         </div>

@@ -51,8 +51,12 @@ type localWorkspace struct {
 
 func (w *localWorkspace) Dir() string { return w.dir }
 
-func (w *localWorkspace) Commit(_ context.Context, message string) (string, error) {
-	sha, err := w.repo.CommitAll(w.dir, message)
+func (w *localWorkspace) Commit(_ context.Context, message string, author Author) (string, error) {
+	sig := ""
+	if !author.Empty() {
+		sig = author.Sig()
+	}
+	sha, err := w.repo.CommitAllAs(w.dir, message, sig)
 	if err != nil {
 		return "", err
 	}
@@ -100,8 +104,12 @@ func (b *LocalBackend) MergeBranch(_ context.Context, target, crBranch, message 
 	return nil
 }
 
-func (b *LocalBackend) CommitWorking(_ context.Context, message string) (string, bool, error) {
-	sha, err := b.repo.CommitAll(b.repo.Dir, message)
+func (b *LocalBackend) CommitWorking(_ context.Context, message string, author Author) (string, bool, error) {
+	sig := ""
+	if !author.Empty() {
+		sig = author.Sig()
+	}
+	sha, err := b.repo.CommitAllAs(b.repo.Dir, message, sig)
 	if err != nil {
 		if strings.Contains(err.Error(), "nothing to commit") {
 			return "", false, nil

@@ -102,6 +102,8 @@ import phLightning from "@iconify-icons/ph/lightning";
 import phArrowCounterClockwise from "@iconify-icons/ph/arrow-counter-clockwise";
 import phUser from "@iconify-icons/ph/user";
 import phWarningFill from "@iconify-icons/ph/warning-fill";
+import phSun from "@iconify-icons/ph/sun";
+import phMoon from "@iconify-icons/ph/moon";
 
 export interface AppIconProps {
   className?: string;
@@ -138,6 +140,8 @@ export const TableOutlined = make("table", phTable);
 export const InboxOutlined = make("inbox", phTray);
 export const GlobalOutlined = make("global", phGlobe);
 export const SettingOutlined = make("setting", phGear);
+export const SunOutlined = make("sun", phSun);
+export const MoonOutlined = make("moon", phMoon);
 export const UserOutlined = make("user", phUser);
 export const BellOutlined = make("bell", phBell);
 

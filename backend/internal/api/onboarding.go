@@ -120,7 +120,7 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.commitCatalogChange(w, "Initialize application "+req.Name, author(r, req.Author), map[string]any{
+	s.commitCatalogChange(w, r, "Initialize application "+req.Name, req.Author, map[string]any{
 		"ok": true, "parameters": added, "instances": len(req.Instances), "skipped": skipped,
 	})
 }

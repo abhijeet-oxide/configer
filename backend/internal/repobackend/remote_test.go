@@ -214,7 +214,7 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(ws.Dir(), "notes/prod-out.yaml"), []byte("port: 9090\n"), 0o644); err != nil {
 		t.Fatalf("write generated: %v", err)
 	}
-	sha, err := ws.Commit(ctx, "CR 1")
+	sha, err := ws.Commit(ctx, "CR 1", Author{})
 	ws.Close()
 	if err != nil {
 		t.Fatalf("CR commit: %v", err)
@@ -238,12 +238,12 @@ func TestRemoteBackendCRAndWorking(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(cache, ".configer/parameters.yaml"), []byte("parameters:\n  - id: p1\n"), 0o644); err != nil {
 		t.Fatalf("write catalog: %v", err)
 	}
-	wsha, committed, err := b.CommitWorking(ctx, "Import p1")
+	wsha, committed, err := b.CommitWorking(ctx, "Import p1", Author{})
 	if err != nil || !committed {
 		t.Fatalf("CommitWorking: sha=%q committed=%v err=%v", wsha, committed, err)
 	}
 	// a second call with no further changes is a no-op
-	if _, committed2, _ := b.CommitWorking(ctx, "noop"); committed2 {
+	if _, committed2, _ := b.CommitWorking(ctx, "noop", Author{}); committed2 {
 		t.Fatal("CommitWorking should be a no-op with no changes")
 	}
 	// the working commit landed on main

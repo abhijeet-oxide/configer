@@ -229,10 +229,21 @@ func nonEmptyLines(s string) []string {
 // CommitAll stages and commits everything in dir (a worktree or the primary
 // tree) and returns the new commit SHA.
 func (r *Repo) CommitAll(dir, message string) (string, error) {
+	return r.CommitAllAs(dir, message, "")
+}
+
+// CommitAllAs is CommitAll with an explicit git author ("Name <email>").
+// The committer stays the machine identity; an empty author keeps the
+// machine identity as author too (the pre-existing behavior).
+func (r *Repo) CommitAllAs(dir, message, author string) (string, error) {
 	if _, err := r.git(dir, "add", "-A"); err != nil {
 		return "", err
 	}
-	if _, err := r.git(dir, "commit", "-m", message); err != nil {
+	args := []string{"commit", "-m", message}
+	if author != "" {
+		args = append(args, "--author", author)
+	}
+	if _, err := r.git(dir, args...); err != nil {
 		return "", err
 	}
 	return r.git(dir, "rev-parse", "HEAD")

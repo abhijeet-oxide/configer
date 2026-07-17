@@ -107,6 +107,39 @@ instances:
 	return workDir, originDir, &Service{Backend: backend, Store: store}
 }
 
+// The session user is the git AUTHOR of a submitted change; the machine
+// identity stays the committer and is credited via Co-authored-by.
+func TestSubmitAuthorAttribution(t *testing.T) {
+	_, originDir, svc := fixture(t)
+	svc.Bot = repobackend.Author{Name: "Configer Bot", Email: "bot@configer.local"}
+	ctx := context.Background()
+
+	cr, err := svc.Store.Draft("alice", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+
+	ident := repobackend.Author{Name: "Alice Doe", Email: "alice@example.com"}
+	got, err := svc.Submit(ctx, cr.ID, "Author attribution", "", "alice", "", "", ident)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	an := sh(t, originDir, "git", "log", "-1", "--format=%an <%ae>", got.Branch)
+	if strings.TrimSpace(an) != "Alice Doe <alice@example.com>" {
+		t.Errorf("author = %q, want the session user", an)
+	}
+	cn := sh(t, originDir, "git", "log", "-1", "--format=%cn", got.Branch)
+	if strings.TrimSpace(cn) != "Configer Bot" {
+		t.Errorf("committer = %q, want the machine identity", cn)
+	}
+	msg := sh(t, originDir, "git", "log", "-1", "--format=%B", got.Branch)
+	if !strings.Contains(msg, "Co-authored-by: Configer Bot <bot@configer.local>") {
+		t.Errorf("commit message missing bot co-author credit:\n%s", msg)
+	}
+}
+
 func TestSubmitAndMergePipeline(t *testing.T) {
 	workDir, originDir, svc := fixture(t)
 	ctx := context.Background()
@@ -120,7 +153,7 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()})
 
 	// Submit: branch + write-back + commit + push.
-	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature")
+	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +230,7 @@ func TestSubmitResetRemovesKey(t *testing.T) {
 	cr, _ := svc.Store.Draft("bob", "main")
 	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
 
-	got, err := svc.Submit(ctx, cr.ID, "Drop staging port override", "", "bob", "", "")
+	got, err := svc.Submit(ctx, cr.ID, "Drop staging port override", "", "bob", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,7 +264,7 @@ func TestSubmitAddInstance(t *testing.T) {
 	// A value edit for the new instance rides the same CR.
 	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
 
-	got, err := svc.Submit(ctx, cr.ID, "Add DR instance", "", "carol", "", "")
+	got, err := svc.Submit(ctx, cr.ID, "Add DR instance", "", "carol", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +289,7 @@ func TestSubmitAddInstance(t *testing.T) {
 	// Remove-instance CRs retire folder + registry entry.
 	cr2, _ := svc.Store.Draft("carol", "main")
 	cr2.UpsertItem(change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
-	got2, err := svc.Submit(ctx, cr2.ID, "Retire staging", "", "carol", "", "")
+	got2, err := svc.Submit(ctx, cr2.ID, "Retire staging", "", "carol", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +320,7 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 	// Submitted CR rejection keeps the record with state rejected.
 	cr2, _ := svc.Store.Draft("bob", "main")
 	cr2.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
-	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob", "", "")
+	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +338,7 @@ func TestSubmitValidation(t *testing.T) {
 	ctx := context.Background()
 	// Empty draft cannot be submitted.
 	cr, _ := svc.Store.Draft("bob", "main")
-	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob", "", ""); err == nil {
+	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob", "", "", repobackend.Author{}); err == nil {
 		t.Error("expected error submitting empty draft")
 	}
 }

@@ -75,7 +75,7 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	s.commitCatalogChange(w, "Update application details", author(r, req.Author), app)
+	s.commitCatalogChange(w, r, "Update application details", req.Author, app)
 }
 
 // deinit removes the .configer folder - Configer's metadata - from the
@@ -99,5 +99,5 @@ func (s *Server) deinit(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	s.commitCatalogChange(w, "Remove Configer metadata (.configer)", author(r, req.Author), map[string]any{"ok": true, "removed": true})
+	s.commitCatalogChange(w, r, "Remove Configer metadata (.configer)", req.Author, map[string]any{"ok": true, "removed": true})
 }

@@ -2,10 +2,11 @@
 //
 // Submit turns a draft's pending items into a real change on Git: an isolated
 // worktree on branch configer/cr-<id>, surgical write-back edits into the
-// repository's own files, one commit (machine committer + Changed-by trailer
-// for the human author), a push when a remote exists, and a hosted PR when a
-// provider is configured. Merge publishes (provider PR merge or local git
-// merge); Reject closes.
+// repository's own files, one commit (the session user as git author, the
+// machine identity as committer and Co-authored-by credit, plus a Changed-by
+// trailer), a push when a remote exists, and a hosted PR when a provider is
+// configured. Merge publishes (provider PR merge or local git merge); Reject
+// closes.
 package changeset
 
 import (
@@ -32,6 +33,10 @@ import (
 type Service struct {
 	Backend repobackend.Backend
 	Store   *crstore.Store
+	// Bot is the machine identity (committer). When a human author is known,
+	// the bot is credited on the commit via a Co-authored-by trailer instead
+	// of authoring it.
+	Bot repobackend.Author
 }
 
 // branchName turns a change request into a readable feature branch. The user
@@ -68,10 +73,10 @@ func slugify(s string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-// commitMessage builds the commit with human attribution trailers (§ Git
-// identity: the committer is the configured machine identity, the real author
-// is recorded in the message).
-func commitMessage(cr *change.ChangeRequest) string {
+// commitMessage builds the commit message with attribution trailers (§ Git
+// identity: the human user is the git author, the machine identity is the
+// committer and is credited as co-author of the change it wrote out).
+func commitMessage(cr *change.ChangeRequest, ident, bot repobackend.Author) string {
 	var b strings.Builder
 	b.WriteString(cr.Title)
 	b.WriteString("\n\n")
@@ -89,13 +94,16 @@ func commitMessage(cr *change.ChangeRequest) string {
 		fmt.Fprintf(&b, "Category: %s\n", cr.Category)
 	}
 	fmt.Fprintf(&b, "Changed-by: %s\n", cr.Author)
+	if !ident.Empty() && !bot.Empty() {
+		fmt.Fprintf(&b, "Co-authored-by: %s\n", bot.Sig())
+	}
 	return b.String()
 }
 
 // Submit moves a draft CR to under_review: branch, apply, render, commit,
 // push, open PR. Reference and category are optional classification metadata
 // recorded as commit trailers and in the PR body.
-func (s *Service) Submit(ctx context.Context, id int, title, description, author, reference, category string) (*change.ChangeRequest, error) {
+func (s *Service) Submit(ctx context.Context, id int, title, description, author, reference, category string, ident repobackend.Author) (*change.ChangeRequest, error) {
 	cr, err := s.Store.Get(id)
 	if err != nil {
 		return nil, err
@@ -188,7 +196,9 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 
 	// 2) One commit for the whole CR (worktree commit+push locally, a
 	//    Git-data-API partial commit remotely). The branch ref is created.
-	sha, err := ws.Commit(ctx, commitMessage(cr))
+	//    The human behind the session is the git author; the machine identity
+	//    commits and is credited as co-author.
+	sha, err := ws.Commit(ctx, commitMessage(cr, ident, s.Bot), ident)
 	if err != nil {
 		return nil, err
 	}

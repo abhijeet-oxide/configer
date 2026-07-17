@@ -34,6 +34,21 @@ body {
   text-transform: none;
   vertical-align: -0.125em;
 }
+/* Theme toggle radial reveal (themeTransition.ts): the default cross-fade is
+   disabled so the scripted clip-path circle is the only animation, spreading
+   the new theme from the clicked point. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 2147483646;
+}
+
 .icon-spin {
   animation: icon-spin 1s linear infinite;
 }

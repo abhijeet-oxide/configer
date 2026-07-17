@@ -16,6 +16,23 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 )
 
+// Author is the human a commit is attributed to: the session identity behind
+// the UI action (the user whose Git approval the deployment runs under). The
+// zero value means "no human known", in which case the machine identity
+// authors the commit as before. The machine account always stays the
+// committer; when a human author is set it is additionally credited in the
+// message via a Co-authored-by trailer for the bot.
+type Author struct {
+	Name  string
+	Email string
+}
+
+// Empty reports whether no human identity is known.
+func (a Author) Empty() bool { return a.Name == "" }
+
+// Sig renders the git "Name <email>" signature.
+func (a Author) Sig() string { return a.Name + " <" + a.Email + ">" }
+
 // Commit is one entry in the repository history (identity + subject).
 type Commit struct {
 	SHA     string `json:"sha"`
@@ -49,7 +66,7 @@ type SyncStatus struct {
 // (a worktree commit+push locally, a Git-data-API partial commit remotely).
 type Workspace interface {
 	Dir() string
-	Commit(ctx context.Context, message string) (sha string, err error)
+	Commit(ctx context.Context, message string, author Author) (sha string, err error)
 	Close()
 }
 
@@ -81,7 +98,7 @@ type Backend interface {
 	// CommitWorking commits the current RootDir state directly onto the
 	// default branch (catalog operations: import, retire, attach, edit).
 	// committed is false when there was nothing to commit.
-	CommitWorking(ctx context.Context, message string) (sha string, committed bool, err error)
+	CommitWorking(ctx context.Context, message string, author Author) (sha string, committed bool, err error)
 
 	// Diff lists file-level changes from..to (reconcile).
 	Diff(ctx context.Context, from, to string) ([]FileChange, error)

@@ -290,6 +290,15 @@ func (c *Client) Refresh(ctx context.Context, branch, fromSHA, dir string) (stri
 // the API, no clone anywhere. The branch is created at baseSHA when it does
 // not exist yet. Returns the new commit sha.
 func (c *Client) CommitPaths(ctx context.Context, branch, baseSHA, message, dir string, paths, deletes []string) (string, error) {
+	return c.CommitPathsAs(ctx, branch, baseSHA, message, dir, paths, deletes, "", "")
+}
+
+// CommitPathsAs is CommitPaths with an explicit git author; empty
+// name/email keeps the client's machine identity (the committer either way).
+func (c *Client) CommitPathsAs(ctx context.Context, branch, baseSHA, message, dir string, paths, deletes []string, authorName, authorEmail string) (string, error) {
+	if authorName == "" {
+		authorName, authorEmail = c.Name, c.Email
+	}
 	type treeReq struct {
 		Path    string  `json:"path"`
 		Mode    string  `json:"mode"`
@@ -343,7 +352,8 @@ func (c *Client) CommitPaths(ctx context.Context, branch, baseSHA, message, dir 
 		"message": message,
 		"tree":    tree.SHA,
 		"parents": []string{baseSHA},
-		"author":  map[string]string{"name": c.Name, "email": c.Email, "date": time.Now().UTC().Format(time.RFC3339)},
+		"author":  map[string]string{"name": authorName, "email": authorEmail, "date": time.Now().UTC().Format(time.RFC3339)},
+		"committer": map[string]string{"name": c.Name, "email": c.Email, "date": time.Now().UTC().Format(time.RFC3339)},
 	}, &commit); err != nil {
 		return "", err
 	}

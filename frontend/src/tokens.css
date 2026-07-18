@@ -1,70 +1,10 @@
-/* Design tokens: the product's visual identity, one deliberate system above
-   Ant Design. Every custom surface reads these variables; AntD primitives get
-   the same values through buildTheme (theme.ts). Light is the design target;
-   the dark block keeps every variable functional in dark mode. */
+/* Structural design tokens: spacing, radius, elevation, motion and type.
+   The COLOR layer (brand, sidebar, surfaces, text, semantic, provenance) is not
+   here - it is generated from theme.config.ts and inlined into <head> by
+   plugins/vite-plugin-brand.ts, so colors have a single source of truth and are
+   customizable at build time. Edit theme.config.ts to reskin the app. */
 
 :root {
-  /* Brand: AT&T blue family. Used sparingly: primary actions, selection,
-     focus, links. The interface itself stays neutral. */
-  --brand: #0057b8;
-  --brand-strong: #004494;
-  --brand-soft: #e8f1fb;
-  --brand-border: #b2ccea;
-
-  /* Navigation rail: dark navy chrome, independent of light/dark mode. */
-  --nav-bg: #0a1f3c;
-  --nav-bg-hover: rgba(255, 255, 255, 0.06);
-  --nav-bg-active: #0f62d6;
-  --nav-fg: #b9c6d8;
-  --nav-fg-active: #ffffff;
-  --nav-border: rgba(255, 255, 255, 0.08);
-
-  /* Surfaces: canvas (page) < surface (content) < floating (menus, modals).
-     The canvas carries a gentle cool pastel tint so the soft-UI shadows have
-     something to press against; surfaces stay near-white and readable. */
-  --canvas: #eef1f6;
-  --surface: #ffffff;
-  --surface-2: #f7f9fc;
-  --border: #e7ebf1;
-  --border-strong: #d5dbe4;
-
-  /* Illustration surface: the "paper" fill inside the state illustrations
-     (trays, shields, documents). Kept as a token so those shapes track the
-     theme instead of being hard-coded white - a white blob on a dark card. */
-  --ill-surface: #ffffff;
-
-  /* Text: primary / secondary / tertiary. */
-  --text: #101828;
-  --text-2: #475467;
-  --text-3: #98a2b3;
-
-  /* Semantic status triples (foreground / pastel background / border).
-     Green = healthy, amber = attention, red = error only, blue = review.
-     Backgrounds are deliberately pastel; foregrounds keep AA contrast. */
-  --c-ok: #067647;
-  --c-ok-bg: #e2f6ea;
-  --c-ok-bd: #b7e6cb;
-  --c-pending: #b54708;
-  --c-pending-bg: #fcf1dd;
-  --c-pending-bd: #f4dda4;
-  --c-review: #0057b8;
-  --c-review-bg: #e4eefa;
-  --c-review-bd: #bdd4ee;
-  --c-danger: #b42318;
-  --c-danger-bg: #fcebe9;
-  --c-danger-bd: #f5c8c2;
-
-  /* Cell provenance (where a value comes from), read at a glance in the grid.
-     Violet = inherited from the shared base layer; neutral = a declared
-     default with no file behind it. An instance-set value (the norm) carries
-     no marker at all, so violet/neutral dots visually pick out inheritance. */
-  --c-base: #6941c6;
-  --c-base-bg: #f4f0fd;
-  --c-base-bd: #e0d3fa;
-  --c-inherit: #667085;
-  --c-inherit-bg: #f2f4f7;
-  --c-inherit-bd: #e0e4ea;
-
   /* Spacing: engineered 4px scale. */
   --sp-1: 4px;
   --sp-2: 8px;
@@ -109,52 +49,9 @@
   --fs-24: 24px;
 }
 
+/* Elevation is the one structural token that changes with the theme: soft-UI
+   shadows go from light-on-pastel to depth-on-dark. */
 [data-theme="dark"] {
-  --brand: #4d94e8;
-  --brand-strong: #74abec;
-  --brand-soft: rgba(77, 148, 232, 0.16);
-  --brand-border: rgba(77, 148, 232, 0.45);
-
-  --nav-bg: #081830;
-  --nav-bg-hover: rgba(255, 255, 255, 0.07);
-  --nav-bg-active: #0f62d6;
-  --nav-fg: #a8b6ca;
-  --nav-fg-active: #ffffff;
-  --nav-border: rgba(255, 255, 255, 0.08);
-
-  --canvas: #101318;
-  --surface: #171b21;
-  --surface-2: #1c2129;
-  --border: #262b33;
-  --border-strong: #353b45;
-
-  /* A touch lighter than the card so illustration shapes lift off it. */
-  --ill-surface: #232a33;
-
-  --text: #e6e9ee;
-  --text-2: #a5adba;
-  --text-3: #6c7684;
-
-  --c-ok: #4cc38a;
-  --c-ok-bg: rgba(23, 178, 106, 0.14);
-  --c-ok-bd: rgba(23, 178, 106, 0.4);
-  --c-pending: #f2b13a;
-  --c-pending-bg: rgba(247, 144, 9, 0.14);
-  --c-pending-bd: rgba(247, 144, 9, 0.4);
-  --c-review: #63a7f0;
-  --c-review-bg: rgba(77, 148, 232, 0.14);
-  --c-review-bd: rgba(77, 148, 232, 0.4);
-  --c-danger: #f0716a;
-  --c-danger-bg: rgba(240, 68, 56, 0.14);
-  --c-danger-bd: rgba(240, 68, 56, 0.4);
-
-  --c-base: #b490f5;
-  --c-base-bg: rgba(148, 108, 230, 0.16);
-  --c-base-bd: rgba(148, 108, 230, 0.42);
-  --c-inherit: #98a2b3;
-  --c-inherit-bg: rgba(152, 162, 179, 0.14);
-  --c-inherit-bd: rgba(152, 162, 179, 0.34);
-
   --el-1: 5px 5px 12px rgba(0, 0, 0, 0.45), -4px -4px 10px rgba(255, 255, 255, 0.035);
   --el-2: 8px 8px 18px rgba(0, 0, 0, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.045);
   --el-3: 16px 16px 36px rgba(0, 0, 0, 0.6), -8px -8px 20px rgba(255, 255, 255, 0.05);

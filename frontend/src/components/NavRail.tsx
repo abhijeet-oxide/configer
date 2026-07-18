@@ -14,6 +14,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { envHex } from "../theme";
+import { theme as brand } from "../theme.config";
 import { useUI } from "../store";
 
 // The navigation rail: the product's one piece of dark chrome. Global items
@@ -153,13 +154,19 @@ export default function NavRail({
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
-        <div className="logo-tile">C</div>
+        {brand.logo.src ? (
+          <img className="logo-tile" src={brand.logo.src} alt={brand.appName} />
+        ) : brand.logo.svg ? (
+          <span className="logo-tile" dangerouslySetInnerHTML={{ __html: brand.logo.svg }} />
+        ) : (
+          <div className="logo-tile">{brand.logo.text ?? brand.appName.charAt(0)}</div>
+        )}
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
             <Typography.Text strong style={{ color: "var(--nav-fg-active)" }}>
-              Configer
+              {brand.appName}
             </Typography.Text>
-            <div style={{ fontSize: 10, color: "var(--nav-fg)", letterSpacing: 0.4 }}>CONFIG LIFECYCLE</div>
+            <div style={{ fontSize: 10, color: "var(--nav-fg)", letterSpacing: 0.4 }}>{brand.navCaption}</div>
           </div>
         )}
       </div>

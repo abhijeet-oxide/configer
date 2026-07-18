@@ -1,40 +1,33 @@
-// Theme system: one deliberate product identity (AT&T blue primary over a
-// neutral canvas) expressed twice: as CSS variables in tokens.css for custom
-// surfaces, and here as Ant Design tokens so the primitive layer matches.
-// Light is the design target; dark stays fully functional.
+// Theme system: one deliberate product identity expressed twice - as CSS
+// variables (generated from theme.config.ts and inlined by the brand Vite
+// plugin) for custom surfaces, and here as Ant Design tokens so the primitive
+// layer matches. Both derive from the SAME config, so they cannot drift.
+// To customize the look, edit theme.config.ts - not this file.
 import { theme as antdTheme, type ThemeConfig } from "antd";
+import { theme as brand } from "./theme.config";
 
 export type Mode = "light" | "dark";
 export type FontScale = "normal" | "large";
 
-// The single brand primary. Must stay in sync with --brand in tokens.css.
-export const BRAND = "#0057b8";
-const BRAND_DARK = "#4d94e8";
+// The single brand primary, from the theme config (kept for existing importers).
+export const BRAND = brand.light.brand;
 
-// Semantic accents used consistently across the app (mirrored in tokens.css):
-// green = healthy/valid, amber = attention/pending, blue = review/primary,
-// red = errors, failures and destructive actions ONLY; it never denotes an
-// environment (a healthy production instance is not an error).
+// Semantic accents used consistently across the app: green = healthy/valid,
+// amber = attention/pending, blue = review/primary, red = errors, failures and
+// destructive actions ONLY; it never denotes an environment (a healthy
+// production instance is not an error).
 export const semantic = {
-  ok: "#067647",
-  pending: "#b54708",
-  review: "#0057b8",
-  danger: "#b42318",
+  ok: brand.light.ok,
+  pending: brand.light.pending,
+  review: brand.light.review,
+  danger: brand.light.danger,
 };
 
 // Environment identity colors. These label WHICH environment an instance runs
 // in; they are deliberately distinct from the status palette above so color
 // carries one meaning. Production is a serious indigo (not danger-red).
 // Single source of truth: import envHex/envColors instead of hardcoding.
-export const envColors: Record<string, string> = {
-  production: "#4338ca", // indigo: serious, high-stakes, but not an error
-  prod: "#4338ca", // alias of production
-  staging: "#b54708", // amber
-  development: "#067647", // green
-  lab: "#0f9d6e", // teal
-  sandbox: "#7c3aed", // violet
-  nonprod: "#0891b2", // cyan
-};
+export const envColors: Record<string, string> = brand.envColors;
 export const envHex = (env: string | undefined): string =>
   (env ? envColors[env.toLowerCase()] : undefined) ?? "#8c8c8c";
 
@@ -43,31 +36,31 @@ export const envHex = (env: string | undefined): string =>
 export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 
 export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig {
-  const base = scale === "large" ? 15 : 13;
   const dark = mode === "dark";
+  const p = dark ? brand.dark : brand.light;
+  const base = scale === "large" ? brand.type.fontSizeBase + 2 : brand.type.fontSizeBase;
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
-      colorPrimary: dark ? BRAND_DARK : BRAND,
-      colorInfo: dark ? BRAND_DARK : BRAND,
-      colorLink: dark ? BRAND_DARK : BRAND,
-      colorSuccess: dark ? "#4cc38a" : "#067647",
-      colorWarning: dark ? "#f2b13a" : "#b54708",
-      colorError: dark ? "#f0716a" : "#b42318",
-      borderRadius: 6,
-      controlHeight: 30,
+      colorPrimary: p.brand,
+      colorInfo: p.brand,
+      colorLink: p.brand,
+      colorSuccess: p.ok,
+      colorWarning: p.pending,
+      colorError: p.danger,
+      borderRadius: brand.shape.borderRadius,
+      controlHeight: brand.shape.controlHeight,
       fontSize: base,
-      fontFamily:
-        `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
+      fontFamily: brand.type.fontFamily,
       // three planes: pastel page canvas < content surface < floating surface
-      colorBgLayout: dark ? "#101318" : "#eef1f6",
-      colorBgContainer: dark ? "#171b21" : "#ffffff",
-      colorBgElevated: dark ? "#1c2129" : "#ffffff",
-      colorBorder: dark ? "#353b45" : "#d5dbe4",
-      colorBorderSecondary: dark ? "#262b33" : "#e7ebf1",
-      colorText: dark ? "#e6e9ee" : "#101828",
-      colorTextSecondary: dark ? "#a5adba" : "#475467",
-      colorTextTertiary: dark ? "#6c7684" : "#98a2b3",
+      colorBgLayout: p.canvas,
+      colorBgContainer: p.surface,
+      colorBgElevated: dark ? p.surface2 : p.surface,
+      colorBorder: p.borderStrong,
+      colorBorderSecondary: p.border,
+      colorText: p.text,
+      colorTextSecondary: p.text2,
+      colorTextTertiary: p.text3,
     },
     components: {
       Layout: {

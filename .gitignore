@@ -21,5 +21,6 @@ backend/configer-data/
 # TypeScript build info
 *.tsbuildinfo
 
-# Graphify knowledge-graph output (generated; never commit)
+# Graphify knowledge graph (generated). Rebuilt fresh each session by the
+# SessionStart hook - pure AST, zero tokens - so it is never committed.
 graphify-out/

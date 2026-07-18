@@ -10,12 +10,21 @@
 # must never block the session from starting, nor stop the others from setting
 # up. Only the model-free, zero-token work happens here; building semantic doc
 # graphs or running scans stays on-demand.
+#
+# Runs ASYNCHRONOUSLY: the session starts immediately and the tools finish
+# provisioning in the background (within asyncTimeout). Tradeoff - the first few
+# seconds of a session may hit a tool that is still installing; the skills
+# handle that (they install/build on demand if not yet ready).
 set -euo pipefail
 
 # Web (remote) sessions only; local machines manage their own tooling.
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
+
+# Detach from session startup. This control line MUST be the first stdout the
+# hook emits; everything after it runs in the background.
+echo '{"async": true, "asyncTimeout": 300000}'
 
 # The user-site bin holds the CLIs; put it on PATH for this run and persist it
 # for the rest of the session so `graphify` and `semgrep` resolve.

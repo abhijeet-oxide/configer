@@ -28,6 +28,11 @@
   --border: #e7ebf1;
   --border-strong: #d5dbe4;
 
+  /* Illustration surface: the "paper" fill inside the state illustrations
+     (trays, shields, documents). Kept as a token so those shapes track the
+     theme instead of being hard-coded white - a white blob on a dark card. */
+  --ill-surface: #ffffff;
+
   /* Text: primary / secondary / tertiary. */
   --text: #101828;
   --text-2: #475467;
@@ -122,6 +127,9 @@
   --surface-2: #1c2129;
   --border: #262b33;
   --border-strong: #353b45;
+
+  /* A touch lighter than the card so illustration shapes lift off it. */
+  --ill-surface: #232a33;
 
   --text: #e6e9ee;
   --text-2: #a5adba;

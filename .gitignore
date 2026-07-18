@@ -20,3 +20,6 @@ backend/configer-data/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Graphify knowledge-graph output (generated; never commit)
+graphify-out/

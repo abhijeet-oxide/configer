@@ -33,3 +33,11 @@ fi
 if ! graphify install; then
   echo "graphify: 'graphify install' failed; /graphify may be unavailable this session" >&2
 fi
+
+# Build (or incrementally refresh) the code knowledge graph so it is ready this
+# session. `graphify update` is pure tree-sitter AST extraction - no model, no
+# tokens - and incremental, re-reading only changed files. The graph lives in
+# the ephemeral, gitignored graphify-out/, rebuilt each session rather than
+# committed. Best-effort: never block session start on it.
+graphify update "${CLAUDE_PROJECT_DIR:-.}" >/dev/null 2>&1 \
+  || echo "graphify: graph build skipped; run '/graphify .' by hand this session" >&2

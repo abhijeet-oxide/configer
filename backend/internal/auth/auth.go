@@ -47,6 +47,11 @@ type Service struct {
 	Store   *store.Store
 	// Admins are logins that may manage members (comma list from env).
 	Admins map[string]bool
+	// SecureCookies marks the session and OAuth-state cookies Secure, so a
+	// browser only ever sends them over HTTPS. Enable it in any TLS-served
+	// deployment (production); leave it off for plain-HTTP localhost so login
+	// still works in development.
+	SecureCookies bool
 	// HTTP is the outbound client (test seam).
 	HTTP *http.Client
 
@@ -166,7 +171,7 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	state := randomToken()
 	http.SetCookie(w, &http.Cookie{
 		Name: "configer_oauth_state", Value: state, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 600,
+		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600,
 	})
 	// The repo scope lets Configer list the user's repositories (their own
 	// and their orgs') and clone private ones during application creation.
@@ -222,9 +227,12 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.PruneSessions(r.Context())
+	_ = s.Store.Audit(r.Context(), store.Event{
+		Login: ghUser.Login, Action: "Signed in", Detail: "GET /api/auth/callback",
+	})
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: session, Path: "/",
-		HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: int(sessionTTL.Seconds()),
+		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: int(sessionTTL.Seconds()),
 	})
 	http.SetCookie(w, &http.Cookie{Name: "configer_oauth_state", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, "/", http.StatusFound)
@@ -232,6 +240,11 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(SessionCookie); err == nil && c.Value != "" && s.Enabled() {
+		if u, ok := UserFrom(r.Context()); ok {
+			_ = s.Store.Audit(r.Context(), store.Event{
+				Login: u.Login, Action: "Signed out", Detail: "POST /api/auth/logout",
+			})
+		}
 		_ = s.Store.DeleteSession(r.Context(), c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: SessionCookie, Value: "", Path: "/", MaxAge: -1})

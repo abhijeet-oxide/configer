@@ -41,6 +41,13 @@ func hasConfiger(dir string) bool {
 // the user to type an absolute path. With no ?path it starts at the user's
 // home directory.
 func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
+	// Listing the server's own filesystem is a deployment-admin action. In
+	// single-user (localhost) mode auth is disabled and this is a no-op; with
+	// OAuth enabled it stops any signed-in user - let alone an anonymous one -
+	// from enumerating server directories (e.g. ?path=/etc).
+	if !h.requireAdmin(w, r) {
+		return
+	}
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
 		if home, err := os.UserHomeDir(); err == nil {

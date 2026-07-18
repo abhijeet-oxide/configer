@@ -3,7 +3,7 @@ package repobackend
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -119,7 +119,7 @@ func (b *LocalBackend) CommitWorking(_ context.Context, message string, author A
 	if b.repo.HasRemote() {
 		branch, _ := b.repo.CurrentBranch()
 		if perr := b.repo.Push(branch); perr != nil {
-			log.Printf("warn: push working commit: %v", perr)
+			slog.Warn("push working commit failed", slog.Any("error", perr))
 		}
 	}
 	return sha, true, nil
@@ -194,7 +194,7 @@ func (b *LocalBackend) Sync(_ context.Context, branch string) (SyncStatus, error
 		if err := b.repo.Pull(branch); err != nil {
 			st.SyncError = err.Error()
 		} else {
-			log.Printf("synced %d external commit(s) from origin/%s", behind, branch)
+			slog.Info("synced external commits from origin", slog.Int("commits", behind), slog.String("branch", branch))
 			st.Behind = 0
 		}
 	}

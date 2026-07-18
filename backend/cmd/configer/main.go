@@ -28,9 +28,16 @@ func main() {
 	hub.Logger = logger
 
 	httpServer := &http.Server{
-		Addr:              cfg.Addr,
-		Handler:           hub.Routes(),
+		Addr:    cfg.Addr,
+		Handler: hub.Routes(),
+		// Bound every phase of a connection so slow or stalled clients cannot
+		// pin a goroutine open indefinitely (slowloris on the header, the body,
+		// or the response). WriteTimeout is generous because a submit pushes to
+		// GitHub inside the request; IdleTimeout reaps kept-alive connections.
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 
 	logger.Info("configer backend starting",

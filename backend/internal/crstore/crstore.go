@@ -44,16 +44,40 @@ func New(path string) (*Store, error) {
 	return s, nil
 }
 
-// save persists to disk; caller must hold s.mu.
+// save persists to disk atomically; caller must hold s.mu. A crash or a
+// concurrent reader never observes a half-written file: the state is written to
+// a temp file in the same directory and renamed over the target in one step
+// (the same discipline workspace.Registry.save uses).
 func (s *Store) save() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o755); err != nil {
+	dir := filepath.Dir(s.path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(s.data, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(s.path, b, 0o644)
+	tmp, err := os.CreateTemp(dir, ".state-*.tmp")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer func() { _ = os.Remove(tmpName) }() // no-op once the rename succeeds
+	if _, err := tmp.Write(b); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, s.path)
 }
 
 // Draft returns the current draft CR, creating one if none exists.

@@ -91,6 +91,11 @@ func (h *Hub) githubStatus(w http.ResponseWriter, r *http.Request) {
 // newest activity first: the user's own, ones they collaborate on, and their
 // organizations'.
 func (h *Hub) githubRepos(w http.ResponseWriter, r *http.Request) {
+	// A server-wide GITHUB_TOKEN must not let an anonymous caller enumerate
+	// repositories on the server's budget when login is enabled.
+	if !h.requireUser(w, r) {
+		return
+	}
 	token, _, _ := h.githubCred(r)
 	if token == "" {
 		writeJSON(w, http.StatusUnauthorized,
@@ -137,6 +142,9 @@ func (h *Hub) githubRepos(w http.ResponseWriter, r *http.Request) {
 // githubBranches lists the branches of one repository (?repo=owner/name) and
 // which one is the default.
 func (h *Hub) githubBranches(w http.ResponseWriter, r *http.Request) {
+	if !h.requireUser(w, r) {
+		return
+	}
 	full := strings.TrimSpace(r.URL.Query().Get("repo"))
 	owner, name, ok := strings.Cut(full, "/")
 	if !ok || owner == "" || name == "" {

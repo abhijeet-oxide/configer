@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io/fs"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -199,7 +199,7 @@ func (b *RemoteBackend) Sync(ctx context.Context, branch string) (SyncStatus, er
 		st.SyncError = err.Error()
 		return st, nil
 	}
-	log.Printf("synced remote cache to %s (%s)", branch, newSHA[:min(7, len(newSHA))])
+	slog.Info("synced remote cache", slog.String("branch", branch), slog.String("sha", newSHA[:min(7, len(newSHA))]))
 	b.baseSHA = newSHA
 	b.baseline, _ = hashTree(b.root)
 	return st, nil

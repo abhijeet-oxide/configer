@@ -98,3 +98,32 @@ func TestMembersAndAudit(t *testing.T) {
 		t.Error("events not newest-first")
 	}
 }
+
+func TestAuditChainTamperEvident(t *testing.T) {
+	s := open(t)
+	ctx := context.Background()
+	for i := range 3 {
+		if err := s.Audit(ctx, Event{Login: "bob", Repo: "app1", Action: "act", Detail: string(rune('a' + i))}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A trail written only through Audit verifies clean.
+	if ok, brokenAt, err := s.VerifyAudit(ctx); err != nil || !ok {
+		t.Fatalf("fresh chain should verify: ok=%v brokenAt=%d err=%v", ok, brokenAt, err)
+	}
+	// Tamper: rewrite a row's detail directly, behind Audit's back.
+	var midID int64
+	if err := s.db.QueryRow(`SELECT id FROM audit_events ORDER BY id ASC LIMIT 1 OFFSET 1`).Scan(&midID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.db.Exec(s.rebind(`UPDATE audit_events SET detail = ? WHERE id = ?`), "hacked", midID); err != nil {
+		t.Fatal(err)
+	}
+	ok, brokenAt, err := s.VerifyAudit(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ok || brokenAt != midID {
+		t.Fatalf("tamper not detected: ok=%v brokenAt=%d want brokenAt=%d", ok, brokenAt, midID)
+	}
+}

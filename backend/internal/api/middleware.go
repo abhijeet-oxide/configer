@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"log/slog"
@@ -14,6 +15,36 @@ import (
 // path, status, duration), and a panic recovery net so a single bad handler
 // never takes the process down. For traces/metrics, OpenTelemetry +
 // Prometheus are the recommended next step.
+
+// maxBodyBytes caps a request body so a single large POST cannot force
+// unbounded memory allocation. It is generous enough for the biggest legitimate
+// payload (a whole-file draft save or an import) yet small enough to stop abuse.
+const maxBodyBytes = 10 << 20 // 10 MiB
+
+// requestIDKeyT is the context key under which the per-request correlation id
+// is stored so any handler (not just the access log) can attach it to its own
+// logs and error responses.
+type requestIDKeyT struct{}
+
+var requestIDKey requestIDKeyT
+
+// requestID returns the correlation id carried by the request context, or "".
+func requestID(ctx context.Context) string {
+	id, _ := ctx.Value(requestIDKey).(string)
+	return id
+}
+
+// withBodyLimit caps the request body on every mutating request. Reads carry no
+// body worth bounding; writes go through http.MaxBytesReader, which makes a
+// handler's Decode fail (and the server answer 413) past the cap.
+func withBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil && r.Method != http.MethodGet && r.Method != http.MethodHead {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 // statusRecorder captures the status code and byte count for logging.
 type statusRecorder struct {
@@ -55,13 +86,16 @@ func withObservability(next http.Handler, log *slog.Logger) http.Handler {
 			rid = newRequestID()
 		}
 		w.Header().Set("X-Request-ID", rid)
+		// Thread the id through the context so downstream handlers and any log
+		// they emit can correlate to this same request.
+		r = r.WithContext(context.WithValue(r.Context(), requestIDKey, rid))
 		rec := &statusRecorder{ResponseWriter: w}
 
 		defer func() {
 			if v := recover(); v != nil {
 				if rec.status == 0 {
 					writeJSON(rec, http.StatusInternalServerError,
-						map[string]string{"error": "internal server error"})
+						map[string]string{"error": "internal server error", "requestId": rid})
 				}
 				log.Error("panic recovered",
 					slog.String("request_id", rid),
@@ -83,7 +117,7 @@ func withObservability(next http.Handler, log *slog.Logger) http.Handler {
 				level = slog.LevelDebug
 			}
 			log.LogAttrs(r.Context(), level, "http request",
-				slog.String("request_id", rid),
+				slog.String("request_id", requestID(r.Context())),
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
 				slog.Int("status", rec.status),

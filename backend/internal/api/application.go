@@ -16,6 +16,14 @@ import (
 )
 
 // getApplication returns the application identity from the working tree.
+//
+// @Summary     Get application identity
+// @Description The application's name, description and free-form metadata from `.configer/application.yaml`.
+// @Tags        Onboarding
+// @Produce     json
+// @Success     200 {object} model.Application
+// @Failure     500 {object} APIError
+// @Router      /api/application [get]
 func (s *Server) getApplication(w http.ResponseWriter, _ *http.Request) {
 	p, err := s.load()
 	if err != nil {
@@ -28,6 +36,19 @@ func (s *Server) getApplication(w http.ResponseWriter, _ *http.Request) {
 // updateApplication patches the application's name, description and metadata
 // and commits .configer/application.yaml. Nil fields are left unchanged; the
 // layout is never editable here (it describes the repository, not the user).
+// updateApplication patches application identity and commits it.
+//
+// @Summary     Update application identity
+// @Description Patch the application's name, description and metadata and commit `.configer/application.yaml`. Nil fields are left unchanged; the layout is not editable here (it describes the repository, not the user).
+// @Tags        Onboarding
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "Partial identity patch"
+// @Success     200 {object} model.Application
+// @Failure     400 {object} APIError "Malformed body"
+// @Failure     422 {object} APIError "Empty name"
+// @Security    CookieSession
+// @Router      /api/application [put]
 func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        *string            `json:"name,omitempty"`
@@ -36,11 +57,11 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 		Author      string             `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	if req.Name != nil && strings.TrimSpace(*req.Name) == "" {
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "the application name cannot be empty"})
+		writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "the application name cannot be empty")
 		return
 	}
 
@@ -82,6 +103,15 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 // repository and commits the removal, returning the repository to an
 // unmanaged (un-onboarded) state. The repository's own configuration files
 // are untouched; only the .configer directory is deleted.
+//
+// @Summary     Remove Configer metadata
+// @Description Remove the `.configer` folder and commit the removal, returning the repository to an unmanaged state. The repository's own configuration files are untouched.
+// @Tags        Onboarding
+// @Produce     json
+// @Success     200 {object} OKResponse
+// @Failure     500 {object} APIError
+// @Security    CookieSession
+// @Router      /api/deinit [post]
 func (s *Server) deinit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author,omitempty"`

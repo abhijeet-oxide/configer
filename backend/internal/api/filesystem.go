@@ -40,6 +40,18 @@ func hasConfiger(dir string) bool {
 // Application flow can offer a native-feeling folder picker instead of asking
 // the user to type an absolute path. With no ?path it starts at the user's
 // home directory.
+// browseFolders lists sub-folders of a directory for the local folder picker.
+//
+// @Summary     Browse server folders
+// @Description List the sub-folders of a directory on the server so the New Application flow can offer a folder picker (localhost mode). With no `?path` it starts at the user's home directory. Listing the server filesystem is an admin action when auth is enabled.
+// @Tags        Workspace
+// @Produce     json
+// @Param       path query string false "Directory to list (default: home)"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "Unreadable or missing path"
+// @Failure     403 {object} APIError "Permission denied"
+// @Security    CookieSession
+// @Router      /api/fs/browse [get]
 func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
 	// Listing the server's own filesystem is a deployment-admin action. In
 	// single-user (localhost) mode auth is disabled and this is a no-op; with

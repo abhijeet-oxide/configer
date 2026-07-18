@@ -77,6 +77,14 @@ func (h *Hub) ghGet(r *http.Request, token, path string, out any) error {
 // githubStatus reports whether repository browsing is possible right now and
 // through which credential, so the UI can offer "Sign in with GitHub" vs. the
 // repository picker.
+// githubStatus reports whether a GitHub credential is available.
+//
+// @Summary     GitHub credential status
+// @Description Whether a GitHub credential is available to the New Application flow, its source, and the signed-in login. Credentials stay server-side.
+// @Tags        Workspace
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Router      /api/github/status [get]
 func (h *Hub) githubStatus(w http.ResponseWriter, r *http.Request) {
 	token, source, login := h.githubCred(r)
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -90,6 +98,17 @@ func (h *Hub) githubStatus(w http.ResponseWriter, r *http.Request) {
 // githubRepos lists the repositories the resolved credential can reach,
 // newest activity first: the user's own, ones they collaborate on, and their
 // organizations'.
+// githubRepos lists repositories the resolved credential can reach.
+//
+// @Summary     List GitHub repositories
+// @Description Repositories the resolved credential can reach (own, collaborations, org), newest activity first. Backs the New Application picker.
+// @Tags        Workspace
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     502 {object} APIError "GitHub call failed"
+// @Security    CookieSession
+// @Router      /api/github/repos [get]
 func (h *Hub) githubRepos(w http.ResponseWriter, r *http.Request) {
 	// A server-wide GITHUB_TOKEN must not let an anonymous caller enumerate
 	// repositories on the server's budget when login is enabled.
@@ -141,6 +160,19 @@ func (h *Hub) githubRepos(w http.ResponseWriter, r *http.Request) {
 
 // githubBranches lists the branches of one repository (?repo=owner/name) and
 // which one is the default.
+// githubBranches lists a repository's branches.
+//
+// @Summary     List GitHub branches
+// @Description The branches of a GitHub repository (and its default branch), for the New Application flow.
+// @Tags        Workspace
+// @Produce     json
+// @Param       repo query string true "owner/name"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "Missing repo"
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     502 {object} APIError "GitHub call failed"
+// @Security    CookieSession
+// @Router      /api/github/branches [get]
 func (h *Hub) githubBranches(w http.ResponseWriter, r *http.Request) {
 	if !h.requireUser(w, r) {
 		return

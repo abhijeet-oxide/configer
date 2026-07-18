@@ -19,6 +19,9 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Vet
         run: go vet ./...
+      - name: OpenAPI spec is in sync with the code
+        working-directory: .
+        run: make docs-check
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:

@@ -1,0 +1,3113 @@
+{
+    "consumes": [
+        "application/json"
+    ],
+    "produces": [
+        "application/json"
+    ],
+    "schemes": [
+        "https",
+        "http"
+    ],
+    "swagger": "2.0",
+    "info": {
+        "description": "Write-back-native GitOps configuration management. Configer discovers an existing repository's layout, exposes a parameter x instance grid over the repository's OWN files, and surgically edits them; every change flows to Git as commits, branches, pull requests, and merges. `.configer/` holds metadata only.\n\n## Repository scoping\nEvery resource endpoint exists in two shapes: the unscoped `/api/...` form acts on the default (first-connected) repository for single-repo deployments and older clients, and the identical routes are available per repository under `/api/repos/{repoId}/...`. Only the unscoped forms are documented here; to target a specific repository prefix any path with `/api/repos/{repoId}`.\n\n## Errors\nEvery 4xx/5xx response uses one envelope: a stable machine-readable `code`, a human-readable `error`, a `requestId` (also returned as the `X-Request-ID` header) that correlates to server logs, and - for validation failures - a `fields` array. Branch on `code`, never on the message text.\n\n## Correlation\nSend `X-Request-ID` to have it echoed and used as the correlation id; otherwise the server generates one. It is returned on every response.",
+        "title": "Configer API",
+        "termsOfService": "https://github.com/abhijeet-oxide/configer",
+        "contact": {
+            "name": "Configer",
+            "url": "https://github.com/abhijeet-oxide/configer"
+        },
+        "license": {
+            "name": "See repository",
+            "url": "https://github.com/abhijeet-oxide/configer"
+        },
+        "version": "1.0.0"
+    },
+    "basePath": "/",
+    "paths": {
+        "/api/application": {
+            "get": {
+                "description": "The application's name, description and free-form metadata from `.configer/application.yaml`.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Onboarding"
+                ],
+                "summary": "Get application identity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Application"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Patch the application's name, description and metadata and commit `.configer/application.yaml`. Nil fields are left unchanged; the layout is not editable here (it describes the repository, not the user).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Onboarding"
+                ],
+                "summary": "Update application identity",
+                "parameters": [
+                    {
+                        "description": "Partial identity patch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Application"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Empty name",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/audit": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "The newest audit events across all applications (or one via `?repo=`), naming who did what. Admin-only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Audit trail",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter to one application id",
+                        "name": "repo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max events",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin only",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/audit/verify": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Admin-only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Verify the audit trail",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin only",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/callback": {
+            "get": {
+                "description": "Exchange the OAuth code, record the user, open a session cookie, and redirect back to the app. Invoked by GitHub, not called directly by clients.",
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "GitHub OAuth callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "OAuth code",
+                        "name": "code",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "CSRF state",
+                        "name": "state",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect to the app with a session cookie"
+                    },
+                    "400": {
+                        "description": "Invalid state or code exchange failed",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "501": {
+                        "description": "Login not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/login": {
+            "get": {
+                "description": "Redirect the browser into GitHub's OAuth authorize page. Returns 501 when login is not configured.",
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Begin GitHub login",
+                "responses": {
+                    "302": {
+                        "description": "Redirect to GitHub"
+                    },
+                    "501": {
+                        "description": "Login not configured",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/logout": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "End the current session and clear the session cookie.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Sign out",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/auth/me": {
+            "get": {
+                "description": "Whether login is configured on this deployment, and who is signed in. Returns `{enabled:false}` in single-user mode.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Current identity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes": {
+            "get": {
+                "description": "Every change request in the store, in all states (Draft, UnderReview, Approved, Published, Rejected).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "List change requests",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/draft": {
+            "get": {
+                "description": "The current draft change request (pending, unsubmitted edits), or `{draft:null}` when there is none.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Current draft",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}": {
+            "get": {
+                "description": "One change request by id. Refreshes the linked pull-request state (merged/closed/checks) from the host before returning.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Get a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/comments": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Append a review note. The session identity is the author (the body's author field is only a single-user-mode fallback).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Comment on a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "The comment",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.CommentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id, body, or empty comment",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/merge": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Merge (publish) a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Approver role required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Not in a mergeable state, or merge failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/reject": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Reject/close the change request (a draft is discarded, a submitted one is closed).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Reject a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Not in a rejectable state",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/reviewers": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Replace the (informational) reviewer list on a change request. Reviewers record who was asked to look, not who may merge.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Set reviewers",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Reviewer logins",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ReviewersRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id or body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/submit": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Idempotency: a change already submitted returns 409.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Submit a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Title, description, reference, category",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "$ref": "#/definitions/api.SubmitChangeRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id or body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Not in a submittable state, or push/PR failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/compare": {
+            "get": {
+                "description": "Semantic, parameter-level diff between two instances. Without refs it compares the current project (pending edits included); with leftRef/rightRef it materializes each side at that git ref and compares across them.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Compare two instances",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Left instance name",
+                        "name": "left",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Right instance name",
+                        "name": "right",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Git ref (branch/tag/commit) for the left side",
+                        "name": "leftRef",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Git ref for the right side",
+                        "name": "rightRef",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/deinit": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Remove the `.configer` folder and commit the removal, returning the repository to an unmanaged state. The repository's own configuration files are untouched.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Onboarding"
+                ],
+                "summary": "Remove Configer metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/discover": {
+            "post": {
+                "description": "Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Onboarding"
+                ],
+                "summary": "Discover an application",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/files/draft": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item. Managed values are always validated first.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Stage a file edit",
+                "parameters": [
+                    {
+                        "description": "The file edit",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.FileEditRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "kind is values | file",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "path and content are required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown instance",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "A managed value failed validation, or the file does not parse",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/fs/browse": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "List the sub-folders of a directory on the server so the New Application flow can offer a folder picker (localhost mode). With no `?path` it starts at the user's home directory. Listing the server filesystem is an admin action when auth is enabled.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Browse server folders",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Directory to list (default: home)",
+                        "name": "path",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Unreadable or missing path",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Permission denied",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/github/branches": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "The branches of a GitHub repository (and its default branch), for the New Application flow.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "List GitHub branches",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "owner/name",
+                        "name": "repo",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Missing repo",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "GitHub call failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/github/repos": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Repositories the resolved credential can reach (own, collaborations, org), newest activity first. Backs the New Application picker.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "List GitHub repositories",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "GitHub call failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/github/status": {
+            "get": {
+                "description": "Whether a GitHub credential is available to the New Application flow, its source, and the signed-in login. Credentials stay server-side.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "GitHub credential status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/grid": {
+            "get": {
+                "description": "The full matrix: every parameter row x every instance column, each cell resolved from the real repository files with its provenance (default / base / instance), type, validation state and version state. The current draft's pending edits are previewed on top.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Parameter x instance grid",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/health": {
+            "get": {
+                "description": "Returns 200 while the process is up. `/api/healthz` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StatusResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/healthz": {
+            "get": {
+                "description": "Returns 200 while the process is up. `/api/healthz` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Liveness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StatusResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/history": {
+            "get": {
+                "description": "Recent commits that touched the canonical model under `.configer/`, newest first. `supported` is false on backends (remote no-clone) that cannot serve a log.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Application change history",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Max commits (1-200, default 40)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/import": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Promote scanned candidate parameters into the catalog in one attributed commit (the import wizard's final step). Already-managed or conflicting entries are skipped and reported, never fatal.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Import scanned parameters",
+                "parameters": [
+                    {
+                        "description": "{parameters: Parameter[], ignoreFiles?: string[]}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body or nothing selected",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/init": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Write the accepted onboarding proposal into `.configer/` as ONE attributed commit (reviewable history from the first action). Idempotent guard: an already-initialized repository returns 409.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Onboarding"
+                ],
+                "summary": "Initialize an application",
+                "parameters": [
+                    {
+                        "description": "Accepted proposal: name, layout, instances, parameters, ignoreFiles",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Missing name or instances",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Already initialized",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/instances": {
+            "get": {
+                "description": "The instance (deployment target) registry: metadata plus folder bindings for every instance.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instances"
+                ],
+                "summary": "List instances",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.InstanceRegistry"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instances"
+                ],
+                "summary": "Create an instance",
+                "parameters": [
+                    {
+                        "description": "Instance metadata (name required; optional cloneFrom)",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StagedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body or invalid name",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Clone source not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Name already exists (committed or pending)",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/instances/{name}": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage a metadata/status edit (archive = status \"archived\") as a pending change - never a direct commit to the main branch. If the instance is itself still a pending add, the edit folds into that add.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instances"
+                ],
+                "summary": "Update an instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Partial instance metadata patch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StagedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown instance",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage the retirement of an instance (registry entry + folder) into the draft, reviewable before anything happens.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instances"
+                ],
+                "summary": "Delete an instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StagedResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown instance",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/meta": {
+            "get": {
+                "description": "Name, version, environment, current project and branch. Backs the UI footer and environment-aware messaging.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Deployment identity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.MetaResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/parameters": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Create a new catalog parameter. Bindings may be empty for a design-phase parameter (attached later), but a half-specified binding is rejected. Committed directly with attribution.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Create a parameter",
+                "parameters": [
+                    {
+                        "description": "{param: Parameter, author?: string}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Parameter"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body, missing name, or half-specified binding",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "A parameter with that id already exists",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/parameters/retire-file": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Retire every parameter sourced from one (typically deleted) file: the one-click resolution for a file_deleted finding.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Retire parameters from a file",
+                "parameters": [
+                    {
+                        "description": "{file: string}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "file is required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "No parameters are sourced from that file",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/parameters/{id}": {
+            "get": {
+                "description": "Full metadata for one catalog parameter: type, scope, category, bindings, validation and version state.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Get a parameter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id (slug)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Parameter"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Patch a parameter's type, validation, display name, description, category, scope, secret flag, default, or file bindings. Nil fields are left unchanged. Committed directly to the working branch with attribution.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Update a parameter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id (slug)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Partial parameter patch",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/model.Parameter"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body or half-specified binding",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown parameter",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Unknown validation preset",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Retire a parameter everywhere: the catalog entry is removed and the bound key/element is deleted from every real file it lives in. Committed directly with attribution.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Delete a parameter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id (slug)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown parameter",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Deletion failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/parameters/{id}/history": {
+            "get": {
+                "description": "Resolves one parameter's effective value at each recent config commit, so the inspector can show how it changed over time. `?instance=` resolves for that instance; otherwise the catalog default is used.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Parameter value timeline",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id (slug)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Resolve the value for this instance",
+                        "name": "instance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max commits (1-40, default 12)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/plugins": {
+            "get": {
+                "description": "The registered parser/format plugin manifests (yaml, json, xml).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Plugins \u0026 validation"
+                ],
+                "summary": "List format plugins",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/project": {
+            "get": {
+                "description": "Project name, instances, category tree and parameter count, with the current draft applied. When the repository has no Configer application yet, returns `{initialized:false}` so the client routes to onboarding (still 200, not an error).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Project summary",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/readyz": {
+            "get": {
+                "description": "Returns 200 once at least one repository is serving, 503 otherwise, so a load balancer only routes traffic when the service can actually answer.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Health"
+                ],
+                "summary": "Readiness probe",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.StatusResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/api.StatusResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/render/{instance}": {
+            "get": {
+                "description": "The instance's REAL repository files (write-back-native: nothing is generated). By default the current draft is applied in memory so the preview shows exactly what a publish would write; `?draft=false` serves the committed working tree (the diff baseline); `?ref=` serves the files at a git ref.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Render an instance's files",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Instance name",
+                        "name": "instance",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "enum": [
+                            "false"
+                        ],
+                        "type": "string",
+                        "description": "false = committed content (diff baseline)",
+                        "name": "draft",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Serve files at this git ref instead",
+                        "name": "ref",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repo/findings": {
+            "get": {
+                "description": "What changed on Git (external commits) since the last acknowledged commit: the diff between the acknowledged SHA and HEAD, classified into findings.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Repository findings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repo/findings/ack": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Mark all repository findings up to HEAD as seen, so they stop surfacing.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Acknowledge findings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repo/refs": {
+            "get": {
+                "description": "The branches and tags available to compare or render against, plus the current branch.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "List git refs",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repo/status": {
+            "get": {
+                "description": "The git-liveness snapshot: branch, remote, ahead/behind counts, last sync time, and any sync error.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Git status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.RepoStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repo/sync": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Force a fetch + fast-forward (local) or cache refresh (remote) now, instead of waiting for the poll interval, and return the fresh status.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Force a sync",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.RepoStatus"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repos": {
+            "get": {
+                "description": "The workspace portfolio: every connected repository with health/shape summary (params, instances, environments, open changes, drafts, sync state). `/api/workspace` is an alias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "List repositories",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Register a repository: a git URL is cloned (or managed no-clone when `mode:\"remote\"`), an existing local directory is opened in place. Connecting an already-connected origin returns 409 with the existing id.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Connect a repository",
+                "parameters": [
+                    {
+                        "description": "Repository to connect",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ConnectRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.RepoSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing url",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Already connected",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Clone or open failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repos/{id}": {
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Remove a repository from the workspace. A clone Configer made is deleted from disk; a locally-opened working tree is left untouched.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Disconnect a repository",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown repository",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "patch": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Change an application's display name. Only the human label changes; the registry id (and every per-repo route and deep link) stays stable, and the Git repository is untouched.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Rename an application",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "New name",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.RenameRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.RepoSummary"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body or empty name",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown repository",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repos/{id}/members": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Explicit role assignments for one application plus the known-user directory, so the UI can offer assignments. Admin-only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "List members",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin only",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Assign a role (viewer, editor, approver) to a user on one application. Admin-only.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Assign a role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Login + role",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.SetMemberRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing login or invalid role",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin only",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/repos/{id}/members/{login}": {
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Clear a user's explicit role on one application (back to the deployment default). Admin-only.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Remove a member's role",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "User login",
+                        "name": "login",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Admin only",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/scan": {
+            "post": {
+                "description": "Read-only ingest scan: detect config files and extract candidate parameters. Nothing is written; use import to promote candidates.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Scan for candidate settings",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/validation/presets": {
+            "get": {
+                "description": "The predefined validation-rule library (port, cidr, ipv4, ...) available to attach to parameters.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Plugins \u0026 validation"
+                ],
+                "summary": "Validation presets",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/values": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage a validated cell edit into the draft change request. The value is coerced to the parameter's declared type and validated; nothing touches Git until the draft is submitted. `action` defaults to \"set\"; \"reset\" drops the instance override; \"exclude\" removes the key from the instance's files. `scope:\"global\"` edits the shared value for every instance.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Stage a value edit",
+                "parameters": [
+                    {
+                        "description": "The edit",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/api.ValueEditRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ValueStagedResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body or unsupported scope",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Parameter or instance not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Value failed coercion or validation",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Drop one pending edit (identified by paramId + instance) from the current draft.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Revert a pending value edit",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id",
+                        "name": "paramId",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Instance name (empty for a global edit)",
+                        "name": "instance",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "No draft",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/workspace": {
+            "get": {
+                "description": "The workspace portfolio: every connected repository with health/shape summary (params, instances, environments, open changes, drafts, sync state). `/api/workspace` is an alias.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "List repositories",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "api.APIError": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "description": "Code is the stable, machine-readable classifier a client branches on.",
+                    "type": "string",
+                    "example": "not_found"
+                },
+                "error": {
+                    "description": "Error is a human-readable, plain-language message safe to show a user.\nIt never contains git jargon, stack traces, credentials, or internal\nhostnames.",
+                    "type": "string",
+                    "example": "parameter not found"
+                },
+                "fields": {
+                    "description": "Fields carries per-field validation failures (422 only).",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.FieldError"
+                    }
+                },
+                "requestId": {
+                    "description": "RequestID correlates this response with the access log and the\nX-Request-ID header, so an operator can find the exact request.",
+                    "type": "string",
+                    "example": "3f9a1c2b7e5d0a84"
+                }
+            }
+        },
+        "api.CommentRequest": {
+            "type": "object",
+            "properties": {
+                "body": {
+                    "type": "string",
+                    "example": "Looks good, ship after the window."
+                }
+            }
+        },
+        "api.ConnectRequest": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "description": "Branch is the working branch (defaults to the remote's default branch).",
+                    "type": "string",
+                    "example": "main"
+                },
+                "mode": {
+                    "description": "Mode \"remote\" manages the repository through the GitHub API with no\nclone; the default clones the repository.",
+                    "type": "string",
+                    "enum": [
+                        "clone",
+                        "remote"
+                    ],
+                    "example": "clone"
+                },
+                "name": {
+                    "description": "Name overrides the display name (defaults to the repo name).",
+                    "type": "string",
+                    "example": "Platform config"
+                },
+                "token": {
+                    "description": "Token is an access token for a private repository. Stored server-side\nonly and never returned.",
+                    "type": "string"
+                },
+                "url": {
+                    "description": "URL is a git URL (https/ssh) or an absolute local path.",
+                    "type": "string",
+                    "example": "https://github.com/acme/platform-config"
+                }
+            }
+        },
+        "api.FieldError": {
+            "type": "object",
+            "properties": {
+                "field": {
+                    "type": "string",
+                    "example": "port"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "must be between 1 and 65535"
+                }
+            }
+        },
+        "api.FileEditRequest": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string",
+                    "example": "prod-us-east"
+                },
+                "path": {
+                    "type": "string",
+                    "example": "instances/prod-us-east/values.yaml"
+                }
+            }
+        },
+        "api.MetaResponse": {
+            "type": "object",
+            "properties": {
+                "branch": {
+                    "type": "string",
+                    "example": "main"
+                },
+                "environment": {
+                    "type": "string",
+                    "enum": [
+                        "development",
+                        "staging",
+                        "production"
+                    ],
+                    "example": "production"
+                },
+                "name": {
+                    "type": "string",
+                    "example": "Configer"
+                },
+                "project": {
+                    "type": "string",
+                    "example": "payments-platform"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "1.4.0"
+                }
+            }
+        },
+        "api.OKResponse": {
+            "type": "object",
+            "properties": {
+                "ok": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "api.RenameRequest": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "example": "Payments platform"
+                }
+            }
+        },
+        "api.RepoStatus": {
+            "type": "object",
+            "properties": {
+                "ahead": {
+                    "type": "integer"
+                },
+                "autoSyncMs": {
+                    "type": "integer"
+                },
+                "behind": {
+                    "type": "integer"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "lastSync": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "remote": {
+                    "type": "string"
+                },
+                "syncError": {
+                    "type": "string"
+                },
+                "upstreamGone": {
+                    "description": "UpstreamGone means the branch's remote counterpart was deleted (e.g.\nsomeone removed the branch on GitHub). Local work continues safely;\nthe UI explains and suggests choosing a new target branch.",
+                    "type": "boolean"
+                }
+            }
+        },
+        "api.RepoSummary": {
+            "type": "object",
+            "properties": {
+                "addedAt": {
+                    "type": "string"
+                },
+                "behind": {
+                    "type": "integer"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "drafts": {
+                    "type": "integer"
+                },
+                "environments": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "error": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "instances": {
+                    "description": "Instances counts configuration instances; Environments breaks them\ndown by environment for the hierarchical dashboard.",
+                    "type": "integer"
+                },
+                "local": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "needsSetup": {
+                    "description": "NeedsSetup is a connected repository that has no Configer application\nyet (.configer/ absent). It is not an error - the UI routes it into\nonboarding - so it must never surface as \"unavailable\".",
+                    "type": "boolean"
+                },
+                "noClone": {
+                    "type": "boolean"
+                },
+                "openChanges": {
+                    "type": "integer"
+                },
+                "origin": {
+                    "type": "string"
+                },
+                "params": {
+                    "type": "integer"
+                },
+                "project": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                },
+                "remote": {
+                    "type": "string"
+                },
+                "syncError": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ReviewersRequest": {
+            "type": "object",
+            "properties": {
+                "reviewers": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "alice",
+                        "bob"
+                    ]
+                }
+            }
+        },
+        "api.SetMemberRequest": {
+            "type": "object",
+            "properties": {
+                "login": {
+                    "type": "string",
+                    "example": "alice"
+                },
+                "role": {
+                    "type": "string",
+                    "enum": [
+                        "viewer",
+                        "editor",
+                        "approver"
+                    ],
+                    "example": "editor"
+                }
+            }
+        },
+        "api.StagedResponse": {
+            "type": "object",
+            "properties": {
+                "changeId": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "ok": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "pending": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "staged": {
+                    "type": "boolean",
+                    "example": true
+                }
+            }
+        },
+        "api.StatusResponse": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "example": "ok"
+                },
+                "version": {
+                    "type": "string",
+                    "example": "1.4.0"
+                }
+            }
+        },
+        "api.SubmitChangeRequest": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "example": "networking"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "reference": {
+                    "type": "string",
+                    "example": "JIRA-1234"
+                },
+                "title": {
+                    "type": "string",
+                    "example": "Raise admin port in production"
+                }
+            }
+        },
+        "api.ValueEditRequest": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "Action defaults to \"set\". \"reset\" drops the instance override; \"exclude\"\nremoves the key from the instance's files entirely.",
+                    "type": "string",
+                    "enum": [
+                        "set",
+                        "reset",
+                        "exclude"
+                    ],
+                    "example": "set"
+                },
+                "instance": {
+                    "type": "string",
+                    "example": "prod-us-east"
+                },
+                "paramId": {
+                    "type": "string",
+                    "example": "net-admin-port"
+                },
+                "scope": {
+                    "description": "Scope \"global\" edits the shared value for every instance; omit for a\nper-instance override.",
+                    "type": "string",
+                    "enum": [
+                        "global"
+                    ],
+                    "example": ""
+                },
+                "value": {
+                    "description": "Value is a type-appropriate value, coerced and validated server-side.",
+                    "type": "string",
+                    "example": "8443"
+                }
+            }
+        },
+        "api.ValueStagedResponse": {
+            "type": "object",
+            "properties": {
+                "changeId": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "ok": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "pending": {
+                    "type": "integer",
+                    "example": 3
+                },
+                "value": {}
+            }
+        },
+        "model.Application": {
+            "type": "object",
+            "properties": {
+                "apiVersion": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "kind": {
+                    "type": "string"
+                },
+                "layout": {
+                    "description": "Layout names the repository convention the layout adapter interprets:\n\"plain-folders\", \"kustomize\", or \"kpt\".",
+                    "type": "string"
+                },
+                "metadata": {
+                    "description": "Metadata holds free-form key/value details the user attaches to the\napplication (owner, team, ticket queue…). Stored in Git with the rest\nof the application identity; never interpreted by Configer.",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Binding": {
+            "type": "object",
+            "properties": {
+                "file": {
+                    "type": "string"
+                },
+                "format": {
+                    "description": "yaml | json | xml",
+                    "type": "string"
+                },
+                "layer": {
+                    "description": "Layer overrides the inferred precedence layer (\"base\" or \"instance\").",
+                    "type": "string"
+                },
+                "line": {
+                    "description": "Line is the 1-based source line the value lives on, for display in the\nonboarding proposal. It is NEVER persisted (line numbers drift), only\ncarried through the discovery JSON - hence yaml:\"-\".",
+                    "type": "integer"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.Instance": {
+            "type": "object",
+            "properties": {
+                "environment": {
+                    "type": "string"
+                },
+                "folder": {
+                    "description": "Folder is the instance's directory in the repository, relative to the\nroot (e.g. \"instances/prod-us-east\" or \"overlays/prod\"). Template\nbindings expand \"{folder}\" to this value.",
+                    "type": "string"
+                },
+                "labels": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
+                },
+                "name": {
+                    "type": "string"
+                },
+                "region": {
+                    "type": "string"
+                },
+                "site": {
+                    "type": "string"
+                },
+                "softwareVersion": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "active | draft | archived",
+                    "type": "string"
+                },
+                "zone": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.InstanceRegistry": {
+            "type": "object",
+            "properties": {
+                "apiVersion": {
+                    "type": "string"
+                },
+                "instances": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Instance"
+                    }
+                },
+                "kind": {
+                    "type": "string"
+                }
+            }
+        },
+        "model.ParamType": {
+            "type": "string",
+            "enum": [
+                "string",
+                "integer",
+                "boolean",
+                "number",
+                "enum",
+                "ipv4",
+                "cidr",
+                "list"
+            ],
+            "x-enum-varnames": [
+                "TypeString",
+                "TypeInteger",
+                "TypeBoolean",
+                "TypeNumber",
+                "TypeEnum",
+                "TypeIPv4",
+                "TypeCIDR",
+                "TypeList"
+            ]
+        },
+        "model.Parameter": {
+            "type": "object",
+            "properties": {
+                "bindings": {
+                    "description": "Bindings are the real-file locations this parameter's value lives at.\nA deduplicated parameter (the same logical setting appearing in several\nfiles) carries one binding per location; an edit fans out to all of\nthem. A design-phase parameter has no bindings yet.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Binding"
+                    }
+                },
+                "category": {
+                    "type": "string"
+                },
+                "default": {
+                    "description": "Default is metadata: the value shown (and written on first set) when no\nbound file carries the key. It is never rendered anywhere by itself."
+                },
+                "dependsOn": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "itemType": {
+                    "description": "ItemType is the element type when Type is \"list\".",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.ParamType"
+                        }
+                    ]
+                },
+                "name": {
+                    "type": "string"
+                },
+                "scope": {
+                    "$ref": "#/definitions/model.Scope"
+                },
+                "secret": {
+                    "type": "boolean"
+                },
+                "type": {
+                    "$ref": "#/definitions/model.ParamType"
+                },
+                "validation": {
+                    "$ref": "#/definitions/model.Validation"
+                },
+                "versionDeprecated": {
+                    "type": "string"
+                },
+                "versionIntroduced": {
+                    "description": "VersionIntroduced/Deprecated drive version-aware cell state in the grid.",
+                    "type": "string"
+                }
+            }
+        },
+        "model.Scope": {
+            "type": "string",
+            "enum": [
+                "instance",
+                "global"
+            ],
+            "x-enum-varnames": [
+                "ScopeInstance",
+                "ScopeGlobal"
+            ]
+        },
+        "model.Validation": {
+            "type": "object",
+            "properties": {
+                "enum": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "max": {
+                    "type": "number"
+                },
+                "maxItems": {
+                    "type": "integer"
+                },
+                "maxLength": {
+                    "type": "integer"
+                },
+                "min": {
+                    "type": "number"
+                },
+                "minItems": {
+                    "type": "integer"
+                },
+                "minLength": {
+                    "type": "integer"
+                },
+                "pattern": {
+                    "type": "string"
+                },
+                "preset": {
+                    "description": "id of a predefined rule",
+                    "type": "string"
+                },
+                "required": {
+                    "type": "boolean"
+                },
+                "schemaRef": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "securityDefinitions": {
+        "CookieSession": {
+            "description": "Session cookie set by the GitHub OAuth login flow (`GET /api/auth/login` -\u003e callback). Only required when the deployment has OAuth configured; single-user deployments need no authentication.",
+            "type": "apiKey",
+            "name": "configer_session",
+            "in": "cookie"
+        }
+    }
+}

@@ -216,6 +216,13 @@ func (s *Server) health(w http.ResponseWriter, _ *http.Request) {
 
 // meta identifies this deployment: shown in the UI footer and used for
 // professional, environment-aware messaging (never "localhost" jargon).
+//
+// @Summary     Deployment identity
+// @Description Name, version, environment, current project and branch. Backs the UI footer and environment-aware messaging.
+// @Tags        Health
+// @Produce     json
+// @Success     200 {object} MetaResponse
+// @Router      /api/meta [get]
 func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
 	branch := s.branch()
 	project := ""
@@ -231,6 +238,14 @@ func (s *Server) meta(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
+// plugins lists the registered format plugins (yaml/json/xml parsers).
+//
+// @Summary     List format plugins
+// @Description The registered parser/format plugin manifests (yaml, json, xml).
+// @Tags        Plugins & validation
+// @Produce     json
+// @Success     200 {array} object
+// @Router      /api/plugins [get]
 func (s *Server) plugins(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.Registry.Manifests())
 }

@@ -106,10 +106,27 @@ func (s *Server) syncOnce() RepoStatus {
 	return st
 }
 
+// repoStatus returns the git-liveness snapshot.
+//
+// @Summary     Git status
+// @Description The git-liveness snapshot: branch, remote, ahead/behind counts, last sync time, and any sync error.
+// @Tags        Import & reconcile
+// @Produce     json
+// @Success     200 {object} RepoStatus
+// @Router      /api/repo/status [get]
 func (s *Server) repoStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.Status())
 }
 
+// repoSync forces a sync with the remote now.
+//
+// @Summary     Force a sync
+// @Description Force a fetch + fast-forward (local) or cache refresh (remote) now, instead of waiting for the poll interval, and return the fresh status.
+// @Tags        Import & reconcile
+// @Produce     json
+// @Success     200 {object} RepoStatus
+// @Security    CookieSession
+// @Router      /api/repo/sync [post]
 func (s *Server) repoSync(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.syncOnce())
 }

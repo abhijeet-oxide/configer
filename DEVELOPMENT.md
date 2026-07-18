@@ -76,19 +76,30 @@ When running locally:
 http://localhost:8080/api/docs
 ```
 
-The spec auto-generates from the backend configuration and updates on startup.
+The spec is generated from the handler annotations (the `// @Summary`,
+`// @Router`, ... comments on each handler in `backend/internal/api`). It is
+committed under `backend/internal/api/docs/` and embedded in the binary, so the
+UI and raw spec work offline. Regenerate after changing any handler:
+
+```bash
+make docs        # or: cd backend && go generate ./internal/api
+```
+
+CI runs `make docs-check`, which fails the build if the committed spec is stale,
+so the documentation can never silently drift from the code.
 
 ### Manual API Testing
 
 ```bash
 # Health check
-curl http://localhost:8080/health
+curl http://localhost:8080/api/health
 
 # Get deployment metadata
 curl http://localhost:8080/api/meta
 
-# Get Swagger spec
-curl http://localhost:8080/api/swagger.json | jq
+# Get the OpenAPI spec (JSON or YAML)
+curl http://localhost:8080/api/openapi.json | jq
+curl http://localhost:8080/api/openapi.yaml
 ```
 
 ## Environment Variables

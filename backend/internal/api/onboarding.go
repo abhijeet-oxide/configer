@@ -24,6 +24,14 @@ func (s *Server) initialized() bool {
 
 // discover runs layout detection + parameter discovery and returns the
 // proposal. Read-only: nothing is written until /api/init.
+//
+// @Summary     Discover an application
+// @Description Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept.
+// @Tags        Onboarding
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Failure     500 {object} APIError
+// @Router      /api/discover [post]
 func (s *Server) discover(w http.ResponseWriter, _ *http.Request) {
 	ignore := discovery.Ignore{}
 	if p, err := s.load(); err == nil {
@@ -38,6 +46,18 @@ func (s *Server) discover(w http.ResponseWriter, _ *http.Request) {
 }
 
 // initApp writes the accepted proposal to .configer/ and commits it.
+//
+// @Summary     Initialize an application
+// @Description Write the accepted onboarding proposal into `.configer/` as ONE attributed commit (reviewable history from the first action). Idempotent guard: an already-initialized repository returns 409.
+// @Tags        Onboarding
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "Accepted proposal: name, layout, instances, parameters, ignoreFiles"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "Missing name or instances"
+// @Failure     409 {object} APIError "Already initialized"
+// @Security    CookieSession
+// @Router      /api/init [post]
 func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string            `json:"name"`
@@ -49,22 +69,22 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		Author      string            `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	if req.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "an application name is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "an application name is required")
 		return
 	}
 	if len(req.Instances) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "at least one instance is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "at least one instance is required")
 		return
 	}
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if s.initialized() {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "this repository is already initialized; use the import wizard to add more parameters"})
+		writeError(w, r, http.StatusConflict, CodeConflict, "this repository is already initialized; use the import wizard to add more parameters")
 		return
 	}
 

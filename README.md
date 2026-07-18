@@ -136,8 +136,10 @@ for contributors (human or AI): [`CLAUDE.md`](CLAUDE.md).
 | GET | `/api/repo/findings` | External-commit inbox (drift detection). |
 | GET | `/api/auth/me` · `/api/audit` · `/api/repos/{id}/members` | Platform: identity, audit trail, roles. |
 
-Full spec: `/api/openapi.yaml` (served) - every repo-scoped route also mounts
-under `/api/repos/{id}/…` for multi-application workspaces.
+Full spec: `/api/openapi.json` and `/api/openapi.yaml` (served), interactive UI
+at `/api/docs`. The spec is generated from the handler annotations (`make docs`)
+and CI fails if it drifts, so it always matches the code. Every repo-scoped
+route also mounts under `/api/repos/{id}/…` for multi-application workspaces.
 
 ## Repository layout
 

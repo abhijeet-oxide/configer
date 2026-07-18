@@ -21,6 +21,20 @@ import (
 //   - exclude: stage removal of the key from the instance's files entirely.
 //
 // Nothing touches Git until the draft is submitted.
+//
+// @Summary     Stage a value edit
+// @Description Stage a validated cell edit into the draft change request. The value is coerced to the parameter's declared type and validated; nothing touches Git until the draft is submitted. `action` defaults to "set"; "reset" drops the instance override; "exclude" removes the key from the instance's files. `scope:"global"` edits the shared value for every instance.
+// @Tags        Editing & change requests
+// @Accept      json
+// @Produce     json
+// @Param       body body ValueEditRequest true "The edit"
+// @Success     200 {object} ValueStagedResponse
+// @Failure     400 {object} APIError "Malformed body or unsupported scope"
+// @Failure     404 {object} APIError "Parameter or instance not found"
+// @Failure     422 {object} APIError "Value failed coercion or validation"
+// @Failure     500 {object} APIError
+// @Security    CookieSession
+// @Router      /api/values [put]
 func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Instance string `json:"instance"`
@@ -34,11 +48,11 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		Author string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	if req.Scope != "" && req.Scope != "global" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only the global scope supports scope-level edits today"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "only the global scope supports scope-level edits today")
 		return
 	}
 	p, err := s.load()
@@ -48,7 +62,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	}
 	param, found := p.ParamByID(req.ParamID)
 	if !found {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "parameter not found"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
 		return
 	}
 
@@ -57,18 +71,18 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		action = change.ActionSet
 	}
 	if req.Scope == "global" && action == change.ActionExclude {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "exclusion is per-instance; a global value cannot be excluded"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "exclusion is per-instance; a global value cannot be excluded")
 		return
 	}
 	var coerced any
 	if action == change.ActionSet {
 		coerced, err = validate.CoerceValue(param, req.Value)
 		if err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+			writeFieldErrors(w, r, "the value is not valid for this parameter", FieldError{Field: "value", Message: err.Error()})
 			return
 		}
 		if vr := validate.Value(param, coerced); !vr.Valid {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": vr.Message})
+			writeFieldErrors(w, r, "the value is not valid for this parameter", FieldError{Field: "value", Message: vr.Message})
 			return
 		}
 	}
@@ -80,7 +94,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	if req.Scope == "global" {
 		instance = ""
 		if len(param.BindingsOn(model.LayerBase, model.Instance{})) == 0 {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "this parameter has no shared file location; edit it per instance"})
+			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter has no shared file location; edit it per instance")
 			return
 		}
 		res := resolver.New(p.Root).Resolve(param, model.Instance{})
@@ -88,11 +102,11 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
 		if !found {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance not found"})
+			writeError(w, r, http.StatusNotFound, CodeNotFound, "instance not found")
 			return
 		}
 		if action == change.ActionSet && len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "this parameter lives only in a shared file; use a global edit to change it for everyone"})
+			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter lives only in a shared file; use a global edit to change it for everyone")
 			return
 		}
 		res := resolver.New(p.Root).Resolve(param, inst)
@@ -137,6 +151,18 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 }
 
 // revertValue drops one pending edit from the draft.
+//
+// @Summary     Revert a pending value edit
+// @Description Drop one pending edit (identified by paramId + instance) from the current draft.
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       paramId  query string true "Parameter id"
+// @Param       instance query string true "Instance name (empty for a global edit)"
+// @Success     200 {object} OKResponse
+// @Failure     404 {object} APIError "No draft"
+// @Failure     500 {object} APIError
+// @Security    CookieSession
+// @Router      /api/values [delete]
 func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	paramID := r.URL.Query().Get("paramId")
 	instance := r.URL.Query().Get("instance")
@@ -144,7 +170,7 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	defer s.writeMu.Unlock()
 	draft := s.Store.CurrentDraft()
 	if draft == nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no draft"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no draft")
 		return
 	}
 	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {

@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -75,9 +74,9 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		errs:        map[string]string{},
 	}
 	if authSvc.Enabled() {
-		log.Printf("auth: GitHub OAuth enabled (store: %s)", platform.Dialect())
+		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
 	} else {
-		log.Printf("auth: disabled, single-user mode (store: %s)", platform.Dialect())
+		slog.Info("auth disabled: single-user mode", slog.String("store", platform.Dialect()))
 	}
 	if len(reg.List()) == 0 && seed != "" {
 		if st, serr := os.Stat(seed); serr == nil && st.IsDir() {
@@ -90,12 +89,12 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 			if aerr := reg.Add(e); aerr != nil {
 				return nil, aerr
 			}
-			log.Printf("workspace: seeded with local repository %s (%s)", e.ID, abs)
+			slog.Info("workspace seeded with local repository", slog.String("id", e.ID), slog.String("path", abs))
 		}
 	}
 	for _, e := range reg.List() {
 		if oerr := h.open(e); oerr != nil {
-			log.Printf("warn: repository %s unavailable: %v", e.ID, oerr)
+			slog.Warn("repository unavailable", slog.String("id", e.ID), slog.Any("error", oerr))
 			h.errs[e.ID] = oerr.Error()
 		}
 	}
@@ -198,6 +197,7 @@ func (h *Hub) Routes() http.Handler {
 	mux.Handle("/api/docs/", swaggerHandler)
 	h.auth.Routes(mux)
 	mux.HandleFunc("GET /api/audit", h.auditLog)
+	mux.HandleFunc("GET /api/audit/verify", h.auditVerify)
 	// GitHub browsing for the New Application flow (credentials stay server-side).
 	mux.HandleFunc("GET /api/github/status", h.githubStatus)
 	mux.HandleFunc("GET /api/github/repos", h.githubRepos)
@@ -214,7 +214,7 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/repos/{id}/members/{login}", h.removeMember)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
-	return withObservability(withCORS(h.auth.Middleware(mux)), h.log())
+	return withObservability(withCORS(withBodyLimit(h.auth.Middleware(mux))), h.log())
 }
 
 // Close releases the platform database.
@@ -497,7 +497,8 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	log.Printf("workspace: connected repository %s (%s)", e.ID, gitengine.Redact(e.Origin))
+	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
+	h.auditHub(r, e.ID, "Connected repository "+e.Name, "POST /repos")
 	writeJSON(w, http.StatusOK, h.summarize(e))
 }
 
@@ -526,7 +527,8 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown repository: " + id})
 		return
 	}
-	log.Printf("workspace: renamed repository %s to %q", id, name)
+	slog.Info("workspace renamed repository", slog.String("id", id), slog.String("name", name))
+	h.auditHub(r, id, "Renamed repository to "+name, "PATCH /repos/"+id)
 	writeJSON(w, http.StatusOK, h.summarize(e))
 }
 
@@ -552,6 +554,7 @@ func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	if !e.Local && strings.HasPrefix(e.Path, filepath.Join(h.dataDir, "repos")+string(os.PathSeparator)) {
 		_ = os.RemoveAll(e.Path)
 	}
-	log.Printf("workspace: disconnected repository %s", id)
+	slog.Info("workspace disconnected repository", slog.String("id", id))
+	h.auditHub(r, id, "Disconnected repository "+e.Name, "DELETE /repos/"+id)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": id})
 }

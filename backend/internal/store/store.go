@@ -11,12 +11,16 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // postgres driver
@@ -71,6 +75,9 @@ var ErrNotFound = errors.New("not found")
 type Store struct {
 	db      *sql.DB
 	dialect string // "sqlite" | "postgres"
+	// auditMu serializes audit appends so the hash chain reads its predecessor
+	// and writes its successor atomically (the trail is low-volume).
+	auditMu sync.Mutex
 }
 
 // Open connects to the platform database: DATABASE_URL when set (postgres),
@@ -94,12 +101,42 @@ func Open(dataDir, databaseURL string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	tunePool(db, dialect)
 	s := &Store{db: db, dialect: dialect}
 	if err := s.migrate(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("migrate %s: %w", dialect, err)
 	}
+	s.ensureAuditColumns()
 	return s, nil
+}
+
+// ensureAuditColumns adds the audit hash-chain columns to databases created
+// before the chain existed. It is best effort and idempotent: on a fresh schema
+// (columns already present) each ALTER simply errors and is ignored. The column
+// names are fixed constants, never user input.
+func (s *Store) ensureAuditColumns() {
+	for _, col := range []string{"prev_hash", "hash"} {
+		_, _ = s.db.Exec(fmt.Sprintf(
+			`ALTER TABLE audit_events ADD COLUMN %s TEXT NOT NULL DEFAULT ''`, col))
+	}
+}
+
+// tunePool sets connection-pool limits so the store behaves under load. SQLite
+// is a single-writer file even in WAL mode, so more than one open connection
+// just produces "database is locked" contention; one connection serializes
+// writes cleanly (the platform DB is low-traffic: sessions, roles, audit).
+// Postgres gets a bounded pool with a lifetime cap so a burst cannot exhaust
+// server connections and stale connections are recycled.
+func tunePool(db *sql.DB, dialect string) {
+	if dialect == "sqlite" {
+		db.SetMaxOpenConns(1)
+		return
+	}
+	db.SetMaxOpenConns(25)
+	db.SetMaxIdleConns(25)
+	db.SetConnMaxLifetime(5 * time.Minute)
+	db.SetConnMaxIdleTime(2 * time.Minute)
 }
 
 // Close releases the database.
@@ -132,12 +169,14 @@ var migrations = []string{
 		PRIMARY KEY (repo, login)
 	)`,
 	`CREATE TABLE IF NOT EXISTS audit_events (
-		id      BIGINT NOT NULL,
-		at      TIMESTAMP NOT NULL,
-		login   TEXT NOT NULL,
-		repo    TEXT NOT NULL DEFAULT '',
-		action  TEXT NOT NULL,
-		detail  TEXT NOT NULL DEFAULT '',
+		id        BIGINT NOT NULL,
+		at        TIMESTAMP NOT NULL,
+		login     TEXT NOT NULL,
+		repo      TEXT NOT NULL DEFAULT '',
+		action    TEXT NOT NULL,
+		detail    TEXT NOT NULL DEFAULT '',
+		prev_hash TEXT NOT NULL DEFAULT '',
+		hash      TEXT NOT NULL DEFAULT '',
 		PRIMARY KEY (id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_events (at)`,
@@ -310,23 +349,74 @@ func (s *Store) MemberRole(ctx context.Context, repo, login string) (Role, error
 // --- audit ---------------------------------------------------------------------
 
 // Audit appends an event to the audit trail (best effort: an audit failure
-// never blocks the action itself; callers may ignore the error).
+// never blocks the action itself; callers may ignore the error). Each row is
+// linked into a hash chain - its hash covers the previous row's hash plus this
+// event's contents - so any later edit or deletion of a row breaks the chain
+// and is detectable via VerifyAudit. The canonical event time is the id
+// (nanoseconds), which is part of the hash; the `at` column is a readable copy.
 func (s *Store) Audit(ctx context.Context, e Event) error {
 	if e.At.IsZero() {
 		e.At = time.Now().UTC()
 	}
+	s.auditMu.Lock()
+	defer s.auditMu.Unlock()
+
+	var prevHash string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT hash FROM audit_events ORDER BY id DESC LIMIT 1`).Scan(&prevHash); err != nil &&
+		!errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
 	// Portable id: nanoseconds; collisions are broken by retrying once.
 	id := e.At.UnixNano()
 	for range 2 {
+		hash := auditHash(prevHash, id, e.Login, e.Repo, e.Action, e.Detail)
 		_, err := s.db.ExecContext(ctx, s.rebind(
-			`INSERT INTO audit_events (id, at, login, repo, action, detail) VALUES (?, ?, ?, ?, ?, ?)`),
-			id, e.At, e.Login, e.Repo, e.Action, e.Detail)
+			`INSERT INTO audit_events (id, at, login, repo, action, detail, prev_hash, hash) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+			id, e.At, e.Login, e.Repo, e.Action, e.Detail, prevHash, hash)
 		if err == nil {
 			return nil
 		}
 		id++
 	}
 	return fmt.Errorf("audit insert failed")
+}
+
+// auditHash computes one link of the tamper-evident chain: SHA-256 over the
+// previous row's hash and this event's canonical fields (id is the nanosecond
+// event time). A unit separator delimits fields so values cannot collide.
+func auditHash(prevHash string, id int64, login, repo, action, detail string) string {
+	payload := strings.Join([]string{
+		prevHash, strconv.FormatInt(id, 10), login, repo, action, detail,
+	}, "\x1f")
+	sum := sha256.Sum256([]byte(payload))
+	return hex.EncodeToString(sum[:])
+}
+
+// VerifyAudit walks the trail oldest-first and recomputes the hash chain. It
+// returns ok=false with brokenAt set to the id of the first row whose stored
+// hash or predecessor link does not match its contents - evidence the trail was
+// altered after the fact.
+func (s *Store) VerifyAudit(ctx context.Context) (ok bool, brokenAt int64, err error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, login, repo, action, detail, prev_hash, hash FROM audit_events ORDER BY id ASC`)
+	if err != nil {
+		return false, 0, err
+	}
+	defer rows.Close()
+	prevHash := ""
+	for rows.Next() {
+		var id int64
+		var login, repo, action, detail, storedPrev, storedHash string
+		if err := rows.Scan(&id, &login, &repo, &action, &detail, &storedPrev, &storedHash); err != nil {
+			return false, 0, err
+		}
+		if storedPrev != prevHash || auditHash(prevHash, id, login, repo, action, detail) != storedHash {
+			return false, id, nil
+		}
+		prevHash = storedHash
+	}
+	return true, 0, rows.Err()
 }
 
 // Events lists the newest audit entries (optionally for one application).

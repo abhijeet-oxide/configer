@@ -14,7 +14,7 @@ package api
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -90,12 +90,12 @@ func New(repoPath string) (*Server, error) {
 		}
 		prov = provider.ForOrigin(origin, token)
 		if prov != nil {
-			log.Printf("PR provider: %s (origin %s)", prov.Name(), gitengine.Redact(origin))
+			slog.Info("PR provider resolved", slog.String("provider", prov.Name()), slog.String("origin", gitengine.Redact(origin)))
 		} else {
-			log.Printf("PR provider: none (pure-git mode, origin %s)", gitengine.Redact(origin))
+			slog.Info("PR provider none (pure-git mode)", slog.String("origin", gitengine.Redact(origin)))
 		}
 	} else {
-		log.Printf("PR provider: none (local repository, no remote)")
+		slog.Info("PR provider none (local repository, no remote)")
 	}
 
 	backend := repobackend.NewLocal(repo, prov)

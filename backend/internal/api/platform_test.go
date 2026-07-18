@@ -88,6 +88,12 @@ func testHub(t *testing.T) (*Hub, http.Handler) {
 			t.Fatal(err)
 		}
 	}
+	// The deployment default role is viewer (least privilege), so grant the
+	// non-admin an explicit editor role for the write-path assertions.
+	repoID := hub.registry.List()[0].ID
+	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleEditor}); err != nil {
+		t.Fatal(err)
+	}
 	return hub, hub.Routes()
 }
 
@@ -116,7 +122,7 @@ func TestRoleEnforcement(t *testing.T) {
 	if w := call(t, h, "GET", base+"/grid", "", ""); w.Code != http.StatusUnauthorized {
 		t.Errorf("anonymous read = %d, want 401", w.Code)
 	}
-	// An authenticated user reads and edits (deployment default role: editor).
+	// An explicit editor reads and edits.
 	if w := call(t, h, "GET", base+"/grid", "tok-editor", ""); w.Code != http.StatusOK {
 		t.Errorf("editor read = %d: %s", w.Code, w.Body.String())
 	}

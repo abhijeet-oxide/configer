@@ -32,24 +32,44 @@ func newPlatform(dataDir string) (*store.Store, *auth.Service, error) {
 		}
 	}
 	svc := &auth.Service{
-		ClientID:     os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
-		ClientSecret: os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
-		CallbackURL:  os.Getenv("CONFIGER_OAUTH_CALLBACK"),
-		APIBase:      os.Getenv("GITHUB_API_URL"),
-		WebBase:      os.Getenv("GITHUB_WEB_URL"),
-		Store:        st,
-		Admins:       admins,
+		ClientID:      os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
+		ClientSecret:  os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
+		CallbackURL:   os.Getenv("CONFIGER_OAUTH_CALLBACK"),
+		APIBase:       os.Getenv("GITHUB_API_URL"),
+		WebBase:       os.Getenv("GITHUB_WEB_URL"),
+		Store:         st,
+		Admins:        admins,
+		SecureCookies: cookieSecure(),
 	}
 	return st, svc, nil
 }
 
+// cookieSecure decides whether session cookies get the Secure flag. It is on by
+// default in a production deployment (CONFIGER_ENV=production) and can be forced
+// either way with CONFIGER_COOKIE_SECURE, so a TLS-terminating proxy in any
+// environment can opt in.
+func cookieSecure() bool {
+	if v := os.Getenv("CONFIGER_COOKIE_SECURE"); v != "" {
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case "1", "true", "yes", "on":
+			return true
+		default:
+			return false
+		}
+	}
+	return strings.EqualFold(strings.TrimSpace(os.Getenv("CONFIGER_ENV")), "production")
+}
+
 // defaultRole is the capability users get on applications where no explicit
-// role is assigned (CONFIGER_DEFAULT_ROLE, default editor).
+// role is assigned. It defaults to viewer - the least privilege - so a fresh
+// deployment does not hand every authenticated user edit rights on every
+// application. Operators who want the old open-by-default behavior set
+// CONFIGER_DEFAULT_ROLE=editor explicitly.
 func defaultRole() store.Role {
 	if r := store.Role(os.Getenv("CONFIGER_DEFAULT_ROLE")); r.Valid() {
 		return r
 	}
-	return store.RoleEditor
+	return store.RoleViewer
 }
 
 // roleRank orders roles by capability.
@@ -81,8 +101,9 @@ func requiredRole(r *http.Request) store.Role {
 
 // effectiveRole computes a user's role on one application: deployment admins
 // approve everywhere; an explicit membership wins; otherwise the deployment
-// default applies (every authenticated user sees every application - the
-// registry is shared, initialize once for everyone).
+// default applies (by default viewer, so every authenticated user can read
+// every application in the shared registry but not change it until granted a
+// role).
 func (h *Hub) effectiveRole(r *http.Request, repoID string, u store.User) store.Role {
 	if u.Admin {
 		return store.RoleApprover
@@ -148,6 +169,22 @@ func (h *Hub) audit(r *http.Request, repoID string, status int) {
 		Repo:   repoID,
 		Action: humanizeAction(r.Method, rest),
 		Detail: r.Method + " " + rest,
+	})
+}
+
+// auditHub records a hub-level mutation (member management, repository
+// lifecycle) that does not pass through dispatch, so these security-relevant
+// actions land in the trail too. Best effort, like audit.
+func (h *Hub) auditHub(r *http.Request, repoID, action, detail string) {
+	if h.platform == nil {
+		return
+	}
+	login := "anonymous"
+	if u, ok := auth.UserFrom(r.Context()); ok {
+		login = u.Login
+	}
+	_ = h.platform.Audit(r.Context(), store.Event{
+		Login: login, Repo: repoID, Action: action, Detail: detail,
 	})
 }
 
@@ -245,6 +282,11 @@ func humanizeAction(method, path string) string {
 // members lists explicit role assignments plus every known user, so the UI
 // can offer assignments without a separate user directory.
 func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
+	// The member roster includes the full user directory, so it is admin-only,
+	// matching the setMember/removeMember writes it accompanies.
+	if !h.requireAdmin(w, r) {
+		return
+	}
 	id := r.PathValue("id")
 	ms, err := h.platform.ListMembers(r.Context(), id)
 	if err != nil {
@@ -281,10 +323,12 @@ func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be viewer, editor or approver"})
 		return
 	}
-	if err := h.platform.SetMember(r.Context(), store.Member{Repo: r.PathValue("id"), Login: req.Login, Role: req.Role}); err != nil {
+	repoID := r.PathValue("id")
+	if err := h.platform.SetMember(r.Context(), store.Member{Repo: repoID, Login: req.Login, Role: req.Role}); err != nil {
 		writeErr(w, err)
 		return
 	}
+	h.auditHub(r, repoID, "Granted role "+string(req.Role)+" to "+req.Login, "PUT /repos/"+repoID+"/members")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -293,11 +337,28 @@ func (h *Hub) removeMember(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	if err := h.platform.RemoveMember(r.Context(), r.PathValue("id"), r.PathValue("login")); err != nil {
+	repoID, login := r.PathValue("id"), r.PathValue("login")
+	if err := h.platform.RemoveMember(r.Context(), repoID, login); err != nil {
 		writeErr(w, err)
 		return
 	}
+	h.auditHub(r, repoID, "Revoked the explicit role of "+login, "DELETE /repos/"+repoID+"/members/"+login)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// requireUser allows any signed-in user (or anyone when auth is disabled -
+// single-user mode has no login). Use it to gate hub-level endpoints that leak
+// nothing role-specific but must not be reachable anonymously on a multi-user
+// deployment (e.g. the server-token-backed GitHub browsing endpoints).
+func (h *Hub) requireUser(w http.ResponseWriter, r *http.Request) bool {
+	if !h.auth.Enabled() {
+		return true
+	}
+	if _, ok := auth.UserFrom(r.Context()); !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		return false
+	}
+	return true
 }
 
 // requireAdmin allows deployment admins (or anyone when auth is disabled -
@@ -318,8 +379,12 @@ func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// auditLog serves the newest audit entries.
+// auditLog serves the newest audit entries. The trail spans every application
+// and names who did what, so it is admin-only.
 func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	evs, err := h.platform.Events(r.Context(), r.URL.Query().Get("repo"), limit)
 	if err != nil {
@@ -327,4 +392,22 @@ func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"events": evs})
+}
+
+// auditVerify recomputes the audit hash chain and reports whether the trail is
+// intact, naming the first broken row if not. Admin-only, like the trail.
+func (h *Hub) auditVerify(w http.ResponseWriter, r *http.Request) {
+	if !h.requireAdmin(w, r) {
+		return
+	}
+	ok, brokenAt, err := h.platform.VerifyAudit(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	resp := map[string]any{"intact": ok}
+	if !ok {
+		resp["brokenAt"] = brokenAt
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

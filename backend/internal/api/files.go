@@ -116,7 +116,7 @@ func pendingInstanceFiles(p *project.Project, name string, items []change.Item) 
 		_ = json.Unmarshal(b, &inst)
 	}
 
-	contents := map[string]string{}         // path -> committed bytes
+	contents := map[string]string{} // path -> committed bytes
 	cloneFrom, _ := add.Old.(string)
 	if src, ok := p.InstanceByName(cloneFrom); ok {
 		srcFolder := src.FolderOrDefault()
@@ -230,6 +230,19 @@ func (e errInstanceNotFound) Error() string {
 // When unmanaged content changed too, the whole file content is staged as
 // one edit-file item (managed values are still validated first: an invalid
 // value is rejected with 422 either way).
+//
+// @Summary     Stage a file edit
+// @Description File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item. Managed values are always validated first.
+// @Tags        Files
+// @Accept      json
+// @Produce     json
+// @Param       body body FileEditRequest true "The file edit"
+// @Success     200 {object} map[string]interface{} "kind is values | file"
+// @Failure     400 {object} APIError "path and content are required"
+// @Failure     404 {object} APIError "Unknown instance"
+// @Failure     422 {object} APIError "A managed value failed validation, or the file does not parse"
+// @Security    CookieSession
+// @Router      /api/files/draft [put]
 func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Instance string `json:"instance"`
@@ -238,7 +251,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		Author   string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Path == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path and content are required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "path and content are required")
 		return
 	}
 	p, err := s.load()
@@ -248,7 +261,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	inst, ok := p.InstanceByName(req.Instance)
 	if !ok && req.Instance != "" {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance not found"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance not found")
 		return
 	}
 
@@ -300,7 +313,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 			oldV, oldOK, _ := pathedit.Get([]byte(old), concrete.Format, concrete.Path)
 			newV, newOK, gerr := pathedit.Get([]byte(req.Content), concrete.Format, concrete.Path)
 			if gerr != nil {
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "the file does not parse: " + gerr.Error()})
+				writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "the file does not parse: "+gerr.Error())
 				return
 			}
 			if fmt.Sprintf("%v|%v", oldV, oldOK) == fmt.Sprintf("%v|%v", newV, newOK) {
@@ -309,11 +322,11 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 			if newOK {
 				coerced, cerr := validate.CoerceValue(param, newV)
 				if cerr != nil {
-					writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": param.Name + ": " + cerr.Error()})
+					writeFieldErrors(w, r, "a value in this file is not valid", FieldError{Field: param.Name, Message: cerr.Error()})
 					return
 				}
 				if vr := validate.Value(param, coerced); !vr.Valid {
-					writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": param.Name + ": " + vr.Message})
+					writeFieldErrors(w, r, "a value in this file is not valid", FieldError{Field: param.Name, Message: vr.Message})
 					return
 				}
 				newV = coerced

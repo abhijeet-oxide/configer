@@ -281,6 +281,18 @@ func humanizeAction(method, path string) string {
 
 // members lists explicit role assignments plus every known user, so the UI
 // can offer assignments without a separate user directory.
+// members lists role assignments for one application.
+//
+// @Summary     List members
+// @Description Explicit role assignments for one application plus the known-user directory, so the UI can offer assignments. Admin-only.
+// @Tags        Platform
+// @Produce     json
+// @Param       id path string true "Repository id"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     403 {object} APIError "Admin only"
+// @Security    CookieSession
+// @Router      /api/repos/{id}/members [get]
 func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
 	// The member roster includes the full user directory, so it is admin-only,
 	// matching the setMember/removeMember writes it accompanies.
@@ -307,6 +319,21 @@ func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
 }
 
 // setMember assigns a role (admins only when auth is enabled).
+// setMember assigns a role on one application.
+//
+// @Summary     Assign a role
+// @Description Assign a role (viewer, editor, approver) to a user on one application. Admin-only.
+// @Tags        Platform
+// @Accept      json
+// @Produce     json
+// @Param       id   path string           true "Repository id"
+// @Param       body body SetMemberRequest true "Login + role"
+// @Success     200 {object} OKResponse
+// @Failure     400 {object} APIError "Missing login or invalid role"
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     403 {object} APIError "Admin only"
+// @Security    CookieSession
+// @Router      /api/repos/{id}/members [put]
 func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -316,11 +343,11 @@ func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
 		Role  store.Role `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Login == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "login and role are required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "login and role are required")
 		return
 	}
 	if !req.Role.Valid() {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "role must be viewer, editor or approver"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "role must be viewer, editor or approver")
 		return
 	}
 	repoID := r.PathValue("id")
@@ -333,6 +360,19 @@ func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
 }
 
 // removeMember clears an explicit assignment (back to the deployment default).
+// removeMember clears an explicit role assignment.
+//
+// @Summary     Remove a member's role
+// @Description Clear a user's explicit role on one application (back to the deployment default). Admin-only.
+// @Tags        Platform
+// @Produce     json
+// @Param       id    path string true "Repository id"
+// @Param       login path string true "User login"
+// @Success     200 {object} OKResponse
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     403 {object} APIError "Admin only"
+// @Security    CookieSession
+// @Router      /api/repos/{id}/members/{login} [delete]
 func (h *Hub) removeMember(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -381,6 +421,19 @@ func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 
 // auditLog serves the newest audit entries. The trail spans every application
 // and names who did what, so it is admin-only.
+// auditLog serves the newest audit entries.
+//
+// @Summary     Audit trail
+// @Description The newest audit events across all applications (or one via `?repo=`), naming who did what. Admin-only.
+// @Tags        Platform
+// @Produce     json
+// @Param       repo  query string false "Filter to one application id"
+// @Param       limit query int    false "Max events"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     403 {object} APIError "Admin only"
+// @Security    CookieSession
+// @Router      /api/audit [get]
 func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
@@ -396,6 +449,17 @@ func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 
 // auditVerify recomputes the audit hash chain and reports whether the trail is
 // intact, naming the first broken row if not. Admin-only, like the trail.
+// auditVerify checks the audit hash chain.
+//
+// @Summary     Verify the audit trail
+// @Description Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Admin-only.
+// @Tags        Platform
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Failure     403 {object} APIError "Admin only"
+// @Security    CookieSession
+// @Router      /api/audit/verify [get]
 func (h *Hub) auditVerify(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return

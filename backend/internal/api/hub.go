@@ -191,8 +191,10 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/healthz", h.health)
 	mux.HandleFunc("GET /api/readyz", h.ready)
-	// API documentation: raw spec + interactive (embedded, offline) Swagger UI.
-	mux.HandleFunc("GET /api/openapi.yaml", serveOpenAPISpec)
+	// API documentation: generated spec (JSON + YAML) + interactive (embedded,
+	// offline) Swagger UI. The spec is generated from handler annotations.
+	mux.HandleFunc("GET /api/openapi.json", serveOpenAPISpecJSON)
+	mux.HandleFunc("GET /api/openapi.yaml", serveOpenAPISpecYAML)
 	mux.Handle("/api/docs", swaggerHandler)
 	mux.Handle("/api/docs/", swaggerHandler)
 	h.auth.Routes(mux)
@@ -232,11 +234,28 @@ func (h *Hub) log() *slog.Logger {
 	return slog.Default()
 }
 
+// health is the liveness probe.
+//
+// @Summary     Liveness probe
+// @Description Returns 200 while the process is up. `/api/healthz` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).
+// @Tags        Health
+// @Produce     json
+// @Success     200 {object} StatusResponse
+// @Router      /api/health [get]
+// @Router      /api/healthz [get]
 func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": h.Version})
 }
 
 // ready reports 200 only when a repository is available to serve, otherwise 503.
+//
+// @Summary     Readiness probe
+// @Description Returns 200 once at least one repository is serving, 503 otherwise, so a load balancer only routes traffic when the service can actually answer.
+// @Tags        Health
+// @Produce     json
+// @Success     200 {object} StatusResponse
+// @Failure     503 {object} StatusResponse
+// @Router      /api/readyz [get]
 func (h *Hub) ready(w http.ResponseWriter, _ *http.Request) {
 	if h.defaultHandler() != nil {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
@@ -388,6 +407,15 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 	return sum
 }
 
+// list returns the repository portfolio.
+//
+// @Summary     List repositories
+// @Description The workspace portfolio: every connected repository with health/shape summary (params, instances, environments, open changes, drafts, sync state). `/api/workspace` is an alias.
+// @Tags        Workspace
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Router      /api/repos [get]
+// @Router      /api/workspace [get]
 func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 	entries := h.registry.List()
 	out := make([]RepoSummary, 0, len(entries))
@@ -405,6 +433,20 @@ func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 // connect registers a new repository: a git URL is cloned into the data
 // directory (optionally authenticated); an existing local directory is
 // opened in place.
+// connect registers a new repository.
+//
+// @Summary     Connect a repository
+// @Description Register a repository: a git URL is cloned (or managed no-clone when `mode:"remote"`), an existing local directory is opened in place. Connecting an already-connected origin returns 409 with the existing id.
+// @Tags        Workspace
+// @Accept      json
+// @Produce     json
+// @Param       body body ConnectRequest true "Repository to connect"
+// @Success     200 {object} RepoSummary
+// @Failure     400 {object} APIError "Missing url"
+// @Failure     409 {object} APIError "Already connected"
+// @Failure     422 {object} APIError "Clone or open failed"
+// @Security    CookieSession
+// @Router      /api/repos [post]
 func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		URL    string `json:"url"`
@@ -416,7 +458,7 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		Mode string `json:"mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.URL) == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "url (git URL or local path) is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "url (git URL or local path) is required")
 		return
 	}
 	req.URL = strings.TrimSpace(req.URL)
@@ -425,10 +467,12 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	// trees of one truth; point the user at the existing connection.
 	for _, e := range h.registry.List() {
 		if gitengine.Redact(e.Origin) == gitengine.Redact(req.URL) {
-			writeJSON(w, http.StatusConflict, map[string]string{
-				"error": "this repository is already connected as \"" + e.Name + "\"",
-				"id":    e.ID,
-			})
+			// Include the existing id so the client can navigate to it. The
+			// standardized envelope carries code + requestId; id is an extra.
+			writeJSON(w, http.StatusConflict, struct {
+				APIError
+				ID string `json:"id"`
+			}{APIError{Error: "this repository is already connected as \"" + e.Name + "\"", Code: CodeConflict, RequestID: reqID(r)}, e.ID})
 			return
 		}
 	}
@@ -478,7 +522,7 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if cerr != nil {
-				writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": cerr.Error()})
+				writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, cerr.Error())
 				return
 			}
 		}
@@ -490,7 +534,7 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		if !e.Local {
 			_ = os.RemoveAll(e.Path)
 		}
-		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": err.Error()})
+		writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, err.Error())
 		return
 	}
 	if err := h.registry.Add(e); err != nil {
@@ -505,18 +549,32 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 // rename changes an application's display name. Only the human label changes;
 // the registry id (and therefore every per-repo route and shared deep link)
 // stays stable, and the Git repository is untouched.
+// rename changes an application's display name.
+//
+// @Summary     Rename an application
+// @Description Change an application's display name. Only the human label changes; the registry id (and every per-repo route and deep link) stays stable, and the Git repository is untouched.
+// @Tags        Workspace
+// @Accept      json
+// @Produce     json
+// @Param       id   path string        true "Repository id"
+// @Param       body body RenameRequest true "New name"
+// @Success     200 {object} RepoSummary
+// @Failure     400 {object} APIError "Malformed body or empty name"
+// @Failure     404 {object} APIError "Unknown repository"
+// @Security    CookieSession
+// @Router      /api/repos/{id} [patch]
 func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var req struct {
 		Name string `json:"name"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name cannot be empty"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "name cannot be empty")
 		return
 	}
 	if len(name) > 80 {
@@ -524,7 +582,7 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 	}
 	e, ok := h.registry.Rename(id, name)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown repository: " + id})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "unknown repository: "+id)
 		return
 	}
 	slog.Info("workspace renamed repository", slog.String("id", id), slog.String("name", name))
@@ -535,11 +593,22 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 // disconnect removes a repository from the workspace. A clone made by the
 // server is deleted from disk; a locally-opened tree is left untouched
 // (Configer never destroys a working tree it did not create).
+// disconnect removes a repository from the workspace.
+//
+// @Summary     Disconnect a repository
+// @Description Remove a repository from the workspace. A clone Configer made is deleted from disk; a locally-opened working tree is left untouched.
+// @Tags        Workspace
+// @Produce     json
+// @Param       id path string true "Repository id"
+// @Success     200 {object} map[string]interface{}
+// @Failure     404 {object} APIError "Unknown repository"
+// @Security    CookieSession
+// @Router      /api/repos/{id} [delete]
 func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	e, ok := h.registry.Remove(id)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown repository: " + id})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "unknown repository: "+id)
 		return
 	}
 	h.mu.Lock()

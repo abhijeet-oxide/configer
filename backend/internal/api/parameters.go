@@ -14,6 +14,20 @@ import (
 )
 
 // updateParameter patches a parameter's data type and/or validation rules.
+//
+// @Summary     Update a parameter
+// @Description Patch a parameter's type, validation, display name, description, category, scope, secret flag, default, or file bindings. Nil fields are left unchanged. Committed directly to the working branch with attribution.
+// @Tags        Grid & parameters
+// @Accept      json
+// @Produce     json
+// @Param       id   path   string true "Parameter id (slug)"
+// @Param       body body object true "Partial parameter patch"
+// @Success     200 {object} model.Parameter
+// @Failure     400 {object} APIError "Malformed body or half-specified binding"
+// @Failure     404 {object} APIError "Unknown parameter"
+// @Failure     422 {object} APIError "Unknown validation preset"
+// @Security    CookieSession
+// @Router      /api/parameters/{id} [put]
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Type        *model.ParamType  `json:"type,omitempty"`
@@ -31,12 +45,12 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Author   string           `json:"author,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	if req.Validation != nil && req.Validation.Preset != "" {
 		if _, found := validate.PresetByID(req.Validation.Preset); !found {
-			writeJSON(w, http.StatusUnprocessableEntity, map[string]string{"error": "unknown preset rule"})
+			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "unknown preset rule")
 			return
 		}
 	}
@@ -44,7 +58,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		bs := *req.Bindings
 		for i := range bs {
 			if bs[i].File == "" || bs[i].Path == "" {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "attaching requires both the file and the path"})
+				writeError(w, r, http.StatusBadRequest, CodeBadRequest, "attaching requires both the file and the path")
 				return
 			}
 			if bs[i].Format == "" {
@@ -68,7 +82,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Bindings:    req.Bindings,
 	})
 	if err != nil {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
 		return
 	}
 	title := "Update parameter " + param.Name
@@ -81,18 +95,30 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 // addParameter creates a new catalog parameter from the GUI (e.g. an optional
 // vendor key only some instances will carry). Committed directly with
 // attribution, like other catalog metadata operations.
+//
+// @Summary     Create a parameter
+// @Description Create a new catalog parameter. Bindings may be empty for a design-phase parameter (attached later), but a half-specified binding is rejected. Committed directly with attribution.
+// @Tags        Grid & parameters
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{param: Parameter, author?: string}"
+// @Success     200 {object} model.Parameter
+// @Failure     400 {object} APIError "Malformed body, missing name, or half-specified binding"
+// @Failure     409 {object} APIError "A parameter with that id already exists"
+// @Security    CookieSession
+// @Router      /api/parameters [post]
 func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Param  model.Parameter `json:"param"`
 		Author string          `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	pm := req.Param
 	if pm.Name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "name is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "name is required")
 		return
 	}
 	// A parameter may be created in the design phase, before its
@@ -100,7 +126,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	// But a half-specified binding is always a mistake.
 	for i := range pm.Bindings {
 		if pm.Bindings[i].File == "" || pm.Bindings[i].Path == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "every binding needs both a file and a path; leave bindings empty for a design-phase parameter"})
+			writeError(w, r, http.StatusBadRequest, CodeBadRequest, "every binding needs both a file and a path; leave bindings empty for a design-phase parameter")
 			return
 		}
 		if pm.Bindings[i].Format == "" {
@@ -123,7 +149,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if err := writer.AddParameter(s.RepoPath, pm); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return
 	}
 	s.commitCatalogChange(w, r, "Add parameter "+pm.Name, req.Author, pm)
@@ -132,6 +158,17 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 // deleteParameter retires a parameter everywhere: the catalog entry is
 // removed and the bound key/element is deleted from every real file it lives
 // in, so the setting disappears from the whole repository.
+//
+// @Summary     Delete a parameter
+// @Description Retire a parameter everywhere: the catalog entry is removed and the bound key/element is deleted from every real file it lives in. Committed directly with attribution.
+// @Tags        Grid & parameters
+// @Produce     json
+// @Param       id path string true "Parameter id (slug)"
+// @Success     200 {object} OKResponse
+// @Failure     404 {object} APIError "Unknown parameter"
+// @Failure     409 {object} APIError "Deletion failed"
+// @Security    CookieSession
+// @Router      /api/parameters/{id} [delete]
 func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author"`
@@ -146,13 +183,13 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 	}
 	param, found := p.ParamByID(id)
 	if !found {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "parameter not found"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
 		return
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if err := writer.DeleteParameter(s.RepoPath, id, p.Registry.Instances); err != nil {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
+		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return
 	}
 	// Drop any pending draft items for the retired parameter.

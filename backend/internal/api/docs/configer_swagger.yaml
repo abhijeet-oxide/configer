@@ -1,0 +1,2188 @@
+basePath: /
+consumes:
+- application/json
+definitions:
+  api.APIError:
+    properties:
+      code:
+        description: Code is the stable, machine-readable classifier a client branches
+          on.
+        example: not_found
+        type: string
+      error:
+        description: |-
+          Error is a human-readable, plain-language message safe to show a user.
+          It never contains git jargon, stack traces, credentials, or internal
+          hostnames.
+        example: parameter not found
+        type: string
+      fields:
+        description: Fields carries per-field validation failures (422 only).
+        items:
+          $ref: '#/definitions/api.FieldError'
+        type: array
+      requestId:
+        description: |-
+          RequestID correlates this response with the access log and the
+          X-Request-ID header, so an operator can find the exact request.
+        example: 3f9a1c2b7e5d0a84
+        type: string
+    type: object
+  api.CommentRequest:
+    properties:
+      body:
+        example: Looks good, ship after the window.
+        type: string
+    type: object
+  api.ConnectRequest:
+    properties:
+      branch:
+        description: Branch is the working branch (defaults to the remote's default
+          branch).
+        example: main
+        type: string
+      mode:
+        description: |-
+          Mode "remote" manages the repository through the GitHub API with no
+          clone; the default clones the repository.
+        enum:
+        - clone
+        - remote
+        example: clone
+        type: string
+      name:
+        description: Name overrides the display name (defaults to the repo name).
+        example: Platform config
+        type: string
+      token:
+        description: |-
+          Token is an access token for a private repository. Stored server-side
+          only and never returned.
+        type: string
+      url:
+        description: URL is a git URL (https/ssh) or an absolute local path.
+        example: https://github.com/acme/platform-config
+        type: string
+    type: object
+  api.FieldError:
+    properties:
+      field:
+        example: port
+        type: string
+      message:
+        example: must be between 1 and 65535
+        type: string
+    type: object
+  api.FileEditRequest:
+    properties:
+      content:
+        type: string
+      instance:
+        example: prod-us-east
+        type: string
+      path:
+        example: instances/prod-us-east/values.yaml
+        type: string
+    type: object
+  api.MetaResponse:
+    properties:
+      branch:
+        example: main
+        type: string
+      environment:
+        enum:
+        - development
+        - staging
+        - production
+        example: production
+        type: string
+      name:
+        example: Configer
+        type: string
+      project:
+        example: payments-platform
+        type: string
+      version:
+        example: 1.4.0
+        type: string
+    type: object
+  api.OKResponse:
+    properties:
+      ok:
+        example: true
+        type: boolean
+    type: object
+  api.RenameRequest:
+    properties:
+      name:
+        example: Payments platform
+        type: string
+    type: object
+  api.RepoStatus:
+    properties:
+      ahead:
+        type: integer
+      autoSyncMs:
+        type: integer
+      behind:
+        type: integer
+      branch:
+        type: string
+      lastSync:
+        type: string
+      provider:
+        type: string
+      remote:
+        type: string
+      syncError:
+        type: string
+      upstreamGone:
+        description: |-
+          UpstreamGone means the branch's remote counterpart was deleted (e.g.
+          someone removed the branch on GitHub). Local work continues safely;
+          the UI explains and suggests choosing a new target branch.
+        type: boolean
+    type: object
+  api.RepoSummary:
+    properties:
+      addedAt:
+        type: string
+      behind:
+        type: integer
+      branch:
+        type: string
+      drafts:
+        type: integer
+      environments:
+        additionalProperties:
+          type: integer
+        type: object
+      error:
+        type: string
+      id:
+        type: string
+      instances:
+        description: |-
+          Instances counts configuration instances; Environments breaks them
+          down by environment for the hierarchical dashboard.
+        type: integer
+      local:
+        type: boolean
+      name:
+        type: string
+      needsSetup:
+        description: |-
+          NeedsSetup is a connected repository that has no Configer application
+          yet (.configer/ absent). It is not an error - the UI routes it into
+          onboarding - so it must never surface as "unavailable".
+        type: boolean
+      noClone:
+        type: boolean
+      openChanges:
+        type: integer
+      origin:
+        type: string
+      params:
+        type: integer
+      project:
+        type: string
+      provider:
+        type: string
+      remote:
+        type: string
+      syncError:
+        type: string
+    type: object
+  api.ReviewersRequest:
+    properties:
+      reviewers:
+        example:
+        - alice
+        - bob
+        items:
+          type: string
+        type: array
+    type: object
+  api.SetMemberRequest:
+    properties:
+      login:
+        example: alice
+        type: string
+      role:
+        enum:
+        - viewer
+        - editor
+        - approver
+        example: editor
+        type: string
+    type: object
+  api.StagedResponse:
+    properties:
+      changeId:
+        example: 7
+        type: integer
+      ok:
+        example: true
+        type: boolean
+      pending:
+        example: 3
+        type: integer
+      staged:
+        example: true
+        type: boolean
+    type: object
+  api.StatusResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+      version:
+        example: 1.4.0
+        type: string
+    type: object
+  api.SubmitChangeRequest:
+    properties:
+      category:
+        example: networking
+        type: string
+      description:
+        type: string
+      reference:
+        example: JIRA-1234
+        type: string
+      title:
+        example: Raise admin port in production
+        type: string
+    type: object
+  api.ValueEditRequest:
+    properties:
+      action:
+        description: |-
+          Action defaults to "set". "reset" drops the instance override; "exclude"
+          removes the key from the instance's files entirely.
+        enum:
+        - set
+        - reset
+        - exclude
+        example: set
+        type: string
+      instance:
+        example: prod-us-east
+        type: string
+      paramId:
+        example: net-admin-port
+        type: string
+      scope:
+        description: |-
+          Scope "global" edits the shared value for every instance; omit for a
+          per-instance override.
+        enum:
+        - global
+        example: ""
+        type: string
+      value:
+        description: Value is a type-appropriate value, coerced and validated server-side.
+        example: "8443"
+        type: string
+    type: object
+  api.ValueStagedResponse:
+    properties:
+      changeId:
+        example: 7
+        type: integer
+      ok:
+        example: true
+        type: boolean
+      pending:
+        example: 3
+        type: integer
+      value: {}
+    type: object
+  model.Application:
+    properties:
+      apiVersion:
+        type: string
+      description:
+        type: string
+      kind:
+        type: string
+      layout:
+        description: |-
+          Layout names the repository convention the layout adapter interprets:
+          "plain-folders", "kustomize", or "kpt".
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        description: |-
+          Metadata holds free-form key/value details the user attaches to the
+          application (owner, team, ticket queue…). Stored in Git with the rest
+          of the application identity; never interpreted by Configer.
+        type: object
+      name:
+        type: string
+    type: object
+  model.Binding:
+    properties:
+      file:
+        type: string
+      format:
+        description: yaml | json | xml
+        type: string
+      layer:
+        description: Layer overrides the inferred precedence layer ("base" or "instance").
+        type: string
+      line:
+        description: |-
+          Line is the 1-based source line the value lives on, for display in the
+          onboarding proposal. It is NEVER persisted (line numbers drift), only
+          carried through the discovery JSON - hence yaml:"-".
+        type: integer
+      path:
+        type: string
+    type: object
+  model.Instance:
+    properties:
+      environment:
+        type: string
+      folder:
+        description: |-
+          Folder is the instance's directory in the repository, relative to the
+          root (e.g. "instances/prod-us-east" or "overlays/prod"). Template
+          bindings expand "{folder}" to this value.
+        type: string
+      labels:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      region:
+        type: string
+      site:
+        type: string
+      softwareVersion:
+        type: string
+      status:
+        description: active | draft | archived
+        type: string
+      zone:
+        type: string
+    type: object
+  model.InstanceRegistry:
+    properties:
+      apiVersion:
+        type: string
+      instances:
+        items:
+          $ref: '#/definitions/model.Instance'
+        type: array
+      kind:
+        type: string
+    type: object
+  model.ParamType:
+    enum:
+    - string
+    - integer
+    - boolean
+    - number
+    - enum
+    - ipv4
+    - cidr
+    - list
+    type: string
+    x-enum-varnames:
+    - TypeString
+    - TypeInteger
+    - TypeBoolean
+    - TypeNumber
+    - TypeEnum
+    - TypeIPv4
+    - TypeCIDR
+    - TypeList
+  model.Parameter:
+    properties:
+      bindings:
+        description: |-
+          Bindings are the real-file locations this parameter's value lives at.
+          A deduplicated parameter (the same logical setting appearing in several
+          files) carries one binding per location; an edit fans out to all of
+          them. A design-phase parameter has no bindings yet.
+        items:
+          $ref: '#/definitions/model.Binding'
+        type: array
+      category:
+        type: string
+      default:
+        description: |-
+          Default is metadata: the value shown (and written on first set) when no
+          bound file carries the key. It is never rendered anywhere by itself.
+      dependsOn:
+        items:
+          type: string
+        type: array
+      description:
+        type: string
+      displayName:
+        type: string
+      id:
+        type: string
+      itemType:
+        allOf:
+        - $ref: '#/definitions/model.ParamType'
+        description: ItemType is the element type when Type is "list".
+      name:
+        type: string
+      scope:
+        $ref: '#/definitions/model.Scope'
+      secret:
+        type: boolean
+      type:
+        $ref: '#/definitions/model.ParamType'
+      validation:
+        $ref: '#/definitions/model.Validation'
+      versionDeprecated:
+        type: string
+      versionIntroduced:
+        description: VersionIntroduced/Deprecated drive version-aware cell state in
+          the grid.
+        type: string
+    type: object
+  model.Scope:
+    enum:
+    - instance
+    - global
+    type: string
+    x-enum-varnames:
+    - ScopeInstance
+    - ScopeGlobal
+  model.Validation:
+    properties:
+      enum:
+        items:
+          type: string
+        type: array
+      max:
+        type: number
+      maxItems:
+        type: integer
+      maxLength:
+        type: integer
+      min:
+        type: number
+      minItems:
+        type: integer
+      minLength:
+        type: integer
+      pattern:
+        type: string
+      preset:
+        description: id of a predefined rule
+        type: string
+      required:
+        type: boolean
+      schemaRef:
+        type: string
+    type: object
+info:
+  contact:
+    name: Configer
+    url: https://github.com/abhijeet-oxide/configer
+  description: |-
+    Write-back-native GitOps configuration management. Configer discovers an existing repository's layout, exposes a parameter x instance grid over the repository's OWN files, and surgically edits them; every change flows to Git as commits, branches, pull requests, and merges. `.configer/` holds metadata only.
+
+    ## Repository scoping
+    Every resource endpoint exists in two shapes: the unscoped `/api/...` form acts on the default (first-connected) repository for single-repo deployments and older clients, and the identical routes are available per repository under `/api/repos/{repoId}/...`. Only the unscoped forms are documented here; to target a specific repository prefix any path with `/api/repos/{repoId}`.
+
+    ## Errors
+    Every 4xx/5xx response uses one envelope: a stable machine-readable `code`, a human-readable `error`, a `requestId` (also returned as the `X-Request-ID` header) that correlates to server logs, and - for validation failures - a `fields` array. Branch on `code`, never on the message text.
+
+    ## Correlation
+    Send `X-Request-ID` to have it echoed and used as the correlation id; otherwise the server generates one. It is returned on every response.
+  license:
+    name: See repository
+    url: https://github.com/abhijeet-oxide/configer
+  termsOfService: https://github.com/abhijeet-oxide/configer
+  title: Configer API
+  version: 1.0.0
+paths:
+  /api/application:
+    get:
+      description: The application's name, description and free-form metadata from
+        `.configer/application.yaml`.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Application'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get application identity
+      tags:
+      - Onboarding
+    put:
+      consumes:
+      - application/json
+      description: Patch the application's name, description and metadata and commit
+        `.configer/application.yaml`. Nil fields are left unchanged; the layout is
+        not editable here (it describes the repository, not the user).
+      parameters:
+      - description: Partial identity patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Application'
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Empty name
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Update application identity
+      tags:
+      - Onboarding
+  /api/audit:
+    get:
+      description: The newest audit events across all applications (or one via `?repo=`),
+        naming who did what. Admin-only.
+      parameters:
+      - description: Filter to one application id
+        in: query
+        name: repo
+        type: string
+      - description: Max events
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Admin only
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Audit trail
+      tags:
+      - Platform
+  /api/audit/verify:
+    get:
+      description: Recompute the audit hash chain and report whether the trail is
+        intact, naming the first broken row if not. Admin-only.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Admin only
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Verify the audit trail
+      tags:
+      - Platform
+  /api/auth/callback:
+    get:
+      description: Exchange the OAuth code, record the user, open a session cookie,
+        and redirect back to the app. Invoked by GitHub, not called directly by clients.
+      parameters:
+      - description: OAuth code
+        in: query
+        name: code
+        type: string
+      - description: CSRF state
+        in: query
+        name: state
+        type: string
+      responses:
+        "302":
+          description: Redirect to the app with a session cookie
+        "400":
+          description: Invalid state or code exchange failed
+          schema:
+            type: string
+        "501":
+          description: Login not configured
+          schema:
+            type: string
+      summary: GitHub OAuth callback
+      tags:
+      - Platform
+  /api/auth/login:
+    get:
+      description: Redirect the browser into GitHub's OAuth authorize page. Returns
+        501 when login is not configured.
+      responses:
+        "302":
+          description: Redirect to GitHub
+        "501":
+          description: Login not configured
+          schema:
+            type: string
+      summary: Begin GitHub login
+      tags:
+      - Platform
+  /api/auth/logout:
+    post:
+      description: End the current session and clear the session cookie.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      security:
+      - CookieSession: []
+      summary: Sign out
+      tags:
+      - Platform
+  /api/auth/me:
+    get:
+      description: Whether login is configured on this deployment, and who is signed
+        in. Returns `{enabled:false}` in single-user mode.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Current identity
+      tags:
+      - Platform
+  /api/changes:
+    get:
+      description: Every change request in the store, in all states (Draft, UnderReview,
+        Approved, Published, Rejected).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List change requests
+      tags:
+      - Editing & change requests
+  /api/changes/{id}:
+    get:
+      description: One change request by id. Refreshes the linked pull-request state
+        (merged/closed/checks) from the host before returning.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/comments:
+    post:
+      consumes:
+      - application/json
+      description: Append a review note. The session identity is the author (the body's
+        author field is only a single-user-mode fallback).
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: The comment
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.CommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id, body, or empty comment
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Comment on a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/merge:
+    post:
+      description: Approve and merge the change request's pull request, publishing
+        it. Requires the approver role when auth is enabled.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Approver role required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a mergeable state, or merge failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Merge (publish) a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reject:
+    post:
+      description: Reject/close the change request (a draft is discarded, a submitted
+        one is closed).
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a rejectable state
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Reject a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reviewers:
+    put:
+      consumes:
+      - application/json
+      description: Replace the (informational) reviewer list on a change request.
+        Reviewers record who was asked to look, not who may merge.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Reviewer logins
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ReviewersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id or body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Set reviewers
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/submit:
+    post:
+      consumes:
+      - application/json
+      description: 'Turn the draft into a feature branch + commit (+ hosted pull request
+        when a provider is configured) and move it to Under Review. Idempotency: a
+        change already submitted returns 409.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Title, description, reference, category
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/api.SubmitChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id or body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a submittable state, or push/PR failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Submit a change request
+      tags:
+      - Editing & change requests
+  /api/changes/draft:
+    get:
+      description: The current draft change request (pending, unsubmitted edits),
+        or `{draft:null}` when there is none.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Current draft
+      tags:
+      - Editing & change requests
+  /api/compare:
+    get:
+      description: Semantic, parameter-level diff between two instances. Without refs
+        it compares the current project (pending edits included); with leftRef/rightRef
+        it materializes each side at that git ref and compares across them.
+      parameters:
+      - description: Left instance name
+        in: query
+        name: left
+        required: true
+        type: string
+      - description: Right instance name
+        in: query
+        name: right
+        required: true
+        type: string
+      - description: Git ref (branch/tag/commit) for the left side
+        in: query
+        name: leftRef
+        type: string
+      - description: Git ref for the right side
+        in: query
+        name: rightRef
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Compare two instances
+      tags:
+      - Grid & parameters
+  /api/deinit:
+    post:
+      description: Remove the `.configer` folder and commit the removal, returning
+        the repository to an unmanaged state. The repository's own configuration files
+        are untouched.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Remove Configer metadata
+      tags:
+      - Onboarding
+  /api/discover:
+    post:
+      description: 'Read-only onboarding proposal: detected layout, instances discovered
+        from folders, and deduplicated parameters with JSON-Schema validation attached.
+        Nothing is written; POST /api/init to accept.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Discover an application
+      tags:
+      - Onboarding
+  /api/files/draft:
+    put:
+      consumes:
+      - application/json
+      description: 'File-mode save: a direct Monaco edit of one file, staged into
+        the same draft as grid edits. Edits that only change managed values become
+        ordinary validated cell items (fan-out preserved); edits that touch unmanaged
+        content stage as one whole-file item. Managed values are always validated
+        first.'
+      parameters:
+      - description: The file edit
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.FileEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: kind is values | file
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: path and content are required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: A managed value failed validation, or the file does not parse
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Stage a file edit
+      tags:
+      - Files
+  /api/fs/browse:
+    get:
+      description: List the sub-folders of a directory on the server so the New Application
+        flow can offer a folder picker (localhost mode). With no `?path` it starts
+        at the user's home directory. Listing the server filesystem is an admin action
+        when auth is enabled.
+      parameters:
+      - description: 'Directory to list (default: home)'
+        in: query
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Unreadable or missing path
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Permission denied
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Browse server folders
+      tags:
+      - Workspace
+  /api/github/branches:
+    get:
+      description: The branches of a GitHub repository (and its default branch), for
+        the New Application flow.
+      parameters:
+      - description: owner/name
+        in: query
+        name: repo
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing repo
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: List GitHub branches
+      tags:
+      - Workspace
+  /api/github/repos:
+    get:
+      description: Repositories the resolved credential can reach (own, collaborations,
+        org), newest activity first. Backs the New Application picker.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: List GitHub repositories
+      tags:
+      - Workspace
+  /api/github/status:
+    get:
+      description: Whether a GitHub credential is available to the New Application
+        flow, its source, and the signed-in login. Credentials stay server-side.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: GitHub credential status
+      tags:
+      - Workspace
+  /api/grid:
+    get:
+      description: 'The full matrix: every parameter row x every instance column,
+        each cell resolved from the real repository files with its provenance (default
+        / base / instance), type, validation state and version state. The current
+        draft''s pending edits are previewed on top.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Parameter x instance grid
+      tags:
+      - Grid & parameters
+  /api/health:
+    get:
+      description: Returns 200 while the process is up. `/api/healthz` is an alias.
+        Used as a liveness check by load balancers and orchestrators; it does not
+        check dependencies (see readiness).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Liveness probe
+      tags:
+      - Health
+  /api/healthz:
+    get:
+      description: Returns 200 while the process is up. `/api/healthz` is an alias.
+        Used as a liveness check by load balancers and orchestrators; it does not
+        check dependencies (see readiness).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Liveness probe
+      tags:
+      - Health
+  /api/history:
+    get:
+      description: Recent commits that touched the canonical model under `.configer/`,
+        newest first. `supported` is false on backends (remote no-clone) that cannot
+        serve a log.
+      parameters:
+      - description: Max commits (1-200, default 40)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Application change history
+      tags:
+      - Grid & parameters
+  /api/import:
+    post:
+      consumes:
+      - application/json
+      description: Promote scanned candidate parameters into the catalog in one attributed
+        commit (the import wizard's final step). Already-managed or conflicting entries
+        are skipped and reported, never fatal.
+      parameters:
+      - description: '{parameters: Parameter[], ignoreFiles?: string[]}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Malformed body or nothing selected
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Import scanned parameters
+      tags:
+      - Import & reconcile
+  /api/init:
+    post:
+      consumes:
+      - application/json
+      description: 'Write the accepted onboarding proposal into `.configer/` as ONE
+        attributed commit (reviewable history from the first action). Idempotent guard:
+        an already-initialized repository returns 409.'
+      parameters:
+      - description: 'Accepted proposal: name, layout, instances, parameters, ignoreFiles'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing name or instances
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Already initialized
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Initialize an application
+      tags:
+      - Onboarding
+  /api/instances:
+    get:
+      description: 'The instance (deployment target) registry: metadata plus folder
+        bindings for every instance.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.InstanceRegistry'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: List instances
+      tags:
+      - Instances
+    post:
+      consumes:
+      - application/json
+      description: Stage a new deployment target as a pending structural change on
+        the draft (it does NOT touch the main branch). On submit the CR branch carries
+        the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder
+        from an existing instance.
+      parameters:
+      - description: Instance metadata (name required; optional cloneFrom)
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "400":
+          description: Malformed body or invalid name
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Clone source not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Name already exists (committed or pending)
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Create an instance
+      tags:
+      - Instances
+  /api/instances/{name}:
+    delete:
+      description: Stage the retirement of an instance (registry entry + folder) into
+        the draft, reviewable before anything happens.
+      parameters:
+      - description: Instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Delete an instance
+      tags:
+      - Instances
+    put:
+      consumes:
+      - application/json
+      description: Stage a metadata/status edit (archive = status "archived") as a
+        pending change - never a direct commit to the main branch. If the instance
+        is itself still a pending add, the edit folds into that add.
+      parameters:
+      - description: Instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Partial instance metadata patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Update an instance
+      tags:
+      - Instances
+  /api/meta:
+    get:
+      description: Name, version, environment, current project and branch. Backs the
+        UI footer and environment-aware messaging.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.MetaResponse'
+      summary: Deployment identity
+      tags:
+      - Health
+  /api/parameters:
+    post:
+      consumes:
+      - application/json
+      description: Create a new catalog parameter. Bindings may be empty for a design-phase
+        parameter (attached later), but a half-specified binding is rejected. Committed
+        directly with attribution.
+      parameters:
+      - description: '{param: Parameter, author?: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "400":
+          description: Malformed body, missing name, or half-specified binding
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: A parameter with that id already exists
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Create a parameter
+      tags:
+      - Grid & parameters
+  /api/parameters/{id}:
+    delete:
+      description: 'Retire a parameter everywhere: the catalog entry is removed and
+        the bound key/element is deleted from every real file it lives in. Committed
+        directly with attribution.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Deletion failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Delete a parameter
+      tags:
+      - Grid & parameters
+    get:
+      description: 'Full metadata for one catalog parameter: type, scope, category,
+        bindings, validation and version state.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get a parameter
+      tags:
+      - Grid & parameters
+    put:
+      consumes:
+      - application/json
+      description: Patch a parameter's type, validation, display name, description,
+        category, scope, secret flag, default, or file bindings. Nil fields are left
+        unchanged. Committed directly to the working branch with attribution.
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Partial parameter patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "400":
+          description: Malformed body or half-specified binding
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Unknown validation preset
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Update a parameter
+      tags:
+      - Grid & parameters
+  /api/parameters/{id}/history:
+    get:
+      description: Resolves one parameter's effective value at each recent config
+        commit, so the inspector can show how it changed over time. `?instance=` resolves
+        for that instance; otherwise the catalog default is used.
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Resolve the value for this instance
+        in: query
+        name: instance
+        type: string
+      - description: Max commits (1-40, default 12)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Parameter value timeline
+      tags:
+      - Grid & parameters
+  /api/parameters/retire-file:
+    post:
+      consumes:
+      - application/json
+      description: 'Retire every parameter sourced from one (typically deleted) file:
+        the one-click resolution for a file_deleted finding.'
+      parameters:
+      - description: '{file: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: file is required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No parameters are sourced from that file
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Retire parameters from a file
+      tags:
+      - Grid & parameters
+  /api/plugins:
+    get:
+      description: The registered parser/format plugin manifests (yaml, json, xml).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List format plugins
+      tags:
+      - Plugins & validation
+  /api/project:
+    get:
+      description: Project name, instances, category tree and parameter count, with
+        the current draft applied. When the repository has no Configer application
+        yet, returns `{initialized:false}` so the client routes to onboarding (still
+        200, not an error).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Project summary
+      tags:
+      - Grid & parameters
+  /api/readyz:
+    get:
+      description: Returns 200 once at least one repository is serving, 503 otherwise,
+        so a load balancer only routes traffic when the service can actually answer.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Readiness probe
+      tags:
+      - Health
+  /api/render/{instance}:
+    get:
+      description: 'The instance''s REAL repository files (write-back-native: nothing
+        is generated). By default the current draft is applied in memory so the preview
+        shows exactly what a publish would write; `?draft=false` serves the committed
+        working tree (the diff baseline); `?ref=` serves the files at a git ref.'
+      parameters:
+      - description: Instance name
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: false = committed content (diff baseline)
+        enum:
+        - "false"
+        in: query
+        name: draft
+        type: string
+      - description: Serve files at this git ref instead
+        in: query
+        name: ref
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Render an instance's files
+      tags:
+      - Files
+  /api/repo/findings:
+    get:
+      description: 'What changed on Git (external commits) since the last acknowledged
+        commit: the diff between the acknowledged SHA and HEAD, classified into findings.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Repository findings
+      tags:
+      - Import & reconcile
+  /api/repo/findings/ack:
+    post:
+      description: Mark all repository findings up to HEAD as seen, so they stop surfacing.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Acknowledge findings
+      tags:
+      - Import & reconcile
+  /api/repo/refs:
+    get:
+      description: The branches and tags available to compare or render against, plus
+        the current branch.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: List git refs
+      tags:
+      - Grid & parameters
+  /api/repo/status:
+    get:
+      description: 'The git-liveness snapshot: branch, remote, ahead/behind counts,
+        last sync time, and any sync error.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoStatus'
+      summary: Git status
+      tags:
+      - Import & reconcile
+  /api/repo/sync:
+    post:
+      description: Force a fetch + fast-forward (local) or cache refresh (remote)
+        now, instead of waiting for the poll interval, and return the fresh status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoStatus'
+      security:
+      - CookieSession: []
+      summary: Force a sync
+      tags:
+      - Import & reconcile
+  /api/repos:
+    get:
+      description: 'The workspace portfolio: every connected repository with health/shape
+        summary (params, instances, environments, open changes, drafts, sync state).
+        `/api/workspace` is an alias.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List repositories
+      tags:
+      - Workspace
+    post:
+      consumes:
+      - application/json
+      description: 'Register a repository: a git URL is cloned (or managed no-clone
+        when `mode:"remote"`), an existing local directory is opened in place. Connecting
+        an already-connected origin returns 409 with the existing id.'
+      parameters:
+      - description: Repository to connect
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ConnectRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoSummary'
+        "400":
+          description: Missing url
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Already connected
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Clone or open failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Connect a repository
+      tags:
+      - Workspace
+  /api/repos/{id}:
+    delete:
+      description: Remove a repository from the workspace. A clone Configer made is
+        deleted from disk; a locally-opened working tree is left untouched.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Unknown repository
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Disconnect a repository
+      tags:
+      - Workspace
+    patch:
+      consumes:
+      - application/json
+      description: Change an application's display name. Only the human label changes;
+        the registry id (and every per-repo route and deep link) stays stable, and
+        the Git repository is untouched.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New name
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.RenameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoSummary'
+        "400":
+          description: Malformed body or empty name
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown repository
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Rename an application
+      tags:
+      - Workspace
+  /api/repos/{id}/members:
+    get:
+      description: Explicit role assignments for one application plus the known-user
+        directory, so the UI can offer assignments. Admin-only.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Admin only
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: List members
+      tags:
+      - Platform
+    put:
+      consumes:
+      - application/json
+      description: Assign a role (viewer, editor, approver) to a user on one application.
+        Admin-only.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Login + role
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.SetMemberRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "400":
+          description: Missing login or invalid role
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Admin only
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Assign a role
+      tags:
+      - Platform
+  /api/repos/{id}/members/{login}:
+    delete:
+      description: Clear a user's explicit role on one application (back to the deployment
+        default). Admin-only.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: User login
+        in: path
+        name: login
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Admin only
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Remove a member's role
+      tags:
+      - Platform
+  /api/scan:
+    post:
+      description: 'Read-only ingest scan: detect config files and extract candidate
+        parameters. Nothing is written; use import to promote candidates.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Scan for candidate settings
+      tags:
+      - Import & reconcile
+  /api/validation/presets:
+    get:
+      description: The predefined validation-rule library (port, cidr, ipv4, ...)
+        available to attach to parameters.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Validation presets
+      tags:
+      - Plugins & validation
+  /api/values:
+    delete:
+      description: Drop one pending edit (identified by paramId + instance) from the
+        current draft.
+      parameters:
+      - description: Parameter id
+        in: query
+        name: paramId
+        required: true
+        type: string
+      - description: Instance name (empty for a global edit)
+        in: query
+        name: instance
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "404":
+          description: No draft
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Revert a pending value edit
+      tags:
+      - Editing & change requests
+    put:
+      consumes:
+      - application/json
+      description: Stage a validated cell edit into the draft change request. The
+        value is coerced to the parameter's declared type and validated; nothing touches
+        Git until the draft is submitted. `action` defaults to "set"; "reset" drops
+        the instance override; "exclude" removes the key from the instance's files.
+        `scope:"global"` edits the shared value for every instance.
+      parameters:
+      - description: The edit
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ValueEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValueStagedResponse'
+        "400":
+          description: Malformed body or unsupported scope
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Parameter or instance not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Value failed coercion or validation
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Stage a value edit
+      tags:
+      - Editing & change requests
+  /api/workspace:
+    get:
+      description: 'The workspace portfolio: every connected repository with health/shape
+        summary (params, instances, environments, open changes, drafts, sync state).
+        `/api/workspace` is an alias.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List repositories
+      tags:
+      - Workspace
+produces:
+- application/json
+schemes:
+- https
+- http
+securityDefinitions:
+  CookieSession:
+    description: Session cookie set by the GitHub OAuth login flow (`GET /api/auth/login`
+      -> callback). Only required when the deployment has OAuth configured; single-user
+      deployments need no authentication.
+    in: cookie
+    name: configer_session
+    type: apiKey
+swagger: "2.0"

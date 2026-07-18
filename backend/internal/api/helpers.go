@@ -148,8 +148,12 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeErr answers with an unclassified 500. It is the catch-all for
+// unexpected faults; handlers that know the failure class should prefer
+// writeError with an explicit status + code. The X-Request-ID response header
+// carries the correlation id here (the body form has no request in scope).
 func writeErr(w http.ResponseWriter, err error) {
-	writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	writeJSON(w, http.StatusInternalServerError, APIError{Error: err.Error(), Code: CodeInternalError})
 }
 
 // withCORS emits CORS headers only for an explicitly allowed origin

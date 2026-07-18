@@ -33,6 +33,14 @@ type Finding struct {
 const ackKey = "reconcileAckSha"
 
 // findings computes repository events between the acknowledged SHA and HEAD.
+//
+// @Summary     Repository findings
+// @Description What changed on Git (external commits) since the last acknowledged commit: the diff between the acknowledged SHA and HEAD, classified into findings.
+// @Tags        Import & reconcile
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Failure     500 {object} APIError
+// @Router      /api/repo/findings [get]
 func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 	head, err := s.Backend.HeadSHA(r.Context(), "HEAD")
 	if err != nil {
@@ -186,6 +194,15 @@ func (s *Server) findings(w http.ResponseWriter, r *http.Request) {
 }
 
 // ackFindings marks everything up to HEAD as seen.
+//
+// @Summary     Acknowledge findings
+// @Description Mark all repository findings up to HEAD as seen, so they stop surfacing.
+// @Tags        Import & reconcile
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Failure     500 {object} APIError
+// @Security    CookieSession
+// @Router      /api/repo/findings/ack [post]
 func (s *Server) ackFindings(w http.ResponseWriter, r *http.Request) {
 	head, err := s.Backend.HeadSHA(r.Context(), "HEAD")
 	if err != nil {
@@ -202,6 +219,17 @@ func (s *Server) ackFindings(w http.ResponseWriter, r *http.Request) {
 // importParameters promotes scanned candidates into the catalog in one
 // attributed commit (the import wizard's final step). Already-managed or
 // conflicting entries are skipped and reported, never fatal.
+//
+// @Summary     Import scanned parameters
+// @Description Promote scanned candidate parameters into the catalog in one attributed commit (the import wizard's final step). Already-managed or conflicting entries are skipped and reported, never fatal.
+// @Tags        Import & reconcile
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{parameters: Parameter[], ignoreFiles?: string[]}"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "Malformed body or nothing selected"
+// @Security    CookieSession
+// @Router      /api/import [post]
 func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Parameters  []model.Parameter `json:"parameters"`
@@ -209,11 +237,11 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 		Author      string            `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	if len(req.Parameters) == 0 && len(req.IgnoreFiles) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "nothing selected to import"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "nothing selected to import")
 		return
 	}
 
@@ -349,13 +377,25 @@ func mergeBindings(params []model.Parameter) []model.Parameter {
 
 // retireFile retires every parameter sourced from one (typically deleted)
 // file: the one-click resolution for a file_deleted finding.
+//
+// @Summary     Retire parameters from a file
+// @Description Retire every parameter sourced from one (typically deleted) file: the one-click resolution for a file_deleted finding.
+// @Tags        Grid & parameters
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{file: string}"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "file is required"
+// @Failure     404 {object} APIError "No parameters are sourced from that file"
+// @Security    CookieSession
+// @Router      /api/parameters/retire-file [post]
 func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		File   string `json:"file"`
 		Author string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.File == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "file is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "file is required")
 		return
 	}
 	p, err := s.load()
@@ -382,7 +422,7 @@ func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(ids) == 0 {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "no parameters are sourced from that file"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no parameters are sourced from that file")
 		return
 	}
 

@@ -35,6 +35,20 @@ backend: ## Run only the backend (:8080)
 frontend: ## Run only the frontend (:5173)
 	cd $(FRONTEND) && npm run dev
 
+.PHONY: docs
+docs: ## Regenerate the OpenAPI spec from handler annotations
+	cd $(BACKEND) && go generate ./internal/api
+
+.PHONY: docs-check
+docs-check: ## Fail if the committed OpenAPI spec is stale (CI drift guard)
+	cd $(BACKEND) && go generate ./internal/api
+	@if ! git diff --quiet -- $(BACKEND)/internal/api/docs; then \
+		echo "OpenAPI spec is out of date. Run 'make docs' and commit the result." >&2; \
+		git --no-pager diff --stat -- $(BACKEND)/internal/api/docs >&2; \
+		exit 1; \
+	fi
+	@echo "docs-check: spec is up to date"
+
 .PHONY: build
 build: ## Build the backend binary + frontend production bundle
 	cd $(BACKEND) && go build -o bin/configer ./cmd/configer

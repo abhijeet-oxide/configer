@@ -59,15 +59,28 @@ func derefLabels(p *map[string]string) map[string]string {
 // layout convention) plus the registry entry, reviewable like any other
 // change. Until then the Files and Instances views preview the new folder as
 // pending, and value edits made against it stage in the same draft.
+//
+// @Summary     Create an instance
+// @Description Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance.
+// @Tags        Instances
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "Instance metadata (name required; optional cloneFrom)"
+// @Success     200 {object} StagedResponse
+// @Failure     400 {object} APIError "Malformed body or invalid name"
+// @Failure     404 {object} APIError "Clone source not found"
+// @Failure     409 {object} APIError "Name already exists (committed or pending)"
+// @Security    CookieSession
+// @Router      /api/instances [post]
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	name := slugify(req.Name)
 	if name == "" {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "a valid instance name is required"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "a valid instance name is required")
 		return
 	}
 
@@ -77,14 +90,14 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, exists := p.InstanceByName(name); exists {
-		writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " already exists"})
+		writeError(w, r, http.StatusConflict, CodeConflict, "instance "+name+" already exists")
 		return
 	}
 	// A pending add for the same name is also a conflict.
 	if d := s.Store.CurrentDraft(); d != nil {
 		for _, it := range d.Items {
 			if it.Act() == change.ActionAddInstance && it.Instance == name {
-				writeJSON(w, http.StatusConflict, map[string]string{"error": "instance " + name + " is already pending in your draft"})
+				writeError(w, r, http.StatusConflict, CodeConflict, "instance "+name+" is already pending in your draft")
 				return
 			}
 		}
@@ -101,7 +114,7 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	if req.CloneFrom != "" {
 		from, ok := p.InstanceByName(req.CloneFrom)
 		if !ok {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "clone source " + req.CloneFrom + " not found"})
+			writeError(w, r, http.StatusNotFound, CodeNotFound, "clone source "+req.CloneFrom+" not found")
 			return
 		}
 		if meta.SoftwareVersion == "" {
@@ -149,10 +162,24 @@ func (s *Server) stageStructural(w http.ResponseWriter, author string, it change
 // as a PENDING change - never a direct commit to the main branch. If the
 // instance is itself still pending (a draft add-instance), the edit folds
 // into that add so submit produces a single clean registry entry.
+// updateInstance stages a metadata/status edit into the draft.
+//
+// @Summary     Update an instance
+// @Description Stage a metadata/status edit (archive = status "archived") as a pending change - never a direct commit to the main branch. If the instance is itself still a pending add, the edit folds into that add.
+// @Tags        Instances
+// @Accept      json
+// @Produce     json
+// @Param       name path string true "Instance name"
+// @Param       body body object true "Partial instance metadata patch"
+// @Success     200 {object} StagedResponse
+// @Failure     400 {object} APIError "Malformed body"
+// @Failure     404 {object} APIError "Unknown instance"
+// @Security    CookieSession
+// @Router      /api/instances/{name} [put]
 func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
 	name := r.PathValue("name")
@@ -185,7 +212,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !committed {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance " + name + " not found"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance "+name+" not found")
 		return
 	}
 	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
@@ -219,6 +246,17 @@ func decodeInstance(v any) model.Instance {
 
 // deleteInstance stages the retirement of an instance (registry entry +
 // folder) into the draft change request, reviewable before anything happens.
+// deleteInstance stages an instance's retirement into the draft.
+//
+// @Summary     Delete an instance
+// @Description Stage the retirement of an instance (registry entry + folder) into the draft, reviewable before anything happens.
+// @Tags        Instances
+// @Produce     json
+// @Param       name path string true "Instance name"
+// @Success     200 {object} StagedResponse
+// @Failure     404 {object} APIError "Unknown instance"
+// @Security    CookieSession
+// @Router      /api/instances/{name} [delete]
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Author string `json:"author"`
@@ -232,7 +270,7 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, ok := p.InstanceByName(name); !ok {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "instance " + name + " not found"})
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance "+name+" not found")
 		return
 	}
 	s.stageStructural(w, author(r, req.Author), change.Item{

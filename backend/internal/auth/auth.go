@@ -149,6 +149,13 @@ func (s *Service) Routes(mux *http.ServeMux) {
 }
 
 // me reports the current identity and whether login is configured at all.
+//
+// @Summary     Current identity
+// @Description Whether login is configured on this deployment, and who is signed in. Returns `{enabled:false}` in single-user mode.
+// @Tags        Platform
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Router      /api/auth/me [get]
 func (s *Service) me(w http.ResponseWriter, r *http.Request) {
 	if !s.Enabled() {
 		writeJSON(w, http.StatusOK, map[string]any{"enabled": false})
@@ -163,6 +170,13 @@ func (s *Service) me(w http.ResponseWriter, r *http.Request) {
 }
 
 // login redirects the browser into GitHub's authorize page.
+//
+// @Summary     Begin GitHub login
+// @Description Redirect the browser into GitHub's OAuth authorize page. Returns 501 when login is not configured.
+// @Tags        Platform
+// @Success     302 "Redirect to GitHub"
+// @Failure     501 {string} string "Login not configured"
+// @Router      /api/auth/login [get]
 func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	if !s.Enabled() {
 		http.Error(w, "login is not configured on this deployment", http.StatusNotImplemented)
@@ -188,6 +202,16 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 
 // callback exchanges the code, records the user, opens a session, and sends
 // the browser back to the app.
+//
+// @Summary     GitHub OAuth callback
+// @Description Exchange the OAuth code, record the user, open a session cookie, and redirect back to the app. Invoked by GitHub, not called directly by clients.
+// @Tags        Platform
+// @Param       code  query string false "OAuth code"
+// @Param       state query string false "CSRF state"
+// @Success     302 "Redirect to the app with a session cookie"
+// @Failure     400 {string} string "Invalid state or code exchange failed"
+// @Failure     501 {string} string "Login not configured"
+// @Router      /api/auth/callback [get]
 func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	if !s.Enabled() {
 		http.Error(w, "login is not configured on this deployment", http.StatusNotImplemented)
@@ -238,6 +262,15 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+// logout ends the session.
+//
+// @Summary     Sign out
+// @Description End the current session and clear the session cookie.
+// @Tags        Platform
+// @Produce     json
+// @Success     200 {object} map[string]interface{}
+// @Security    CookieSession
+// @Router      /api/auth/logout [post]
 func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(SessionCookie); err == nil && c.Value != "" && s.Enabled() {
 		if u, ok := UserFrom(r.Context()); ok {

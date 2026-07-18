@@ -511,9 +511,49 @@ body {
 @keyframes illDash { to { stroke-dashoffset: -16; } }
 .ill-dash { animation: illDash 1s linear infinite; }
 
+/* A document lifting out of the empty tray: a slow rise with a hair of tilt,
+   offset from the tray's own float so it reads as parallax, not a rigid block. */
+@keyframes illLift {
+  0%, 100% { transform: translateY(0) rotate(-1.5deg); }
+  50% { transform: translateY(-5px) rotate(1.5deg); }
+}
+.ill-lift { animation: illLift 3.8s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .ill-draw { animation: none; stroke-dashoffset: 0; }
-  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash { animation: none; }
+  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash, .ill-lift { animation: none; }
+}
+
+/* -------------------------------------------------- data-viz motion */
+
+/* The activity sparkline draws its line left-to-right on mount (pathLength is
+   normalized to 1 so one keyframe fits any width), then the points settle in.
+   A summary chart, so the motion is a single quiet reveal, never a loop. */
+@keyframes sparkDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+.spark-line {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: sparkDraw 0.9s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes sparkDot { from { opacity: 0; } to { opacity: 1; } }
+.spark-dot {
+  opacity: 0;
+  animation: sparkDot 0.3s ease-out 0.75s forwards;
+}
+
+/* Inheritance edges in the topology map flow from the base file toward the
+   instance while its node is hovered - direction of inheritance, made legible.
+   Only the highlighted edges animate; everything else stays still. */
+@keyframes topoFlow { to { stroke-dashoffset: -14; } }
+.topo-edge--flow {
+  stroke-dasharray: 7 7;
+  animation: topoFlow 0.75s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spark-line { animation: none; stroke-dashoffset: 0; }
+  .spark-dot { animation: none; opacity: 1; }
+  .topo-edge--flow { animation: none; stroke-dasharray: none; }
 }
 
 /* ---------------------------------------------------- group by value */
@@ -1000,40 +1040,4 @@ body {
 /* Keep the editor status bar text crisp on the accent background. */
 .editor-statusbar .anticon {
   vertical-align: -0.12em;
-}
-
-/* ---------------------------------------------------- state illustrations */
-
-/* Gentle, professional motion for the SVG illustration kit (success, scan,
-   empty, offline). All effects respect prefers-reduced-motion. */
-.ill { display: block; }
-
-@keyframes illDraw { to { stroke-dashoffset: 0; } }
-.ill-draw {
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
-  animation: illDraw 0.6s ease-out 0.25s forwards;
-}
-
-@keyframes illPop { 0% { transform: scale(0.6); opacity: 0; } 60% { opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
-.ill-pop { animation: illPop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
-
-@keyframes illRipple { 0% { transform: scale(0.85); opacity: 0.18; } 70% { opacity: 0.05; } 100% { transform: scale(1.15); opacity: 0; } }
-.ill-ripple { transform-origin: center; animation: illRipple 2.4s ease-out infinite; }
-
-@keyframes illSpark { 0% { opacity: 0; transform: scale(0.3); } 40% { opacity: 1; } 100% { opacity: 0; transform: scale(1.4); } }
-.ill-spark { transform-box: fill-box; transform-origin: center; animation: illSpark 1.8s ease-out infinite; }
-
-@keyframes illFloaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-.ill-floaty { animation: illFloaty 3.2s ease-in-out infinite; }
-
-@keyframes illSweep { 0% { transform: translateY(0); } 100% { transform: translateY(56px); } }
-.ill-sweep { animation: illSweep 1.7s ease-in-out infinite alternate; }
-
-@keyframes illDash { to { stroke-dashoffset: -16; } }
-.ill-dash { animation: illDash 1s linear infinite; }
-
-@media (prefers-reduced-motion: reduce) {
-  .ill-draw { animation: none; stroke-dashoffset: 0; }
-  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash { animation: none; }
 }

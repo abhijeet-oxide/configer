@@ -4,6 +4,7 @@
 //   chart here renders a visible legend with labels, never color alone);
 // - status colors are reserved for state and always paired with icon + label;
 // - thin marks, 2px gaps between fills, one axis, no dual scales.
+import { useId } from "react";
 import { Tooltip, Typography } from "antd";
 import { CheckCircleFilled, WarningFilled, CloseCircleFilled } from "../icons";
 import { useUI } from "../store";
@@ -152,18 +153,40 @@ export function ActivitySparkline({
   height?: number;
 }) {
   const palette = useCatPalette();
+  const uid = useId();
+  const fillId = `spark-fill-${uid}`;
   const max = Math.max(...days.map((d) => d.count), 1);
   const stepX = width / Math.max(days.length - 1, 1);
   const y = (c: number) => height - 6 - (c / max) * (height - 14);
   const pts = days.map((d, i) => `${i * stepX},${y(d.count)}`).join(" ");
   const area = `0,${height} ${pts} ${width},${height}`;
+  const allZero = days.every((d) => d.count === 0);
   return (
     <svg width={width} height={height} role="img" aria-label="Change activity per day" style={{ maxWidth: "100%" }}>
-      <polygon points={area} fill={palette[0]} opacity={0.12} />
-      <polyline points={pts} fill="none" stroke={palette[0]} strokeWidth={2} strokeLinejoin="round" />
+      <defs>
+        {/* Soft vertical fade so the area grounds the line without a hard edge. */}
+        <linearGradient id={fillId} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={palette[0]} stopOpacity={0.22} />
+          <stop offset="1" stopColor={palette[0]} stopOpacity={0} />
+        </linearGradient>
+      </defs>
+      {/* A faint baseline keeps an all-zero series from looking broken. */}
+      <line x1={0} y1={height - 6} x2={width} y2={height - 6} stroke={palette[0]} strokeWidth={1} opacity={0.18} />
+      {!allZero && <polygon points={area} fill={`url(#${fillId})`} />}
+      {/* pathLength normalizes the dash math so the draw-in reads the same at any width. */}
+      <polyline
+        points={pts}
+        fill="none"
+        stroke={palette[0]}
+        strokeWidth={2}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        className="spark-line"
+        pathLength={1}
+      />
       {days.map((d, i) => (
         <Tooltip key={d.label} title={`${d.label}: ${d.count} change${d.count === 1 ? "" : "s"}`}>
-          <circle cx={i * stepX} cy={y(d.count)} r={d.count > 0 ? 3.5 : 2} fill={palette[0]} />
+          <circle cx={i * stepX} cy={y(d.count)} r={d.count > 0 ? 3.5 : 2} fill={palette[0]} className="spark-dot" />
         </Tooltip>
       ))}
     </svg>

@@ -76,7 +76,7 @@ export default function EditApplicationModal({
       okText="Save to Git"
       confirmLoading={save.isPending}
       onOk={() => form.validateFields().then((v) => save.mutate(v))}
-      destroyOnClose
+      destroyOnHidden
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4, fontSize: 12 }}>
         These details live in the repository itself (<code>.configer/application.yaml</code>) and are

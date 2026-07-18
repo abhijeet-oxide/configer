@@ -125,7 +125,7 @@ export default function NewApplicationWizard({
       }}
       footer={null}
       width={720}
-      destroyOnClose
+      destroyOnHidden
     >
       <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
         An application manages the configuration in one Git repository, remote or a folder on this

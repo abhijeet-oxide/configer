@@ -272,9 +272,13 @@ export default function InstanceTopology({ grid }: { grid: Grid }) {
             const x2 = rightX;
             const mid = (x1 + x2) / 2;
             const on = active(e);
+            // When a node is hovered, its live edges show a gentle flowing dash
+            // from the base file toward the instance - inheritance made visible.
+            const flowing = hover !== null && on;
             return (
               <path
                 key={`${e.file}|${e.instance}`}
+                className={`topo-edge${flowing ? " topo-edge--flow" : ""}`}
                 d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
                 fill="none"
                 stroke={on ? "var(--brand)" : "var(--brand-border)"}

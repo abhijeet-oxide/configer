@@ -10,7 +10,7 @@ import {
   Typography,
   type InputRef,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined, ApiOutlined } from "../icons";
+import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -197,20 +197,13 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
           />
         </Tooltip>
-        <Tooltip title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}>
+        <Tooltip
+          placement="bottomRight"
+          title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}
+        >
           <Badge count={awaiting} size="small" color="var(--c-review)">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />
           </Badge>
-        </Tooltip>
-        <Tooltip title="API documentation (OpenAPI / Swagger)">
-          <Button
-            size="small"
-            type="text"
-            aria-label="Open the API documentation"
-            icon={<ApiOutlined />}
-            href="/api/docs"
-            target="_blank"
-          />
         </Tooltip>
         <IdentityControl repoId={repoId} />
       </Space>

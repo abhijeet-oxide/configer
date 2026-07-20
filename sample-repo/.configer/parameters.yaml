@@ -1,110 +1,29 @@
 apiVersion: configer.io/v1
 kind: ParameterCatalog
 parameters:
-  # --- Networking / IP Configuration --------------------------------------
-  - id: net-service-ip
-    name: network.service.ip
-    displayName: Service IP address
-    description: Primary service IP the platform listens on.
-    category: Networking/IP Configuration
-    type: ipv4
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.service.ip, format: yaml }
-    validation: { required: true, preset: ipv4 }
-    versionIntroduced: v1.0.0
-  - id: net-admin-ip
-    name: network.admin.ip
-    displayName: Admin IP address
-    description: Management-plane IP for operator access.
-    category: Networking/IP Configuration
-    type: ipv4
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.admin.ip, format: yaml }
-    validation: { required: true, preset: ipv4 }
-  - id: net-admin-port
-    name: network.admin.port
-    displayName: Admin port
-    description: TCP port of the management interface.
-    category: Networking/IP Configuration
-    type: integer
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.admin.port, format: yaml }
-    validation: { required: true, preset: port }
-    default: 8443
-  - id: net-vip-ip
-    name: network.vip.ip
-    displayName: Virtual IP
-    description: Floating VIP fronting the service pair.
-    category: Networking/IP Configuration
-    type: ipv4
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.vip.ip, format: yaml }
-    validation: { preset: ipv4 }
-  - id: net-mtu
-    name: network.mtu
-    displayName: Interface MTU
-    description: MTU on the data-plane interfaces.
-    category: Networking/IP Configuration
-    type: integer
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.mtu, format: yaml }
-    validation: { min: 1280, max: 9216 }
-    default: 1500
-
-  # --- Networking / Services ------------------------------------------------
-  - id: net-ntp-servers
-    name: network.ntp.servers
-    displayName: NTP servers
-    description: Time sources; instances may carry different counts.
-    category: Networking/Services
-    type: list
-    itemType: ipv4
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.ntp.servers, format: yaml }
-    validation: { minItems: 1 }
-  - id: net-syslog-collectors
-    name: network.syslog.collectors
-    displayName: Syslog collectors
-    description: Remote syslog endpoints (one XML element per collector).
-    category: Networking/Services
-    type: list
-    itemType: ipv4
-    scope: instance
-    bindings:
-      - { file: "{folder}/network.xml", path: /network/syslog/collector, format: xml }
-
-  # --- Networking / TLS -------------------------------------------------------
-  - id: net-tls-min-version
-    name: network.tls.minVersion
-    displayName: Minimum TLS version
-    description: Lowest TLS version the platform accepts (introduced in v24.3.1).
-    category: Networking/TLS
-    type: enum
-    scope: instance
-    bindings:
-      - { file: "{folder}/network.xml", path: /network/tls/@minVersion, format: xml }
-    validation:
-      enum: ["1.2", "1.3"]
-    versionIntroduced: v24.3.1
-  - id: net-legacy-mode
-    name: network.legacy.enabled
-    displayName: Legacy compatibility mode
-    description: Pre-24.3 compatibility shims (deprecated in v24.3.0).
-    category: Advanced
-    type: boolean
-    scope: instance
-    bindings:
-      - { file: "{folder}/values.yaml", path: $.network.legacy.enabled, format: yaml }
-    versionIntroduced: v1.0.0
-    versionDeprecated: v24.3.0
-
   # --- Platform (shared: one edit applies to every instance) ---------------
+  - id: platform-registry
+    name: platform.registry
+    displayName: Image registry
+    description: Container registry every instance pulls platform images from.
+    category: Platform
+    type: string
+    scope: global
+    bindings:
+      - { file: shared/platform.yaml, path: $.platform.registry, format: yaml }
+    validation: { required: true }
+  - id: platform-profile
+    name: platform.profile
+    displayName: Platform profile
+    description: Fleet-wide capability profile.
+    category: Platform
+    type: enum
+    scope: global
+    bindings:
+      - { file: shared/platform.yaml, path: $.platform.profile, format: yaml }
+    validation:
+      enum: [enterprise, standard]
+    default: enterprise
   - id: platform-domain
     name: platform.domain
     displayName: Platform domain
@@ -128,19 +47,286 @@ parameters:
       enum: [debug, info, warn, error]
     default: info
 
-  # --- Deduplicated parameter: ONE row, TWO files per instance -------------
+  # --- Deployment (per instance) -------------------------------------------
+  # Deduplicated parameter: ONE row, TWO files per instance. The deployment
+  # namespace lives in values.yaml AND as an attribute on network.xml; editing
+  # the cell writes back into both files.
   - id: namespace
     name: namespace
     displayName: Namespace
     description: >-
       Deployment namespace. The same logical setting appears in values.yaml
       AND network.xml; editing the cell writes back into both files.
-    category: Platform
+    category: Deployment
     type: string
     scope: instance
     bindings:
-      - { file: "{folder}/values.yaml", path: $.namespace, format: yaml }
-      - { file: "{folder}/network.xml", path: /network/@namespace, format: xml }
+      - { file: "{folder}/values.yaml", path: $.global.namespace, format: yaml }
+      - { file: "{folder}/network.xml", path: /config/@namespace, format: xml }
     validation:
       required: true
       pattern: "^[a-z0-9-]+$"
+  - id: deployment-id
+    name: deployment.id
+    displayName: Deployment ID
+    description: Human label for this deployment.
+    category: Deployment
+    type: string
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.global.deployment_id, format: yaml }
+    validation: { required: true }
+  - id: platform-environment
+    name: platform.environment
+    displayName: Environment
+    description: Deployment environment class.
+    category: Deployment
+    type: enum
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.platform.environment, format: yaml }
+    validation:
+      enum: [development, staging, production]
+
+  # --- Networking / IP Configuration ---------------------------------------
+  - id: net-service-cidr
+    name: network.service.cidr
+    displayName: Service CIDR
+    description: CIDR block the platform allocates service IPs from.
+    category: Networking/IP Configuration
+    type: cidr
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.networking.service_cidr, format: yaml }
+    validation: { required: true, preset: cidr }
+  - id: net-pod-cidr
+    name: network.pod.cidr
+    displayName: Pod CIDR
+    description: CIDR block for pod networking.
+    category: Networking/IP Configuration
+    type: cidr
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.networking.pod_cidr, format: yaml }
+    validation: { required: true, preset: cidr }
+  - id: net-ipv6-enabled
+    name: network.ipv6.enabled
+    displayName: IPv6 enabled
+    description: Dual-stack networking (introduced in v24.3.1).
+    category: Networking/IP Configuration
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.networking.ipv6_enabled, format: yaml }
+    versionIntroduced: v24.3.1
+  - id: net-legacy-mode
+    name: network.legacy.enabled
+    displayName: Legacy compatibility mode
+    description: Pre-24.3 compatibility shims (deprecated in v24.3.0).
+    category: Advanced
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.networking.legacy_mode, format: yaml }
+    versionIntroduced: v1.0.0
+    versionDeprecated: v24.3.0
+
+  # --- Networking / Services -----------------------------------------------
+  - id: ntp-servers
+    name: network.ntp.servers
+    displayName: NTP servers
+    description: Time sources; instances may carry different counts.
+    category: Networking/Services
+    type: list
+    itemType: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.compute.ntp.servers, format: yaml }
+    validation: { minItems: 1 }
+  - id: syslog-collectors
+    name: network.syslog.collectors
+    displayName: Syslog collectors
+    description: Remote syslog endpoints (one XML element per collector).
+    category: Networking/Services
+    type: list
+    itemType: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: /config/mon:syslog/mon:collector, format: xml }
+
+  # --- Networking / Routing (network.xml) ----------------------------------
+  - id: routing-mgmt-enabled
+    name: routing.management.enabled
+    displayName: Management routing enabled
+    description: Whether the management routing instance is active.
+    category: Networking/Routing
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: /config/rt:routing/rt:routing-instance/rt:enabled, format: xml }
+  - id: gateway-address
+    name: gateway.address
+    displayName: Gateway address
+    description: Primary gateway (gateway-0) IPv4 address.
+    category: Networking/Routing
+    type: ipv4
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: "/config/if:interfaces/if:interface[1]/ip:ipv4/ip:address/ip:ip", format: xml }
+    validation: { required: true, preset: ipv4 }
+  - id: gateway-prefix
+    name: gateway.prefixLength
+    displayName: Gateway prefix length
+    description: Prefix length for the primary gateway address.
+    category: Networking/Routing
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/network.xml", path: "/config/if:interfaces/if:interface[1]/ip:ipv4/ip:address/ip:prefix-length", format: xml }
+    validation: { min: 0, max: 32 }
+    default: 24
+
+  # --- Services / Datastore ------------------------------------------------
+  - id: datastore-replicas
+    name: datastore.replicas
+    displayName: Datastore replicas
+    description: Number of datastore replicas.
+    category: Services/Datastore
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.datastore.replicas, format: yaml }
+    validation: { min: 1, max: 9 }
+  - id: datastore-endpoint
+    name: datastore.endpoint
+    displayName: Datastore endpoint
+    description: DNS name the datastore is reached at.
+    category: Services/Datastore
+    type: string
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.datastore.endpoint, format: yaml }
+    validation: { preset: fqdn }
+  - id: datastore-port
+    name: datastore.port
+    displayName: Datastore port
+    description: TCP port the datastore listens on.
+    category: Services/Datastore
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.datastore.port, format: yaml }
+    validation: { required: true, preset: port }
+    default: 5432
+  - id: datastore-tls
+    name: datastore.tls.enabled
+    displayName: Datastore TLS
+    description: Whether datastore connections require TLS.
+    category: Services/Datastore
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.datastore.tls_enabled, format: yaml }
+
+  # --- Services / Cache ----------------------------------------------------
+  - id: cache-port
+    name: cache.port
+    displayName: Cache port
+    description: TCP port the cache listens on.
+    category: Services/Cache
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.cache.port, format: yaml }
+    validation: { required: true, preset: port }
+    default: 6379
+  - id: cache-tls
+    name: cache.tls.enabled
+    displayName: Cache TLS
+    description: Whether cache connections require TLS.
+    category: Services/Cache
+    type: boolean
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.cache.tls_enabled, format: yaml }
+
+  # --- Services / Messaging ------------------------------------------------
+  - id: messaging-port
+    name: messaging.port
+    displayName: Messaging port
+    description: TCP port the messaging bus listens on.
+    category: Services/Messaging
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.services.messaging.port, format: yaml }
+    validation: { required: true, preset: port }
+    default: 9092
+
+  # --- Security ------------------------------------------------------------
+  - id: auth-method
+    name: security.auth.method
+    displayName: Authentication method
+    description: Identity protocol the platform authenticates with.
+    category: Security
+    type: enum
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.security.authentication.method, format: yaml }
+    validation:
+      enum: [oauth2, oidc, saml]
+  - id: auth-token-expiry
+    name: security.auth.tokenExpiry
+    displayName: Token expiry (s)
+    description: Access-token lifetime in seconds.
+    category: Security
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.security.authentication.token_expiry, format: yaml }
+    validation: { min: 60, max: 86400 }
+    default: 3600
+  - id: audit-retention
+    name: security.audit.retentionDays
+    displayName: Audit retention (days)
+    description: How long audit events are retained.
+    category: Security
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.security.audit.retention_days, format: yaml }
+    validation: { min: 1, max: 3650 }
+
+  # --- Storage -------------------------------------------------------------
+  - id: storage-fast-replication
+    name: storage.fast.replication
+    displayName: Fast class replication
+    description: Replica count for the fast storage class.
+    category: Storage
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.storage.classes.fast.replication, format: yaml }
+    validation: { min: 1, max: 5 }
+
+  # --- Application ---------------------------------------------------------
+  - id: api-replicas
+    name: application.api.replicas
+    displayName: API replicas
+    description: Replica count for the API component.
+    category: Application
+    type: integer
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.application.components.api.replicas, format: yaml }
+    validation: { min: 1, max: 20 }
+  - id: api-image
+    name: application.api.image
+    displayName: API image
+    description: Container image for the API component.
+    category: Application
+    type: string
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.application.components.api.image, format: yaml }
+    validation: { required: true }

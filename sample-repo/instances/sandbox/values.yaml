@@ -1,14 +1,63 @@
-# sandbox - experimentation, previous software train (v24.2.0).
-namespace: telco-sandbox
-network:
-  service:
-    ip: 10.60.10.10
-  admin:
-    ip: 10.60.10.11
-    port: 8443
-  mtu: 1500
+# sandbox - throwaway experiments.
+# Managed by Configer; edits arrive as reviewed pull requests.
+global:
+  namespace: telco-sandbox
+  deployment_id: sandbox
+  provider: kubernetes
+  timezone: UTC
+platform:
+  environment: development
+resources:
+  default:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+networking:
+  service_cidr: 10.240.0.0/16
+  pod_cidr: 10.241.0.0/16
+  ipv6_enabled: true
+  legacy_mode: false
+services:
+  datastore:
+    replicas: 1
+    endpoint: datastore.sbx.demo.local
+    port: 5432 # postgres wire protocol
+    tls_enabled: false
+  cache:
+    replicas: 2
+    endpoint: cache.sbx.demo.local
+    port: 6379
+    tls_enabled: false
+  messaging:
+    replicas: 3
+    endpoint: message.sbx.demo.local
+    port: 9092
+    tls_enabled: true
+security:
+  authentication:
+    enabled: true
+    method: oauth2
+    token_expiry: 7200
+  audit:
+    enabled: true
+    retention_days: 7
+storage:
+  classes:
+    fast:
+      provisioner: csi-fast
+      replication: 1
+    standard:
+      provisioner: csi-standard
+      replication: 2
+compute:
   ntp:
     servers:
       - 10.60.0.1
-  legacy:
-    enabled: false
+application:
+  components:
+    api:
+      replicas: 1
+      image: platform/api:v1

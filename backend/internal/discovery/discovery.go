@@ -161,6 +161,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 			Scope:       model.ScopeInstance,
 			Secret:      looksSecret(g.name),
 			Bindings:    []model.Binding{{File: "{folder}/" + g.rel, Path: g.path, Format: g.format, Line: g.line}},
+			Observed:    g.byInstance,
 		}
 		if v, same := commonValue(g.byInstance, len(res.Instances)); same {
 			p.Default = v

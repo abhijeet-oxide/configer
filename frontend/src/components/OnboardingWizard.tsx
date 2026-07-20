@@ -81,6 +81,49 @@ function prettyBinding(b: Binding): { file: string; perInstance: boolean } {
   return { file: b.file, perInstance: false };
 }
 
+// A discovered value rendered compactly for the per-instance preview columns.
+// Lists join with commas; objects collapse to JSON; anything long rides in a
+// tooltip so the row stays single-line.
+function fmtObserved(v: unknown): string {
+  if (v === null || v === undefined) return "";
+  if (Array.isArray(v)) return v.map((x) => fmtObserved(x)).join(", ");
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}
+
+function ObservedCell({ p, inst }: { p: Parameter; inst: Instance }) {
+  const raw = p.observed?.[inst.name];
+  // Global parameters live in a shared file: every instance reads the same
+  // value, so fall back to the discovered default for the preview.
+  const value = raw !== undefined ? raw : p.scope === "global" ? p.default : undefined;
+  const inherited = raw === undefined && value !== undefined;
+  if (value === undefined) {
+    return <span style={{ color: "var(--text-3)" }}>-</span>;
+  }
+  const text = fmtObserved(value);
+  return (
+    <Tooltip title={text.length > 24 ? text : undefined}>
+      <span
+        className="mono"
+        style={{
+          fontSize: 12,
+          color: inherited ? "var(--text-3)" : "var(--text)",
+          fontStyle: inherited ? "italic" : undefined,
+          display: "inline-block",
+          maxWidth: 140,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          verticalAlign: "bottom",
+        }}
+        title={inherited ? "Inherited from the shared/base file" : undefined}
+      >
+        {text}
+      </span>
+    </Tooltip>
+  );
+}
+
 function LocationsCell({ p }: { p: Parameter }) {
   const bs = bindingsOf(p);
   if (bs.length === 0) return <Tag color="purple">design</Tag>;
@@ -479,6 +522,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             size="small"
             rowKey="id"
             dataSource={shownParams}
+            scroll={{ x: "max-content" }}
             pagination={shownParams.length > 15 ? { pageSize: 15, size: "small" } : false}
             rowSelection={{
               selectedRowKeys: shownParams.filter((p) => !deselected.has(p.id)).map((p) => p.id),
@@ -536,6 +580,18 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     <Tag>rules</Tag>
                   ) : null,
               },
+              // One column per instance, previewing the value Configer read
+              // from that instance's real files - the grid, before it exists.
+              ...insts.map((inst) => ({
+                title: (
+                  <Tooltip title={folderOf(inst)}>
+                    <span style={{ whiteSpace: "nowrap" }}>{inst.name}</span>
+                  </Tooltip>
+                ),
+                key: `inst-${inst.name}`,
+                width: 150,
+                render: (_v: unknown, p: Parameter) => <ObservedCell p={p} inst={inst} />,
+              })),
             ]}
             />
           </div>

@@ -31,15 +31,15 @@ curl -sf "$BASE/health" >/dev/null || { cat "$WORK/server.log"; fail "backend di
 
 echo "== grid resolves from real files"
 curl -sf "$BASE/grid" | grep -q '"telco-platform"' || fail "grid missing project"
-curl -sf "$BASE/grid" | grep -q '10.10.10.10' || fail "grid missing instance value"
+curl -sf "$BASE/grid" | grep -q 'datastore.use1.demo.local' || fail "grid missing instance value"
 
 echo "== invalid value is rejected (422)"
 code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/values" \
-  -d '{"instance":"prod-us-east","paramId":"net-service-ip","value":"999.1.1.1","author":"smoke"}')
+  -d '{"instance":"prod-us-east","paramId":"gateway-address","value":"999.1.1.1","author":"smoke"}')
 [ "$code" = "422" ] || fail "invalid value returned $code, want 422"
 
 echo "== stage cell edit + dedup edit + global edit"
-curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"net-admin-port","value":9443,"author":"smoke"}' >/dev/null
+curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"datastore-port","value":5533,"author":"smoke"}' >/dev/null
 curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"namespace","value":"telco-prod-smoke","author":"smoke"}' >/dev/null
 curl -sf -X PUT "$BASE/values" -d '{"scope":"global","paramId":"platform-domain","value":"smoke.example.com","author":"smoke"}' >/dev/null
 
@@ -52,7 +52,7 @@ CR_BRANCH="feature/smoke-test"
 
 echo "== assert the CR branch diffs"
 show() { git -C "$WORK/repo" show "$CR_BRANCH:$1"; }
-show instances/prod-us-east/values.yaml | grep -q 'port: 9443 # management plane' \
+show instances/prod-us-east/values.yaml | grep -q 'port: 5533 # postgres wire protocol' \
   || fail "surgical edit lost the inline comment"
 show instances/prod-us-east/values.yaml | grep -q 'namespace: telco-prod-smoke' \
   || fail "dedup edit missing in values.yaml"
@@ -62,7 +62,7 @@ show shared/platform.yaml | grep -q 'domain: smoke.example.com' \
   || fail "global edit missing in shared file"
 git -C "$WORK/repo" ls-tree -r --name-only "$CR_BRANCH" | grep -q '^generated/' \
   && fail "generated/ artifacts exist - write-back regression"
-show instances/prod-eu-west/values.yaml | grep -q '10.20.10.10' \
+show instances/prod-eu-west/values.yaml | grep -q 'datastore.euw1.demo.local' \
   || fail "untouched instance changed"
 
 echo "SMOKE OK"

@@ -2,6 +2,8 @@
 # One edit here applies to the whole fleet - Configer edits this file when a
 # "global" parameter changes.
 platform:
+  registry: registry.demo.local/platform
+  profile: enterprise
   domain: telco.example.com
   log:
     level: info

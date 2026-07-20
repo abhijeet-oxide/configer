@@ -113,6 +113,30 @@ func (s *Server) commitCatalogChange(w http.ResponseWriter, r *http.Request, tit
 	writeJSON(w, http.StatusOK, response)
 }
 
+// commitCatalogCreate is commitCatalogChange for endpoints that CREATE a
+// resource: it commits, sets a Location header pointing at the new resource,
+// and answers 201 Created. location is resolved relative to the request path so
+// it stays correct whether the call came in unscoped or under /api/repos/{id}.
+func (s *Server) commitCatalogCreate(w http.ResponseWriter, r *http.Request, title, authorFallback, location string, response any) {
+	who := author(r, authorFallback)
+	if who == "" {
+		who = "anonymous"
+	}
+	ident := identity(r, authorFallback)
+	msg := title + "\n\nChanged-by: " + who + "\n"
+	if !ident.Empty() {
+		msg += "Co-authored-by: " + bot().Sig() + "\n"
+	}
+	if _, _, err := s.Backend.CommitWorking(context.Background(), msg, ident); err != nil {
+		writeErr(w, err)
+		return
+	}
+	if location != "" {
+		w.Header().Set("Location", location)
+	}
+	writeJSON(w, http.StatusCreated, response)
+}
+
 func slugify(name string) string {
 	s := strings.ToLower(name)
 	s = strings.Map(func(r rune) rune {

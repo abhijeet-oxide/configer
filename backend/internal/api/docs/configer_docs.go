@@ -73,6 +73,13 @@ const docTemplateconfiger = `{
                 "summary": "Update application identity",
                 "parameters": [
                     {
+                        "type": "string",
+                        "description": "Catalog revision the edit is based on (from a read's ETag)",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
                         "description": "Partial identity patch",
                         "name": "body",
                         "in": "body",
@@ -95,8 +102,20 @@ const docTemplateconfiger = `{
                             "$ref": "#/definitions/api.APIError"
                         }
                     },
+                    "412": {
+                        "description": "Stale revision; reload and reapply",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
                     "422": {
                         "description": "Empty name",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "428": {
+                        "description": "Missing If-Match",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -111,7 +130,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "The newest audit events across all applications (or one via ` + "`" + `?repo=` + "`" + `), naming who did what. Admin-only.",
+                "description": "Audit events across all applications (or one via ` + "`" + `?repo=` + "`" + `), newest first, naming who did what. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous ` + "`" + `nextCursor` + "`" + `. Admin-only.",
                 "produces": [
                     "application/json"
                 ],
@@ -128,8 +147,14 @@ const docTemplateconfiger = `{
                     },
                     {
                         "type": "integer",
-                        "description": "Max events",
+                        "description": "Page size (default 50, max 200)",
                         "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque cursor from the previous page",
+                        "name": "cursor",
                         "in": "query"
                     }
                 ],
@@ -303,7 +328,7 @@ const docTemplateconfiger = `{
         },
         "/api/changes": {
             "get": {
-                "description": "Every change request in the store, in all states (Draft, UnderReview, Approved, Published, Rejected).",
+                "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `.",
                 "produces": [
                     "application/json"
                 ],
@@ -311,14 +336,25 @@ const docTemplateconfiger = `{
                     "Editing \u0026 change requests"
                 ],
                 "summary": "List change requests",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 50, max 200)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Opaque cursor from the previous page",
+                        "name": "cursor",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "object"
-                            }
+                            "$ref": "#/definitions/api.Page-change_ChangeRequest"
                         }
                     }
                 }
@@ -451,7 +487,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled.",
+                "description": "Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled. Async: returns 202 with the change resource; poll ` + "`" + `state` + "`" + ` for Published. 409 if not mergeable; 502/504 on a downstream failure.",
                 "produces": [
                     "application/json"
                 ],
@@ -469,8 +505,8 @@ const docTemplateconfiger = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Accepted",
                         "schema": {
                             "type": "object"
                         }
@@ -488,7 +524,19 @@ const docTemplateconfiger = `{
                         }
                     },
                     "409": {
-                        "description": "Not in a mergeable state, or merge failed",
+                        "description": "Not in a mergeable state",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "The merge failed upstream",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "504": {
+                        "description": "The merge timed out upstream",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -535,6 +583,12 @@ const docTemplateconfiger = `{
                     },
                     "409": {
                         "description": "Not in a rejectable state",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "Closing the pull request failed upstream",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -607,7 +661,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Idempotency: a change already submitted returns 409.",
+                "description": "Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Async: returns 202 with the change resource whose ` + "`" + `state` + "`" + ` the client polls. 409 if not in a submittable state; 502/504 if a downstream (GitHub/git) step fails.",
                 "consumes": [
                     "application/json"
                 ],
@@ -636,8 +690,8 @@ const docTemplateconfiger = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Accepted",
                         "schema": {
                             "type": "object"
                         }
@@ -649,7 +703,19 @@ const docTemplateconfiger = `{
                         }
                     },
                     "409": {
-                        "description": "Not in a submittable state, or push/PR failed",
+                        "description": "Not in a submittable state",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "A downstream (GitHub/git) step failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "504": {
+                        "description": "A downstream step timed out",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -992,33 +1058,6 @@ const docTemplateconfiger = `{
                 }
             }
         },
-        "/api/grid": {
-            "get": {
-                "description": "The full matrix: every parameter row x every instance column, each cell resolved from the real repository files with its provenance (default / base / instance), type, validation state and version state. The current draft's pending edits are previewed on top.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Grid \u0026 parameters"
-                ],
-                "summary": "Parameter x instance grid",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    }
-                }
-            }
-        },
         "/api/health": {
             "get": {
                 "description": "Returns 200 while the process is up. ` + "`" + `/api/healthz` + "`" + ` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
@@ -1170,11 +1209,17 @@ const docTemplateconfiger = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        },
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "URL of the initialized application"
+                            }
                         }
                     },
                     "400": {
@@ -1419,10 +1464,16 @@ const docTemplateconfiger = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "201": {
+                        "description": "Created",
                         "schema": {
                             "$ref": "#/definitions/model.Parameter"
+                        },
+                        "headers": {
+                            "Location": {
+                                "type": "string",
+                                "description": "URL of the created parameter"
+                            }
                         }
                     },
                     "400": {
@@ -1558,6 +1609,13 @@ const docTemplateconfiger = `{
                         "required": true
                     },
                     {
+                        "type": "string",
+                        "description": "Catalog revision the edit is based on (from a read's ETag)",
+                        "name": "If-Match",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
                         "description": "Partial parameter patch",
                         "name": "body",
                         "in": "body",
@@ -1586,8 +1644,20 @@ const docTemplateconfiger = `{
                             "$ref": "#/definitions/api.APIError"
                         }
                     },
+                    "412": {
+                        "description": "Stale revision; reload and reapply",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
                     "422": {
                         "description": "Unknown validation preset",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "428": {
+                        "description": "Missing If-Match",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -1977,7 +2047,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Register a repository: a git URL is cloned (or managed no-clone when ` + "`" + `mode:\"remote\"` + "`" + `), an existing local directory is opened in place. Connecting an already-connected origin returns 409 with the existing id.",
+                "description": "Start connecting a repository (clone a git URL, manage no-clone when ` + "`" + `mode:\"remote\"` + "`" + `, or open a local directory). Returns 202 with a ` + "`" + `status:\"connecting\"` + "`" + ` summary; poll GET /api/repos until it becomes ready or ` + "`" + `status:\"error\"` + "`" + `. Connecting an already-connected or in-flight origin returns 409 with the existing id (idempotent by origin).",
                 "consumes": [
                     "application/json"
                 ],
@@ -2000,8 +2070,8 @@ const docTemplateconfiger = `{
                     }
                 ],
                 "responses": {
-                    "200": {
-                        "description": "OK",
+                    "202": {
+                        "description": "Connecting; poll the portfolio",
                         "schema": {
                             "$ref": "#/definitions/api.RepoSummary"
                         }
@@ -2013,13 +2083,7 @@ const docTemplateconfiger = `{
                         }
                     },
                     "409": {
-                        "description": "Already connected",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "422": {
-                        "description": "Clone or open failed",
+                        "description": "Already connected or connecting",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -2610,6 +2674,23 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "api.Page-change_ChangeRequest": {
+            "type": "object",
+            "properties": {
+                "hasMore": {
+                    "type": "boolean"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/change.ChangeRequest"
+                    }
+                },
+                "nextCursor": {
+                    "type": "string"
+                }
+            }
+        },
         "api.RenameRequest": {
             "type": "object",
             "properties": {
@@ -2712,6 +2793,10 @@ const docTemplateconfiger = `{
                     "type": "string"
                 },
                 "remote": {
+                    "type": "string"
+                },
+                "status": {
+                    "description": "Status is \"connecting\" while a background clone/open runs, \"error\" when\nit failed, and empty (\"\" = ready) for a fully connected repository. The\nclient polls the portfolio until it leaves \"connecting\".",
                     "type": "string"
                 },
                 "syncError": {
@@ -2859,6 +2944,165 @@ const docTemplateconfiger = `{
                 },
                 "value": {}
             }
+        },
+        "change.Action": {
+            "type": "string",
+            "enum": [
+                "set",
+                "reset",
+                "exclude",
+                "add-instance",
+                "remove-instance",
+                "update-instance",
+                "edit-file"
+            ],
+            "x-enum-varnames": [
+                "ActionSet",
+                "ActionReset",
+                "ActionExclude",
+                "ActionAddInstance",
+                "ActionRemoveInstance",
+                "ActionUpdateInstance",
+                "ActionEditFile"
+            ]
+        },
+        "change.ChangeRequest": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "baseSha": {
+                    "type": "string"
+                },
+                "branch": {
+                    "type": "string"
+                },
+                "category": {
+                    "description": "Category classifies the change: hotfix | feature | bugfix |\nmaintenance | security | other.",
+                    "type": "string"
+                },
+                "comments": {
+                    "description": "Comments is the in-app review discussion, oldest first.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/change.Comment"
+                    }
+                },
+                "commitSha": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/change.Item"
+                    }
+                },
+                "prNumber": {
+                    "type": "integer"
+                },
+                "prUrl": {
+                    "type": "string"
+                },
+                "reference": {
+                    "description": "Reference links this CR to an external ticket/CR id (e.g. JIRA-123).",
+                    "type": "string"
+                },
+                "reviewers": {
+                    "description": "Reviewers are the logins asked to look at this CR. Display and routing\nonly: approval rights stay role-based (approver merges).",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "state": {
+                    "$ref": "#/definitions/change.State"
+                },
+                "targetBranch": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "change.Comment": {
+            "type": "object",
+            "properties": {
+                "author": {
+                    "type": "string"
+                },
+                "body": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "change.Item": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "description": "empty == set",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/change.Action"
+                        }
+                    ]
+                },
+                "file": {
+                    "description": "File is the repository path of a direct file edit (ActionEditFile).",
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string"
+                },
+                "new": {},
+                "old": {},
+                "paramId": {
+                    "type": "string"
+                },
+                "scope": {
+                    "description": "Scope marks a scope-level edit (\"global\" today): the value applies to\nevery instance that does not override it at a more specific level.",
+                    "type": "string"
+                },
+                "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "change.State": {
+            "type": "string",
+            "enum": [
+                "draft",
+                "under_review",
+                "approved",
+                "published",
+                "rejected"
+            ],
+            "x-enum-varnames": [
+                "StateDraft",
+                "StateUnderReview",
+                "StateApproved",
+                "StatePublished",
+                "StateRejected"
+            ]
         },
         "model.Application": {
             "type": "object",

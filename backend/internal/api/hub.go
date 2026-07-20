@@ -46,6 +46,24 @@ type Hub struct {
 	servers  map[string]*Server
 	handlers map[string]http.Handler
 	errs     map[string]string // repos that failed to open, id -> reason
+	// connecting holds repositories whose clone/open is still running in the
+	// background (POST /repos returns 202 immediately). Entries appear in the
+	// portfolio with status "connecting" and, on failure, "error", so the UI
+	// can show progress and outcome by polling instead of blocking the request.
+	connecting map[string]*connecting
+}
+
+// connecting is the transient state of a repository being connected in the
+// background.
+type connecting struct {
+	ID      string
+	Name    string
+	Origin  string
+	Local   bool
+	Remote  bool
+	AddedAt time.Time
+	Status  string // "connecting" | "error"
+	Error   string
 }
 
 // NewHub loads the workspace registry from dataDir and opens every connected
@@ -72,6 +90,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		servers:     map[string]*Server{},
 		handlers:    map[string]http.Handler{},
 		errs:        map[string]string{},
+		connecting:  map[string]*connecting{},
 	}
 	if authSvc.Enabled() {
 		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
@@ -345,6 +364,10 @@ type RepoSummary struct {
 	Remote       string         `json:"remote,omitempty"`
 	AddedAt      time.Time      `json:"addedAt"`
 	Error        string         `json:"error,omitempty"`
+	// Status is "connecting" while a background clone/open runs, "error" when
+	// it failed, and empty ("" = ready) for a fully connected repository. The
+	// client polls the portfolio until it leaves "connecting".
+	Status string `json:"status,omitempty"`
 }
 
 func (h *Hub) summarize(e workspace.Entry) RepoSummary {
@@ -422,6 +445,13 @@ func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 	for _, e := range entries {
 		out = append(out, h.summarize(e))
 	}
+	// Include repositories still connecting (or that failed to) in the
+	// background, so the portfolio reflects in-flight work the client polls.
+	h.mu.Lock()
+	for _, c := range h.connecting {
+		out = append(out, connectingSummary(c))
+	}
+	h.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"name":        "Configer",
 		"version":     h.Version,
@@ -430,21 +460,23 @@ func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// connect registers a new repository: a git URL is cloned into the data
-// directory (optionally authenticated); an existing local directory is
-// opened in place.
-// connect registers a new repository.
+// connect starts connecting a repository and returns immediately. Cloning a
+// large private repository can take tens of seconds; blocking the HTTP request
+// on it times out behind proxies and makes a client retry start a second
+// clone. Instead this validates synchronously, then does the clone/open in the
+// background and answers 202 Accepted with a "connecting" summary. The client
+// polls the portfolio (GET /repos) until the repository leaves "connecting"
+// (ready) or shows status "error".
 //
 // @Summary     Connect a repository
-// @Description Register a repository: a git URL is cloned (or managed no-clone when `mode:"remote"`), an existing local directory is opened in place. Connecting an already-connected origin returns 409 with the existing id.
+// @Description Start connecting a repository (clone a git URL, manage no-clone when `mode:"remote"`, or open a local directory). Returns 202 with a `status:"connecting"` summary; poll GET /api/repos until it becomes ready or `status:"error"`. Connecting an already-connected or in-flight origin returns 409 with the existing id (idempotent by origin).
 // @Tags        Workspace
 // @Accept      json
 // @Produce     json
 // @Param       body body ConnectRequest true "Repository to connect"
-// @Success     200 {object} RepoSummary
+// @Success     202 {object} RepoSummary "Connecting; poll the portfolio"
 // @Failure     400 {object} APIError "Missing url"
-// @Failure     409 {object} APIError "Already connected"
-// @Failure     422 {object} APIError "Clone or open failed"
+// @Failure     409 {object} APIError "Already connected or connecting"
 // @Security    CookieSession
 // @Router      /api/repos [post]
 func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
@@ -463,18 +495,16 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	req.URL = strings.TrimSpace(req.URL)
 
-	// The same origin connected twice would give two divergent working
-	// trees of one truth; point the user at the existing connection.
-	for _, e := range h.registry.List() {
-		if gitengine.Redact(e.Origin) == gitengine.Redact(req.URL) {
-			// Include the existing id so the client can navigate to it. The
-			// standardized envelope carries code + requestId; id is an extra.
-			writeJSON(w, http.StatusConflict, struct {
-				APIError
-				ID string `json:"id"`
-			}{APIError{Error: "this repository is already connected as \"" + e.Name + "\"", Code: CodeConflict, RequestID: reqID(r)}, e.ID})
-			return
-		}
+	// Idempotency by origin: the same origin connected twice would give two
+	// divergent working trees of one truth. A connection that already exists,
+	// or one already in flight, points the user at the existing id instead of
+	// starting a duplicate.
+	if id, name, ok := h.originInUse(req.URL); ok {
+		writeJSON(w, http.StatusConflict, struct {
+			APIError
+			ID string `json:"id"`
+		}{APIError{Error: "this repository is already connected as \"" + name + "\"", Code: CodeConflict, RequestID: reqID(r)}, id})
+		return
 	}
 
 	name := strings.TrimSpace(req.Name)
@@ -483,67 +513,127 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	id := h.registry.UniqueID(workspace.Slug(name))
 
-	// No token typed? Fall back to the signed-in user's own GitHub access
-	// (or the server-wide token), so private repositories connect without
-	// any credential pasting. Local paths never need one.
+	// Determine the connection shape and resolve credentials synchronously
+	// (they need the request); the slow clone/open happens in the background.
+	st, statErr := os.Stat(req.URL)
+	isDir := statErr == nil && st.IsDir()
 	autoToken := false
-	if req.Token == "" {
-		if st, err := os.Stat(req.URL); err != nil || !st.IsDir() {
-			req.Token, _, _ = h.githubCred(r)
-			autoToken = req.Token != ""
-		}
+	if req.Token == "" && !isDir {
+		req.Token, _, _ = h.githubCred(r)
+		autoToken = req.Token != ""
 	}
 
+	c := &connecting{ID: id, Name: name, Origin: req.URL, Local: isDir,
+		Remote: req.Mode == "remote", AddedAt: time.Now().UTC(), Status: "connecting"}
+	h.mu.Lock()
+	h.connecting[id] = c
+	h.mu.Unlock()
+	h.auditHub(r, id, "Connecting repository "+name, "POST /repos")
+
+	go h.connectWorker(connectSpec{
+		id: id, name: name, url: req.URL, branch: req.Branch, token: req.Token,
+		mode: req.Mode, isDir: isDir, autoToken: autoToken, addedAt: c.AddedAt,
+	})
+	writeJSON(w, http.StatusAccepted, connectingSummary(c))
+}
+
+// originInUse reports whether an origin is already connected or connecting.
+func (h *Hub) originInUse(url string) (id, name string, ok bool) {
+	want := gitengine.Redact(url)
+	for _, e := range h.registry.List() {
+		if gitengine.Redact(e.Origin) == want {
+			return e.ID, e.Name, true
+		}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, c := range h.connecting {
+		if c.Status == "connecting" && gitengine.Redact(c.Origin) == want {
+			return c.ID, c.Name, true
+		}
+	}
+	return "", "", false
+}
+
+// connectSpec carries everything the background worker needs (credentials are
+// resolved on the request goroutine, before this runs).
+type connectSpec struct {
+	id, name, url, branch, token, mode string
+	isDir, autoToken                   bool
+	addedAt                            time.Time
+}
+
+// connectWorker performs the slow clone/open off the request path, then
+// registers the repository or records the failure on the connecting entry.
+func (h *Hub) connectWorker(sp connectSpec) {
 	var e workspace.Entry
 	switch {
-	case func() bool { st, err := os.Stat(req.URL); return err == nil && st.IsDir() }():
-		abs, _ := filepath.Abs(req.URL)
-		e = workspace.Entry{ID: id, Name: name, Origin: abs, Path: abs,
-			Branch: req.Branch, Local: true, AddedAt: time.Now().UTC()}
-	case req.Mode == "remote":
-		// No clone: manage entirely through the Git data API. Path is the
-		// materialized read cache the engine reads.
-		e = workspace.Entry{ID: id, Name: name, Origin: req.URL,
-			Path: filepath.Join(h.dataDir, "repos", id), Branch: req.Branch,
-			Remote: true, Token: req.Token, AddedAt: time.Now().UTC()}
+	case sp.isDir:
+		abs, _ := filepath.Abs(sp.url)
+		e = workspace.Entry{ID: sp.id, Name: sp.name, Origin: abs, Path: abs,
+			Branch: sp.branch, Local: true, AddedAt: sp.addedAt}
+	case sp.mode == "remote":
+		e = workspace.Entry{ID: sp.id, Name: sp.name, Origin: sp.url,
+			Path: filepath.Join(h.dataDir, "repos", sp.id), Branch: sp.branch,
+			Remote: true, Token: sp.token, AddedAt: sp.addedAt}
 	default:
 		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
-		dir := filepath.Join(h.dataDir, "repos", id)
-		if _, cerr := gitengine.Clone(req.URL, dir, req.Branch, req.Token, gitName, gitEmail); cerr != nil {
-			// The automatically supplied credential must never make things
-			// worse: if it was rejected, try once more the way an anonymous
-			// clone (public repository) would have gone.
-			if autoToken {
+		dir := filepath.Join(h.dataDir, "repos", sp.id)
+		if _, cerr := gitengine.Clone(sp.url, dir, sp.branch, sp.token, gitName, gitEmail); cerr != nil {
+			// An auto-supplied credential must never make things worse: if it
+			// was rejected, retry once the anonymous (public) way.
+			if sp.autoToken {
 				_ = os.RemoveAll(dir)
-				if _, cerr2 := gitengine.Clone(req.URL, dir, req.Branch, "", gitName, gitEmail); cerr2 == nil {
-					req.Token = ""
+				if _, cerr2 := gitengine.Clone(sp.url, dir, sp.branch, "", gitName, gitEmail); cerr2 == nil {
 					cerr = nil
 				}
 			}
 			if cerr != nil {
-				writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, cerr.Error())
+				h.failConnecting(sp.id, cerr.Error())
 				return
 			}
 		}
-		e = workspace.Entry{ID: id, Name: name, Origin: req.URL, Path: dir,
-			Branch: req.Branch, AddedAt: time.Now().UTC()}
+		e = workspace.Entry{ID: sp.id, Name: sp.name, Origin: sp.url, Path: dir,
+			Branch: sp.branch, AddedAt: sp.addedAt}
 	}
 
 	if err := h.open(e); err != nil {
 		if !e.Local {
 			_ = os.RemoveAll(e.Path)
 		}
-		writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, err.Error())
+		h.failConnecting(sp.id, err.Error())
 		return
 	}
 	if err := h.registry.Add(e); err != nil {
-		writeErr(w, err)
+		h.failConnecting(sp.id, err.Error())
 		return
 	}
+	h.mu.Lock()
+	delete(h.connecting, sp.id)
+	h.mu.Unlock()
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
-	h.auditHub(r, e.ID, "Connected repository "+e.Name, "POST /repos")
-	writeJSON(w, http.StatusOK, h.summarize(e))
+}
+
+// failConnecting records a background connection failure so the portfolio shows
+// it (status "error") until the user dismisses it via DELETE /repos/{id}.
+func (h *Hub) failConnecting(id, msg string) {
+	h.mu.Lock()
+	if c, ok := h.connecting[id]; ok {
+		c.Status = "error"
+		c.Error = msg
+	}
+	h.mu.Unlock()
+	slog.Warn("workspace connect failed", slog.String("id", id), slog.String("error", msg))
+}
+
+// connectingSummary renders a transient connecting entry as a portfolio card.
+func connectingSummary(c *connecting) RepoSummary {
+	return RepoSummary{
+		ID: c.ID, Name: c.Name, Origin: gitengine.Redact(c.Origin),
+		Local: c.Local, NoClone: c.Remote, AddedAt: c.AddedAt,
+		Status: c.Status, Error: c.Error,
+	}
 }
 
 // rename changes an application's display name. Only the human label changes;
@@ -606,6 +696,20 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 // @Router      /api/repos/{id} [delete]
 func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Dismiss a still-connecting or failed background entry (it is not in the
+	// registry yet). Deleting a partial clone directory frees the disk.
+	h.mu.Lock()
+	if c, isConnecting := h.connecting[id]; isConnecting {
+		delete(h.connecting, id)
+		h.mu.Unlock()
+		if !c.Local {
+			_ = os.RemoveAll(filepath.Join(h.dataDir, "repos", id))
+		}
+		h.auditHub(r, id, "Dismissed connecting repository "+c.Name, "DELETE /repos/"+id)
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": id})
+		return
+	}
+	h.mu.Unlock()
 	e, ok := h.registry.Remove(id)
 	if !ok {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "unknown repository: "+id)

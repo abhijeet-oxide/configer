@@ -24,21 +24,47 @@ func TestApplicationDetails(t *testing.T) {
 	}
 	h := s.Routes()
 
-	// GET reflects the seeded application.
+	// GET reflects the seeded application and carries a concurrency token.
+	recGet := doRaw(t, h, http.MethodGet, "/api/application", nil)
+	if recGet.Code != http.StatusOK {
+		t.Fatalf("GET status %d", recGet.Code)
+	}
+	etag := recGet.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("GET /application should return an ETag")
+	}
 	var got model.Application
-	doJSON(t, h, http.MethodGet, "/api/application", nil, &got)
+	if err := json.Unmarshal(recGet.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
 	if got.Name != "t" {
 		t.Fatalf("name = %q, want t", got.Name)
 	}
 
-	// PUT patches name, description and metadata.
+	// A write without If-Match is refused (428): the guard is mandatory.
+	if rec := doRaw(t, h, http.MethodPut, "/api/application", map[string]any{"description": "x"}); rec.Code != http.StatusPreconditionRequired {
+		t.Fatalf("missing If-Match status = %d, want 428", rec.Code)
+	}
+	// A write with a stale revision is refused (412).
+	if rec := doRawH(t, h, http.MethodPut, "/api/application", map[string]any{"description": "x"},
+		map[string]string{"If-Match": `"deadbeef"`}); rec.Code != http.StatusPreconditionFailed {
+		t.Fatalf("stale If-Match status = %d, want 412", rec.Code)
+	}
+
+	// PUT patches name, description and metadata, with the current revision.
 	body := map[string]any{
 		"name":        "Network Platform",
 		"description": "Edge routers",
 		"metadata":    map[string]string{"owner": "platform-team", "blank": ""},
 	}
 	var updated model.Application
-	doJSON(t, h, http.MethodPut, "/api/application", body, &updated)
+	recPut := doRawH(t, h, http.MethodPut, "/api/application", body, map[string]string{"If-Match": etag})
+	if recPut.Code != http.StatusOK {
+		t.Fatalf("PUT status %d: %s", recPut.Code, recPut.Body.String())
+	}
+	if err := json.Unmarshal(recPut.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
 	if updated.Name != "Network Platform" || updated.Description != "Edge routers" {
 		t.Fatalf("update = %+v", updated)
 	}
@@ -71,6 +97,11 @@ func TestApplicationDetails(t *testing.T) {
 }
 
 func doRaw(t *testing.T, h http.Handler, method, path string, body any) *httptest.ResponseRecorder {
+	return doRawH(t, h, method, path, body, nil)
+}
+
+// doRawH is doRaw with request headers (for If-Match, etc.).
+func doRawH(t *testing.T, h http.Handler, method, path string, body any, headers map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	var r *http.Request
 	if body != nil {
@@ -78,6 +109,9 @@ func doRaw(t *testing.T, h http.Handler, method, path string, body any) *httptes
 		r = httptest.NewRequest(method, path, strings.NewReader(string(b)))
 	} else {
 		r = httptest.NewRequest(method, path, nil)
+	}
+	for k, v := range headers {
+		r.Header.Set(k, v)
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, r)

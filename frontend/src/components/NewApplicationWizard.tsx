@@ -82,8 +82,12 @@ export default function NewApplicationWizard({
   };
 
   const create = useMutation({
-    mutationFn: () =>
-      api.connectRepo({ url: repo!.url, name: name.trim() || repo!.name, branch }),
+    // Connect returns 202 immediately; wait for the background clone/open to
+    // finish (or fail) before advancing, so onboarding gets a ready repository.
+    mutationFn: async () => {
+      const started = await api.connectRepo({ url: repo!.url, name: name.trim() || repo!.name, branch });
+      return api.waitForRepoReady(started.id);
+    },
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created. Scanning the repository…`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
@@ -259,7 +263,10 @@ function LocalFolderStep({
 
   const connect = useMutation({
     // Name is derived server-side from the folder; nothing to enter here.
-    mutationFn: (path: string) => api.connectRepo({ url: path }),
+    mutationFn: async (path: string) => {
+      const started = await api.connectRepo({ url: path });
+      return api.waitForRepoReady(started.id);
+    },
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created from the local folder. Scanning it…`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
@@ -777,7 +784,10 @@ export function ConnectForm({
   const qc = useQueryClient();
   const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
   const connect = useMutation({
-    mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) => api.connectRepo(v),
+    mutationFn: async (v: { url: string; name: string; branch?: string; token?: string }) => {
+      const started = await api.connectRepo(v);
+      return api.waitForRepoReady(started.id);
+    },
     onSuccess: (r) => {
       const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
       message.success(`Application "${r.name}" created (${how}).`);

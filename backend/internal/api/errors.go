@@ -30,13 +30,15 @@ const (
 	CodeForbidden    = "forbidden"    // signed in, role insufficient (403)
 
 	// Resource state.
-	CodeNotFound = "not_found" // resource does not exist (404)
-	CodeConflict = "conflict"  // resource-state clash: name taken, wrong state (409)
+	CodeNotFound             = "not_found"             // resource does not exist (404)
+	CodeConflict             = "conflict"              // resource-state clash: name taken, wrong state, stale write (409/412)
+	CodePreconditionRequired = "precondition_required" // a write arrived without If-Match (428)
 
 	// Dependencies / server.
-	CodeUpstreamError = "upstream_error" // a downstream (GitHub/git) call failed (502)
-	CodeUnavailable   = "unavailable"    // not ready to serve (503)
-	CodeInternalError = "internal_error" // unexpected, unclassified server fault (500)
+	CodeUpstreamError   = "upstream_error"   // a downstream (GitHub/git) call failed (502)
+	CodeUpstreamTimeout = "upstream_timeout" // a downstream call timed out (504)
+	CodeUnavailable     = "unavailable"      // not ready to serve (503)
+	CodeInternalError   = "internal_error"   // unexpected, unclassified server fault (500)
 )
 
 // FieldError names one field-level validation failure so a form can highlight
@@ -75,6 +77,10 @@ func codeForStatus(status int) string {
 		return CodeNotFound
 	case http.StatusConflict:
 		return CodeConflict
+	case http.StatusPreconditionFailed:
+		return CodeConflict
+	case http.StatusPreconditionRequired:
+		return CodePreconditionRequired
 	case http.StatusRequestEntityTooLarge:
 		return CodePayloadTooLarge
 	case http.StatusUnsupportedMediaType:
@@ -83,6 +89,8 @@ func codeForStatus(status int) string {
 		return CodeValidationFailed
 	case http.StatusBadGateway:
 		return CodeUpstreamError
+	case http.StatusGatewayTimeout:
+		return CodeUpstreamTimeout
 	case http.StatusServiceUnavailable:
 		return CodeUnavailable
 	default:

@@ -63,7 +63,7 @@ request. All routes also mount under `/api/repos/{repoId}/…`.
 | GET | `/api/openapi.json`,`.yaml` | OpenAPI spec | sync | 200 | none | yes | Generated |
 | GET | `/api/docs` | Swagger UI | sync | 200 | none | yes | Embedded, offline |
 | GET | `/api/workspace`,`/api/repos` | Repo portfolio | sync | 200 | session | yes | |
-| POST | `/api/repos` | Connect a repo | **async-ish** | 200 | session | **no** | Clones/opens; see D-2 |
+| POST | `/api/repos` | Connect a repo | **async** | 202 | session | **yes** (by origin) | Background clone; poll status |
 | PATCH | `/api/repos/{id}` | Rename application | sync | 200 | session | yes | |
 | DELETE | `/api/repos/{id}` | Disconnect | sync | 200 | session | yes | |
 | GET | `/api/repos/{id}/members` | Role assignments | sync | 200 | admin | yes | |
@@ -76,9 +76,9 @@ request. All routes also mount under `/api/repos/{repoId}/…`.
 | GET | `/api/github/status`,`/repos`,`/branches` | Repo picker | sync | 200 | session | yes | Proxies GitHub |
 | GET | `/api/fs/browse` | Local folder picker | sync | 200 | admin | yes | Localhost mode |
 | POST | `/api/discover` | Onboarding proposal | sync | 200 | none | yes | Read-only |
-| POST | `/api/init` | Initialize `.configer` | sync | 200 | session | **no** (409 guard) | One commit |
+| POST | `/api/init` | Initialize `.configer` | sync | 201 | session | **no** (409 guard) | One commit; Location |
 | POST | `/api/deinit` | Remove `.configer` | sync | 200 | session | yes | |
-| GET | `/api/application` · PUT | App identity | sync | 200 | session | yes | Direct commit |
+| GET | `/api/application` · PUT | App identity | sync | 200 | session | yes (If-Match) | PUT: 412/428 |
 | GET | `/api/project` | Project summary | sync | 200 | session | yes | |
 | GET | `/api/grid` | Parameter x instance grid | sync | 200 | session | yes | |
 | GET | `/api/instances` | Instance registry | sync | 200 | session | yes | |
@@ -86,8 +86,8 @@ request. All routes also mount under `/api/repos/{repoId}/…`.
 | PUT | `/api/instances/{name}` | Stage metadata edit | sync (stages) | 200 | session | yes | |
 | DELETE | `/api/instances/{name}` | Stage retirement | sync (stages) | 200 | session | yes | |
 | GET | `/api/parameters/{id}` · `/history` | Parameter detail | sync | 200 | session | yes | |
-| POST | `/api/parameters` | Create parameter | sync | 200 | session | **no** (409 guard) | Direct commit |
-| PUT | `/api/parameters/{id}` | Update parameter | sync | 200 | session | yes | Direct commit |
+| POST | `/api/parameters` | Create parameter | sync | 201 | session | **no** (409 guard) | Direct commit; Location |
+| PUT | `/api/parameters/{id}` | Update parameter | sync | 200 | session | yes (If-Match) | Direct commit; 412/428 |
 | DELETE | `/api/parameters/{id}` | Retire parameter | sync | 200 | session | yes | Direct commit |
 | POST | `/api/parameters/retire-file` | Retire by file | sync | 200 | session | yes | |
 | GET | `/api/compare` | Instance diff | sync | 200 | session | yes | |
@@ -96,8 +96,8 @@ request. All routes also mount under `/api/repos/{repoId}/…`.
 | DELETE | `/api/values` | Revert pending edit | sync (stages) | 200 | session | yes | |
 | PUT | `/api/files/draft` | Stage file edit | sync (stages) | 200 | session | yes | |
 | GET | `/api/changes` · `/draft` · `/{id}` | Change requests | sync | 200 | session | yes | `{id}` refreshes PR |
-| POST | `/api/changes/{id}/submit` | Draft -> branch+commit+PR | **async** | 200 | session | **no** (state guard) | |
-| POST | `/api/changes/{id}/merge` | Publish | **async** | 200 | approver | **no** (state guard) | |
+| POST | `/api/changes/{id}/submit` | Draft -> branch+commit+PR | **async** | 202 | session | **no** (state guard) | Poll `state` |
+| POST | `/api/changes/{id}/merge` | Publish | **async** | 202 | approver | **no** (state guard) | Poll `state` |
 | POST | `/api/changes/{id}/reject` | Reject/close | sync | 200 | session | **no** (state guard) | |
 | POST | `/api/changes/{id}/comments` | Add comment | sync | 200 | session | no | |
 | PUT | `/api/changes/{id}/reviewers` | Set reviewers | sync | 200 | session | yes | |
@@ -465,8 +465,9 @@ Observability & ops
 
 ---
 
-### What was implemented alongside this review
+### What has been implemented
 
+Round 1 (documentation + error contract):
 - **Code-generated OpenAPI** (swaggo): every endpoint annotated, spec generated
   by `make docs` / `go generate`, embedded and served at `/api/openapi.json`,
   `/api/openapi.yaml`, and `/api/docs`. The hand-written `openapi.yaml` (which
@@ -475,6 +476,132 @@ Observability & ops
 - **Standardized `APIError` envelope** (`code` + `requestId` + `fields`), adopted
   by the shared 500 path and every write endpoint.
 
-Items D-1 through D-13 are the recommended follow-ups, ranked. None are blocking;
-the highest-value next steps are D-1 (bound collections) and D-2/D-3 (async
-connect + correct success codes).
+Round 2 (Critical + High findings D-1 through D-5, all shipped):
+- **D-1 Bounded collections.** `/changes` and `/audit` are now cursor-paginated
+  (`{items, nextCursor, hasMore}`, `limit` default 50 / max 200); `/grid` carries
+  a hard `maxGridRows` cap with `truncated`/`totalRows` metadata. No endpoint can
+  stream an unbounded dataset.
+- **D-2 Async connect.** `POST /api/repos` returns `202` immediately with a
+  `status:"connecting"` summary and clones/opens in the background; the portfolio
+  shows connecting/error states the client polls. Idempotent by origin
+  (in-flight duplicates return `409` with the existing id).
+- **D-3 Correct success codes.** `201 + Location` for created resources
+  (`POST /parameters`, `POST /init`); `202 Accepted` for the async change-request
+  transitions (`submit`, `merge`).
+- **D-4 Optimistic concurrency.** Direct-commit catalog reads return an `ETag`
+  (the catalog revision); `PUT /parameters/{id}` and `PUT /application` require
+  `If-Match` and answer `428` (missing) or `412` (stale). Lost updates are
+  prevented; the frontend tracks the revision transparently.
+- **D-5 Typed downstream failures.** The change-request lifecycle distinguishes
+  a client state-conflict (`409`) from a downstream GitHub/git failure (`502`,
+  or `504` on timeout), so a client can tell "you did something wrong" from
+  "GitHub was down".
+
+Frontend reliability + auth foundation (see section H).
+
+Remaining recommended follow-ups: D-6 (rate limiting on GitHub-spending routes),
+D-7 (cache headers), D-8 (OpenAPI 3.1 when a consumer needs it), D-9 (finish the
+error-envelope rollout on the last read/hub sites), D-10 through D-13.
+
+---
+
+## H. Frontend reliability, error handling & the auth foundation
+
+This section answers the product questions directly: how the UI avoids showing
+false status, how failures/timeouts/unknown responses are handled, and what
+foundation makes adding OAuth/SSO providers a small change. The items marked
+*(shipped)* are implemented; the rest are the ranked follow-ups.
+
+### H.1 The single source of truth: a typed API client *(shipped)*
+
+Every response now flows through one hardened client (`frontend/src/api.ts`):
+
+- **No silent false success.** Only a 2xx resolves with data. Every non-2xx
+  becomes a typed `ApiError` carrying `{status, code, message, requestId,
+  retryAfter, fields}` parsed from the backend envelope, for both reads and
+  writes (previously `GET` failures surfaced only a bare status line, and error
+  bodies were parsed inconsistently). A component that receives data can trust it.
+- **Timeouts.** Every request has a hard client-side timeout (`AbortController`,
+  30s default). A hung request becomes a `TimeoutError` the user sees, never an
+  infinite spinner.
+- **Network vs timeout vs HTTP** are distinct types (`OfflineError`,
+  `TimeoutError`, `ApiError`), so the UI can react appropriately (keep working
+  from the offline snapshot vs offer a retry vs show the server's message).
+- **Correlation.** The `requestId` is shown in the error toast so a user can
+  quote it to support and it ties to the server access log.
+
+### H.2 Global surfacing so nothing is swallowed *(shipped)*
+
+- react-query is configured (`main.tsx`) with a **global query-error handler**
+  that raises a theme-aware notification when a *first* load fails (a failed
+  background refetch does not nag, since stale data is still shown).
+- **Retry policy that respects status classes:** client errors (4xx) are never
+  retried (they will not succeed); network/timeout/`429`/5xx are retried with
+  exponential backoff. Mutations never auto-retry (a write may not be idempotent).
+- A `notify.ts` bridge maps any thrown value to a plain-language title +
+  description (never a raw stack), with tailored copy for 403 / 409-412 (reload)
+  / 429 (retry-after) / 502-504 (downstream) / offline / timeout.
+
+### H.3 Concurrency, async, and pagination wired end-to-end *(shipped)*
+
+- **Optimistic concurrency (D-4):** the client transparently tracks the catalog
+  revision from read `ETag`s and sends it as `If-Match` on catalog writes; a
+  `412` surfaces as "this changed since you loaded it, reload" instead of a
+  silent overwrite. No calling component changed.
+- **Async connect (D-2):** the New Application flow starts the connection, then
+  polls `waitForRepoReady(id)` until the background clone/open is ready or fails,
+  so the wizard only advances on a real, ready repository.
+- **Pagination (D-1):** the paginated `/changes` envelope is unwrapped in the
+  client so the existing views keep their array contract; the `Page<T>` type is
+  exported for future "load more" UI.
+
+### H.4 Authentication foundation: provider-agnostic by construction *(shipped, extensible)*
+
+The key design point for "OAuth tomorrow, any provider": **the frontend never
+speaks a provider's protocol.** It only ever calls three backend routes:
+
+- `GET /api/auth/me` -> `{enabled, user}` (is login configured, who am I),
+- `GET /api/auth/login` -> a 302 into whatever the backend configured,
+- `POST /api/auth/logout`.
+
+Adding GitHub Enterprise, Microsoft/Entra, Okta, or any OIDC provider is a
+**backend-only** change (a new `auth` provider + config); the UI needs no change
+because it treats login as an opaque redirect and identity as `{login, name,
+email, avatarUrl, admin}`. What shipped on top:
+
+- A **graceful 401 handler**: any request that returns 401 dispatches an event
+  that raises a dismissible "please sign in again" prompt with a Sign-in button
+  (no abrupt redirect, no silent failure, no lost work).
+- **Cookies sent with `credentials:"include"`** so the session works even when
+  the SPA is served from a different origin than the API.
+
+Recommended next steps to harden auth for multi-provider SSO (backend-led):
+1. Generalize `internal/auth` to an interface with per-provider config
+   (`authorize`/`token`/`userinfo` URLs, scopes), selected by
+   `CONFIGER_AUTH_PROVIDER`. The cookie-session, CSRF-state, and role layers stay
+   as-is. **Recommended default:** OIDC discovery (`/.well-known/openid-configuration`)
+   so a new provider is pure config, not code.
+2. Return the provider name and, if several are configured, a provider list from
+   `/api/auth/me`, so the UI can render "Sign in with X / Y" from data (still no
+   protocol knowledge in the client).
+3. Keep authorization exactly where it is: server-side, per-repository role
+   checks. The client must never gate on identity for security, only for
+   affordances (hide a button), because the server already enforces it.
+
+### H.5 Further frontend hardening (recommended, not yet shipped)
+
+- **Surface the grid `truncated` flag** with a banner + a category/search filter
+  prompt, so a very large repo degrades visibly rather than silently dropping
+  rows. *(Medium)*
+- **A React error boundary** around the app shell, so a render-time exception
+  shows a recoverable error card (with the last `requestId`) instead of a blank
+  screen. *(High, small)*
+- **Idempotency keys** for the few non-idempotent creates once the backend
+  accepts them (D-2 groundwork), so a double-submit from a flaky network cannot
+  create duplicates. *(Medium)*
+- **"Load more"/infinite scroll** on `/changes` and `/audit` using the exported
+  `Page<T>` cursor, for deployments with long histories. *(Low)*
+- **Optimistic UI with rollback** on value edits keyed to the draft, plus a
+  visible reconcile on `412`. The draft model already makes this safe. *(Low)*
+- **Centralize the API base** for the docs link and cross-origin deployments
+  (today `/api/docs` assumes same origin). *(Low)*

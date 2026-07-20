@@ -5,23 +5,65 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/changeset"
 )
 
-// listChanges lists every change request.
+// writeChangeError maps a change-request lifecycle error to the right status.
+// A resource-state precondition is a client conflict (409); a downstream
+// (GitHub/git) failure is 502, or 504 when it was a timeout; anything else is
+// an unclassified 500. Clients branch on the machine code, never the message.
+func writeChangeError(w http.ResponseWriter, r *http.Request, err error) {
+	var conflict *changeset.ConflictError
+	var up *changeset.UpstreamError
+	switch {
+	case errors.As(err, &conflict):
+		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
+	case errors.As(err, &up):
+		if up.Timeout() {
+			writeError(w, r, http.StatusGatewayTimeout, CodeUpstreamTimeout,
+				"the change was not completed: GitHub did not respond in time, please retry shortly")
+			return
+		}
+		writeError(w, r, http.StatusBadGateway, CodeUpstreamError,
+			"the change was not completed: "+up.Op+" failed upstream, please retry shortly")
+	default:
+		writeErr(w, err)
+	}
+}
+
+// listChanges lists change requests, newest first, cursor-paginated.
 //
 // @Summary     List change requests
-// @Description Every change request in the store, in all states (Draft, UnderReview, Approved, Published, Rejected).
+// @Description Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass `limit` (default 50, max 200) and the previous response's `nextCursor`. Returns `{items, nextCursor, hasMore}`.
 // @Tags        Editing & change requests
 // @Produce     json
-// @Success     200 {array} object
+// @Param       limit  query int    false "Page size (default 50, max 200)"
+// @Param       cursor query string false "Opaque cursor from the previous page"
+// @Success     200 {object} Page[change.ChangeRequest]
 // @Router      /api/changes [get]
-func (s *Server) listChanges(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.Store.List())
+func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
+	all := s.Store.List() // already newest-first by id
+	limit, afterID := pageParams(r)
+	items := make([]*change.ChangeRequest, 0, limit)
+	page := Page[*change.ChangeRequest]{Items: items}
+	for _, cr := range all {
+		if afterID > 0 && int64(cr.ID) >= afterID {
+			continue // cursor points past everything with id >= the last seen
+		}
+		if len(page.Items) == limit {
+			page.HasMore = true
+			page.NextCursor = encodeCursor(int64(page.Items[len(page.Items)-1].ID))
+			break
+		}
+		page.Items = append(page.Items, cr)
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 // currentDraft returns the working draft, if any.
@@ -64,15 +106,17 @@ func (s *Server) getChange(w http.ResponseWriter, r *http.Request) {
 // submitChange turns a draft into a branch + commit + PR.
 //
 // @Summary     Submit a change request
-// @Description Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Idempotency: a change already submitted returns 409.
+// @Description Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Async: returns 202 with the change resource whose `state` the client polls. 409 if not in a submittable state; 502/504 if a downstream (GitHub/git) step fails.
 // @Tags        Editing & change requests
 // @Accept      json
 // @Produce     json
 // @Param       id   path int                 true  "Change request id"
 // @Param       body body SubmitChangeRequest false "Title, description, reference, category"
-// @Success     200 {object} object
+// @Success     202 {object} object
 // @Failure     400 {object} APIError "Invalid id or body"
-// @Failure     409 {object} APIError "Not in a submittable state, or push/PR failed"
+// @Failure     409 {object} APIError "Not in a submittable state"
+// @Failure     502 {object} APIError "A downstream (GitHub/git) step failed"
+// @Failure     504 {object} APIError "A downstream step timed out"
 // @Security    CookieSession
 // @Router      /api/changes/{id}/submit [post]
 func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
@@ -96,23 +140,27 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	defer s.writeMu.Unlock()
 	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, author(r, req.Author), req.Reference, req.Category, identity(r, req.Author))
 	if err != nil {
-		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
+		writeChangeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, cr)
+	// Accepted: the work continues on the host (branch/commit/PR). The client
+	// polls GET /api/changes/{id} and reads `state`.
+	writeJSON(w, http.StatusAccepted, cr)
 }
 
 // mergeChange publishes an approved change request.
 //
 // @Summary     Merge (publish) a change request
-// @Description Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled.
+// @Description Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled. Async: returns 202 with the change resource; poll `state` for Published. 409 if not mergeable; 502/504 on a downstream failure.
 // @Tags        Editing & change requests
 // @Produce     json
 // @Param       id path int true "Change request id"
-// @Success     200 {object} object
+// @Success     202 {object} object
 // @Failure     400 {object} APIError "Invalid id"
 // @Failure     403 {object} APIError "Approver role required"
-// @Failure     409 {object} APIError "Not in a mergeable state, or merge failed"
+// @Failure     409 {object} APIError "Not in a mergeable state"
+// @Failure     502 {object} APIError "The merge failed upstream"
+// @Failure     504 {object} APIError "The merge timed out upstream"
 // @Security    CookieSession
 // @Router      /api/changes/{id}/merge [post]
 func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
@@ -125,10 +173,10 @@ func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
 	defer s.writeMu.Unlock()
 	cr, err := s.Changes.Merge(r.Context(), id)
 	if err != nil {
-		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
+		writeChangeError(w, r, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, cr)
+	writeJSON(w, http.StatusAccepted, cr)
 }
 
 // addChangeComment appends a review note to a change request. The session
@@ -227,6 +275,7 @@ func (s *Server) setChangeReviewers(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Invalid id"
 // @Failure     409 {object} APIError "Not in a rejectable state"
+// @Failure     502 {object} APIError "Closing the pull request failed upstream"
 // @Security    CookieSession
 // @Router      /api/changes/{id}/reject [post]
 func (s *Server) rejectChange(w http.ResponseWriter, r *http.Request) {
@@ -239,7 +288,7 @@ func (s *Server) rejectChange(w http.ResponseWriter, r *http.Request) {
 	defer s.writeMu.Unlock()
 	cr, err := s.Changes.Reject(r.Context(), id)
 	if err != nil {
-		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
+		writeChangeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, cr)

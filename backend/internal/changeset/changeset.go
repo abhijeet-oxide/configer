@@ -109,10 +109,10 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		return nil, err
 	}
 	if cr.State != change.StateDraft {
-		return nil, fmt.Errorf("change request %d is %s, not draft", id, cr.State)
+		return nil, conflictf("change request %d is %s, not draft", id, cr.State)
 	}
 	if len(cr.Items) == 0 {
-		return nil, fmt.Errorf("change request %d has no pending changes", id)
+		return nil, conflictf("change request %d has no pending changes", id)
 	}
 	if title != "" {
 		cr.Title = title
@@ -200,6 +200,11 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	//    commits and is credited as co-author.
 	sha, err := ws.Commit(ctx, commitMessage(cr, ident, s.Bot), ident)
 	if err != nil {
+		// With a remote, Commit also pushes; a failure here is a downstream
+		// (network/push-rejected) problem, not the client's fault.
+		if s.Backend.CanPublish() {
+			return nil, upstream("save and push the change", err)
+		}
 		return nil, err
 	}
 
@@ -209,7 +214,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if s.Backend.CanPublish() && s.Backend.Provider() != nil {
 		pr, err := s.Backend.Provider().Create(ctx, branch, cr.TargetBranch, cr.Title, prBody(cr))
 		if err != nil {
-			return nil, fmt.Errorf("open pull request: %w", err)
+			return nil, upstream("open pull request", err)
 		}
 		prNum, prURL = pr.Number, pr.URL
 	}
@@ -383,19 +388,19 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 		return nil, err
 	}
 	if cr.State != change.StateUnderReview && cr.State != change.StateApproved {
-		return nil, fmt.Errorf("change request %d is %s, not mergeable", id, cr.State)
+		return nil, conflictf("change request %d is %s, not mergeable", id, cr.State)
 	}
 
 	msg := fmt.Sprintf("Publish change request #%d: %s", cr.ID, cr.Title)
 	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
 		if err := s.Backend.Provider().Merge(ctx, cr.PRNumber, msg); err != nil {
-			return nil, err
+			return nil, upstream("publish the change", err)
 		}
 		if _, err := s.Backend.Sync(ctx, cr.TargetBranch); err != nil {
-			return nil, fmt.Errorf("sync after merge: %w", err)
+			return nil, upstream("sync after publishing", err)
 		}
 	} else if err := s.Backend.MergeBranch(ctx, cr.TargetBranch, cr.Branch, msg); err != nil {
-		return nil, err
+		return nil, upstream("publish the change", err)
 	}
 	s.Backend.DeleteBranch(ctx, cr.Branch)
 
@@ -420,11 +425,11 @@ func (s *Service) Reject(ctx context.Context, id int) (*change.ChangeRequest, er
 		return cr, nil
 	}
 	if cr.State != change.StateUnderReview && cr.State != change.StateApproved {
-		return nil, fmt.Errorf("change request %d is %s, cannot reject", id, cr.State)
+		return nil, conflictf("change request %d is %s, cannot reject", id, cr.State)
 	}
 	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
 		if err := s.Backend.Provider().Close(ctx, cr.PRNumber); err != nil {
-			return nil, err
+			return nil, upstream("close the pull request", err)
 		}
 	}
 	s.Backend.DeleteBranch(ctx, cr.Branch)

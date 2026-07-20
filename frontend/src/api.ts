@@ -161,6 +161,14 @@ export const structuralLabel = (it: { action?: string; instance: string; old?: u
 
 // --- change requests -------------------------------------------------------
 
+/** The standard pagination envelope for cursor-paginated collections. Pass the
+ *  previous response's `nextCursor` as `?cursor=` to fetch the next page. */
+export interface Page<T> {
+  items: T[];
+  nextCursor?: string;
+  hasMore: boolean;
+}
+
 export type ChangeState = "draft" | "under_review" | "approved" | "published" | "rejected";
 
 export interface ChangeItem {
@@ -429,6 +437,9 @@ export interface RepoSummary {
   remote?: string;
   addedAt: string;
   error?: string;
+  /** "connecting" while a background clone/open runs, "error" when it failed,
+   *  and absent (ready) for a fully connected repository. */
+  status?: "connecting" | "error" | "";
 }
 
 export interface Workspace {
@@ -508,24 +519,139 @@ const API_BASE =
   import.meta.env.VITE_API_BASE_URL ||
   "/api";
 
-// request marks the connection online/offline as a side effect, so every API
-// call keeps the resilience layer informed. Network failures become
-// OfflineError (handled gracefully), HTTP errors carry the server's message.
-async function request(path: string, init?: RequestInit): Promise<Response> {
+/** One field-level validation failure from the backend's error envelope. */
+export interface FieldError {
+  field: string;
+  message: string;
+}
+
+/**
+ * ApiError is the single typed error every non-2xx response becomes. It mirrors
+ * the backend's error envelope ({error, code, requestId, fields}) so the UI can
+ * branch on a STABLE machine `code`/`status` (never on message text) and always
+ * has a `requestId` to show the user and quote to support. A 2xx response never
+ * produces one, so a handler that receives data can trust it succeeded: there
+ * is no path where a failure is silently rendered as success.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly requestId?: string;
+  /** seconds to wait before retrying, from a 429 Retry-After header */
+  readonly retryAfter?: number;
+  readonly fields?: FieldError[];
+  constructor(init: {
+    status: number;
+    code: string;
+    message: string;
+    requestId?: string;
+    retryAfter?: number;
+    fields?: FieldError[];
+  }) {
+    super(init.message);
+    this.name = "ApiError";
+    this.status = init.status;
+    this.code = init.code;
+    this.requestId = init.requestId;
+    this.retryAfter = init.retryAfter;
+    this.fields = init.fields;
+  }
+  get isUnauthorized() { return this.status === 401; }
+  get isForbidden() { return this.status === 403; }
+  /** a concurrency/state clash the user resolves by reloading (409/412) */
+  get isConflict() { return this.status === 409 || this.status === 412; }
+  get isValidation() { return this.status === 422; }
+  get isRateLimited() { return this.status === 429; }
+  get isServer() { return this.status >= 500; }
+  /** true for failures a retry could plausibly fix (network/5xx/429) */
+  get isRetryable() { return this.status === 429 || this.status >= 500; }
+}
+
+/** The request took too long and was aborted client-side. */
+export class TimeoutError extends Error {
+  constructor() {
+    super("The request took too long and was cancelled");
+    this.name = "TimeoutError";
+  }
+}
+
+// Default per-request timeout. A request that hangs must never leave the UI
+// spinning forever: it is aborted and surfaced as a TimeoutError the user sees.
+const DEFAULT_TIMEOUT_MS = 30_000;
+
+// lastCatalogRev tracks the catalog revision from the most recent read that
+// carried an ETag (grid, parameter, application). Catalog writes echo it as
+// If-Match so the server can reject an edit built on a stale view (optimistic
+// concurrency) instead of silently clobbering a concurrent change.
+let lastCatalogRev: string | null = null;
+
+// A 401 means the session is missing or expired. We dispatch an event rather
+// than hard-redirecting, so the app can surface a graceful "sign in again"
+// prompt; the auth layer listens for it.
+export const UNAUTHORIZED_EVENT = "configer:unauthorized";
+function emitUnauthorized() {
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+}
+
+interface ReqOpts {
+  timeoutMs?: number;
+  headers?: Record<string, string>;
+}
+
+// request performs one fetch with a hard timeout, keeps the offline/online
+// resilience layer informed, and captures the catalog revision from ETags. A
+// network failure becomes OfflineError; a timeout becomes TimeoutError; the
+// caller turns a non-2xx response into a typed ApiError.
+async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      signal: controller.signal,
+      // Send the session cookie even when the API is on another origin (the
+      // backend allows the configured origin with credentials).
+      credentials: "include",
+    });
   } catch {
+    if (controller.signal.aborted) throw new TimeoutError();
     markOffline();
     throw new OfflineError();
+  } finally {
+    clearTimeout(timer);
   }
   markOnline();
+  const etag = res.headers.get("ETag");
+  if (etag) lastCatalogRev = etag;
   return res;
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await request(path);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+// httpError turns a non-2xx response into a typed ApiError, parsing the
+// standardized envelope and surfacing a 401 to the auth layer.
+async function httpError(res: Response): Promise<ApiError> {
+  let body: { error?: string; code?: string; requestId?: string; fields?: FieldError[] } = {};
+  try {
+    body = await res.json();
+  } catch {
+    // non-JSON error body: fall back to the status line
+  }
+  const retryHeader = res.headers.get("Retry-After");
+  const err = new ApiError({
+    status: res.status,
+    code: body.code || `http_${res.status}`,
+    message: body.error || res.statusText || `Request failed (${res.status})`,
+    requestId: body.requestId,
+    retryAfter: retryHeader ? Number(retryHeader) || undefined : undefined,
+    fields: body.fields,
+  });
+  if (err.isUnauthorized) emitUnauthorized();
+  return err;
+}
+
+async function get<T>(path: string, opts?: ReqOpts): Promise<T> {
+  const res = await request(path, undefined, opts);
+  if (!res.ok) throw await httpError(res);
   return res.json() as Promise<T>;
 }
 
@@ -537,26 +663,33 @@ async function snapGet<T>(path: string, snapKey: string): Promise<T> {
   return data;
 }
 
-async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const res = await request(path, {
-    method,
-    headers: { "Content-Type": "application/json" },
-    body: body === undefined ? "{}" : JSON.stringify(body),
-  });
-  if (!res.ok) {
-    let msg = `${res.status} ${res.statusText}`;
-    try {
-      const j = (await res.json()) as { error?: string };
-      if (j.error) msg = j.error;
-    } catch {
-      // non-JSON error body; keep the status text
-    }
-    throw new Error(msg);
-  }
-  return res.json() as Promise<T>;
+async function send<T>(method: string, path: string, body?: unknown, opts?: ReqOpts): Promise<T> {
+  const res = await request(
+    path,
+    {
+      method,
+      headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) },
+      body: body === undefined ? "{}" : JSON.stringify(body),
+    },
+    opts,
+  );
+  if (!res.ok) throw await httpError(res);
+  // 204 No Content and empty bodies must not blow up JSON parsing.
+  if (res.status === 204) return undefined as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
-const put = <T,>(path: string, body: unknown) => send<T>("PUT", path, body);
+const put = <T,>(path: string, body: unknown, opts?: ReqOpts) => send<T>("PUT", path, body, opts);
+
+// putCatalog is a PUT to a direct-commit catalog resource: it attaches the
+// last-known catalog revision as If-Match, so a stale edit is rejected (412)
+// rather than silently overwriting a concurrent change.
+const putCatalog = <T,>(path: string, body: unknown) =>
+  put<T>(path, body, lastCatalogRev ? { headers: { "If-Match": lastCatalogRev } } : undefined);
+
+/** The current catalog revision the client last observed (for diagnostics). */
+export const catalogRev = () => lastCatalogRev;
 
 export const api = {
   // --- workspace level (not repo-scoped) ---
@@ -584,8 +717,28 @@ export const api = {
   githubRepos: () => get<{ repos: GitHubRepo[] }>("/github/repos"),
   githubBranches: (fullName: string) =>
     get<{ default: string; branches: string[] }>(`/github/branches?repo=${encodeURIComponent(fullName)}`),
+  // connectRepo starts an async connection: the server clones/opens in the
+  // background and returns 202 with a `status:"connecting"` summary. Use
+  // waitForRepoReady to await the result.
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),
+  // waitForRepoReady polls the portfolio until the given repository leaves the
+  // "connecting" state, resolving with its summary when ready or throwing an
+  // ApiError when the background connection failed or timed out.
+  waitForRepoReady: async (id: string, opts?: { timeoutMs?: number; intervalMs?: number }): Promise<RepoSummary> => {
+    const deadline = Date.now() + (opts?.timeoutMs ?? 120_000);
+    const interval = opts?.intervalMs ?? 1500;
+    for (;;) {
+      const ws = await get<Workspace>("/workspace");
+      const repo = ws.repos.find((r) => r.id === id);
+      if (repo && repo.status === "error") {
+        throw new ApiError({ status: 422, code: "connect_failed", message: repo.error || "connecting the repository failed" });
+      }
+      if (repo && repo.status !== "connecting") return repo;
+      if (Date.now() > deadline) throw new TimeoutError();
+      await new Promise((r) => setTimeout(r, interval));
+    }
+  },
   renameRepo: (id: string, name: string) =>
     send<RepoSummary>("PATCH", `/repos/${encodeURIComponent(id)}`, { name }),
   removeRepo: (id: string) =>
@@ -600,7 +753,7 @@ export const api = {
     description?: string;
     metadata?: Record<string, string>;
     author?: string;
-  }) => put<ApplicationDetails>(rp("/application"), p),
+  }) => putCatalog<ApplicationDetails>(rp("/application"), p),
   deinit: (author?: string) =>
     send<{ ok: boolean; removed: boolean }>("POST", rp("/deinit"), { author }),
   discover: () => send<Discovery>("POST", rp("/discover")),
@@ -688,15 +841,25 @@ export const api = {
       bindings?: Binding[];
       author?: string;
     },
-  ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),
+  ) => putCatalog<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),
   repoStatus: () => get<RepoStatus>(rp("/repo/status")),
   repoSync: () => send<RepoStatus>("POST", rp("/repo/sync")),
-  changes: () => snapGet<ChangeRequest[]>(rp("/changes"), snapKey("changes")),
+  // The change list is cursor-paginated server-side ({items, nextCursor,
+  // hasMore}); the views want the newest page as an array, so unwrap `items`
+  // (and cache the array so the offline snapshot keeps its shape).
+  changes: async () => {
+    const page = await get<Page<ChangeRequest>>(rp("/changes"));
+    const items = page.items ?? [];
+    saveSnapshot(snapKey("changes"), items);
+    return items;
+  },
   // Explicit-repo reads for the global (cross-application) views: the inbox
   // and the instances estate aggregate over every repository, not just the
   // active one, so they cannot go through rp().
-  changesOf: (repoId: string) =>
-    get<ChangeRequest[]>(`/repos/${encodeURIComponent(repoId)}/changes`),
+  changesOf: async (repoId: string) => {
+    const page = await get<Page<ChangeRequest>>(`/repos/${encodeURIComponent(repoId)}/changes`);
+    return page.items ?? [];
+  },
   instancesOf: (repoId: string) =>
     get<{ instances: Instance[] | null }>(`/repos/${encodeURIComponent(repoId)}/instances`),
   findingsOf: (repoId: string) =>

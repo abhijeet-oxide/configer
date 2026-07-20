@@ -73,6 +73,23 @@ func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
 // @Router      /api/grid [get]
+// maxGridRows caps the parameter rows one grid response carries, so an
+// unusually large repository (tens of thousands of parameters) can never force
+// an unbounded, memory-heavy response. When it trips, the response is truncated
+// and marked (`truncated:true`, `totalRows`), and the UI narrows by category.
+const maxGridRows = 10000
+
+// gridResponse embeds the grid and adds truncation metadata. The embedded
+// grid.Grid fields (project, instances, rows, categories) stay at the top level.
+type gridResponse struct {
+	grid.Grid
+	// Head is the catalog revision (working HEAD SHA), which the client echoes
+	// as If-Match on catalog writes for optimistic concurrency.
+	Head      string `json:"head,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	TotalRows int    `json:"totalRows,omitempty"`
+}
+
 func (s *Server) grid(w http.ResponseWriter, _ *http.Request) {
 	p, draft, err := s.loadWithDraft()
 	if err != nil {
@@ -83,7 +100,15 @@ func (s *Server) grid(w http.ResponseWriter, _ *http.Request) {
 	if draft != nil {
 		grid.ApplyDraft(&g, draft.Items)
 	}
-	writeJSON(w, http.StatusOK, g)
+	rev := s.catalogRev()
+	resp := gridResponse{Grid: g, Head: rev}
+	if len(g.Rows) > maxGridRows {
+		resp.TotalRows = len(g.Rows)
+		resp.Truncated = true
+		resp.Grid.Rows = g.Rows[:maxGridRows]
+	}
+	setRev(w, rev) // catalog revision for optimistic-concurrency writes
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // instances returns the instance registry.
@@ -126,6 +151,7 @@ func (s *Server) parameter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
 		return
 	}
+	setRev(w, s.catalogRev()) // concurrency token for a follow-up PUT
 	writeJSON(w, http.StatusOK, param)
 }
 

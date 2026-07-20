@@ -30,6 +30,7 @@ func (s *Server) getApplication(w http.ResponseWriter, _ *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	setRev(w, s.catalogRev()) // concurrency token for a follow-up PUT
 	writeJSON(w, http.StatusOK, p.App)
 }
 
@@ -43,10 +44,13 @@ func (s *Server) getApplication(w http.ResponseWriter, _ *http.Request) {
 // @Tags        Onboarding
 // @Accept      json
 // @Produce     json
-// @Param       body body object true "Partial identity patch"
+// @Param       If-Match header string true "Catalog revision the edit is based on (from a read's ETag)"
+// @Param       body     body object true "Partial identity patch"
 // @Success     200 {object} model.Application
 // @Failure     400 {object} APIError "Malformed body"
+// @Failure     412 {object} APIError "Stale revision; reload and reapply"
 // @Failure     422 {object} APIError "Empty name"
+// @Failure     428 {object} APIError "Missing If-Match"
 // @Security    CookieSession
 // @Router      /api/application [put]
 func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
@@ -67,6 +71,9 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	if !s.requireIfMatch(w, r) {
+		return
+	}
 	p, err := s.load()
 	if err != nil {
 		writeErr(w, err)

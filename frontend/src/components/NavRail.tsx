@@ -8,6 +8,7 @@ import {
   CheckCircleOutlined,
   FileProtectOutlined,
   SettingOutlined,
+  SwaggerOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
 } from "../icons";
@@ -196,6 +197,13 @@ export default function NavRail({
         </Popover>
       </div>
       <div style={{ padding: "4px 8px 10px", borderTop: "1px solid var(--nav-border)" }}>
+        <RailEntry
+          item={{ key: "apidocs", label: "API docs", icon: <SwaggerOutlined /> }}
+          active={false}
+          collapsed={collapsed}
+          disabled={false}
+          onClick={() => window.open("/api/docs", "_blank", "noopener,noreferrer")}
+        />
         <RailEntry
           item={{
             key: "collapse",

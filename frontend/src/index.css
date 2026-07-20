@@ -917,14 +917,18 @@ body {
   animation: thFlash 1.9s ease-out;
 }
 
-/* Exactly ONE scrollbar for the grid body: the holder's native one. antd's
-   virtual table also paints its own overlay scrollbar on top (the ghosted
-   second bar that scrolls in tandem); hide it. Phantom bars stay away
-   because the holder only overflows when content really does. */
+/* Vertical: exactly ONE scrollbar for the grid body - the holder's native
+   one. antd's virtual table also paints its own vertical overlay scrollbar on
+   top (the ghosted second bar that scrolls in tandem); hide only that one.
+   Horizontal is the opposite: the native holder never widens past its client
+   box (rc-virtual-list pins the rows to the viewport width), so antd's
+   horizontal overlay scrollbar is the ONLY way to reach instance columns that
+   overflow - keep it. Phantom bars stay away because each bar shows only when
+   its axis really overflows. */
 .param-grid .ant-table-tbody-virtual-holder {
   overflow: auto !important;
 }
-.param-grid .ant-table-tbody-virtual-scrollbar {
+.param-grid .ant-table-tbody-virtual-scrollbar-vertical {
   display: none !important;
 }
 

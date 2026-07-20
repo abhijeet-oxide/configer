@@ -32,11 +32,11 @@ const APP_BREADCRUMB_SECTIONS = new Set([
 ]);
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
-  config: "Editor",
+  config: "Configure",
   files: "Files",
   compare: "Compare",
-  changes: "Releases",
-  drafts: "Releases",
+  changes: "Changes",
+  drafts: "Changes",
   approvals: "Approvals",
   instances: "Instances",
   drift: "Repository changes",

@@ -5,7 +5,7 @@ import { api } from "../api";
 import { useUI } from "../store";
 
 // ConfigurationPage is the single home of everything about ONE application:
-// a quiet underline tab row (Overview, Editor, Instances, Changes) over the
+// a quiet underline tab row (Overview, Configure, Instances, Changes) over the
 // active view, with lower-traffic surfaces (Files, Compare, Approvals,
 // Repository changes, Audit, Import) folded under More. Tabs map 1:1 to the
 // store's `section`, so deep links and browser history keep working exactly
@@ -28,7 +28,7 @@ export const APP_SECTIONS = new Set([
 
 const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "config", label: "Editor" },
+  { key: "config", label: "Configure" },
   { key: "instances", label: "Instances" },
   { key: "changes", label: "Changes" },
 ];

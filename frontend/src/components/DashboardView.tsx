@@ -406,7 +406,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           >
             {activity.items.length === 0 ? (
               <div style={{ color: "var(--text-3)", fontSize: "var(--fs-12)", padding: "var(--sp-2) 0" }}>
-                No activity yet. Edit a setting in the editor to start a draft.
+                No activity yet. Edit a setting in Configure to start a draft.
               </div>
             ) : (
               <List

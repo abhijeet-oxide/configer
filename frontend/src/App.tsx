@@ -482,7 +482,7 @@ export default function App() {
   if (phone) {
     const tabs = [
       { key: "home", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Editor" },
+      { key: "config", icon: <TableOutlined />, label: "Configure" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
     ];

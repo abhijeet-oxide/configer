@@ -369,8 +369,21 @@ function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) =>
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection } =
+  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
+
+  // Clicking a parameter row opens the details panel on it; clicking the same
+  // parameter again collapses the panel. Value cells stop propagation (they
+  // own click-to-edit), so editing a cell never toggles the panel.
+  const toggleParamPanel = (id: string) => {
+    if (selectedParamId === id && panels.right) {
+      togglePanel("right");
+      selectParam(null);
+    } else {
+      selectParam(id);
+      if (!panels.right) togglePanel("right");
+    }
+  };
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
   const qc = useQueryClient();
@@ -867,6 +880,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           (flash?.kind === "cell" && flash.id === r.param.id && flash.inst === inst.name
             ? " cell-flash"
             : ""),
+        // Value cells own click-to-edit; keep the click here so it never
+        // bubbles up to the row handler and collapses the details panel.
+        onClick: (e: React.MouseEvent) => e.stopPropagation(),
       }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
@@ -1348,7 +1364,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             ).trim();
           }}
           onRow={(r) => ({
-            onClick: () => selectParam(r.param.id),
+            onClick: () => toggleParamPanel(r.param.id),
             style: { cursor: "pointer" },
           })}
         />

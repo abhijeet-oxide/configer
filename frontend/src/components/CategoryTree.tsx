@@ -49,6 +49,10 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   const [filter, setFilter] = useState("");
   const [showFull, setShowFull] = useState(false);
   const { ref, height } = useElementSize<HTMLDivElement>();
+  // Systems gets its own measured height so its Tree can virtualize too - the
+  // same antd overlay scrollbar as Parameters, instead of the chunky native
+  // one a plain overflow:auto container would paint.
+  const { ref: sysRef, height: sysHeight } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
   const systemsRef = useRef<ImperativePanelHandle>(null);
 
@@ -292,10 +296,12 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                 />
               </Tooltip>
             </div>
-            <div style={{ flex: 1, minHeight: 0, overflow: "auto", paddingBottom: 6 }}>
+            <div ref={sysRef} style={{ flex: 1, minHeight: 0, paddingBottom: 6 }}>
               <Tree
                 treeData={systemsData}
                 blockNode
+                virtual
+                height={Math.max(sysHeight - 6, 80)}
                 showLine={{ showLeafIcon: false }}
                 defaultExpandAll
                 selectedKeys={selectedInstance ? [`i:${selectedInstance}`] : []}

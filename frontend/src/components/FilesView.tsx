@@ -1,6 +1,5 @@
 import {
   Alert, Button, Dropdown, Input, Select, Switch, Tag, Tooltip, App as AntApp,
-  theme as antdTheme,
 } from "antd";
 import {
   CopyOutlined,
@@ -52,7 +51,6 @@ const TREE_KEY = "configer.filesTreeOpen";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
-  const { token } = antdTheme.useToken();
   const qc = useQueryClient();
   const mode = useUI((s) => s.mode);
   const setSection = useUI((s) => s.setSection);
@@ -503,19 +501,13 @@ export default function FilesView() {
             <Tooltip
               title={
                 draftItems > 0
-                  ? `Your ${draftItems} unsent edit(s) build on ${statusQ.data?.branch ?? "the base branch"} and will be committed to the review branch shown.`
+                  ? `Your ${draftItems} change(s) build on ${statusQ.data?.branch ?? "the base branch"}. Configer commits them to a review branch when you submit.`
                   : "The branch your saved edits build on."
               }
             >
               <span className="inline-flex items-center gap-1.5">
                 <BranchesOutlined />
                 <span className="mono">{statusQ.data?.branch ?? "…"}</span>
-                {draftItems > 0 && crDraft?.branch && (
-                  <>
-                    <span style={{ opacity: 0.6 }}>→</span>
-                    <span className="mono" style={{ color: token.colorWarning }}>{crDraft.branch}</span>
-                  </>
-                )}
               </span>
             </Tooltip>
             <span>

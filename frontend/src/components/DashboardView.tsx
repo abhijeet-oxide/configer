@@ -213,16 +213,16 @@ export default function DashboardView({ grid }: { grid: Grid }) {
     attention.push({
       key: "drafts",
       severity: "warn",
-      title: `${pending} local edit${pending === 1 ? "" : "s"} haven't been submitted`,
-      sub: "Create a change request to publish",
-      actionLabel: "Review edits",
+      title: `${pending} change${pending === 1 ? "" : "s"} not yet submitted`,
+      sub: "Review and submit to publish",
+      actionLabel: "Review changes",
       onAction: () => setSection("config"),
     });
   if (awaiting.length > 0)
     attention.push({
       key: "review",
       severity: "info",
-      title: `${awaiting.length} change request${awaiting.length === 1 ? "" : "s"} waiting for review`,
+      title: `${awaiting.length} change${awaiting.length === 1 ? "" : "s"} waiting for review`,
       sub: "Approve or reject in the review workspace",
       actionLabel: "Review",
       onAction: () => setSection("approvals"),
@@ -290,9 +290,9 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             onClick={invalid ? fixFirstInvalid : () => setSection("config")}
           />
           <StatTile
-            label="Unsent edits"
+            label="Changes"
             value={pending}
-            sub={pending ? "Waiting to be submitted" : "Nothing waiting"}
+            sub={pending ? "Ready to review and submit" : "Nothing waiting"}
             icon={<EditOutlined style={{ color: pending ? "var(--c-pending)" : "var(--text-3)" }} />}
             onClick={() => setSection("config")}
           />
@@ -436,7 +436,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <SectionCard title="Changes over time (14 days)">
             <ActivitySparkline days={days} width={280} height={90} />
             <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: 4 }}>
-              {(changesQ.data ?? []).length} change request{(changesQ.data ?? []).length === 1 ? "" : "s"} total
+              {(changesQ.data ?? []).length} change{(changesQ.data ?? []).length === 1 ? "" : "s"} total
             </div>
           </SectionCard>
 

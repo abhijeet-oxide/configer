@@ -78,9 +78,9 @@ export default function InboxView() {
     <div className="flex h-full flex-col gap-4 overflow-auto bg-canvas px-6 py-5">
       <div className="flex flex-wrap items-start gap-3">
         <div className="min-w-0 flex-1">
-          <div className="text-xl font-semibold text-ink">Approvals</div>
+          <div className="text-xl font-semibold text-ink">Inbox</div>
           <div className="text-[13px] text-ink-2">
-            Change requests awaiting review across your applications. Select one to review it.
+            Every change across your applications: what is waiting for review, and what has shipped. Select one to open it.
           </div>
         </div>
         <Select

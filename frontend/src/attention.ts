@@ -61,8 +61,8 @@ export function attentionOf(r: RepoSummary): AttentionItem[] {
     out.push({
       key: "drafts",
       severity: "warn",
-      text: "Unsubmitted local edits",
-      actionLabel: "Review edits",
+      text: "Changes not yet submitted",
+      actionLabel: "Review changes",
       section: "config",
     });
   return out;

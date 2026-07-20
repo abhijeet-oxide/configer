@@ -94,7 +94,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             ...(section === "home"
               ? []
               : section === "inbox"
-                ? [{ title: <span>Approvals</span> }]
+                ? [{ title: <span>Inbox</span> }]
                 : section === "estate"
                 ? [{ title: <span>Instances</span> }]
                 : section === "changelog"
@@ -199,7 +199,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         </Tooltip>
         <Tooltip
           placement="bottomRight"
-          title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}
+          title={awaiting ? `${awaiting} change(s) waiting for review` : "Nothing waiting for review"}
         >
           <Badge count={awaiting} size="small" color="var(--c-review)">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />

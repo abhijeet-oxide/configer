@@ -123,7 +123,7 @@ export default function ChangeRequestsView() {
     <div style={{ padding: 16, height: "100%", overflow: "auto" }}>
       <Space style={{ marginBottom: 12, width: "100%", justifyContent: "space-between" }} wrap>
         <Typography.Title level={4} style={{ margin: 0 }}>
-          <PullRequestOutlined /> Release history
+          <PullRequestOutlined /> Changes
         </Typography.Title>
         <Button size="small" icon={<ReloadOutlined />} loading={q.isFetching} onClick={invalidate}>
           Refresh
@@ -139,8 +139,8 @@ export default function ChangeRequestsView() {
           emptyText: (
             <StatePanel
               art={<EmptyArt size={104} />}
-              title="No change requests yet"
-              subtitle="Edit some cells in the Editor to start a draft; submitting it creates the first change request."
+              title="No changes yet"
+              subtitle="Edit some cells in the Editor to start a draft; submitting it sends your first change for review."
             />
           ),
         }}

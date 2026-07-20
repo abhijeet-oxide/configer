@@ -11,7 +11,7 @@ import {
   StarFilled,
 } from "../icons";
 import type { RepoSummary } from "../api";
-import { StatusPill, MonoChip } from "./ui";
+import { StatusPill } from "./ui";
 import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
 
@@ -30,7 +30,10 @@ export function SyncPill({ r }: { r: RepoSummary }) {
       </Tooltip>
     );
   if ((r.behind ?? 0) > 0) return <StatusPill tone="pending">{r.behind} behind</StatusPill>;
-  if (!r.remote && r.local) return <StatusPill tone="neutral">Local</StatusPill>;
+  // A local-only repo needs no badge: "Local" was pure noise repeated on every
+  // card. Sync state is shown only when there is a remote to be in/out of step
+  // with.
+  if (!r.remote && r.local) return null;
   return <StatusPill tone="ok">Git synced</StatusPill>;
 }
 
@@ -51,7 +54,12 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        {r.branch && <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{r.branch}</MonoChip>}
+        {r.branch && (
+          <span className="mono inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-ink-3">
+            <BranchesOutlined style={{ fontSize: 10 }} />
+            {r.branch}
+          </span>
+        )}
         <SyncPill r={r} />
       </div>
       <div className="flex flex-col gap-1 text-xs">
@@ -64,7 +72,7 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
             ● {r.openChanges} change{r.openChanges === 1 ? "" : "s"}
           </span>
           <span style={{ color: r.drafts > 0 ? "var(--c-review)" : "var(--text-3)" }}>
-            ● {r.drafts > 0 ? "draft edits" : "0 edits"}
+            ● {r.drafts > 0 ? `${r.drafts} in draft` : "0 in draft"}
           </span>
         </span>
       </div>
@@ -167,7 +175,12 @@ export default function AppCard({
         <>
           <Space size={6} wrap>
             {active && <StatusPill tone="review">Active</StatusPill>}
-            {r.branch && <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{r.branch}</MonoChip>}
+            {r.branch && (
+              <span className="mono inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-ink-3">
+                <BranchesOutlined style={{ fontSize: 10 }} />
+                {r.branch}
+              </span>
+            )}
             <SyncPill r={r} />
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
@@ -181,7 +194,7 @@ export default function AppCard({
             {r.drafts > 0 && (
               <>
                 {" · "}
-                <span style={{ color: "var(--c-pending)", fontWeight: 600 }}>draft edits</span>
+                <span style={{ color: "var(--c-pending)", fontWeight: 600 }}>{r.drafts} in draft</span>
               </>
             )}
           </Typography.Text>

@@ -315,7 +315,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
         <>
           <Divider style={{ margin: "12px 0" }} />
           <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-            YOUR UNSENT EDITS
+            YOUR CHANGES
           </Typography.Text>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
             {draftItems.slice(0, 4).map((it) => (

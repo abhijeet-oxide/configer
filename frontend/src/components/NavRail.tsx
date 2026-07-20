@@ -2,10 +2,7 @@ import { Badge, Popover, Switch, Tooltip, Typography } from "antd";
 import {
   HomeOutlined,
   AppstoreOutlined,
-  ClusterOutlined,
-  PullRequestOutlined,
-  DatabaseOutlined,
-  CheckCircleOutlined,
+  InboxOutlined,
   FileProtectOutlined,
   SettingOutlined,
   SwaggerOutlined,
@@ -18,11 +15,13 @@ import { envHex } from "../theme";
 import { theme as brand } from "../theme.config";
 import { useUI } from "../store";
 
-// The navigation rail: the product's one piece of dark chrome. Global items
-// (Home, Applications, Approvals) work everywhere; application items
-// (Instances, Changes, Repositories, Audit) act on the active application and
-// wait quietly until one is selected. Expanded at the global level, it folds
-// to an icon rail inside an application so the working surface dominates.
+// The navigation rail: the product's one piece of dark chrome, and the ONLY
+// organization-scope navigator. It holds just what crosses applications:
+// Home, Applications, Inbox (every change and approval that needs someone),
+// Audit, Settings. Instances and Repositories are not top-level nouns - they
+// live inside an application, reached through its tab strip. Expanded at the
+// global level, it folds to an icon rail inside an application so the working
+// surface dominates.
 
 interface RailItem {
   key: string;
@@ -33,26 +32,20 @@ interface RailItem {
   badge?: number;
 }
 
-// Which rail entry a section lights up. Application tabs without their own
-// rail entry (Overview, Editor, Files, Compare, Import) belong to
-// Applications: the rail shows the level, the tab strip shows the view.
+// Which rail entry a section lights up. Every workspace-wide change and
+// approval surface (changelog, drafts, approvals) resolves to the one Inbox
+// entry. Application-scoped sections light up Applications: the rail shows the
+// level, the tab strip shows the view.
 function railKey(section: string): string {
   switch (section) {
     case "home":
       return "home";
-    case "instances":
-    case "estate":
-      return "instances";
     case "changes":
     case "drafts":
     case "changelog":
-      return "changes";
-    case "drift":
-    case "repos":
-      return "repositories";
     case "approvals":
     case "inbox":
-      return "approvals";
+      return "inbox";
     case "plugins":
       return "settings";
     default:
@@ -108,19 +101,15 @@ export default function NavRail({
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
   const repos = wsQ.data?.repos ?? [];
-  const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
-  // Workspace-wide count of change requests in flight (drafts + open) for the
-  // global Changes badge.
-  const changesInFlight = repos.reduce((n, r) => n + (r.drafts || 0) + (r.openChanges || 0), 0);
+  // Inbox badge: everything workspace-wide that needs someone now - open
+  // reviews plus drafts still to be sent.
+  const awaiting = repos.reduce((n, r) => n + (r.drafts || 0) + (r.openChanges || 0), 0);
   const activeKey = railKey(section);
 
   const items: RailItem[] = [
     { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
     { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
-    { key: "instances", label: "Instances", icon: <ClusterOutlined />, section: "estate" },
-    { key: "changes", label: "Changes", icon: <PullRequestOutlined />, section: "changelog", badge: changesInFlight },
-    { key: "repositories", label: "Repositories", icon: <DatabaseOutlined />, section: "repos" },
-    { key: "approvals", label: "Approvals", icon: <CheckCircleOutlined />, section: "inbox", badge: awaiting },
+    { key: "inbox", label: "Inbox", icon: <InboxOutlined />, section: "inbox", badge: awaiting },
     { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit", needsApp: true },
   ];
 

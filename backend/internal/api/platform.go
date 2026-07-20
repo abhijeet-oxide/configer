@@ -10,7 +10,6 @@ import (
 	"errors"
 	"net/http"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
@@ -424,11 +423,12 @@ func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 // auditLog serves the newest audit entries.
 //
 // @Summary     Audit trail
-// @Description The newest audit events across all applications (or one via `?repo=`), naming who did what. Admin-only.
+// @Description Audit events across all applications (or one via `?repo=`), newest first, naming who did what. Cursor-paginated: pass `limit` (default 50, max 200) and the previous `nextCursor`. Admin-only.
 // @Tags        Platform
 // @Produce     json
-// @Param       repo  query string false "Filter to one application id"
-// @Param       limit query int    false "Max events"
+// @Param       repo   query string false "Filter to one application id"
+// @Param       limit  query int    false "Page size (default 50, max 200)"
+// @Param       cursor query string false "Opaque cursor from the previous page"
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
 // @Failure     403 {object} APIError "Admin only"
@@ -438,13 +438,26 @@ func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
 	}
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	evs, err := h.platform.Events(r.Context(), r.URL.Query().Get("repo"), limit)
+	limit, afterID := pageParams(r)
+	// Fetch one extra row to know whether a further page exists.
+	evs, err := h.platform.EventsBefore(r.Context(), r.URL.Query().Get("repo"), limit+1, afterID)
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": evs})
+	hasMore := len(evs) > limit
+	if hasMore {
+		evs = evs[:limit]
+	}
+	next := ""
+	if hasMore && len(evs) > 0 {
+		next = encodeCursor(evs[len(evs)-1].ID)
+	}
+	// `events` is kept for backward compatibility; `items`/`nextCursor`/`hasMore`
+	// are the standard pagination envelope.
+	writeJSON(w, http.StatusOK, map[string]any{
+		"events": evs, "items": evs, "nextCursor": next, "hasMore": hasMore,
+	})
 }
 
 // auditVerify recomputes the audit hash chain and reports whether the trail is

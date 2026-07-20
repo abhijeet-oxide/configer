@@ -6,6 +6,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
@@ -20,12 +21,15 @@ import (
 // @Tags        Grid & parameters
 // @Accept      json
 // @Produce     json
-// @Param       id   path   string true "Parameter id (slug)"
-// @Param       body body object true "Partial parameter patch"
+// @Param       id       path   string true "Parameter id (slug)"
+// @Param       If-Match header string true "Catalog revision the edit is based on (from a read's ETag)"
+// @Param       body     body object true "Partial parameter patch"
 // @Success     200 {object} model.Parameter
 // @Failure     400 {object} APIError "Malformed body or half-specified binding"
 // @Failure     404 {object} APIError "Unknown parameter"
+// @Failure     412 {object} APIError "Stale revision; reload and reapply"
 // @Failure     422 {object} APIError "Unknown validation preset"
+// @Failure     428 {object} APIError "Missing If-Match"
 // @Security    CookieSession
 // @Router      /api/parameters/{id} [put]
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +74,10 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	// Optimistic concurrency: reject an edit built on a stale catalog view.
+	if !s.requireIfMatch(w, r) {
+		return
+	}
 	param, err := writer.UpdateParameter(s.RepoPath, r.PathValue("id"), writer.ParamPatch{
 		Type:        req.Type,
 		Validation:  req.Validation,
@@ -102,7 +110,8 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 // @Accept      json
 // @Produce     json
 // @Param       body body object true "{param: Parameter, author?: string}"
-// @Success     200 {object} model.Parameter
+// @Success     201 {object} model.Parameter
+// @Header      201 {string} Location "URL of the created parameter"
 // @Failure     400 {object} APIError "Malformed body, missing name, or half-specified binding"
 // @Failure     409 {object} APIError "A parameter with that id already exists"
 // @Security    CookieSession
@@ -152,7 +161,8 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return
 	}
-	s.commitCatalogChange(w, r, "Add parameter "+pm.Name, req.Author, pm)
+	loc := strings.TrimSuffix(r.URL.Path, "/") + "/" + pm.ID
+	s.commitCatalogCreate(w, r, "Add parameter "+pm.Name, req.Author, loc, pm)
 }
 
 // deleteParameter retires a parameter everywhere: the catalog entry is

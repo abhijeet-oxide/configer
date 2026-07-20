@@ -421,14 +421,29 @@ func (s *Store) VerifyAudit(ctx context.Context) (ok bool, brokenAt int64, err e
 
 // Events lists the newest audit entries (optionally for one application).
 func (s *Store) Events(ctx context.Context, repo string, limit int) ([]Event, error) {
+	return s.EventsBefore(ctx, repo, limit, 0)
+}
+
+// EventsBefore is Events with cursor support: only events with id < beforeID
+// (0 = from the newest) are returned, so the API can paginate a growing trail
+// without an offset that would skip or repeat rows under concurrent inserts.
+func (s *Store) EventsBefore(ctx context.Context, repo string, limit int, beforeID int64) ([]Event, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
 	q := `SELECT id, at, login, repo, action, detail FROM audit_events `
 	args := []any{}
+	where := []string{}
 	if repo != "" {
-		q += `WHERE repo = ? `
+		where = append(where, `repo = ?`)
 		args = append(args, repo)
+	}
+	if beforeID > 0 {
+		where = append(where, `id < ?`)
+		args = append(args, beforeID)
+	}
+	if len(where) > 0 {
+		q += `WHERE ` + strings.Join(where, ` AND `) + ` `
 	}
 	q += fmt.Sprintf(`ORDER BY id DESC LIMIT %d`, limit)
 	rows, err := s.db.QueryContext(ctx, s.rebind(q), args...)

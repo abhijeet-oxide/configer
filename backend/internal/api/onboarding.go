@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/discovery"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
@@ -53,7 +54,8 @@ func (s *Server) discover(w http.ResponseWriter, _ *http.Request) {
 // @Accept      json
 // @Produce     json
 // @Param       body body object true "Accepted proposal: name, layout, instances, parameters, ignoreFiles"
-// @Success     200 {object} map[string]interface{}
+// @Success     201 {object} map[string]interface{}
+// @Header      201 {string} Location "URL of the initialized application"
 // @Failure     400 {object} APIError "Missing name or instances"
 // @Failure     409 {object} APIError "Already initialized"
 // @Security    CookieSession
@@ -140,7 +142,10 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.commitCatalogChange(w, r, "Initialize application "+req.Name, req.Author, map[string]any{
+	// The initialized application resource lives at /api/application (relative
+	// to this request's scope), so point Location there.
+	loc := strings.TrimSuffix(strings.TrimSuffix(r.URL.Path, "/"), "/init") + "/application"
+	s.commitCatalogCreate(w, r, "Initialize application "+req.Name, req.Author, loc, map[string]any{
 		"ok": true, "parameters": added, "instances": len(req.Instances), "skipped": skipped,
 	})
 }

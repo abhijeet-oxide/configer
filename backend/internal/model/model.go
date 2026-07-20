@@ -105,6 +105,11 @@ type Parameter struct {
 	VersionIntroduced string   `yaml:"versionIntroduced,omitempty" json:"versionIntroduced,omitempty"`
 	VersionDeprecated string   `yaml:"versionDeprecated,omitempty" json:"versionDeprecated,omitempty"`
 	DependsOn         []string `yaml:"dependsOn,omitempty" json:"dependsOn,omitempty"`
+	// Observed carries the value discovery read from each instance's files
+	// (instance name -> value), so the onboarding proposal can preview the grid.
+	// It is display-only: never persisted to .configer (yaml:"-"), only carried
+	// through the discovery JSON.
+	Observed map[string]any `yaml:"-" json:"observed,omitempty"`
 }
 
 // Binding maps a parameter to one location inside the repository's own files.

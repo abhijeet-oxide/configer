@@ -116,6 +116,9 @@ export interface Parameter {
   versionIntroduced?: string;
   versionDeprecated?: string;
   dependsOn?: string[];
+  /** onboarding proposal only: the value discovery read from each instance's
+   *  files (instance name -> value), for previewing the grid before init */
+  observed?: Record<string, unknown>;
 }
 
 export interface Cell {

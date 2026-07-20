@@ -1,18 +1,64 @@
-# dr - disaster-recovery site, Reno. Runs the previous software train
-# (v24.2.0), so 24.3-only parameters do not apply here yet.
-namespace: telco-dr
-network:
-  service:
-    ip: 10.40.10.10
-  admin:
-    ip: 10.40.10.11
-    port: 8443
-  vip:
-    ip: 10.40.10.100
-  mtu: 9000
+# dr - silver tier disaster recovery, Reno.
+# Managed by Configer; edits arrive as reviewed pull requests.
+global:
+  namespace: telco-dr
+  deployment_id: dr
+  provider: kubernetes
+  timezone: UTC
+platform:
+  environment: production
+resources:
+  default:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+networking:
+  service_cidr: 10.220.0.0/16
+  pod_cidr: 10.221.0.0/16
+  ipv6_enabled: false
+  legacy_mode: true
+services:
+  datastore:
+    replicas: 3
+    endpoint: datastore.dr.demo.local
+    port: 5432 # postgres wire protocol
+    tls_enabled: true
+  cache:
+    replicas: 2
+    endpoint: cache.dr.demo.local
+    port: 6379
+    tls_enabled: true
+  messaging:
+    replicas: 3
+    endpoint: message.dr.demo.local
+    port: 9092
+    tls_enabled: true
+security:
+  authentication:
+    enabled: true
+    method: oauth2
+    token_expiry: 3600
+  audit:
+    enabled: true
+    retention_days: 365
+storage:
+  classes:
+    fast:
+      provisioner: csi-fast
+      replication: 2
+    standard:
+      provisioner: csi-standard
+      replication: 2
+compute:
   ntp:
     servers:
       - 10.40.0.1
       - 10.40.0.2
-  legacy:
-    enabled: true # still needed on the 24.2 train
+application:
+  components:
+    api:
+      replicas: 2
+      image: platform/api:v1

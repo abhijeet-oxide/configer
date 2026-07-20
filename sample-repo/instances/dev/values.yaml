@@ -1,12 +1,63 @@
-# dev - shared development instance.
-namespace: telco-dev
-network:
-  service:
-    ip: 10.50.10.10
-  admin:
-    ip: 10.50.10.11
-    port: 9443 # dev runs the admin plane on an alternate port
-  mtu: 1500
+# dev - shared development, Ashburn DC1.
+# Managed by Configer; edits arrive as reviewed pull requests.
+global:
+  namespace: telco-dev
+  deployment_id: dev
+  provider: kubernetes
+  timezone: UTC
+platform:
+  environment: development
+resources:
+  default:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+networking:
+  service_cidr: 10.230.0.0/16
+  pod_cidr: 10.231.0.0/16
+  ipv6_enabled: true
+  legacy_mode: false
+services:
+  datastore:
+    replicas: 1
+    endpoint: datastore.dev.demo.local
+    port: 5432 # postgres wire protocol
+    tls_enabled: false
+  cache:
+    replicas: 2
+    endpoint: cache.dev.demo.local
+    port: 6379
+    tls_enabled: false
+  messaging:
+    replicas: 3
+    endpoint: message.dev.demo.local
+    port: 9092
+    tls_enabled: true
+security:
+  authentication:
+    enabled: true
+    method: oauth2
+    token_expiry: 7200
+  audit:
+    enabled: true
+    retention_days: 7
+storage:
+  classes:
+    fast:
+      provisioner: csi-fast
+      replication: 1
+    standard:
+      provisioner: csi-standard
+      replication: 2
+compute:
   ntp:
     servers:
       - 10.50.0.1
+application:
+  components:
+    api:
+      replicas: 1
+      image: platform/api:v1

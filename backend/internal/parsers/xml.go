@@ -38,8 +38,13 @@ func (XMLParser) Extract(file string, content []byte) ([]plugin.Candidate, error
 }
 
 func walkXML(el *etree.Element, path, file string, out *[]plugin.Candidate) {
-	// attributes are leaf parameters: /root/el/@attr
+	// attributes are leaf parameters: /root/el/@attr. Namespace declarations
+	// (xmlns / xmlns:*) are document structure, never tunable config, so skip
+	// them - etree stores them as attributes with Space=="xmlns".
 	for _, a := range el.Attr {
+		if a.Space == "xmlns" || a.Key == "xmlns" {
+			continue
+		}
 		p := path + "/@" + a.Key
 		*out = append(*out, plugin.Candidate{
 			Name:   xmlName(p),

@@ -17,7 +17,7 @@ import { useConn, loadSnapshot, drainQueue, requeue, OfflineError, type QueuedEd
 import { useUI } from "./store";
 import NavRail from "./components/NavRail";
 import TopBar from "./components/TopBar";
-import CommandPalette from "./components/CommandPalette";
+import SearchPalette from "./components/SearchPalette";
 import CategoryTree from "./components/CategoryTree";
 import ParameterGrid from "./components/ParameterGrid";
 import DetailsPanel from "./components/DetailsPanel";
@@ -574,7 +574,7 @@ export default function App() {
         <ConnectionBanner />
         <Content style={{ overflow: "hidden" }}>{body()}</Content>
       </Layout>
-      <CommandPalette />
+      <SearchPalette />
       <WelcomeTour />
     </Layout>
   );

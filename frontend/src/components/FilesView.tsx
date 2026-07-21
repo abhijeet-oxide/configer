@@ -349,20 +349,22 @@ export default function FilesView() {
               )}
               {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
               {currentParams.length > 0 && (
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    items: currentParams.map((id) => ({
-                      key: id,
-                      label: <span className="mono">{id}</span>,
-                    })),
-                    onClick: ({ key }) => openInEditor(key),
-                  }}
-                >
-                  <Button size="small" icon={<TableOutlined />}>
-                    Open in editor
-                  </Button>
-                </Dropdown>
+                <Tooltip title="Parameters whose values live in this file - open any in Configure">
+                  <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                      items: currentParams.map((id) => ({
+                        key: id,
+                        label: <span className="mono">{id}</span>,
+                      })),
+                      onClick: ({ key }) => openInEditor(key),
+                    }}
+                  >
+                    <Button size="small" icon={<TableOutlined />}>
+                      {currentParams.length} parameter{currentParams.length === 1 ? "" : "s"} here
+                    </Button>
+                  </Dropdown>
+                </Tooltip>
               )}
               <Button
                 size="small"

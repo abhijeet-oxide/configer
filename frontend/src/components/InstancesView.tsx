@@ -3,12 +3,13 @@ import {
   Segmented, Tooltip, App as AntApp,
 } from "antd";
 import {
-  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined,
+  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined,
 } from "../icons";
 import { useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
+import { useUI } from "../store";
 import { ENV_PRESETS } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
@@ -53,6 +54,16 @@ interface FormValues {
 export default function InstancesView({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { setCompare, setSection } = useUI();
+
+  // Compare from context: seed this instance as the left side (and the nearest
+  // other instance as the right) and open Compare already configured, so a
+  // comparison starts from intent instead of an empty two-by-two picker.
+  const compareFrom = (name: string) => {
+    const other = grid.instances.find((i) => i.name !== name)?.name ?? name;
+    setCompare(name, other);
+    setSection("compare");
+  };
   const regQ = useQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
   const instances = useMemo(() => regQ.data?.instances ?? [], [regQ.data]);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
@@ -260,6 +271,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               const archived = (i.status || "active") === "archived";
               return (
                 <Space size={2}>
+                  <Tooltip title="Compare this instance with another">
+                    <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => compareFrom(i.name)} />
+                  </Tooltip>
                   <Tooltip title="Edit metadata">
                     <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openModal("edit", i)} />
                   </Tooltip>

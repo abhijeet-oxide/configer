@@ -25,6 +25,7 @@ type instanceReq struct {
 	Zone            *string            `json:"zone,omitempty"`
 	Site            *string            `json:"site,omitempty"`
 	SoftwareVersion *string            `json:"softwareVersion,omitempty"`
+	VersionName     *string            `json:"versionName,omitempty"`
 	Status          *string            `json:"status,omitempty"`
 	Labels          *map[string]string `json:"labels,omitempty"`
 	CloneFrom       string             `json:"cloneFrom,omitempty"`
@@ -34,7 +35,7 @@ type instanceReq struct {
 func (r instanceReq) patch() writer.InstancePatch {
 	return writer.InstancePatch{
 		Environment: r.Environment, Region: r.Region, Zone: r.Zone, Site: r.Site,
-		SoftwareVersion: r.SoftwareVersion, Status: r.Status, Labels: r.Labels,
+		SoftwareVersion: r.SoftwareVersion, VersionName: r.VersionName, Status: r.Status, Labels: r.Labels,
 	}
 }
 
@@ -106,7 +107,8 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	meta := model.Instance{
 		Name: name, Environment: str(req.Environment), Region: str(req.Region),
 		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
-		Status: str(req.Status), Labels: derefLabels(req.Labels),
+		VersionName: str(req.VersionName),
+		Status:      str(req.Status), Labels: derefLabels(req.Labels),
 	}
 	if meta.Status == "" {
 		meta.Status = "active"
@@ -119,6 +121,9 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		}
 		if meta.SoftwareVersion == "" {
 			meta.SoftwareVersion = from.SoftwareVersion
+		}
+		if meta.VersionName == "" {
+			meta.VersionName = from.VersionName
 		}
 	}
 	// New carries the metadata; Old carries the clone source name ("" = empty).

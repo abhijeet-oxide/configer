@@ -4,6 +4,30 @@
 
 Configer supports flexible configuration through environment variables, making it easy to customize for different environments (local development, staging, production).
 
+## Appearance / Theme
+
+The whole look is driven by one file, `frontend/src/theme.config.ts`.
+
+- **Colors, logo, app name:** edit `themeOverrides` (deep-merged over the
+  defaults). Anything you omit falls back to what Configer ships.
+- **Theme preset:** Configer ships more than one complete look. Pick one by
+  setting a single value near the top of the presets section:
+
+  ```ts
+  export const ACTIVE_PRESET = "default";   // or "instrument"
+  ```
+
+  - `default` - the original soft-elevation look with the classic blue accent.
+  - `instrument` - flat, bordered surfaces (no floating-card shadows), a
+    deeper canvas, and a cobalt accent.
+
+  Both presets always ship together, so you can also preview one live by
+  setting the `data-preset` attribute on `<html>` in dev tools. Changing
+  `ACTIVE_PRESET` takes effect on the next `npm run build` (or dev reload).
+
+The monospace font (JetBrains Mono, used for configuration values) and the
+matrix wordmark apply to every preset.
+
 ## Configuration Files
 
 ### `.env` (Local Development)

@@ -101,12 +101,24 @@ export const defaultTheme: BrandConfig = {
   appName: "Configer",
   tagline: "Configuration Lifecycle Management",
   navCaption: "CONFIG LIFECYCLE",
-  logo: { text: "C" },
+  // A parameter x instance matrix - the product's core idea - not a letter.
+  // Two solid cells on the diagonal, two faded: a grid whose values vary.
+  logo: {
+    svg:
+      "<svg width='18' height='18' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'>" +
+      "<rect x='1.5' y='1.5' width='7' height='7' rx='1.9' fill='white'/>" +
+      "<rect x='11.5' y='1.5' width='7' height='7' rx='1.9' fill='white' fill-opacity='0.45'/>" +
+      "<rect x='1.5' y='11.5' width='7' height='7' rx='1.9' fill='white' fill-opacity='0.45'/>" +
+      "<rect x='11.5' y='11.5' width='7' height='7' rx='1.9' fill='white'/></svg>",
+  },
   favicon:
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
-    "<rect width='32' height='32' rx='8' fill='#2f6bff'/>" +
-    "<text x='16' y='22' font-family='-apple-system,Segoe UI,Roboto,sans-serif' " +
-    "font-size='18' font-weight='700' fill='white' text-anchor='middle'>C</text></svg>",
+    "<rect width='32' height='32' rx='8' fill='#0057b8'/>" +
+    "<g transform='translate(6 6)'>" +
+    "<rect x='0' y='0' width='8' height='8' rx='2.2' fill='white'/>" +
+    "<rect x='12' y='0' width='8' height='8' rx='2.2' fill='white' fill-opacity='0.45'/>" +
+    "<rect x='0' y='12' width='8' height='8' rx='2.2' fill='white' fill-opacity='0.45'/>" +
+    "<rect x='12' y='12' width='8' height='8' rx='2.2' fill='white'/></g></svg>",
   shape: { borderRadius: 6, controlHeight: 30 },
   type: {
     fontFamily:
@@ -163,6 +175,41 @@ export const defaultTheme: BrandConfig = {
 // -----------------------------------------------------------------------------
 export const themeOverrides: DeepPartial<BrandConfig> = {};
 
+// -----------------------------------------------------------------------------
+// THEME PRESETS. A preset is a named look built on top of the defaults. Ship
+// several; an operator picks ONE with a single line below. "default" is the
+// original identity (unchanged); "instrument" is the flatter, more owned look
+// (crisp elevation via CSS, a cobalt accent, deeper neutrals - the elevation
+// half is applied in tokens.css under :root[data-preset="instrument"]).
+// -----------------------------------------------------------------------------
+export const presets: Record<string, DeepPartial<BrandConfig>> = {
+  default: {},
+  instrument: {
+    shape: { borderRadius: 7 },
+    light: {
+      brand: "#2f4bd6", brandStrong: "#2439ab", brandSoft: "#ecefff", brandBorder: "#c5cdf6",
+      secondary: "#2f4bd6",
+      navBg: "#0b1730", navBgActive: "#2f4bd6",
+      canvas: "#e8e9ee", surface: "#ffffff", surface2: "#f4f5f8",
+      border: "#e1e3ea", borderStrong: "#ccd0da",
+      text: "#0f1729", text2: "#465063", text3: "#8b93a4",
+      review: "#2f4bd6", reviewBg: "#ecefff", reviewBd: "#c5cdf6",
+    },
+    dark: {
+      brand: "#8098f6", brandStrong: "#97abf8", brandSoft: "rgba(90,110,240,0.18)",
+      brandBorder: "rgba(90,110,240,0.5)", secondary: "#8098f6",
+      navBg: "#080f1f", navBgActive: "#2f4bd6",
+      canvas: "#0d1017", surface: "#141821", surface2: "#1a1f2a",
+      border: "#242a36", borderStrong: "#333a48",
+      review: "#8098f6", reviewBg: "rgba(90,110,240,0.16)", reviewBd: "rgba(90,110,240,0.42)",
+    },
+  },
+};
+
+// THE SWITCH. Change this one value (or leave it "default" to ship unchanged).
+// Everything - colors AND the flat/soft elevation - follows from it.
+export const ACTIVE_PRESET = "default";
+
 // --- machinery (usually no need to touch below) ------------------------------
 
 export type DeepPartial<T> = {
@@ -183,20 +230,36 @@ function deepMerge<T>(base: T, over: DeepPartial<T>): T {
   return out as T;
 }
 
-/** The resolved, active theme (defaults + your overrides). */
-export const theme: BrandConfig = deepMerge(defaultTheme, themeOverrides);
+/** The resolved, active theme: defaults, then the chosen preset, then any
+ *  hand overrides on top. */
+export const theme: BrandConfig = deepMerge(
+  deepMerge(defaultTheme, presets[ACTIVE_PRESET] ?? {}),
+  themeOverrides,
+);
 
 /** One mode's palette as `--var: value;` declarations. */
 function paletteToCss(p: Palette): string {
   return VAR_MAP.map(([key, cssVar]) => `${cssVar}: ${p[key]};`).join(" ");
 }
 
-/** The :root + [data-theme="dark"] color layer, generated from `theme`. */
+/** The color layer. The default palette lands on :root; every OTHER preset is
+ *  emitted scoped to :root[data-preset="<name>"], so switching preset (the
+ *  data-preset attribute the brand plugin stamps) flips the whole palette with
+ *  no rebuild, and both looks always ship together. Hand overrides
+ *  (themeOverrides) apply on top of whichever preset is active. */
 export function renderRootCss(): string {
-  return (
-    `:root { ${paletteToCss(theme.light)} }\n` +
-    `[data-theme="dark"] { ${paletteToCss(theme.dark)} }`
-  );
+  const base = deepMerge(defaultTheme, themeOverrides);
+  const blocks = [
+    `:root { ${paletteToCss(base.light)} }`,
+    `[data-theme="dark"] { ${paletteToCss(base.dark)} }`,
+  ];
+  for (const [name, over] of Object.entries(presets)) {
+    if (name === "default" || !over) continue;
+    const merged = deepMerge(deepMerge(defaultTheme, over), themeOverrides);
+    blocks.push(`:root[data-preset="${name}"] { ${paletteToCss(merged.light)} }`);
+    blocks.push(`[data-theme="dark"][data-preset="${name}"] { ${paletteToCss(merged.dark)} }`);
+  }
+  return blocks.join("\n");
 }
 
 /** Resolve a favicon field (emoji / inline svg / path) to an href. */

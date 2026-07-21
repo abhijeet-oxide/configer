@@ -547,7 +547,12 @@ function RepoStep({
           tokens to paste.
         </Typography.Paragraph>
         {status?.signInEnabled ? (
-          <Button type="primary" size="large" icon={<GithubOutlined />} href="/api/auth/login">
+          <Button
+            type="primary"
+            size="large"
+            icon={<GithubOutlined />}
+            href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+          >
             Continue with GitHub
           </Button>
         ) : (

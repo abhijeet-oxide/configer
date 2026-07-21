@@ -12,8 +12,10 @@ import { FadeIn } from "./ui/motion";
 
 const OK = "#16a34a";
 const OK2 = "#4ade80";
-const BLUE = "#2f6bff";
-const BLUE2 = "#7aa7ff";
+// Track the active accent (theme + preset) instead of a fixed blue, so the
+// empty-state art belongs to whatever identity is running.
+const BLUE = "var(--brand)";
+const BLUE2 = "var(--brand-border)";
 const AMBER = "#f59e0b";
 
 // The theme-tracking fill for the solid "paper" shapes (trays, shields, cards).

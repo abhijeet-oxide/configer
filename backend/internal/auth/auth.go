@@ -88,6 +88,44 @@ func (s *Service) http() *http.Client {
 	return &http.Client{Timeout: 15 * time.Second}
 }
 
+// callbackURL is the redirect_uri GitHub sends the browser back to. An explicit
+// CONFIGER_OAUTH_CALLBACK wins; otherwise it is derived from the request that
+// began login, so a deployment "just works" at whatever public URL it is served
+// from, without a second env var to keep in sync. Proxy headers
+// (X-Forwarded-Proto / X-Forwarded-Host) are honored so it stays correct behind
+// TLS-terminating load balancers. The SAME value is sent at authorize and at
+// token exchange, which GitHub requires to match.
+func (s *Service) callbackURL(r *http.Request) string {
+	if s.CallbackURL != "" {
+		return s.CallbackURL
+	}
+	scheme := "http"
+	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
+		scheme = p
+	} else if r.TLS != nil {
+		scheme = "https"
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return scheme + "://" + host + "/api/auth/callback"
+}
+
+// safeReturn keeps the post-login redirect on this site: a local absolute path
+// only (never "//host" or an absolute URL), defaulting to the app root. This
+// preserves where the user was (e.g. mid add-application) without becoming an
+// open redirect.
+func safeReturn(raw string) string {
+	if raw == "" || !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return "/"
+	}
+	if u, err := url.Parse(raw); err != nil || u.Host != "" || u.Scheme != "" {
+		return "/"
+	}
+	return raw
+}
+
 // rememberToken caches a user's GitHub access token for the lifetime of this
 // process.
 func (s *Service) rememberToken(login, token string) {
@@ -187,15 +225,20 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		Name: "configer_oauth_state", Value: state, Path: "/",
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600,
 	})
+	// Remember where the user was so login returns them there (e.g. mid
+	// add-application) instead of always dumping them on the start page.
+	ret := safeReturn(r.URL.Query().Get("return_to"))
+	http.SetCookie(w, &http.Cookie{
+		Name: "configer_oauth_return", Value: ret, Path: "/",
+		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600,
+	})
 	// The repo scope lets Configer list the user's repositories (their own
 	// and their orgs') and clone private ones during application creation.
 	q := url.Values{
-		"client_id": {s.ClientID},
-		"scope":     {"read:user user:email repo"},
-		"state":     {state},
-	}
-	if s.CallbackURL != "" {
-		q.Set("redirect_uri", s.CallbackURL)
+		"client_id":    {s.ClientID},
+		"scope":        {"read:user user:email repo"},
+		"state":        {state},
+		"redirect_uri": {s.callbackURL(r)},
 	}
 	http.Redirect(w, r, s.webBase()+"/login/oauth/authorize?"+q.Encode(), http.StatusFound)
 }
@@ -227,7 +270,9 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := s.exchange(r.Context(), code)
+	// GitHub requires the token-exchange redirect_uri to match the one used at
+	// authorize, so derive it the same way here.
+	token, err := s.exchange(r.Context(), code, s.callbackURL(r))
 	if err != nil {
 		http.Error(w, "GitHub token exchange failed: "+err.Error(), http.StatusBadGateway)
 		return
@@ -256,10 +301,28 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 	})
 	http.SetCookie(w, &http.Cookie{
 		Name: SessionCookie, Value: session, Path: "/",
-		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: int(sessionTTL.Seconds()),
+		HttpOnly: true, Secure: s.SecureCookies, SameSite: s.sameSite(), MaxAge: int(sessionTTL.Seconds()),
 	})
 	http.SetCookie(w, &http.Cookie{Name: "configer_oauth_state", Value: "", Path: "/", MaxAge: -1})
-	http.Redirect(w, r, "/", http.StatusFound)
+	// Return the user to where they started login (validated to a local path).
+	ret := "/"
+	if c, err := r.Cookie("configer_oauth_return"); err == nil {
+		ret = safeReturn(c.Value)
+	}
+	http.SetCookie(w, &http.Cookie{Name: "configer_oauth_return", Value: "", Path: "/", MaxAge: -1})
+	http.Redirect(w, r, ret, http.StatusFound)
+}
+
+// sameSite chooses the session cookie's SameSite policy. When cookies are
+// served over TLS (production), None lets the single-page app carry the session
+// on API calls even if it is served from a different origin than the API; on
+// plain-HTTP localhost, None is invalid without Secure, so Lax is used (which
+// is fine there because the dev server and API share an origin via the proxy).
+func (s *Service) sameSite() http.SameSite {
+	if s.SecureCookies {
+		return http.SameSiteNoneMode
+	}
+	return http.SameSiteLaxMode
 }
 
 // logout ends the session.
@@ -284,12 +347,16 @@ func (s *Service) logout(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// exchange trades the OAuth code for an access token.
-func (s *Service) exchange(ctx context.Context, code string) (string, error) {
+// exchange trades the OAuth code for an access token. redirectURI must match
+// the value sent at authorize.
+func (s *Service) exchange(ctx context.Context, code, redirectURI string) (string, error) {
 	form := url.Values{
 		"client_id":     {s.ClientID},
 		"client_secret": {s.ClientSecret},
 		"code":          {code},
+	}
+	if redirectURI != "" {
+		form.Set("redirect_uri", redirectURI)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		s.webBase()+"/login/oauth/access_token", strings.NewReader(form.Encode()))

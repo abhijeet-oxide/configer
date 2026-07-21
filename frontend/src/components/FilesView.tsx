@@ -357,7 +357,7 @@ export default function FilesView() {
               )}
               {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
               {currentParams.length > 0 && (
-                <Tooltip title="Parameters whose values live in this file - open any in Configure">
+                <Tooltip title="Parameters whose values live in this file - open any in Parameters">
                   <Dropdown
                     trigger={["click"]}
                     menu={{

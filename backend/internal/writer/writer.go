@@ -229,6 +229,7 @@ type InstancePatch struct {
 	Zone            *string
 	Site            *string
 	SoftwareVersion *string
+	VersionName     *string
 	Status          *string
 	Labels          *map[string]string
 }
@@ -370,6 +371,9 @@ func applyInstancePatch(inst *model.Instance, patch InstancePatch) {
 	if patch.SoftwareVersion != nil {
 		inst.SoftwareVersion = *patch.SoftwareVersion
 	}
+	if patch.VersionName != nil {
+		inst.VersionName = *patch.VersionName
+	}
 	if patch.Status != nil {
 		inst.Status = *patch.Status
 	}
@@ -452,6 +456,9 @@ func UpdateInstance(root, name string, patch InstancePatch) (model.Instance, err
 		}
 		if patch.SoftwareVersion != nil {
 			setItemScalar(el, "softwareVersion", *patch.SoftwareVersion)
+		}
+		if patch.VersionName != nil {
+			setItemScalar(el, "versionName", *patch.VersionName)
 		}
 		if patch.Status != nil {
 			setItemScalar(el, "status", *patch.Status)

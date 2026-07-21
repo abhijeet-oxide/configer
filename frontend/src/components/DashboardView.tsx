@@ -386,7 +386,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                     {bound} parameter{bound === 1 ? "" : "s"}
                   </span>
                   <span className="mono" style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", width: 64, textAlign: "right" }}>
-                    {inst.softwareVersion ?? ""}
+                    {inst.versionName || inst.softwareVersion || ""}
                   </span>
                 </div>
               ))}
@@ -406,7 +406,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           >
             {activity.items.length === 0 ? (
               <div style={{ color: "var(--text-3)", fontSize: "var(--fs-12)", padding: "var(--sp-2) 0" }}>
-                No activity yet. Edit a setting in Configure to start a draft.
+                No activity yet. Edit a setting in Parameters to start a draft.
               </div>
             ) : (
               <List

@@ -346,7 +346,7 @@ function FindingCard({
                 Affected:
               </Typography.Text>
               {f.params.slice(0, 8).map((p) => (
-                <Tooltip key={p} title="Open in Configure">
+                <Tooltip key={p} title="Open in Parameters">
                   <Tag style={{ cursor: "pointer" }} className="mono" onClick={() => onViewParam(p)}>
                     {p}
                   </Tag>

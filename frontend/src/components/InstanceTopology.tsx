@@ -105,7 +105,19 @@ function InstanceDossier({
             <span className="text-ink-3">not set</span>
           ),
         },
-        ...(meta?.softwareVersion ? [{ label: "Software version", value: <span className="mono">{meta.softwareVersion}</span> }] : []),
+        ...(meta?.softwareVersion
+          ? [{
+              label: "Version",
+              value: (
+                <span>
+                  {meta.versionName || meta.softwareVersion}
+                  {meta.versionName && meta.versionName !== meta.softwareVersion && (
+                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: 11 }}>{meta.softwareVersion}</span>
+                  )}
+                </span>
+              ),
+            }]
+          : []),
         ...(meta?.region ? [{ label: "Region", value: meta.region }] : []),
         ...(meta?.folder ? [{ label: "Folder", value: <span className="mono text-xs">{meta.folder}</span> }] : []),
         { label: "Inherited from base", value: `${node.inherited} parameter${node.inherited === 1 ? "" : "s"}` },
@@ -267,7 +279,7 @@ export default function InstanceTopology({ grid }: { grid: Grid }) {
                       key={x.name}
                       node={x}
                       region={meta?.region}
-                      version={meta?.softwareVersion}
+                      version={meta?.versionName || meta?.softwareVersion}
                       onClick={() => setSelInst(x)}
                     />
                   );

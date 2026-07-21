@@ -212,7 +212,12 @@ type Instance struct {
 	Region          string            `yaml:"region,omitempty" json:"region,omitempty"`
 	Zone            string            `yaml:"zone,omitempty" json:"zone,omitempty"`
 	Site            string            `yaml:"site,omitempty" json:"site,omitempty"`
+	// SoftwareVersion is the version IDENTIFIER (e.g. "v24.3.1") - stable, what
+	// versionIntroduced/Deprecated compare against. VersionName is an optional
+	// human label for the same release (e.g. "Titanium"); when empty it shows
+	// as the id, so a version always reads as a name plus an id.
 	SoftwareVersion string            `yaml:"softwareVersion,omitempty" json:"softwareVersion,omitempty"`
+	VersionName     string            `yaml:"versionName,omitempty" json:"versionName,omitempty"`
 	Labels          map[string]string `yaml:"labels,omitempty" json:"labels,omitempty"`
 	Status          string            `yaml:"status,omitempty" json:"status,omitempty"` // active | draft | archived
 }

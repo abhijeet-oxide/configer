@@ -45,6 +45,7 @@ interface FormValues {
   environment?: string;
   region?: string;
   softwareVersion?: string;
+  versionName?: string;
   status?: string;
   /** copy configuration values from this instance ("" = start empty) */
   baseInstance?: string;
@@ -157,6 +158,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             environment: instance.environment,
             region: instance.region,
             softwareVersion: instance.softwareVersion,
+            versionName: instance.versionName,
             status: instance.status || "active",
             baseInstance: mode === "clone" ? instance.name : "",
             labels: formatLabels(instance.labels),
@@ -175,6 +177,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       if (diff(v.environment, orig.environment)) input.environment = v.environment ?? "";
       if (diff(v.region, orig.region)) input.region = v.region ?? "";
       if (diff(v.softwareVersion, orig.softwareVersion)) input.softwareVersion = v.softwareVersion ?? "";
+      if (diff(v.versionName, orig.versionName)) input.versionName = v.versionName ?? "";
       if (diff(v.status, orig.status || "active")) input.status = v.status;
       if (diff(v.labels, formatLabels(orig.labels))) input.labels = parseLabels(v.labels ?? "");
       save.mutate({ mode: "edit", orig: orig.name, input });
@@ -185,6 +188,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       environment: v.environment,
       region: v.region,
       softwareVersion: v.softwareVersion,
+      versionName: v.versionName,
       status: v.status,
       labels: v.labels ? parseLabels(v.labels) : undefined,
       author: "demo-user",
@@ -261,7 +265,19 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           {
             title: "Version",
             dataIndex: "softwareVersion",
-            render: (v) => (v ? <span className="mono">{v}</span> : <span style={{ opacity: 0.4 }}>-</span>),
+            render: (_v, i) => {
+              const id = i.softwareVersion;
+              if (!id) return <span style={{ opacity: 0.4 }}>-</span>;
+              const name = i.versionName || id;
+              return (
+                <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.25 }}>
+                  <span>{name}</span>
+                  {i.versionName && i.versionName !== id && (
+                    <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{id}</span>
+                  )}
+                </span>
+              );
+            },
           },
           {
             title: "Status",
@@ -369,9 +385,14 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             </Form.Item>
           </div>
           <div style={{ display: "flex", gap: 10 }}>
-            <Form.Item name="softwareVersion" label="Software version" style={{ flex: 1 }}>
+            <Form.Item name="softwareVersion" label="Version" style={{ flex: 1 }} tooltip="The version identifier, e.g. v24.3.1">
               <Input placeholder="v24.3.1" className="mono" />
             </Form.Item>
+            <Form.Item name="versionName" label="Version name" style={{ flex: 1 }} tooltip="Optional friendly name for this release; defaults to the version above">
+              <Input placeholder="same as version" />
+            </Form.Item>
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="status" label="Status" style={{ width: 150 }}>
               <Select
                 options={[

@@ -3181,10 +3181,14 @@ const docTemplateconfiger = `{
                     "type": "string"
                 },
                 "softwareVersion": {
+                    "description": "SoftwareVersion is the version IDENTIFIER (e.g. \"v24.3.1\") - stable, what\nversionIntroduced/Deprecated compare against. VersionName is an optional\nhuman label for the same release (e.g. \"Titanium\"); when empty it shows\nas the id, so a version always reads as a name plus an id.",
                     "type": "string"
                 },
                 "status": {
                     "description": "active | draft | archived",
+                    "type": "string"
+                },
+                "versionName": {
                     "type": "string"
                 },
                 "zone": {

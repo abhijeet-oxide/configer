@@ -38,7 +38,7 @@ type Result = ParamResult | NavResult;
 
 const NAV: { id: string; label: string; section: string }[] = [
   { id: "nav-overview", label: "Overview", section: "overview" },
-  { id: "nav-configure", label: "Configure", section: "config" },
+  { id: "nav-configure", label: "Parameters", section: "config" },
   { id: "nav-instances", label: "Instances", section: "instances" },
   { id: "nav-changes", label: "Changes", section: "changes" },
   { id: "nav-inbox", label: "Inbox (approvals)", section: "inbox" },
@@ -244,7 +244,7 @@ export default function CommandPalette() {
 
       <div style={{ display: "flex", gap: 16, padding: "8px 16px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-3)" }}>
         <span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span>
-        <span><kbd>↵</kbd> open in Configure</span>
+        <span><kbd>↵</kbd> open in Parameters</span>
         <span><kbd>esc</kbd> close</span>
       </div>
     </Modal>

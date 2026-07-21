@@ -150,21 +150,31 @@ function DetailsTab({
           <Tooltip title="Open the file and jump to this line">
             <Button
               size="small"
-              type="text"
+              type="link"
               icon={<LinkOutlined />}
               onClick={async () => {
                 const inst =
                   grid.instances.find((x) => x.name === selectedInstance) ?? grid.instances[0];
                 const file = expandBinding(s, inst);
-                // Resolve the exact line first (best effort), then open the file
-                // focused on it. A miss just opens the file at the top.
+                // Resolve the exact line first (best effort; YAML/JSON/XML), then
+                // open the file focused on it. A miss just opens at the top.
                 let line: number | undefined;
                 try {
                   line = (await api.locate(file, s.path, s.format)).line || undefined;
                 } catch {
                   // ignore: fall back to opening the file without a line
                 }
-                setFileFocus({ path: file, line, instance: inst?.name });
+                // Hand the instance and version along as provenance only; the
+                // Files explorer stays on "All instances" so this file is always
+                // present (a single-instance filter could hide it entirely).
+                setFileFocus({
+                  path: file,
+                  line,
+                  instance: inst?.name,
+                  version: inst?.softwareVersion,
+                  param: p.name,
+                  allInstances: true,
+                });
                 setSection("files");
               }}
               aria-label="Open in Files at this line"

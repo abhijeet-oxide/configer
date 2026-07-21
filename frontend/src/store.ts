@@ -194,9 +194,22 @@ interface UIState {
    *  instance column, or one cell (kind "cell": id=paramId, inst=instance)
    *  and flash-highlight it (n makes repeats re-trigger) */
   jump: { kind: "param" | "instance" | "cell"; id: string; inst?: string; n: number } | null;
-  /** one-shot handoff into the Files workspace: open this file (optionally
-   *  for a given instance) and reveal a line; the mirror image of `jump` */
-  fileFocus: { path: string; line?: number; instance?: string; n: number } | null;
+  /** one-shot handoff into the Files workspace: open this file and reveal a
+   *  line; the mirror image of `jump`. `instance`/`version`/`param` are
+   *  provenance for a banner (which instance/version the linked value was
+   *  resolved for) - they do NOT filter the explorer, which defaults to all
+   *  instances so the linked file is always present. */
+  fileFocus: {
+    path: string;
+    line?: number;
+    instance?: string;
+    version?: string;
+    param?: string;
+    /** open the "All instances" view rather than filtering to `instance`
+     *  (a parameter link, where a single-instance filter could hide the file) */
+    allInstances?: boolean;
+    n: number;
+  } | null;
   /** one-shot handoff: the change request Approvals should select on open
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
@@ -227,7 +240,16 @@ interface UIState {
   togglePanel: (which: keyof PanelsOpen) => void;
   setImportFocus: (f: string | null) => void;
   setJump: (kind: "param" | "instance" | "cell", id: string, inst?: string) => void;
-  setFileFocus: (f: { path: string; line?: number; instance?: string } | null) => void;
+  setFileFocus: (
+    f: {
+      path: string;
+      line?: number;
+      instance?: string;
+      version?: string;
+      param?: string;
+      allInstances?: boolean;
+    } | null,
+  ) => void;
   setReviewCr: (id: number | null) => void;
   setWelcomeOpen: (open: boolean) => void;
   openNewApp: () => void;

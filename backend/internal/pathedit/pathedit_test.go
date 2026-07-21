@@ -193,9 +193,22 @@ func TestYAMLLine(t *testing.T) {
 	if _, ok := Line([]byte(base), "yaml", "$.missing.path"); ok {
 		t.Error("Line missing: want ok=false")
 	}
-	// XML has no per-node line: locating returns false, never a wrong number.
-	if _, ok := Line([]byte("<a><b>1</b></a>"), "xml", "/a/b"); ok {
-		t.Error("Line xml: want ok=false")
+	// XML locates by re-parsing with the standard decoder: prefixes are matched
+	// on the local name and [n] predicates pick a sibling occurrence.
+	xmlDoc := "<config>\n  <rt:routing>\n    <rt:enabled>true</rt:enabled>\n  </rt:routing>\n  <if:interfaces>\n    <if:interface>\n      <ip:ip>10.0.0.1</ip:ip>\n    </if:interface>\n    <if:interface>\n      <ip:ip>10.0.0.2</ip:ip>\n    </if:interface>\n  </if:interfaces>\n</config>\n"
+	if line, ok := Line([]byte(xmlDoc), "xml", "/config/rt:routing/rt:enabled"); !ok || line != 3 {
+		t.Errorf("Line xml scalar = %d %v, want 3", line, ok)
+	}
+	if line, ok := Line([]byte(xmlDoc), "xml", "/config/if:interfaces/if:interface[2]/ip:ip"); !ok || line != 10 {
+		t.Errorf("Line xml predicate = %d %v, want 10", line, ok)
+	}
+	// An attribute resolves to the line of its owning element.
+	if line, ok := Line([]byte(xmlDoc), "xml", "/config/@ns"); !ok || line != 1 {
+		t.Errorf("Line xml attr = %d %v, want 1", line, ok)
+	}
+	// An unresolved path never returns a wrong number.
+	if _, ok := Line([]byte(xmlDoc), "xml", "/config/missing/leaf"); ok {
+		t.Error("Line xml missing: want ok=false")
 	}
 }
 

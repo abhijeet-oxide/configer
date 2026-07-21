@@ -101,24 +101,25 @@ export const defaultTheme: BrandConfig = {
   appName: "Configer",
   tagline: "Configuration Lifecycle Management",
   navCaption: "CONFIG LIFECYCLE",
-  // A parameter x instance matrix - the product's core idea - not a letter.
-  // Two solid cells on the diagonal, two faded: a grid whose values vary.
+  // Configuration LAYERS: a solid top plate over two receding echo edges - the
+  // base layer and the instance overlays stacked on top. Symmetrical about the
+  // vertical axis; the layers gently breathe (animated in index.css, paused
+  // under prefers-reduced-motion). Rounded joins keep it soft, not spiky.
   logo: {
     svg:
-      "<svg width='18' height='18' viewBox='0 0 20 20' fill='none' xmlns='http://www.w3.org/2000/svg'>" +
-      "<rect x='1.5' y='1.5' width='7' height='7' rx='1.9' fill='white'/>" +
-      "<rect x='11.5' y='1.5' width='7' height='7' rx='1.9' fill='white' fill-opacity='0.45'/>" +
-      "<rect x='1.5' y='11.5' width='7' height='7' rx='1.9' fill='white' fill-opacity='0.45'/>" +
-      "<rect x='11.5' y='11.5' width='7' height='7' rx='1.9' fill='white'/></svg>",
+      "<svg class='cfg-mark' width='19' height='19' viewBox='0 0 24 24' fill='none' " +
+      "stroke-linejoin='round' stroke-linecap='round' xmlns='http://www.w3.org/2000/svg'>" +
+      "<path class='cfg-bot' d='M3.6 15.3 L12 19.8 L20.4 15.3' stroke='white' stroke-width='1.9' stroke-opacity='0.32'/>" +
+      "<path class='cfg-mid' d='M3.6 11.6 L12 16.1 L20.4 11.6' stroke='white' stroke-width='1.9' stroke-opacity='0.58'/>" +
+      "<path class='cfg-top' d='M12 3.6 L20.6 8 L12 12.4 L3.4 8 Z' fill='white'/></svg>",
   },
   favicon:
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
     "<rect width='32' height='32' rx='8' fill='#0057b8'/>" +
-    "<g transform='translate(6 6)'>" +
-    "<rect x='0' y='0' width='8' height='8' rx='2.2' fill='white'/>" +
-    "<rect x='12' y='0' width='8' height='8' rx='2.2' fill='white' fill-opacity='0.45'/>" +
-    "<rect x='0' y='12' width='8' height='8' rx='2.2' fill='white' fill-opacity='0.45'/>" +
-    "<rect x='12' y='12' width='8' height='8' rx='2.2' fill='white'/></g></svg>",
+    "<g fill='none' stroke='white' stroke-linejoin='round' stroke-linecap='round'>" +
+    "<path d='M8 20.4 L16 24.6 L24 20.4' stroke-width='2.4' stroke-opacity='0.32'/>" +
+    "<path d='M8 16.9 L16 21.1 L24 16.9' stroke-width='2.4' stroke-opacity='0.58'/>" +
+    "<path d='M16 6.4 L24 10.5 L16 14.6 L8 10.5 Z' fill='white' stroke='none'/></g></svg>",
   shape: { borderRadius: 6, controlHeight: 30 },
   type: {
     fontFamily:

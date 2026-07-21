@@ -329,6 +329,40 @@ body {
 }
 .logo-tile svg {
   display: block;
+  overflow: visible;
+}
+/* The layers gently breathe: the top plate lifts a hair while the two echo
+   edges settle downward and brighten, on a slow loop. Reads as a living stack
+   of configuration layers. Paused for anyone who prefers reduced motion. */
+.cfg-mark .cfg-top {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: cfg-top 3.6s var(--ease, ease-in-out) infinite;
+}
+.cfg-mark .cfg-mid {
+  animation: cfg-mid 3.6s var(--ease, ease-in-out) infinite;
+}
+.cfg-mark .cfg-bot {
+  animation: cfg-bot 3.6s var(--ease, ease-in-out) infinite;
+}
+@keyframes cfg-top {
+  0%, 100% { transform: translateY(0.4px); }
+  50% { transform: translateY(-0.7px); }
+}
+@keyframes cfg-mid {
+  0%, 100% { transform: translateY(0); stroke-opacity: 0.5; }
+  50% { transform: translateY(1px); stroke-opacity: 0.72; }
+}
+@keyframes cfg-bot {
+  0%, 100% { transform: translateY(0); stroke-opacity: 0.24; }
+  50% { transform: translateY(1.9px); stroke-opacity: 0.44; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cfg-mark .cfg-top,
+  .cfg-mark .cfg-mid,
+  .cfg-mark .cfg-bot {
+    animation: none;
+  }
 }
 
 /* Signature on the hero: the Parameters grid header sits on a branded rule, so

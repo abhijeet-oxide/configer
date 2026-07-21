@@ -2,7 +2,7 @@ import { Dropdown, Badge } from "antd";
 import { useMemo } from "react";
 import { DownOutlined } from "../icons";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "../api";
+import { api, bindingsOf, expandBinding } from "../api";
 import { useUI } from "../store";
 import { useElementSize } from "../hooks";
 
@@ -80,16 +80,46 @@ export default function ConfigurationPage({
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const draftItems = draftQ.data?.draft?.items?.length ?? 0;
+
+  // How many real files the pending edits touch, for the Files tab badge: a
+  // value edit fans out to its parameter's binding files (expanded per
+  // instance), and a direct file edit names its file. Structural
+  // instance changes stage whole folders, counted as one entry each.
+  const changedFiles = useMemo(() => {
+    const grid = gridQ.data;
+    const files = new Set<string>();
+    for (const it of draftQ.data?.draft?.items ?? []) {
+      if (it.action === "edit-file") {
+        if (it.file) files.add(it.file);
+        continue;
+      }
+      if (it.action === "add-instance" || it.action === "remove-instance") {
+        files.add(`instance:${it.instance}`);
+        continue;
+      }
+      const row = grid?.rows.find((r) => r.param.id === it.paramId);
+      if (!row) continue;
+      const inst = grid?.instances.find((i) => i.name === it.instance) ?? null;
+      for (const b of bindingsOf(row.param)) {
+        if (b.file) files.add(expandBinding(b, inst ? { name: inst.name, folder: inst.folder } : null));
+      }
+    }
+    return files.size;
+  }, [draftQ.data, gridQ.data]);
 
   // "drafts" is a legacy alias of the Changes view.
   const active = section === "drafts" ? "changes" : section;
 
   // Count pill a tab carries (drives both display and its width estimate).
   const pillOf = (key: string): number =>
-    key === "config" ? draftItems : key === "changes" || key === "approvals" ? awaiting : key === "drift" ? findings : 0;
+    key === "config" ? draftItems
+      : key === "files" ? changedFiles
+      : key === "changes" || key === "approvals" ? awaiting
+      : key === "drift" ? findings : 0;
 
   const { ref: barRef, width: barW } = useElementSize<HTMLDivElement>();
 
@@ -140,6 +170,7 @@ export default function ConfigurationPage({
           >
             {t.label}
             {t.key === "config" && <CountPill n={draftItems} tone="pending" />}
+            {t.key === "files" && <CountPill n={changedFiles} tone="pending" />}
             {t.key === "changes" && <CountPill n={awaiting} />}
             {t.key === "approvals" && <CountPill n={awaiting} />}
             {t.key === "drift" && <CountPill n={findings} tone="pending" />}

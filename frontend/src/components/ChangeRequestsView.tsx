@@ -5,7 +5,6 @@ import {
   Button,
   Space,
   Popconfirm,
-  Empty,
   Tooltip,
   App as AntApp,
 } from "antd";
@@ -20,11 +19,11 @@ import {
 } from "../icons";
 import { EditOutlined } from "../icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, structuralLabel, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
+import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
-import { ChangeChip, type ChangeKind } from "./ui";
 import { TableSkeleton } from "./Skeletons";
+import { ChangeItemsTable } from "./ChangeItemsTable";
 import { EmptyArt, StatePanel } from "./illustrations";
 
 // ChangeRequestsView is the Release history: every draft, in-review,
@@ -42,56 +41,8 @@ export const categoryColor: Record<string, string> = {
   other: "default",
 };
 
-// The change kind of one item, for the reference's Change chips.
-export function itemKind(it: ChangeItem): ChangeKind {
-  if (it.action === "exclude" || it.action === "reset" || it.action === "remove-instance") return "removed";
-  if (it.old == null || it.old === "") return "added";
-  return "modified";
-}
-
 export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
-  if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
-  return (
-    <Table<ChangeItem>
-      size="small"
-      rowKey={(it) => `${it.paramId}|${it.instance}|${it.file ?? ""}`}
-      dataSource={items}
-      pagination={false}
-      scroll={{ x: "max-content" }}
-      columns={[
-        {
-          title: "Parameter",
-          dataIndex: "paramId",
-          render: (v, it) => <span className="mono">{v || it.file}</span>,
-        },
-        {
-          title: "Instance",
-          dataIndex: "instance",
-          render: (v: string, it: ChangeItem) =>
-            it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
-        },
-        {
-          title: "Left (current)",
-          dataIndex: "old",
-          render: (v) => <span className="mono" style={{ opacity: 0.65 }}>{String(v ?? "-")}</span>,
-        },
-        {
-          title: "Right (proposed)",
-          dataIndex: "new",
-          render: (v, it) => (
-            <span className="mono" style={{ color: "var(--c-ok)" }}>
-              {structuralLabel(it) || String(v ?? "-")}
-            </span>
-          ),
-        },
-        {
-          title: "Change",
-          width: 100,
-          render: (_v, it) => <ChangeChip kind={itemKind(it)} />,
-        },
-      ]}
-    />
-  );
+  return <ChangeItemsTable items={items} />;
 }
 
 export default function ChangeRequestsView() {

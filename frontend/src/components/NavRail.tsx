@@ -101,9 +101,11 @@ export default function NavRail({
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
   const repos = wsQ.data?.repos ?? [];
-  // Inbox badge: everything workspace-wide that needs someone now - open
-  // reviews plus drafts still to be sent.
-  const awaiting = repos.reduce((n, r) => n + (r.drafts || 0) + (r.openChanges || 0), 0);
+  // Inbox badge: only change requests actually awaiting a reviewer (open =
+  // under review or approved). Drafts are the author's unsubmitted work - they
+  // belong on Home and the app's Changes tab, not the reviewer's Inbox - so
+  // counting them here made the badge promise items the Inbox never shows.
+  const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
   const activeKey = railKey(section);
 
   const items: RailItem[] = [

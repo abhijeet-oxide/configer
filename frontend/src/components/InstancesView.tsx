@@ -25,7 +25,7 @@ import InstanceTopology from "./InstanceTopology";
 // Status colors carry meaning (green = active, gold = deprecated, etc.); red is
 // reserved for errors/destructive actions only. Environment identity colors come
 // from the shared envHex source of truth (production indigo, not danger-red).
-const statusColor: Record<string, string> = { active: "green", archived: "default", draft: "blue", deprecated: "gold" };
+const statusColor: Record<string, string> = { active: "green", archived: "default", draft: "orange", deprecated: "gold" };
 
 function parseLabels(s: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -73,7 +73,17 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     setSection("compare");
   };
   const regQ = useQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
-  const instances = useMemo(() => regQ.data?.instances ?? [], [regQ.data]);
+  // The committed registry plus any instance staged in the current draft: a
+  // freshly added instance lives in the grid with status "draft" before it is
+  // written to the registry, so without this it would show as a column in
+  // Parameters yet be missing from this list. Draft entries are appended (and
+  // are never in the registry, so no duplicates).
+  const instances = useMemo(() => {
+    const reg = regQ.data?.instances ?? [];
+    const names = new Set(reg.map((i) => i.name));
+    const draftAdds = grid.instances.filter((i) => i.status === "draft" && !names.has(i.name));
+    return [...reg, ...draftAdds];
+  }, [regQ.data, grid.instances]);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
   const [view, setView] = useState<"table" | "topology">("table");
   const [modal, setModal] = useState<{ mode: "add" | "edit" | "clone"; instance?: Instance } | null>(null);

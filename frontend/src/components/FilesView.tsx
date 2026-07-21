@@ -170,8 +170,16 @@ export default function FilesView() {
     if (fileFocus.instance) setInstance(fileFocus.instance);
     setOnlyManaged(false);
     setTreeQ("");
-    setSelected(fileFocus.path);
-    setReveal(fileFocus.line);
+    // An empty path means "just show this instance's folder" (e.g. jumping to a
+    // freshly staged instance): leave selection to the auto-select effect,
+    // which lands on the first file once the folder renders.
+    if (fileFocus.path) {
+      setSelected(fileFocus.path);
+      setReveal(fileFocus.line);
+    } else {
+      setSelected(null);
+      setReveal(undefined);
+    }
   }, [fileFocus]);
 
   useEffect(() => {

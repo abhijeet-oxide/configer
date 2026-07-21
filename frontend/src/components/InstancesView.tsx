@@ -52,9 +52,16 @@ interface FormValues {
 }
 
 export default function InstancesView({ grid }: { grid: Grid }) {
-  const { message } = AntApp.useApp();
+  const { message, notification } = AntApp.useApp();
   const qc = useQueryClient();
-  const { setCompare, setSection } = useUI();
+  const { setCompare, setSection, setFileFocus } = useUI();
+
+  // Take the user straight to the new instance's staged folder in Files, so a
+  // structural add reads as what it is - new files appearing in the repository.
+  const viewStagedFolder = (name: string) => {
+    setFileFocus({ instance: name, path: "" });
+    setSection("files");
+  };
 
   // Compare from context: seed this instance as the left side (and the nearest
   // other instance as the right) and open Compare already configured, so a
@@ -104,13 +111,26 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     onSuccess: (_r, v) => {
       setModal(null);
       qc.invalidateQueries({ queryKey: ["draft"] });
-      done(
-        v.mode === "edit"
-          ? "Instance change staged in your draft: submit to send it for review"
-          : v.mode === "clone"
-            ? "New instance staged in your draft; preview its folder in Files, then submit for review"
-            : "New instance staged in your draft: submit to send it for review",
-      );
+      qc.invalidateQueries({ queryKey: ["files-draft"] });
+      if (v.mode === "edit") {
+        done("Instance change staged in your draft: submit to send it for review");
+        return;
+      }
+      // A new instance is a new folder in the repository. Refresh the estate,
+      // then point the user straight at those staged files.
+      done("New instance staged in your draft");
+      const name = v.input.name;
+      if (name)
+        notification.success({
+          message: `Instance "${name}" staged`,
+          description: "Its folder will be created in the repository when you submit. You can preview the new files now.",
+          btn: (
+            <Button type="primary" size="small" onClick={() => viewStagedFolder(name)}>
+              View files
+            </Button>
+          ),
+          duration: 8,
+        });
     },
     onError: (e: Error) => message.error(e.message),
   });

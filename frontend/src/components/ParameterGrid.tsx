@@ -51,7 +51,7 @@ import {
   type PresetRule,
   type Row,
 } from "../api";
-import { effectiveRules, fmtValue } from "../rules";
+import { effectiveRules, fmtValue, typeLabel } from "../rules";
 import {
   CellView,
   EnumEditor,
@@ -790,7 +790,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // supporting hint (the full text is always in the details panel), so it stays
   // narrow and truncates.
   const PARAM_W = 240;
-  const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
+  const TYPE_W = prefs.showTypeCol ? 104 : 0; // fits "list<ipv4>" + sort/filter icons
   const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
   const DESC_W = prefs.showDescCol ? 140 : 0;
   const instWidths = useMemo(() => {
@@ -954,7 +954,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         sorter: (a, b) => a.param.type.localeCompare(b.param.type),
         filters: types.map((t) => ({ text: t, value: t })),
         onFilter: (v, r) => r.param.type === v,
-        render: (_v, r) => <Tag>{r.param.type}</Tag>,
+        render: (_v, r) => (
+          <Tooltip title={r.param.type === "list" && r.param.itemType ? `List of ${r.param.itemType} values` : undefined}>
+            <Tag>{typeLabel(r.param.type, r.param.itemType)}</Tag>
+          </Tooltip>
+        ),
       });
     }
     if (prefs.showScopeCol) {

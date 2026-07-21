@@ -2,7 +2,7 @@ import { Tag, Tooltip, Input, InputNumber, Select, Popover, Button, Space, Typog
 import { CheckCircleFilled } from "../../icons";
 import { useRef, useState } from "react";
 import type { Cell, ChangeItem } from "../../api";
-import { validateString, fmtValue, type Rules } from "../../rules";
+import { validateString, validateTyped, fmtValue, type Rules } from "../../rules";
 
 // Cell rendering and the typed inline editors for the parameter grid. Split
 // out of ParameterGrid so the grid file stays about layout and data flow.
@@ -278,11 +278,18 @@ export function ListEditor({
   );
   const tooFew = rules.minItems != null && items.length < rules.minItems;
   const tooMany = rules.maxItems != null && items.length > rules.maxItems;
+  // Per-entry format check against the list's element type (list<ipv4>, …):
+  // the first bad entry names itself so it is obvious which one to fix.
+  const badEntry = rules.formatType
+    ? items.map((it) => ({ it, msg: validateTyped(it, rules.formatType) })).find((x) => x.msg)
+    : undefined;
   const err = tooFew
     ? `At least ${rules.minItems} entr${rules.minItems === 1 ? "y" : "ies"}`
     : tooMany
       ? `At most ${rules.maxItems} entr${rules.maxItems === 1 ? "y" : "ies"}`
-      : null;
+      : badEntry
+        ? `"${badEntry.it}": ${badEntry.msg}`
+        : null;
   return (
     <Popover
       open
@@ -302,7 +309,8 @@ export function ListEditor({
             suffixIcon={null}
           />
           <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 11 }}>
-            {err ?? `${items.length} entr${items.length === 1 ? "y" : "ies"}, one line/element is rendered per entry`}
+            {err ??
+              `${items.length} entr${items.length === 1 ? "y" : "ies"}${rules.formatType ? ` · each a ${rules.formatType}` : ", one line/element per entry"}`}
           </Typography.Text>
           <Space>
             <Button size="small" type="primary" disabled={!!err} onClick={() => onCommit(items)}>

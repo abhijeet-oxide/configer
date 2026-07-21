@@ -35,6 +35,7 @@ import (
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Type        *model.ParamType  `json:"type,omitempty"`
+		ItemType    *model.ParamType  `json:"itemType,omitempty"`
 		Validation  *model.Validation `json:"validation,omitempty"`
 		DisplayName *string           `json:"displayName,omitempty"`
 		Description *string           `json:"description,omitempty"`
@@ -80,6 +81,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	}
 	param, err := writer.UpdateParameter(s.RepoPath, r.PathValue("id"), writer.ParamPatch{
 		Type:        req.Type,
+		ItemType:    req.ItemType,
 		Validation:  req.Validation,
 		DisplayName: req.DisplayName,
 		Description: req.Description,

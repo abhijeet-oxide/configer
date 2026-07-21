@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -137,7 +138,7 @@ func CoerceValue(param model.Parameter, v any) (any, error) {
 // represent that type. Used by the write path before validation.
 func Coerce(t model.ParamType, v any) (any, error) {
 	switch t {
-	case model.TypeInteger:
+	case model.TypeInteger, model.TypePort:
 		switch n := v.(type) {
 		case int:
 			return int64(n), nil
@@ -203,13 +204,49 @@ func checkType(t model.ParamType, v any) Result {
 		if ip == nil || ip.To4() == nil {
 			return invalid("must be a valid IPv4 address")
 		}
+	case model.TypeIPv6:
+		s := fmt.Sprintf("%v", v)
+		ip := net.ParseIP(s)
+		// A valid IPv6 literal parses and is not an IPv4 address.
+		if ip == nil || ip.To4() != nil || !strings.Contains(s, ":") {
+			return invalid("must be a valid IPv6 address")
+		}
 	case model.TypeCIDR:
 		if _, _, err := net.ParseCIDR(fmt.Sprintf("%v", v)); err != nil {
 			return invalid("must be a valid CIDR block")
 		}
+	case model.TypePort:
+		n, err := strconv.Atoi(strings.TrimSpace(fmt.Sprintf("%v", v)))
+		if err != nil || n < 1 || n > 65535 {
+			return invalid("must be a port number between 1 and 65535")
+		}
+	case model.TypeHostname:
+		if !hostnameRe.MatchString(fmt.Sprintf("%v", v)) {
+			return invalid("must be a valid hostname")
+		}
+	case model.TypeEmail:
+		if !emailRe.MatchString(fmt.Sprintf("%v", v)) {
+			return invalid("must be a valid email address")
+		}
+	case model.TypeURL:
+		s := fmt.Sprintf("%v", v)
+		if u, err := url.Parse(s); err != nil || u.Scheme == "" || u.Host == "" {
+			return invalid("must be a valid URL (including scheme, e.g. https://…)")
+		}
+	case model.TypeMAC:
+		if _, err := net.ParseMAC(fmt.Sprintf("%v", v)); err != nil {
+			return invalid("must be a valid MAC address")
+		}
 	}
 	return ok()
 }
+
+// Format helpers for the operational scalar types. Kept deliberately practical
+// rather than RFC-exhaustive: they catch the mistakes people actually make.
+var (
+	hostnameRe = regexp.MustCompile(`^(?i)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`)
+	emailRe    = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+)
 
 // applyRules enforces the explicit rule fields against the value's string form.
 func applyRules(val model.Validation, s string) Result {

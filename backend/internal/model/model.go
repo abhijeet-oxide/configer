@@ -64,7 +64,17 @@ const (
 	TypeNumber  ParamType = "number"
 	TypeEnum    ParamType = "enum"
 	TypeIPv4    ParamType = "ipv4"
+	TypeIPv6    ParamType = "ipv6"
 	TypeCIDR    ParamType = "cidr"
+	// TypeHostname / TypePort / TypeEmail / TypeURL / TypeMAC are common
+	// operational scalar types. They validate through the same checkType path
+	// (and compose as list element types), giving lists like "list of ipv6" or
+	// "list of hostname" real per-entry validation.
+	TypeHostname ParamType = "hostname"
+	TypePort     ParamType = "port"
+	TypeEmail    ParamType = "email"
+	TypeURL      ParamType = "url"
+	TypeMAC      ParamType = "mac"
 	// TypeList holds an ordered collection; ItemType declares the element
 	// type. Instances may hold different lengths: this is how one instance
 	// carries 1 NTP server and another 10.

@@ -17,13 +17,20 @@ import { relTime } from "./DashboardView";
 // and valued, rendered nowhere until attached.
 
 const scopeOptions: Scope[] = ["global", "instance"];
-const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
+const typeOptions = [
+  "string", "integer", "number", "boolean", "enum",
+  "ipv4", "ipv6", "cidr", "port", "hostname", "email", "url", "mac",
+  "list",
+];
+// A list's element type: any scalar type (not another list).
+const itemTypeOptions = typeOptions.filter((t) => t !== "list" && t !== "enum");
 
 interface EditValues {
   displayName?: string;
   description?: string;
   category: string;
   type: string;
+  itemType?: string;
   scope: Scope;
   secret: boolean;
   default?: string;
@@ -91,6 +98,7 @@ function DetailsTab({
       description: p.description,
       category: p.category,
       type: p.type,
+      itemType: p.itemType ?? "string",
       scope: p.scope,
       secret: p.secret,
       default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
@@ -104,6 +112,9 @@ function DetailsTab({
       description: v.description ?? "",
       category: v.category,
       type: v.type,
+      // itemType is only meaningful for a list; clear it otherwise so a
+      // parameter that stops being a list does not carry a stale element type.
+      itemType: v.type === "list" ? v.itemType || "string" : "",
       scope: v.scope,
       secret: v.secret,
       ...(d !== undefined ? { default: d } : {}),
@@ -176,6 +187,15 @@ function DetailsTab({
           </Form.Item>
           <Form.Item name="type" label="Data type" style={{ width: 110, marginBottom: 8 }}>
             <Select options={typeOptions.map((t) => ({ value: t, label: t }))} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.type !== cur.type}>
+            {({ getFieldValue }) =>
+              getFieldValue("type") === "list" ? (
+                <Form.Item name="itemType" label="Each entry is" style={{ width: 120, marginBottom: 8 }}>
+                  <Select options={itemTypeOptions.map((t) => ({ value: t, label: t }))} />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>

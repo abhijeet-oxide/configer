@@ -388,6 +388,46 @@ body {
 
 /* ------------------------------------------------------------- settings */
 
+/* One continuous settings surface built of full-width section bands: the
+   section name in a fixed left column, its settings filling the rest. Every
+   band is exactly as tall as its content (no equal-height padding, so no
+   dead pockets under short sections), and a hairline divides band from band.
+   Narrow windows stack the title above its settings. */
+.settings-surface {
+  background: var(--surface);
+  border-radius: var(--r-xl);
+  box-shadow: var(--el-1);
+  overflow: hidden;
+}
+.settings-section {
+  display: grid;
+  grid-template-columns: 200px minmax(0, 1fr);
+  gap: 6px 48px;
+  padding: 18px 24px 20px;
+}
+.settings-section + .settings-section {
+  border-top: 1px solid var(--border);
+}
+.settings-section-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  padding-top: 10px; /* optically aligns with the first row's title */
+}
+.settings-section-body {
+  min-width: 0;
+}
+@media (max-width: 760px) {
+  .settings-section {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+  .settings-section-title {
+    padding-top: 0;
+  }
+}
+
 /* The Settings page's profile avatar: the rail card's square mark, grown up. */
 .settings-avatar {
   width: 56px;

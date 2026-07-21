@@ -15,7 +15,7 @@ import { useIdentity } from "../identity";
 import { useTimeSettings } from "../timefmt";
 import { envHex } from "../theme";
 import { zoneOffsetLabel } from "../settings";
-import { StatusPill, SectionCard } from "./ui";
+import { StatusPill } from "./ui";
 import MembersModal from "./MembersModal";
 import {
   DensityControl,
@@ -30,7 +30,10 @@ import {
 // card and the top-bar avatar menu. Every control applies instantly (there is
 // no Save button to forget) and persists on this device.
 //
-// Structure is one Row per setting inside one SectionCard per topic; adding a
+// Structure: ONE continuous surface of full-width section bands - title on
+// the left, settings filling the rest - divided by hairlines. Every band is
+// exactly as tall as its content, so there are no gaps between cards and no
+// dead pockets under short sections. Each setting is one Row; adding a
 // future setting is one row here plus its control in PreferenceControls.
 
 // Row is the settings primitive: name + plain-words description on the left,
@@ -166,18 +169,11 @@ export default function SettingsView() {
           )}
         </div>
 
-        <div
-          style={{
-            display: "grid",
-            // auto-fit collapses unused tracks, so on very wide monitors the
-            // cards stretch to share the whole row instead of leaving a gap.
-            gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
-            gap: 16,
-            alignItems: "start",
-          }}
-        >
+        <div className="settings-surface">
         {/* ---- appearance ---- */}
-        <SectionCard title="Appearance">
+        <section className="settings-section">
+          <h2 className="settings-section-title">Appearance</h2>
+          <div className="settings-section-body">
           <Row
             stacked
             title="Theme"
@@ -196,10 +192,13 @@ export default function SettingsView() {
             description="Compact tightens controls and tables to fit more on screen."
             control={<DensityControl />}
           />
-        </SectionCard>
+          </div>
+        </section>
 
         {/* ---- region & time ---- */}
-        <SectionCard title="Region &amp; time">
+        <section className="settings-section">
+          <h2 className="settings-section-title">Region &amp; time</h2>
+          <div className="settings-section-body">
           <Row
             stacked
             title="Time zone"
@@ -217,10 +216,13 @@ export default function SettingsView() {
             description="Automatic follows your device's language setting."
             control={<HourCycleControl />}
           />
-        </SectionCard>
+          </div>
+        </section>
 
         {/* ---- access ---- */}
-        <SectionCard title="Access">
+        <section className="settings-section">
+          <h2 className="settings-section-title">Access</h2>
+          <div className="settings-section-body">
           <Row
             title={activeApp ? `Your role on ${activeApp.name}` : "Your role"}
             description={roleExplains}
@@ -267,10 +269,13 @@ export default function SettingsView() {
               To add teammates with separate roles, configure GitHub sign-in on the deployment.
             </div>
           )}
-        </SectionCard>
+          </div>
+        </section>
 
         {/* ---- this deployment ---- */}
-        <SectionCard title="This deployment">
+        <section className="settings-section">
+          <h2 className="settings-section-title">This deployment</h2>
+          <div className="settings-section-body">
           <Row
             title={meta ? `${meta.name} ${meta.version}` : "Configer"}
             description={
@@ -307,7 +312,8 @@ export default function SettingsView() {
               </Button>
             }
           />
-        </SectionCard>
+          </div>
+        </section>
         </div>
 
         <div style={{ marginTop: 16, fontSize: "var(--fs-11)", color: "var(--text-3)" }}>

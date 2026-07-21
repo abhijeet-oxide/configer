@@ -13,7 +13,6 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
 import { useActivity } from "../activity";
-import { ActivitySparkline } from "./charts";
 import { useUI } from "../store";
 import { envHex } from "../theme";
 import { StatTile, SectionCard, AttentionCard, AppContextChips, StatusPill, Stagger, StaggerItem } from "./ui";
@@ -152,15 +151,6 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const findings = findingsQ.data?.findings ?? [];
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);
   const gitUrl = repo?.origin?.startsWith("http") ? repo.origin : undefined;
-
-  // change activity per day, last 14 days
-  const days: { label: string; count: number }[] = [];
-  for (let d = 13; d >= 0; d--) {
-    const day = new Date(Date.now() - d * 86400_000);
-    const key = day.toISOString().slice(0, 10);
-    const count = (changesQ.data ?? []).filter((c) => c.updatedAt?.slice(0, 10) === key).length;
-    days.push({ label: key.slice(5), count });
-  }
 
   // Jump straight to the first broken cell (the editor scrolls + flashes it).
   const fixFirstInvalid = () => {
@@ -431,13 +421,6 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                 )}
               />
             )}
-          </SectionCard>
-
-          <SectionCard title="Changes over time (14 days)">
-            <ActivitySparkline days={days} width={280} height={90} />
-            <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: 4 }}>
-              {(changesQ.data ?? []).length} change{(changesQ.data ?? []).length === 1 ? "" : "s"} total
-            </div>
           </SectionCard>
 
           <SectionCard

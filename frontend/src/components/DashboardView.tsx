@@ -7,6 +7,7 @@ import {
   MoreOutlined,
   PullRequestOutlined,
   HistoryOutlined,
+  GithubOutlined,
 } from "../icons";
 import UserAvatar from "./UserAvatar";
 import { useState } from "react";
@@ -150,7 +151,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const st = statusQ.data;
   const findings = findingsQ.data?.findings ?? [];
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);
+  // A browsable web URL for the repository. GitHub gets its own label and
+  // icon; any other http(s) remote falls back to a generic "View in Git".
   const gitUrl = repo?.origin?.startsWith("http") ? repo.origin : undefined;
+  const isGitHub = !!gitUrl && /(^|\.)github\.com/i.test(gitUrl);
 
   // Jump straight to the first broken cell (the editor scrolls + flashes it).
   const fixFirstInvalid = () => {
@@ -236,8 +240,14 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <AppContextChips />
           <div style={{ flex: 1 }} />
           {gitUrl && (
-            <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
-              View in Git
+            <Button
+              size="small"
+              icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />}
+              href={gitUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {isGitHub ? "Open in GitHub" : "View in Git"}
             </Button>
           )}
           <Dropdown

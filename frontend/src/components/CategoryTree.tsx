@@ -41,7 +41,7 @@ function ancestorPrefixes(name: string): string[] {
 }
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectParam, selectedParamId, setJump } = useUI();
+  const { categoryKey, setCategory, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
   const [filter, setFilter] = useState("");
   const [showFull, setShowFull] = useState(false);
   const { ref, height } = useElementSize<HTMLDivElement>();
@@ -203,8 +203,17 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
               // A group node filters the grid to that name prefix. It also
               // clears the parameter selection: "All Parameters" (or any
               // category) means the whole view again, so the ?param=
-              // refinement must leave the URL too.
-              setCategory(k === "__all__" ? null : k);
+              // refinement must leave the URL too. Picking "All Parameters" is
+              // an explicit "show everything", so it also lifts the hidden row
+              // filters (invalid-only, overrides-only, hide-n/a) - otherwise the
+              // list can stay narrowed for a reason nothing on screen explains.
+              if (k === "__all__") {
+                setCategory(null);
+                if (filters.invalidOnly || filters.overriddenOnly || filters.hideNA)
+                  setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
+              } else {
+                setCategory(k);
+              }
               selectParam(null);
             }}
             filterTreeNode={filter ? (node) => node.searchText.includes(filter) : undefined}

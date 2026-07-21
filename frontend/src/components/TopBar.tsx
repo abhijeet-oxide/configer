@@ -10,7 +10,7 @@ import {
   Typography,
   type InputRef,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined } from "../icons";
+import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -69,8 +69,9 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   // so the breadcrumb reads Applications / <name> / <tab>.
   const inApp = APP_BREADCRUMB_SECTIONS.has(section);
   const tabLabel = TAB_LABELS[section];
-  // "View in Git" opens the repository at its hosting provider.
+  // Opens the repository at its hosting provider; GitHub gets its own label.
   const gitUrl = activeRepo?.origin?.startsWith("http") ? activeRepo.origin : undefined;
+  const isGitHub = !!gitUrl && /(^|\.)github\.com/i.test(gitUrl);
 
   // Cmd/Ctrl-K is owned by the command palette (a richer jump-to-anything
   // surface); this box stays a quick filter of the current view.
@@ -177,8 +178,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
       </Tooltip>
       <Space size={4} style={{ flexShrink: 0 }}>
         {inApp && gitUrl && (
-          <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
-            View in Git
+          <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">
+            {isGitHub ? "Open in GitHub" : "View in Git"}
           </Button>
         )}
         <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>

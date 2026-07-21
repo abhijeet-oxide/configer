@@ -495,7 +495,7 @@ function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) =>
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -1138,6 +1138,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
 
+  // Any dimension that narrows the visible rows. Several are independent (the
+  // parameter tree's category, the Changed/Added/Removed pill, the row filters,
+  // and both search boxes), so "All Parameters" alone never guarantees the full
+  // list. A single count-with-Clear makes the narrowing visible and gives one
+  // reliable way back to everything.
+  const total = grid.rows.length;
+  const isFiltered =
+    !!categoryKey || pill !== "all" || !!q || !!lq || activeFilters > 0;
+  const clearAllFilters = () => {
+    setCategory(null);
+    selectParam(null);
+    setPill("all");
+    setLocalQ("");
+    setSearch("");
+    setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
+  };
+
   // The editor stays editing-focused: the table fills the available height.
   // Category inventory lives in the Overview dashboard, not here.
   const availH = Math.max(bodyH - headerH, 120);
@@ -1268,7 +1285,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             ]}
           />
         )}
-        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0 }}>{rows.length}</span>
+        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+          {isFiltered ? `${rows.length} of ${total}` : rows.length}
+        </span>
+        {isFiltered && (
+          <Tooltip title="Clear the category, filters and search - show every parameter">
+            <Button size="small" type="link" style={{ padding: "0 2px", height: "auto", flexShrink: 0 }} onClick={clearAllFilters}>
+              Clear filters
+            </Button>
+          </Tooltip>
+        )}
         {q && (
           <Tag
             color="blue"

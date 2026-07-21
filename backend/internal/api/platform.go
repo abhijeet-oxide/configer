@@ -400,6 +400,38 @@ func (h *Hub) requireUser(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
+// myRole reports the caller's own effective role on one application, so the
+// UI can show it (profile card, settings) without the admin-only member
+// roster. It leaks nothing about anyone else.
+//
+// @Summary     My role on an application
+// @Description The caller's effective role (viewer, editor, approver) on one application, plus the deployment admin flag. In single-user mode (login not configured) the caller has every capability.
+// @Tags        Platform
+// @Produce     json
+// @Param       id path string true "Repository id"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Security    CookieSession
+// @Router      /api/repos/{id}/role [get]
+func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
+	if !h.auth.Enabled() {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"enabled": false, "role": store.RoleApprover, "admin": true,
+		})
+		return
+	}
+	u, ok := auth.UserFrom(r.Context())
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"enabled": true,
+		"role":    h.effectiveRole(r, r.PathValue("id"), u),
+		"admin":   u.Admin,
+	})
+}
+
 // requireAdmin allows deployment admins (or anyone when auth is disabled -
 // single-user mode has no roles to protect).
 func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {

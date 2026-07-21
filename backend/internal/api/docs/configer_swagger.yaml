@@ -2253,6 +2253,34 @@ paths:
       summary: Remove a member's role
       tags:
       - Platform
+  /api/repos/{id}/role:
+    get:
+      description: The caller's effective role (viewer, editor, approver) on one application,
+        plus the deployment admin flag. In single-user mode (login not configured)
+        the caller has every capability.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: My role on an application
+      tags:
+      - Platform
   /api/scan:
     post:
       description: 'Read-only ingest scan: detect config files and extract candidate

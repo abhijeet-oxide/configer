@@ -2347,6 +2347,47 @@
                 }
             }
         },
+        "/api/repos/{id}/role": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "The caller's effective role (viewer, editor, approver) on one application, plus the deployment admin flag. In single-user mode (login not configured) the caller has every capability.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "My role on an application",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/scan": {
             "post": {
                 "description": "Read-only ingest scan: detect config files and extract candidate parameters. Nothing is written; use import to promote candidates.",

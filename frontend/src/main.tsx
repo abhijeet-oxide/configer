@@ -50,14 +50,33 @@ const queryClient = new QueryClient({
 // consume via AntApp.useApp().
 function ThemeRoot() {
   const mode = useUI((s) => s.mode)
+  const themePref = useUI((s) => s.themePref)
   const fontScale = useUI((s) => s.fontScale)
+  const density = useUI((s) => s.density)
   React.useEffect(() => {
     // Expose the mode to plain CSS (tokens.css) for non-AntD surfaces.
     document.documentElement.dataset.theme = mode
     document.documentElement.style.colorScheme = mode
   }, [mode])
+  React.useEffect(() => {
+    // Density and font scale for the hand-rolled surfaces (grid, rail).
+    document.documentElement.dataset.density = density
+    document.documentElement.dataset.fontscale = fontScale
+  }, [density, fontScale])
+  // "Follow system": track the OS setting live for as long as it is chosen.
+  React.useEffect(() => {
+    if (themePref !== 'system' || !window.matchMedia) return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const apply = () => useUI.getState().applySystemMode(mq.matches ? 'dark' : 'light')
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [themePref])
   return (
-    <ConfigProvider theme={buildTheme(mode, fontScale)}>
+    <ConfigProvider
+      theme={buildTheme(mode, fontScale, density)}
+      componentSize={density === 'compact' ? 'small' : 'middle'}
+    >
       <AntApp>
         <GlobalFeedback />
         <App />

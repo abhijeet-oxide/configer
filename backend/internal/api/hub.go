@@ -230,6 +230,7 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("POST /api/repos", h.connect)
 	mux.HandleFunc("PATCH /api/repos/{id}", h.rename)
 	mux.HandleFunc("DELETE /api/repos/{id}", h.disconnect)
+	mux.HandleFunc("GET /api/repos/{id}/role", h.myRole)
 	mux.HandleFunc("GET /api/repos/{id}/members", h.members)
 	mux.HandleFunc("PUT /api/repos/{id}/members", h.setMember)
 	mux.HandleFunc("DELETE /api/repos/{id}/members/{login}", h.removeMember)

@@ -388,6 +388,32 @@ body {
 
 /* ------------------------------------------------------------- settings */
 
+/* One continuous settings surface. The 1px grid gap lets the container's
+   border-color background show through as hairline dividers, so the sections
+   read as regions of ONE panel (equal-height columns, unbroken lines), never
+   as floating cards with gaps. Columns pack to the window width. */
+.settings-surface {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--el-1);
+  overflow: hidden;
+}
+.settings-cell {
+  background: var(--surface);
+  padding: 14px 20px 18px;
+  min-width: 0;
+}
+.settings-cell-title {
+  font-size: var(--fs-13);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0;
+  padding: 2px 0 8px;
+}
+
 /* The Settings page's profile avatar: the rail card's square mark, grown up. */
 .settings-avatar {
   width: 56px;

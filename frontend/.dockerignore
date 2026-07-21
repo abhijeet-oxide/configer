@@ -1,0 +1,9 @@
+# Keep the build context small and cache-friendly. node_modules is the big one:
+# it must be installed inside the image (npm ci), never copied from the host.
+node_modules/
+dist/
+Dockerfile
+.dockerignore
+.env
+.env.*
+*.log

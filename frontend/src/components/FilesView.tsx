@@ -26,7 +26,7 @@ import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
 import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
-import { languageFor } from "../monaco";
+import { languageFor } from "../monacoLang";
 import FileExplorer from "./FileExplorer";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));

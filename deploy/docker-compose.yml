@@ -2,8 +2,9 @@
 # platform database: users, sessions, roles, audit). The backend serves the
 # grid from a mounted Git working tree; Git remains the single source of
 # truth for all configuration.
-
-version: '3.8'
+#
+# (No top-level `version:` key - it is obsolete under Compose v2 and only
+# produces a warning.)
 
 services:
   backend:
@@ -17,11 +18,11 @@ services:
       CONFIGER_VERSION: 0.1.0
       CONFIGER_LOG_LEVEL: info
       CONFIGER_SYNC_SECONDS: 30
-      
+
       # Git configuration
       CONFIGER_GIT_NAME: Configer Bot
       CONFIGER_GIT_EMAIL: bot@configer.local
-      
+
       # Platform database: Postgres in this stack (an embedded SQLite file is
       # the default when unset - fine for single-node deployments).
       DATABASE_URL: postgres://configer:configer@postgres:5432/configer
@@ -35,14 +36,17 @@ services:
       # CONFIGER_DEFAULT_ROLE: editor
     volumes:
       # Read-write: Configer commits edits into the repo's real files
-      # (write-back-native model).
+      # (write-back-native model). The backend image runs as uid 10001, so the
+      # mounted tree must be writable by it - for this bundled demo run once:
+      #   sudo chown -R 10001:10001 ../sample-repo
       - ../sample-repo:/repo
     ports:
       - "8080:8080"
     depends_on:
       - postgres
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      # The binary probes its own /api/health; no curl needed in the image.
+      test: ["CMD", "configer", "-healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -51,19 +55,15 @@ services:
   frontend:
     build:
       context: ../frontend
-      args:
-        VITE_API_URL: http://backend:8080
-        VITE_APP_NAME: Configer
-        VITE_APP_VERSION: 0.1.0
-    environment:
-      VITE_API_URL: http://backend:8080
     depends_on:
       backend:
         condition: service_healthy
+    # The unprivileged nginx image listens on 8080 as a non-root user.
     ports:
-      - "8088:80"
+      - "8088:8080"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost/"]
+      # busybox wget ships in the nginx-alpine image; no curl needed.
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/"]
       interval: 30s
       timeout: 10s
       retries: 3

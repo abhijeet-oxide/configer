@@ -3,7 +3,7 @@ import {
   Segmented, Tooltip, App as AntApp,
 } from "antd";
 import {
-  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined,
+  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined, DownloadOutlined,
 } from "../icons";
 import { useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
@@ -87,6 +87,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
   const [view, setView] = useState<"table" | "topology">("table");
   const [modal, setModal] = useState<{ mode: "add" | "edit" | "clone"; instance?: Instance } | null>(null);
+  const [copyInto, setCopyInto] = useState<{ target: string; source?: string } | null>(null);
   const [form] = Form.useForm<FormValues>();
   const nameRef = useRef<InputRef>(null);
 
@@ -156,6 +157,22 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   const setStatus = useMutation({
     mutationFn: (p: { name: string; status: string }) => api.updateInstance(p.name, { status: p.status, author: "demo-user" }),
     onSuccess: (_r, p) => done(p.status === "archived" ? "Archive staged in your draft: submit to apply" : "Activation staged in your draft: submit to apply"),
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  const copyValues = useMutation({
+    mutationFn: (p: { target: string; source: string }) => api.copyInstanceFrom(p.target, p.source),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+      setCopyInto(null);
+      if (res.staged === 0) {
+        message.info(`Nothing to copy: values already match ${res.source}`);
+      } else {
+        message.success(`Staged ${res.staged} value${res.staged === 1 ? "" : "s"} copied from ${res.source}`);
+      }
+    },
     onError: (e: Error) => message.error(e.message),
   });
 
@@ -326,6 +343,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
                   <Tooltip title="Clone this instance (copies its values)">
                     <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => openModal("clone", i)} />
                   </Tooltip>
+                  <Tooltip title="Copy values into this instance from another">
+                    <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => setCopyInto({ target: i.name })} />
+                  </Tooltip>
                   {archived ? (
                     <Tooltip title="Reactivate">
                       <Button size="small" type="text" icon={<RollbackOutlined />} loading={setStatus.isPending}
@@ -433,6 +453,31 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             <Input placeholder="tier=gold, tenant=acme" />
           </Form.Item>
         </Form>
+      </Modal>
+
+      <Modal
+        open={!!copyInto}
+        title={copyInto ? `Copy values into ${copyInto.target}` : "Copy values"}
+        onCancel={() => setCopyInto(null)}
+        okText="Stage in draft"
+        okButtonProps={{ disabled: !copyInto?.source, loading: copyValues.isPending }}
+        onOk={() => copyInto?.source && copyValues.mutate({ target: copyInto.target, source: copyInto.source })}
+        destroyOnHidden
+      >
+        <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+          Copy every parameter value that differs from another instance into{" "}
+          <span className="mono">{copyInto?.target}</span>. Each becomes a pending change you
+          review before publishing; matching values are left alone.
+        </Typography.Paragraph>
+        <Select
+          style={{ width: "100%" }}
+          placeholder="Copy values from…"
+          value={copyInto?.source}
+          onChange={(v) => setCopyInto((c) => (c ? { ...c, source: v } : c))}
+          options={instances
+            .filter((i) => i.name !== copyInto?.target && (i.status || "active") !== "archived")
+            .map((i) => ({ value: i.name, label: i.name }))}
+        />
       </Modal>
     </div>
   );

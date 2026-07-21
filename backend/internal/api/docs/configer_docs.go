@@ -1502,6 +1502,64 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/instances/{name}/copy-from": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage, into the draft, every parameter whose effective value on the ` + "`" + `source` + "`" + ` instance differs from this instance's, seeding one instance from another. Only per-instance parameters are copied; nothing touches Git until the draft is submitted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Copy values from another instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target instance name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "source, author",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Instance not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/locate": {
             "get": {
                 "description": "Returns the 1-based line of the value at ` + "`" + `path` + "`" + ` inside ` + "`" + `file` + "`" + ` (YAML/JSON; XML returns 0). Lets the Details pane jump to the exact line a parameter is defined on.",
@@ -2729,6 +2787,57 @@ const docTemplateconfiger = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/values/bulk": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage the same parameter's edit on several instances at once. ` + "`" + `edits` + "`" + ` is a list of ` + "`" + `{instance, value}` + "`" + `; ` + "`" + `action` + "`" + ` defaults to \"set\" (\"reset\"/\"exclude\" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in ` + "`" + `results` + "`" + ` while valid ones still stage. Nothing touches Git until the draft is submitted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Stage a value edit across many instances",
+                "parameters": [
+                    {
+                        "description": "paramId, action, edits[]",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Parameter not found",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }

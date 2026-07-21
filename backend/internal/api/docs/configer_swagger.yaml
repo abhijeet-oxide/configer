@@ -1679,6 +1679,46 @@ paths:
       summary: Update an instance
       tags:
       - Instances
+  /api/instances/{name}/copy-from:
+    post:
+      consumes:
+      - application/json
+      description: Stage, into the draft, every parameter whose effective value on
+        the `source` instance differs from this instance's, seeding one instance from
+        another. Only per-instance parameters are copied; nothing touches Git until
+        the draft is submitted.
+      parameters:
+      - description: Target instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: source, author
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Instance not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Copy values from another instance
+      tags:
+      - Editing & change requests
   /api/locate:
     get:
       description: Returns the 1-based line of the value at `path` inside `file` (YAML/JSON;
@@ -2525,6 +2565,42 @@ paths:
       security:
       - CookieSession: []
       summary: Stage a value edit
+      tags:
+      - Editing & change requests
+  /api/values/bulk:
+    put:
+      consumes:
+      - application/json
+      description: Stage the same parameter's edit on several instances at once. `edits`
+        is a list of `{instance, value}`; `action` defaults to "set" ("reset"/"exclude"
+        drop the override and ignore value). Each value is coerced and validated independently;
+        invalid targets are reported in `results` while valid ones still stage. Nothing
+        touches Git until the draft is submitted.
+      parameters:
+      - description: paramId, action, edits[]
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Parameter not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Stage a value edit across many instances
       tags:
       - Editing & change requests
   /api/workspace:

@@ -920,6 +920,15 @@ export const api = {
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
+  // Fan a single parameter's edit across many instances in one request. Each
+  // target reports success or a per-target error; valid targets still stage.
+  bulkSetValue: (p: { paramId: string; edits: { instance: string; value?: unknown }[]; action?: CellAction }) =>
+    put<{ ok: boolean; staged: number; results: { instance: string; ok: boolean; error?: string }[]; pending: number; changeId: number }>(
+      rp("/values/bulk"), p),
+  // Seed one instance from another: stage every parameter whose value differs.
+  copyInstanceFrom: (target: string, source: string) =>
+    send<{ ok: boolean; staged: number; source: string; pending: number; changeId: number }>(
+      "POST", rp(`/instances/${encodeURIComponent(target)}/copy-from`), { source }),
   addParameter: (param: Partial<Parameter>, author?: string) =>
     send<Parameter>("POST", rp("/parameters"), { param, author }),
   // --- instances (registry lifecycle) ---

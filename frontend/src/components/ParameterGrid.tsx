@@ -610,19 +610,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
-  // Fan-out write: stage the same value on many instances at once (the whole
-  // reason a grid beats editing files one by one). Applied sequentially so a
-  // rejection surfaces against a real instance; queries refresh once at the end.
+  // Fan-out write: stage the same value on many instances in ONE request (the
+  // whole reason a grid beats editing files one by one). The backend reports
+  // per-target results, so a rejection on one instance still stages the rest.
   const bulkSave = useMutation({
-    mutationFn: async (p: { paramId: string; value: unknown; targets: string[] }) => {
-      for (const t of p.targets) await api.setValue({ instance: t, paramId: p.paramId, value: p.value });
-    },
-    onSuccess: (_r, vars) => {
+    mutationFn: (p: { paramId: string; value: unknown; targets: string[] }) =>
+      api.bulkSetValue({ paramId: p.paramId, edits: p.targets.map((t) => ({ instance: t, value: p.value })) }),
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
       qc.invalidateQueries({ queryKey: ["render"] });
-      message.success(`Set on ${vars.targets.length} instance${vars.targets.length === 1 ? "" : "s"}`);
+      const failed = res.results.filter((r) => !r.ok);
+      if (failed.length) {
+        message.warning(`Set on ${res.staged}; ${failed.length} could not be set (${failed[0].error})`);
+      } else {
+        message.success(`Set on ${res.staged} instance${res.staged === 1 ? "" : "s"}`);
+      }
       setBulkSet(null);
     },
     onError: (e: Error) => message.error(`Rejected: ${e.message}`),

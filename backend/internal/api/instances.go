@@ -15,6 +15,7 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
@@ -281,5 +282,96 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	s.stageStructural(w, author(r, req.Author), change.Item{
 		Instance: name,
 		Action:   change.ActionRemoveInstance,
+	})
+}
+
+// copyInstanceValues stages every parameter value that differs between a source
+// instance and this one, so an operator can seed a new instance from an
+// existing one ("make prod-eu like prod-us") in a single reviewable draft
+// instead of copying each cell by hand. Only parameters settable per instance
+// on the target are considered; parameters whose value already matches are
+// skipped.
+//
+// @Summary     Copy values from another instance
+// @Description Stage, into the draft, every parameter whose effective value on the `source` instance differs from this instance's, seeding one instance from another. Only per-instance parameters are copied; nothing touches Git until the draft is submitted.
+// @Tags        Editing & change requests
+// @Accept      json
+// @Produce     json
+// @Param       name path string true "Target instance name"
+// @Param       body body object true "source, author"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Malformed body"
+// @Failure     404 {object} APIError "Instance not found"
+// @Security    CookieSession
+// @Router      /api/instances/{name}/copy-from [post]
+func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
+	target := r.PathValue("name")
+	var req struct {
+		Source string `json:"source"`
+		Author string `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
+		return
+	}
+	if req.Source == target {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "source and target are the same instance")
+		return
+	}
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	tgt, ok := p.InstanceByName(target)
+	if !ok {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance "+target+" not found")
+		return
+	}
+	src, ok := p.InstanceByName(req.Source)
+	if !ok {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "source instance "+req.Source+" not found")
+		return
+	}
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	rv := resolver.New(p.Root)
+	staged := 0
+	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		for i := range p.Catalog.Parameters {
+			param := p.Catalog.Parameters[i]
+			if len(param.BindingsOn(model.LayerInstance, tgt)) == 0 {
+				continue // not settable per instance on the target
+			}
+			sres := rv.Resolve(param, src)
+			if !sres.Set {
+				continue // source has no value to copy
+			}
+			if stringify(sres.Value) == stringify(rv.Resolve(param, tgt).Value) {
+				continue // already identical
+			}
+			if ok, _ := stageSetItem(cr, param, target, tgt, sres.Value, rv); ok {
+				staged++
+			}
+		}
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	d := s.Store.CurrentDraft()
+	pending, changeID := 0, draft.ID
+	if d != nil {
+		pending, changeID = len(d.Items), d.ID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "staged": staged, "source": req.Source, "pending": pending, "changeId": changeID,
 	})
 }

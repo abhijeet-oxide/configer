@@ -1848,9 +1848,11 @@ paths:
       - Grid & parameters
   /api/parameters/{id}/history:
     get:
-      description: Resolves one parameter's effective value at each recent config
-        commit, so the inspector can show how it changed over time. `?instance=` resolves
-        for that instance; otherwise the catalog default is used.
+      description: Resolves one parameter's effective value at each recent commit
+        that touched the cell's backing files (the parameter's bindings plus .configer),
+        so the inspector can show how it changed over time and who last changed it
+        (`lastChange`). `?instance=` resolves for that instance; otherwise the catalog
+        default is used.
       parameters:
       - description: Parameter id (slug)
         in: path

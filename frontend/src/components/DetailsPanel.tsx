@@ -596,6 +596,7 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
     queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
   });
   const entries = q.data?.entries ?? [];
+  const lastChange = q.data?.lastChange ?? null;
   const supported = q.data?.supported ?? true;
 
   if (q.isLoading) return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Loading history…</Typography.Text>;
@@ -610,6 +611,26 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
 
   return (
     <div>
+      {lastChange && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "6px 10px",
+            borderRadius: 8,
+            fontSize: 12,
+            background: "var(--surface-2, rgba(127,137,160,0.08))",
+            border: "1px solid rgba(127,137,160,0.2)",
+          }}
+        >
+          <span style={{ color: "var(--text-2)" }}>Last changed to </span>
+          <span className="mono" style={{ fontWeight: 600 }}>
+            {lastChange.value === "" ? "(empty)" : lastChange.value}
+          </span>
+          <span style={{ color: "var(--text-2)" }}>
+            {" "}by {lastChange.author} · {relTime(lastChange.date)}
+          </span>
+        </div>
+      )}
       <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
         VALUE OVER TIME{selectedInstance ? ` · ${selectedInstance}` : " · default"}
       </Typography.Text>

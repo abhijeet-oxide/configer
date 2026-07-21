@@ -871,9 +871,13 @@ export const api = {
     if (opts?.instance) qs.set("instance", opts.instance);
     if (opts?.limit) qs.set("limit", String(opts.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return get<{ parameter: string; instance: string; entries: ParamHistoryEntry[] | null; supported: boolean }>(
-      rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`),
-    );
+    return get<{
+      parameter: string;
+      instance: string;
+      entries: ParamHistoryEntry[] | null;
+      lastChange: ParamHistoryEntry | null;
+      supported: boolean;
+    }>(rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`));
   },
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),

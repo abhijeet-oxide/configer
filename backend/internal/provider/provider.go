@@ -21,6 +21,16 @@ type PR struct {
 	URL    string `json:"url"`
 	State  string `json:"state"` // open | closed
 	Merged bool   `json:"merged"`
+	// Mergeable is the host's merge-readiness for the PR: for GitHub this is the
+	// raw mergeable_state (clean | blocked | dirty | unstable | behind | draft |
+	// unknown), passed through so the UI can explain why a merge is or is not
+	// possible. Empty when unknown or not applicable.
+	Mergeable string `json:"mergeable,omitempty"`
+	// Checks is a rolled-up CI status for the PR head commit:
+	// passing | failing | pending | none.
+	Checks string `json:"checks,omitempty"`
+	// HeadSHA is the PR head commit the checks apply to.
+	HeadSHA string `json:"headSha,omitempty"`
 }
 
 // Provider is the PR-host abstraction.
@@ -133,11 +143,76 @@ func (g *GitHub) Close(ctx context.Context, number int) error {
 
 func (g *GitHub) Get(ctx context.Context, number int) (PR, error) {
 	var res struct {
-		Number  int    `json:"number"`
-		HTMLURL string `json:"html_url"`
-		State   string `json:"state"`
-		Merged  bool   `json:"merged"`
+		Number         int    `json:"number"`
+		HTMLURL        string `json:"html_url"`
+		State          string `json:"state"`
+		Merged         bool   `json:"merged"`
+		MergeableState string `json:"mergeable_state"`
+		Head           struct {
+			SHA string `json:"sha"`
+		} `json:"head"`
 	}
-	err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/%s/pulls/%d", g.Owner, g.Repo, number), nil, &res)
-	return PR{Number: res.Number, URL: res.HTMLURL, State: res.State, Merged: res.Merged}, err
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/%s/pulls/%d", g.Owner, g.Repo, number), nil, &res); err != nil {
+		return PR{}, err
+	}
+	pr := PR{
+		Number: res.Number, URL: res.HTMLURL, State: res.State, Merged: res.Merged,
+		Mergeable: res.MergeableState, HeadSHA: res.Head.SHA, Checks: "none",
+	}
+	if res.Head.SHA != "" {
+		if checks, err := g.checks(ctx, res.Head.SHA); err == nil {
+			pr.Checks = checks
+		}
+	}
+	return pr, nil
+}
+
+// checkRun is one CI check reported for a commit (GitHub Actions or any other
+// checks app).
+type checkRun struct {
+	Status     string `json:"status"`     // queued | in_progress | completed
+	Conclusion string `json:"conclusion"` // success | failure | neutral | ...
+}
+
+// checks rolls up the check-runs for a commit into a single status
+// (passing | failing | pending | none).
+func (g *GitHub) checks(ctx context.Context, sha string) (string, error) {
+	var res struct {
+		Total int        `json:"total_count"`
+		Runs  []checkRun `json:"check_runs"`
+	}
+	if err := g.do(ctx, "GET", fmt.Sprintf("/repos/%s/%s/commits/%s/check-runs", g.Owner, g.Repo, sha), nil, &res); err != nil {
+		return "none", err
+	}
+	return rollupChecks(res.Runs), nil
+}
+
+// rollupChecks reduces a set of check-runs to one status. A run still running
+// counts as pending; a completed run whose conclusion is not a success-like
+// value (success/neutral/skipped) counts as failing.
+func rollupChecks(runs []checkRun) string {
+	if len(runs) == 0 {
+		return "none"
+	}
+	anyPending, anyFail := false, false
+	for _, r := range runs {
+		if r.Status != "completed" {
+			anyPending = true
+			continue
+		}
+		switch r.Conclusion {
+		case "success", "neutral", "skipped":
+			// success-like
+		default:
+			anyFail = true
+		}
+	}
+	switch {
+	case anyFail:
+		return "failing"
+	case anyPending:
+		return "pending"
+	default:
+		return "passing"
+	}
 }

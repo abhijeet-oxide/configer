@@ -134,6 +134,44 @@ func (s *Server) previewChange(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, res)
 }
 
+// prStatus returns the live pull-request status for a change request: CI
+// checks and merge-readiness, read fresh from the host.
+//
+// @Summary     Pull-request status (CI + mergeability)
+// @Description Live CI check roll-up (passing/failing/pending/none) and host merge-readiness for a change request's pull request, read fresh from the provider. Returns `{supported:false}` when the change has no hosted PR (pure-git deployment or not yet submitted).
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     404 {object} APIError "Unknown change request"
+// @Router      /api/changes/{id}/pr-status [get]
+func (s *Server) prStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	cr, err := s.Store.Get(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
+		return
+	}
+	prov := s.Backend.Provider()
+	if prov == nil || cr.PRNumber == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"supported": false})
+		return
+	}
+	pr, err := prov.Get(r.Context(), cr.PRNumber)
+	if err != nil {
+		// The host is unreachable or rate-limited: report unsupported rather
+		// than failing the panel; the linked PR is still openable directly.
+		writeJSON(w, http.StatusOK, map[string]any{"supported": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"supported": true, "pr": pr})
+}
+
 // submitChange turns a draft into a branch + commit + PR.
 //
 // @Summary     Submit a change request

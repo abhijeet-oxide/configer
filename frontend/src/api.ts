@@ -217,6 +217,24 @@ export interface ChangePreview {
   structural: string[] | null;
 }
 
+/** Live pull-request status for a change request (CI checks + mergeability),
+ * read fresh from the host. `supported` is false for pure-git deployments or a
+ * change without a hosted PR. */
+export interface PrStatus {
+  supported: boolean;
+  pr?: {
+    number: number;
+    url: string;
+    state: string;
+    merged: boolean;
+    /** host merge-readiness: clean | blocked | dirty | unstable | behind | ... */
+    mergeable?: string;
+    /** rolled-up CI: passing | failing | pending | none */
+    checks?: string;
+    headSha?: string;
+  };
+}
+
 /** One review note on a change request. */
 export interface ChangeComment {
   id: number;
@@ -965,6 +983,7 @@ export const api = {
   draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
   change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
   previewChange: (id: number) => get<ChangePreview>(rp(`/changes/${id}/preview`)),
+  prStatus: (id: number) => get<PrStatus>(rp(`/changes/${id}/pr-status`)),
   submitChange: (
     id: number,
     p: { title: string; description?: string; reference?: string; category?: string; author?: string },

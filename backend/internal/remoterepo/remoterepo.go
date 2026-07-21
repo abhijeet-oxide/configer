@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/httpx"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 )
 
@@ -44,7 +45,7 @@ func New(origin, token, name, email string) (*Client, error) {
 	}
 	return &Client{
 		Owner: owner, Repo: repo, Token: token,
-		HTTP: &http.Client{Timeout: 60 * time.Second},
+		HTTP: httpx.Client(60 * time.Second),
 		Name: name, Email: email,
 	}, nil
 }
@@ -349,10 +350,10 @@ func (c *Client) CommitPathsAs(ctx context.Context, branch, baseSHA, message, di
 		SHA string `json:"sha"`
 	}
 	if err := c.do(ctx, "POST", c.repoPath("/git/commits"), map[string]any{
-		"message": message,
-		"tree":    tree.SHA,
-		"parents": []string{baseSHA},
-		"author":  map[string]string{"name": authorName, "email": authorEmail, "date": time.Now().UTC().Format(time.RFC3339)},
+		"message":   message,
+		"tree":      tree.SHA,
+		"parents":   []string{baseSHA},
+		"author":    map[string]string{"name": authorName, "email": authorEmail, "date": time.Now().UTC().Format(time.RFC3339)},
 		"committer": map[string]string{"name": c.Name, "email": c.Email, "date": time.Now().UTC().Format(time.RFC3339)},
 	}, &commit); err != nil {
 		return "", err

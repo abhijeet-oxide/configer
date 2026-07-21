@@ -126,7 +126,12 @@ export default function SettingsView() {
 
   return (
     <div style={{ height: "100%", overflow: "auto", background: "var(--canvas)" }}>
-      <div style={{ maxWidth: 860, margin: "0 auto", padding: "28px 24px 48px" }}>
+      {/* Wide screens get the width back: the hero spans the page and the
+          section cards flow into as many columns as fit (aligned to their own
+          tops), collapsing to one column on narrow windows. No width cap -
+          every monitor is used edge to edge; readability comes from the
+          per-card column width, not from a centered well. */}
+      <div style={{ padding: "28px 32px 48px" }}>
         {/* ---- profile hero: the person this page belongs to. Reserves its
              height while identity loads so the page never jumps. ---- */}
         <div
@@ -161,8 +166,18 @@ export default function SettingsView() {
           )}
         </div>
 
+        <div
+          style={{
+            display: "grid",
+            // auto-fit collapses unused tracks, so on very wide monitors the
+            // cards stretch to share the whole row instead of leaving a gap.
+            gridTemplateColumns: "repeat(auto-fit, minmax(420px, 1fr))",
+            gap: 16,
+            alignItems: "start",
+          }}
+        >
         {/* ---- appearance ---- */}
-        <SectionCard title="Appearance" style={{ marginBottom: 16 }}>
+        <SectionCard title="Appearance">
           <Row
             stacked
             title="Theme"
@@ -184,7 +199,7 @@ export default function SettingsView() {
         </SectionCard>
 
         {/* ---- region & time ---- */}
-        <SectionCard title="Region &amp; time" style={{ marginBottom: 16 }}>
+        <SectionCard title="Region &amp; time">
           <Row
             stacked
             title="Time zone"
@@ -205,7 +220,7 @@ export default function SettingsView() {
         </SectionCard>
 
         {/* ---- access ---- */}
-        <SectionCard title="Access" style={{ marginBottom: 16 }}>
+        <SectionCard title="Access">
           <Row
             title={activeApp ? `Your role on ${activeApp.name}` : "Your role"}
             description={roleExplains}
@@ -293,6 +308,7 @@ export default function SettingsView() {
             }
           />
         </SectionCard>
+        </div>
 
         <div style={{ marginTop: 16, fontSize: "var(--fs-11)", color: "var(--text-3)" }}>
           Preferences apply immediately and are stored in this browser, per device.

@@ -221,7 +221,11 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
   if (!me?.enabled) return null;
   if (!me.user) {
     return (
-      <Button size="small" type="primary" href="/api/auth/login">
+      <Button
+        size="small"
+        type="primary"
+        href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+      >
         Sign in with GitHub
       </Button>
     );

@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api, type AuditEvent } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
+import { fmtDateTime } from "../timefmt";
 import { TableSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState } from "./ui";
 import { EmptyArt } from "./illustrations";
@@ -122,7 +123,7 @@ export default function AuditView() {
                 title: "When",
                 width: 160,
                 render: (_v, e) => (
-                  <span title={new Date(e.at).toLocaleString()}>{relTime(e.at)}</span>
+                  <span title={fmtDateTime(e.at)}>{relTime(e.at)}</span>
                 ),
               },
             ]}

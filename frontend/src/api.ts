@@ -354,6 +354,13 @@ export interface Member {
   role: RoleName;
 }
 
+/** /repos/{id}/role: the caller's own effective capability on one application. */
+export interface MyRole {
+  enabled: boolean;
+  role: RoleName;
+  admin: boolean;
+}
+
 export interface AuditEvent {
   id: number;
   at: string;
@@ -703,6 +710,7 @@ export const api = {
   health: () => get<{ status: string }>("/health"),
   me: () => get<AuthState>("/auth/me"),
   logout: () => send<{ ok: boolean }>("POST", "/auth/logout"),
+  myRole: (repoId: string) => get<MyRole>(`/repos/${encodeURIComponent(repoId)}/role`),
   members: (repoId: string) =>
     get<{ members: Member[]; users: AuthUser[]; defaultRole: RoleName; enabled: boolean }>(
       `/repos/${encodeURIComponent(repoId)}/members`),

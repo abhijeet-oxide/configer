@@ -23,6 +23,8 @@ import ParameterGrid from "./components/ParameterGrid";
 import DetailsPanel from "./components/DetailsPanel";
 import ComparePanel from "./components/ComparePanel";
 import PluginsView from "./components/PluginsView";
+import SettingsView from "./components/SettingsView";
+import WelcomeTour from "./components/WelcomeTour";
 import ChangeRequestsView from "./components/ChangeRequestsView";
 import ApprovalsView from "./components/ApprovalsView";
 import InboxView from "./components/InboxView";
@@ -483,6 +485,8 @@ export default function App() {
           <RepositoriesOverview />
         </div>
       );
+    // Personal settings: a global level, independent of any repository.
+    if (section === "settings") return <SettingsView />;
     // A repository without a .configer application goes through onboarding
     // before any other view makes sense.
     if (uninitialized)
@@ -529,6 +533,7 @@ export default function App() {
         <OfflineReplay />
         <ConnectionBanner />
         <Content style={{ overflow: "hidden", minHeight: 0 }}>{body()}</Content>
+        <WelcomeTour />
         <div className="mobile-tabbar" style={{ background: token.colorBgContainer }}>
           {tabs.map((t) => (
             <button
@@ -570,6 +575,7 @@ export default function App() {
         <Content style={{ overflow: "hidden" }}>{body()}</Content>
       </Layout>
       <CommandPalette />
+      <WelcomeTour />
     </Layout>
   );
 }

@@ -104,6 +104,10 @@ import phUser from "@iconify-icons/ph/user";
 import phWarningFill from "@iconify-icons/ph/warning-fill";
 import phSun from "@iconify-icons/ph/sun";
 import phMoon from "@iconify-icons/ph/moon";
+import phMonitor from "@iconify-icons/ph/monitor";
+import phSignOut from "@iconify-icons/ph/sign-out";
+import phUsersThree from "@iconify-icons/ph/users-three";
+import phSparkle from "@iconify-icons/ph/sparkle";
 import phGlobeHemisphereWest from "@iconify-icons/ph/globe-hemisphere-west";
 import phMapPin from "@iconify-icons/ph/map-pin";
 
@@ -158,7 +162,11 @@ export const ScopeInstanceOutlined = make("scope-instance", phMapPin);
 export const SettingOutlined = make("setting", phGear);
 export const SunOutlined = make("sun", phSun);
 export const MoonOutlined = make("moon", phMoon);
+export const DesktopOutlined = make("desktop", phMonitor);
 export const UserOutlined = make("user", phUser);
+export const TeamOutlined = make("team", phUsersThree);
+export const LogoutOutlined = make("logout", phSignOut);
+export const SparkleOutlined = make("sparkle", phSparkle);
 export const BellOutlined = make("bell", phBell);
 
 // Chevrons and arrows

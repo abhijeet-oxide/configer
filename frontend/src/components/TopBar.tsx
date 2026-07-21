@@ -23,7 +23,8 @@ import MembersModal from "./MembersModal";
 // The application context bar: breadcrumb with the app switcher, then the
 // persistent context chips (branch, git sync state, instances, unsent edits)
 // so the user always knows where they are and whether anything is pending.
-// Appearance controls live in the rail's Settings; this bar stays quiet.
+// Appearance and every other personal preference live on the Settings page
+// (the rail's profile card); this bar keeps only the quick dark-mode toggle.
 
 // The application-scoped sections and their human tab labels, for the
 // breadcrumb (Applications / <name> / <tab>).
@@ -93,6 +94,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                 ? [{ title: <span>Changes</span> }]
                 : section === "repos"
                 ? [{ title: <span>Repositories</span> }]
+                : section === "settings"
+                ? [{ title: <span>Settings</span> }]
                 : [
                     {
                       title: (
@@ -210,6 +213,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
 // user's avatar menu (people & roles for admins, sign out).
 function IdentityControl({ repoId }: { repoId: string | null }) {
   const qc = useQueryClient();
+  const { setSection } = useUI();
   const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
   const [membersOpen, setMembersOpen] = useState(false);
   const logout = useMutation({
@@ -239,6 +243,7 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
         menu={{
           items: [
             { key: "who", label: <b>{u.name || u.login}</b>, disabled: true },
+            { key: "settings", label: "Settings" },
             ...(u.admin && repoId
               ? [{ key: "members", label: "People & roles…" }]
               : []),
@@ -247,6 +252,7 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
           ],
           onClick: ({ key }) => {
             if (key === "logout") logout.mutate();
+            if (key === "settings") setSection("settings");
             if (key === "members") setMembersOpen(true);
           },
         }}

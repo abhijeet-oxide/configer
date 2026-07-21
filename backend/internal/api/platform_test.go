@@ -146,6 +146,20 @@ func TestRoleEnforcement(t *testing.T) {
 		t.Errorf("viewer read = %d, want 200", w.Code)
 	}
 
+	// Anyone signed in can read their OWN effective role (here: the demoted
+	// viewer); anonymous callers cannot.
+	if w := call(t, h, "GET", base+"/role", "tok-editor", ""); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"role":"viewer"`) {
+		t.Errorf("own role = %d %s, want 200 with role viewer", w.Code, w.Body.String())
+	}
+	if w := call(t, h, "GET", base+"/role", "", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous role = %d, want 401", w.Code)
+	}
+	if w := call(t, h, "GET", base+"/role", "tok-admin", ""); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"admin":true`) {
+		t.Errorf("admin role = %d %s, want 200 with admin true", w.Code, w.Body.String())
+	}
+
 	// Member management is admin-only.
 	if w := call(t, h, "PUT", base+"/members", "tok-editor",
 		`{"login":"eddy","role":"approver"}`); w.Code != http.StatusForbidden {
@@ -193,6 +207,13 @@ func TestSingleUserModeUnchanged(t *testing.T) {
 	}
 	if w := call(t, h, "GET", "/api/auth/me", "", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), `"enabled":false`) {
 		t.Errorf("auth/me = %d %s", w.Code, w.Body.String())
+	}
+	// The role probe reflects single-user mode: every capability, no login.
+	repoID := hub.registry.List()[0].ID
+	if w := call(t, h, "GET", "/api/repos/"+repoID+"/role", "", ""); w.Code != http.StatusOK ||
+		!strings.Contains(w.Body.String(), `"enabled":false`) ||
+		!strings.Contains(w.Body.String(), `"role":"approver"`) {
+		t.Errorf("single-user role = %d %s", w.Code, w.Body.String())
 	}
 }
 

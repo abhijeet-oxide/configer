@@ -5,9 +5,11 @@
 // To customize the look, edit theme.config.ts - not this file.
 import { theme as antdTheme, type ThemeConfig } from "antd";
 import { theme as brand } from "./theme.config";
+import type { Density, FontScale, Mode } from "./settings";
 
-export type Mode = "light" | "dark";
-export type FontScale = "normal" | "large";
+// The personal-settings types live in settings.ts (the one model for what a
+// user tunes); re-exported here so existing importers keep working.
+export type { Density, FontScale, Mode, ThemePref } from "./settings";
 
 // The single brand primary, from the theme config (kept for existing importers).
 export const BRAND = brand.light.brand;
@@ -35,10 +37,20 @@ export const envHex = (env: string | undefined): string =>
 // these are only defaults; any custom value is accepted.
 export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 
-export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig {
+export function buildTheme(
+  mode: Mode,
+  scale: FontScale = "normal",
+  density: Density = "comfortable",
+): ThemeConfig {
   const dark = mode === "dark";
   const p = dark ? brand.dark : brand.light;
-  const base = scale === "large" ? brand.type.fontSizeBase + 2 : brand.type.fontSizeBase;
+  const base =
+    scale === "large"
+      ? brand.type.fontSizeBase + 2
+      : scale === "small"
+        ? brand.type.fontSizeBase - 1
+        : brand.type.fontSizeBase;
+  const compact = density === "compact";
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
@@ -49,7 +61,7 @@ export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig
       colorWarning: p.pending,
       colorError: p.danger,
       borderRadius: brand.shape.borderRadius,
-      controlHeight: brand.shape.controlHeight,
+      controlHeight: compact ? brand.shape.controlHeight - 4 : brand.shape.controlHeight,
       fontSize: base,
       fontFamily: brand.type.fontFamily,
       // three planes: pastel page canvas < content surface < floating surface
@@ -83,7 +95,7 @@ export function buildTheme(mode: Mode, scale: FontScale = "normal"): ThemeConfig
         headerBg: dark ? "#1b1e24" : "#fafbfc",
         headerColor: dark ? "#a5adba" : "#475467",
         headerSplitColor: "transparent",
-        cellPaddingBlock: 10,
+        cellPaddingBlock: compact ? 6 : 10,
         cellPaddingBlockSM: 4,
         cellPaddingInlineSM: 8,
         rowHoverBg: dark ? "#1b1e24" : "#f5f8fc",

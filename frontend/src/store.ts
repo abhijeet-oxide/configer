@@ -1,6 +1,16 @@
 import { create } from "zustand";
 import { setApiRepo } from "./api";
-import type { FontScale, Mode } from "./theme";
+import {
+  loadSettings,
+  resolveMode,
+  saveSettings,
+  type Density,
+  type FontScale,
+  type HourCycle,
+  type Mode,
+  type ThemePref,
+  type UserSettings,
+} from "./settings";
 
 // ------------------------------------------------------------------ routing
 // Sections that belong to ONE application (rendered as tabs on the
@@ -43,6 +53,8 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
     return { repoId: decodeURIComponent(segs[1]), section, param, inst };
   }
   if (segs[0] === "plugins") return { repoId: null, section: "plugins", param, inst };
+  // Personal settings: profile, appearance, region & time.
+  if (segs[0] === "settings") return { repoId: null, section: "settings", param, inst };
   // The applications collection ("/applications"; "/overview" is the legacy
   // alias so old links keep resolving).
   if (segs[0] === "applications" || segs[0] === "overview")
@@ -142,8 +154,16 @@ export interface RowFilters {
 }
 
 interface UIState {
+  /** the mode actually painted (a "system" preference is already resolved) */
   mode: Mode;
+  /** what the user chose: light, dark, or follow the system */
+  themePref: ThemePref;
   fontScale: FontScale;
+  /** global control density (grid row density stays in ViewPrefs) */
+  density: Density;
+  /** IANA zone for absolute times; null = follow this device */
+  timeZone: string | null;
+  hourCycle: HourCycle;
   /** the active repository (workspace entry id); null until the workspace
    *  loads, then always set while any repository is connected */
   repoId: string | null;
@@ -177,8 +197,16 @@ interface UIState {
   /** one-shot handoff: the change request Approvals should select on open
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
+  /** the welcome tour is showing (first visit, or replayed from Settings) */
+  welcomeOpen: boolean;
   setMode: (m: Mode) => void;
+  setThemePref: (p: ThemePref) => void;
   setFontScale: (f: FontScale) => void;
+  setDensity: (d: Density) => void;
+  setTimeZone: (tz: string | null) => void;
+  setHourCycle: (h: HourCycle) => void;
+  /** system theme changed while the preference is "system" */
+  applySystemMode: (m: Mode) => void;
   setRepo: (id: string | null) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
@@ -195,11 +223,31 @@ interface UIState {
   setJump: (kind: "param" | "instance" | "cell", id: string, inst?: string) => void;
   setFileFocus: (f: { path: string; line?: number; instance?: string } | null) => void;
   setReviewCr: (id: number | null) => void;
+  setWelcomeOpen: (open: boolean) => void;
+}
+
+// Personal settings (appearance, comfort, time) load once and persist as one
+// versioned document; see settings.ts for the model and migration.
+const settings0 = loadSettings();
+
+// settingsOf projects the settings slice back out of UI state for persisting.
+function settingsOf(s: UIState): UserSettings {
+  return {
+    theme: s.themePref,
+    fontScale: s.fontScale,
+    density: s.density,
+    timeZone: s.timeZone,
+    hourCycle: s.hourCycle,
+  };
 }
 
 export const useUI = create<UIState>((set) => ({
-  mode: (localStorage.getItem("configer.mode") as Mode) || "light",
-  fontScale: (localStorage.getItem("configer.fontScale") as FontScale) || "normal",
+  mode: resolveMode(settings0.theme),
+  themePref: settings0.theme,
+  fontScale: settings0.fontScale,
+  density: settings0.density,
+  timeZone: settings0.timeZone,
+  hourCycle: settings0.hourCycle,
   repoId: initialRepo,
   section: initialSection,
   categoryKey: null,
@@ -217,14 +265,45 @@ export const useUI = create<UIState>((set) => ({
   jump: null,
   fileFocus: null,
   reviewCrId: null,
-  setMode: (mode) => {
-    localStorage.setItem("configer.mode", mode);
-    set({ mode });
-  },
-  setFontScale: (fontScale) => {
-    localStorage.setItem("configer.fontScale", fontScale);
-    set({ fontScale });
-  },
+  welcomeOpen: false,
+  // setMode is the quick toggle (top bar): an explicit choice, so it also
+  // pins the preference - toggling away from "system" is intentional.
+  setMode: (mode) =>
+    set((s) => {
+      const next = { ...s, mode, themePref: mode as ThemePref };
+      saveSettings(settingsOf(next));
+      return { mode, themePref: mode as ThemePref };
+    }),
+  setThemePref: (themePref) =>
+    set((s) => {
+      const next = { ...s, themePref, mode: resolveMode(themePref) };
+      saveSettings(settingsOf(next));
+      return { themePref, mode: next.mode };
+    }),
+  setFontScale: (fontScale) =>
+    set((s) => {
+      saveSettings(settingsOf({ ...s, fontScale }));
+      return { fontScale };
+    }),
+  setDensity: (density) =>
+    set((s) => {
+      saveSettings(settingsOf({ ...s, density }));
+      return { density };
+    }),
+  setTimeZone: (timeZone) =>
+    set((s) => {
+      saveSettings(settingsOf({ ...s, timeZone }));
+      return { timeZone };
+    }),
+  setHourCycle: (hourCycle) =>
+    set((s) => {
+      saveSettings(settingsOf({ ...s, hourCycle }));
+      return { hourCycle };
+    }),
+  // The OS switched light/dark while the preference follows the system: only
+  // the painted mode changes; the preference (and storage) stay "system".
+  applySystemMode: (mode) =>
+    set((s) => (s.themePref === "system" && s.mode !== mode ? { mode } : {})),
   setRepo: (repoId) => {
     if (repoId) localStorage.setItem("configer.repoId", repoId);
     else localStorage.removeItem("configer.repoId");
@@ -269,6 +348,7 @@ export const useUI = create<UIState>((set) => ({
   setFileFocus: (f) =>
     set((s) => ({ fileFocus: f ? { ...f, n: (s.fileFocus?.n ?? 0) + 1 } : null })),
   setReviewCr: (reviewCrId) => set({ reviewCrId }),
+  setWelcomeOpen: (welcomeOpen) => set({ welcomeOpen }),
 }));
 
 // ------------------------------------------------------------------ URL sync
@@ -284,6 +364,7 @@ function pathFor(s: UIState): string {
 
   const section = s.section === "drafts" ? "changes" : s.section;
   if (section === "plugins") return `/plugins${qs}`;
+  if (section === "settings") return `/settings${qs}`;
   if (section === "home") return `/home${qs}`;
   if (section === "inbox") return `/approvals${qs}`;
   if (section === "estate") return `/instances${qs}`;

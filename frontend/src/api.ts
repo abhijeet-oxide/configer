@@ -199,6 +199,24 @@ export interface ChangeItem {
   updatedAt: string;
 }
 
+/** One file a change request would rewrite, with exact before/after content
+ * (the same bytes the submit will commit) so the UI can render a real diff. */
+export interface FilePreview {
+  file: string;
+  status: "modified" | "added" | "removed";
+  before: string;
+  after: string;
+  additions: number;
+  deletions: number;
+}
+
+/** The byte-level plan for a change request: files it rewrites plus one-line
+ * summaries of structural instance changes. */
+export interface ChangePreview {
+  files: FilePreview[] | null;
+  structural: string[] | null;
+}
+
 /** One review note on a change request. */
 export interface ChangeComment {
   id: number;
@@ -942,6 +960,7 @@ export const api = {
     get<RepoStatus>(`/repos/${encodeURIComponent(repoId)}/repo/status`),
   draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
   change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
+  previewChange: (id: number) => get<ChangePreview>(rp(`/changes/${id}/preview`)),
   submitChange: (
     id: number,
     p: { title: string; description?: string; reference?: string; category?: string; author?: string },

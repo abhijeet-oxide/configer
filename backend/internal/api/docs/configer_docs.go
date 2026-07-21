@@ -544,6 +544,53 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/{id}/preview": {
+            "get": {
+                "description": "The byte-level plan for a change request: for every file its value and file edits would rewrite, the exact content before and after (so the UI can show a real diff), plus +/- line counts and one-line summaries of any structural instance changes. Builds the edits in a throwaway checkout of the base branch; nothing is committed or pushed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Preview a change request's file edits",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "A downstream (git) step failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes/{id}/reject": {
             "post": {
                 "security": [
@@ -1409,6 +1456,51 @@ const docTemplateconfiger = `{
                         "description": "Unknown instance",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/locate": {
+            "get": {
+                "description": "Returns the 1-based line of the value at ` + "`" + `path` + "`" + ` inside ` + "`" + `file` + "`" + ` (YAML/JSON; XML returns 0). Lets the Details pane jump to the exact line a parameter is defined on.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reads"
+                ],
+                "summary": "Locate a value's line",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository-relative file path (instance-expanded)",
+                        "name": "file",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Dotted value path (e.g. $.network.admin.port)",
+                        "name": "path",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "yaml | json | xml",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
                         }
                     }
                 }
@@ -2413,6 +2505,54 @@ const docTemplateconfiger = `{
                         "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/search": {
+            "get": {
+                "description": "Search application metadata (parameters, instances, change requests) across every connected application. Returns lightweight hits with a navigation target; never values or file contents.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Global search",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Query text",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "global (default) or app",
+                        "name": "scope",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to one application id",
+                        "name": "repo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 20, cap 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }

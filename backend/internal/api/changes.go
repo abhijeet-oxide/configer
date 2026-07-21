@@ -103,6 +103,37 @@ func (s *Server) getChange(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cr)
 }
 
+// previewChange returns the exact per-file before/after content a change
+// request would write, without creating a branch or committing anything.
+//
+// @Summary     Preview a change request's file edits
+// @Description The byte-level plan for a change request: for every file its value and file edits would rewrite, the exact content before and after (so the UI can show a real diff), plus +/- line counts and one-line summaries of any structural instance changes. Builds the edits in a throwaway checkout of the base branch; nothing is committed or pushed.
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     404 {object} APIError "Unknown change request"
+// @Failure     502 {object} APIError "A downstream (git) step failed"
+// @Router      /api/changes/{id}/preview [get]
+func (s *Server) previewChange(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	if _, err := s.Store.Get(id); err != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
+		return
+	}
+	res, err := s.Changes.Preview(r.Context(), id)
+	if err != nil {
+		writeChangeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
 // submitChange turns a draft into a branch + commit + PR.
 //
 // @Summary     Submit a change request

@@ -1,5 +1,4 @@
 import {
-  Alert,
   Badge,
   Button,
   Form,
@@ -9,7 +8,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { PullRequestOutlined } from "../icons";
+import { PullRequestOutlined, WarningFilled } from "../icons";
 import { useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -87,13 +86,25 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         afterOpenChange={(o) => o && titleRef.current?.focus()}
       >
         {prodTouched && (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ marginBottom: 10 }}
-            message="This change touches PRODUCTION instances"
-            description="It will only go live after an approver publishes it."
-          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 12,
+              padding: "6px 10px",
+              borderRadius: 8,
+              fontSize: 12.5,
+              background: "var(--c-pending-bg)",
+              border: "1px solid var(--c-pending-bd)",
+            }}
+          >
+            <WarningFilled style={{ color: "var(--c-pending)", fontSize: 14, flexShrink: 0 }} />
+            <span>
+              <span style={{ fontWeight: 600, color: "var(--text)" }}>Touches production.</span>{" "}
+              <span style={{ color: "var(--text-2)" }}>Goes live only after an approver publishes.</span>
+            </span>
+          </div>
         )}
         <div style={{ marginBottom: 14 }}>
           <ChangeItemsTable

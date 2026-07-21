@@ -94,19 +94,21 @@ export default function HomeView() {
                   style={{ borderColor: "var(--c-pending-bd)", background: "var(--c-pending-bg)" }}
                 >
                   <span
-                    className="flex size-7 shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "var(--c-pending)", color: "#fff" }}
+                    className="flex size-8 shrink-0 items-center justify-center rounded-full"
+                    style={{ background: "var(--surface)", color: "var(--c-pending)", border: "1px solid var(--c-pending-bd)" }}
                   >
                     <EditOutlined style={{ fontSize: 14 }} />
                   </span>
-                  <div className="min-w-0 flex-1 leading-tight">
-                    <span className="text-[13px] font-semibold text-ink">Continue in {resume.name}</span>
-                    <span className="ml-2 text-[12px]" style={{ color: "var(--c-pending)" }}>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13px] font-semibold text-ink leading-snug">
+                      Continue in {resume.name}
+                    </div>
+                    <div className="text-[12px] leading-snug" style={{ color: "var(--c-pending)" }}>
                       {resume.drafts} draft change{resume.drafts === 1 ? "" : "s"} not yet submitted
-                    </span>
+                    </div>
                   </div>
-                  <Button size="small" type="primary" onClick={() => goto(resume.id, "config")}>
-                    Continue editing <ArrowRightOutlined />
+                  <Button size="small" type="primary" onClick={() => goto(resume.id, "config")} className="shrink-0">
+                    Continue <ArrowRightOutlined />
                   </Button>
                 </div>
               </StaggerItem>

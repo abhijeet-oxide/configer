@@ -75,15 +75,15 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
                     {f.status}
                   </Tag>
                   <code style={{ fontSize: 12 }}>{f.file}</code>
-                  <span style={{ fontSize: 11, color: "var(--c-add, #3f9142)" }}>+{f.additions}</span>
-                  <span style={{ fontSize: 11, color: "var(--c-del, #cf3b3b)" }}>-{f.deletions}</span>
+                  <span style={{ fontSize: 11, color: "var(--c-ok)" }}>+{f.additions}</span>
+                  <span style={{ fontSize: 11, color: "var(--c-danger)" }}>-{f.deletions}</span>
                 </span>
               ),
             }))}
             style={{ marginBottom: 8, overflowX: "auto", maxWidth: "100%" }}
           />
           {current && (
-            <div style={{ height: 320, border: "1px solid var(--border, #e5e5e5)", borderRadius: 8, overflow: "hidden" }}>
+            <div style={{ height: 320, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
               <Suspense fallback={<div style={{ padding: 16 }}><Spin /></div>}>
                 <MonacoFileView
                   path={current.file}

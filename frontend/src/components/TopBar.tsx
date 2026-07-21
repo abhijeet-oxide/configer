@@ -17,7 +17,7 @@ import { useUI } from "../store";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { modLabel, shortcut } from "../platform";
-import { AppContextChips } from "./ui";
+import { AppContextChips, Kbd } from "./ui";
 import MembersModal from "./MembersModal";
 
 // The application context bar: breadcrumb with the app switcher, then the
@@ -178,7 +178,9 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           style={{ flexShrink: 0, color: "var(--text-3)" }}
         >
           Search
-          <kbd style={{ marginLeft: 8, fontSize: 10, border: "1px solid var(--border)", borderRadius: 4, padding: "0 4px", color: "var(--text-3)" }}>{modLabel} K</kbd>
+          <span style={{ marginLeft: 8 }}>
+            <Kbd>{modLabel} K</Kbd>
+          </span>
         </Button>
       </Tooltip>
       <Space size={4} style={{ flexShrink: 0 }}>

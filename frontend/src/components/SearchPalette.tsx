@@ -1,5 +1,6 @@
 import { Modal, Segmented, Tag } from "antd";
 import { SearchOutlined } from "../icons";
+import { Kbd } from "./ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
@@ -38,29 +39,6 @@ const TYPE_LABEL: Record<SearchHit["type"], string> = {
   command: "Action",
   file: "File",
 };
-
-// Kbd is the small keycap used in the input row and the footer legend, styled
-// once so every shortcut hint reads the same across the palette.
-function Kbd({ children }: { children: React.ReactNode }) {
-  return (
-    <kbd
-      style={{
-        fontFamily: "inherit",
-        fontSize: 11,
-        lineHeight: "16px",
-        minWidth: 18,
-        textAlign: "center",
-        color: "var(--text-3)",
-        background: "var(--surface-2)",
-        border: "1px solid var(--border)",
-        borderRadius: 6,
-        padding: "0 5px",
-      }}
-    >
-      {children}
-    </kbd>
-  );
-}
 
 export default function SearchPalette() {
   const { open, mode: openedMode, close, toggle } = useSearchOpen();

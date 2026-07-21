@@ -26,6 +26,7 @@ type Project struct {
 	App      model.Application      `json:"app"`
 	Catalog  model.Catalog          `json:"catalog"`
 	Registry model.InstanceRegistry `json:"registry"`
+	Sources  model.SourceRegistry   `json:"sources"`
 	Ignore   Ignore                 `json:"ignore"`
 }
 
@@ -42,10 +43,12 @@ func Load(root string) (*Project, error) {
 	if err := readYAML(filepath.Join(cdir, "instances.yaml"), &p.Registry); err != nil {
 		return nil, err
 	}
-	// application.yaml and ignore.yaml are optional (older projects may miss
-	// the application file; the folder name then names the application).
+	// application.yaml, ignore.yaml and sources.yaml are optional (older
+	// projects may miss the application file; the folder name then names the
+	// application. sources.yaml only exists once external sources are defined).
 	_ = readYAMLOptional(filepath.Join(cdir, "application.yaml"), &p.App)
 	_ = readYAMLOptional(filepath.Join(cdir, "ignore.yaml"), &p.Ignore)
+	_ = readYAMLOptional(filepath.Join(cdir, "sources.yaml"), &p.Sources)
 	if p.App.Name == "" {
 		p.App.Name = filepath.Base(root)
 	}
@@ -73,6 +76,16 @@ func (p *Project) InstanceByName(name string) (model.Instance, bool) {
 		}
 	}
 	return model.Instance{}, false
+}
+
+// SourceByID returns a configured external source and whether it exists.
+func (p *Project) SourceByID(id string) (model.Source, bool) {
+	for _, src := range p.Sources.Sources {
+		if src.ID == id {
+			return src, true
+		}
+	}
+	return model.Source{}, false
 }
 
 func readYAML(path string, out any) error {

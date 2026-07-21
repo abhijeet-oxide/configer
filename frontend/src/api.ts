@@ -128,6 +128,9 @@ export interface Parameter {
   /** a computed default expressed in terms of another parameter, e.g.
    *  "{admin-port}+1"; resolved read-only and overridden by any file value */
   derived?: string;
+  /** mapping to a key in an external source; the source value surfaces as an
+   *  incoming change the reviewer accepts, never applied silently */
+  source?: SourceRef;
   versionIntroduced?: string;
   versionDeprecated?: string;
   dependsOn?: string[];
@@ -479,6 +482,77 @@ export interface PluginManifest {
   version: string;
   kind: string;
   description: string;
+  /** display hints (source plugins): icon slug, color name, category */
+  icon?: string;
+  color?: string;
+  category?: string;
+}
+
+// --- external parameter sources --------------------------------------------
+
+/** One config input an "Add source" form renders, described by its plugin. */
+export interface SourceField {
+  key: string;
+  label: string;
+  type: string; // text | branch | path | password
+  required?: boolean;
+  help?: string;
+  /** a credential resolved server-side; never persisted */
+  secret?: boolean;
+}
+
+/** A registered source provider (git, vault, ...) plus its config fields. */
+export interface SourcePlugin extends PluginManifest {
+  fields: SourceField[];
+}
+
+/** A parameter's mapping to a key in an external source. */
+export interface SourceRef {
+  sourceId: string;
+  key: string;
+  /** target one instance; empty means the parameter's own scope */
+  instance?: string;
+}
+
+/** A configured external source (its connection metadata, never credentials). */
+export interface Source {
+  id: string;
+  name: string;
+  kind: string;
+  secret?: boolean;
+  config?: Record<string, string>;
+  pluginName?: string;
+  mappedParams?: number;
+}
+
+/** One key/value pair a source exposes; secret values are masked and carry a
+ *  reference written back in place of the plaintext. */
+export interface SourceKV {
+  key: string;
+  value: unknown;
+  type?: string;
+  secret?: boolean;
+  ref?: string;
+}
+
+/** One selectable node when browsing a source (folder/file/secret key). */
+export interface BrowseEntry {
+  name: string;
+  path: string;
+  isDir?: boolean;
+}
+
+/** An upstream value that differs from the repository's current value. */
+export interface IncomingChange {
+  paramId: string;
+  paramName: string;
+  instance?: string;
+  sourceId: string;
+  sourceName: string;
+  key: string;
+  current: unknown;
+  incoming: unknown;
+  secret?: boolean;
 }
 
 // --- global search ---------------------------------------------------------
@@ -907,6 +981,29 @@ export const api = {
     }>(rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`));
   },
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
+  // External parameter sources.
+  sourcePlugins: () => get<SourcePlugin[]>(rp("/source-plugins")),
+  sources: () => get<Source[]>(rp("/sources")),
+  addSource: (s: { id?: string; name: string; kind: string; secret?: boolean; config: Record<string, string>; author?: string }) =>
+    send<Source>("POST", rp("/sources"), s),
+  updateSource: (id: string, patch: { name?: string; secret?: boolean; config?: Record<string, string>; author?: string }) =>
+    send<Source>("PUT", rp(`/sources/${encodeURIComponent(id)}`), patch),
+  deleteSource: (id: string, author?: string) =>
+    send<{ ok: boolean; removed: string }>("DELETE", rp(`/sources/${encodeURIComponent(id)}`), { author }),
+  browseSource: (id: string, path?: string) =>
+    get<{ entries: BrowseEntry[] }>(rp(`/sources/${encodeURIComponent(id)}/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`)),
+  sourceContents: (id: string) =>
+    get<{ source: Source; count: number; values: SourceKV[] }>(rp(`/sources/${encodeURIComponent(id)}/contents`)),
+  mapParamToSource: (paramId: string, ref: { sourceId: string; key: string; instance?: string } | null, author?: string) =>
+    send<{ ok: boolean }>("POST", rp(`/parameters/${encodeURIComponent(paramId)}/source`),
+      ref ? { ...ref, author } : { clear: true, author }),
+  incomingChanges: () => get<{ changes: IncomingChange[] }>(rp("/sources/incoming")),
+  acceptIncoming: (changes: { paramId: string; instance?: string }[], author?: string) =>
+    send<{ ok: boolean; staged: number; pending: number; changeId: number }>(
+      "POST", rp("/sources/incoming/accept"), { changes, author }),
+  refreshSources: () =>
+    send<{ ok: boolean; sources: { id: string; ok: boolean; count?: number; error?: string }[] }>(
+      "POST", rp("/sources/refresh")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
   // Parse a pasted config blob into candidate parameters (incremental import).
   analyzeImport: (content: string, file?: string) =>

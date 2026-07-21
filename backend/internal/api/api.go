@@ -29,6 +29,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/sources"
 )
 
 // Server holds the wired services behind the HTTP surface.
@@ -67,6 +68,7 @@ func getenv(k, def string) string {
 func New(repoPath string) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
+	sources.Register(reg)
 
 	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
@@ -126,6 +128,17 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", s.health)
 	mux.HandleFunc("GET /api/plugins", s.plugins)
+	mux.HandleFunc("GET /api/source-plugins", s.sourcePlugins)
+	mux.HandleFunc("GET /api/sources", s.listSources)
+	mux.HandleFunc("POST /api/sources", s.addSource)
+	mux.HandleFunc("PUT /api/sources/{id}", s.updateSource)
+	mux.HandleFunc("DELETE /api/sources/{id}", s.deleteSource)
+	mux.HandleFunc("GET /api/sources/{id}/browse", s.browseSource)
+	mux.HandleFunc("GET /api/sources/{id}/contents", s.sourceContents)
+	mux.HandleFunc("GET /api/sources/incoming", s.incomingChanges)
+	mux.HandleFunc("POST /api/sources/incoming/accept", s.acceptIncoming)
+	mux.HandleFunc("POST /api/sources/refresh", s.refreshSources)
+	mux.HandleFunc("POST /api/parameters/{id}/source", s.mapParameterSource)
 	mux.HandleFunc("GET /api/project", s.projectInfo)
 	mux.HandleFunc("GET /api/application", s.getApplication)
 	mux.HandleFunc("PUT /api/application", s.updateApplication)

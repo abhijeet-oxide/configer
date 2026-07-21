@@ -49,6 +49,25 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   including draft instance columns).
 - `validate` - types, preset rules, regex/min-max; gates every write (422).
 
+**External sources (plugin-based):**
+- `plugin` - THE extension registry. `IngestParser` (file -> candidates),
+  `SchemaImporter`, and `SourceProvider` (external system -> key/value pairs)
+  all register here; add an extension point, never a second registry.
+- `sources` - built-in `SourceProvider` plugins: `git` (read a config file/
+  folder in another repo, no clone for github via `remoterepo`, temp clone
+  otherwise, parsed through the same `parsers`) and `vault` (HashiCorp Vault
+  KV v2, experimental). A source exposes `SourceKV` pairs; a secret source
+  masks values and emits a reference (`${vault:mount/path#key}`) written back
+  in place of the plaintext. Add a new source kind = one file here + one line
+  in `register.go`.
+- Sources are defined in `.configer/sources.yaml` (connection metadata only,
+  never credentials - tokens resolve server-side from `GITHUB_TOKEN`/
+  `VAULT_TOKEN`). A parameter's `source:` field maps it to a source key; the
+  upstream value surfaces as an "incoming change" (`api/sources.go`) the
+  reviewer accepts into the draft (an ordinary `ActionSet` item), never applied
+  silently. Fetched values cache in the CR store (`sourceSnapshot:` Meta), so
+  the grid never blocks on a source's network call.
+
 **Repo interpretation:**
 - `layout` - Adapter per convention: `kpt`, `kustomize`, `plainfolders`
   (fallback). Detect / discover instances from folders / scaffold new
@@ -122,6 +141,19 @@ parameters:
       - { file: "{folder}/values.yaml", path: $.network.admin.port, format: yaml }
     validation: { preset: port, required: true }   # + pattern/min/max/enum/schemaRef
     versionIntroduced: v24.3.1  # drives new/deprecated/na cell states
+    source: { sourceId: platform-defaults, key: $.network.admin.port }  # optional: pull from an external source
+
+# sources.yaml (external parameter sources; connection metadata only, no creds)
+sources:
+  - id: platform-defaults
+    name: Platform defaults repo
+    kind: git                   # source plugin id (git | vault | ...)
+    config: { repoUrl: "https://github.com/acme/defaults", branch: main, path: net.yaml }
+  - id: prod-vault
+    name: Prod Vault
+    kind: vault
+    secret: true                # values masked; written back as a reference
+    config: { address: "https://vault.internal", mount: secret, path: telco/prod }
 
 # instances.yaml
 instances:

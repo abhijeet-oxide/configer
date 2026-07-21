@@ -16,7 +16,7 @@ import {
 // Sections that belong to ONE application (rendered as tabs on the
 // Configuration page). "overview" is the default tab and has no URL slug.
 const APP_SECTIONS_SET = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "audit",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "sources", "import", "audit",
 ]);
 // Section <-> URL slug. Overview is intentionally absent: it is the default
 // tab, so its path is just /application/<id> with no suffix.
@@ -28,6 +28,7 @@ const SECTION_TO_SLUG: Record<string, string> = {
   approvals: "approvals",
   instances: "instances",
   drift: "repository-changes",
+  sources: "sources",
   import: "import",
   audit: "audit",
 };

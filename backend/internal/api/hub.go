@@ -22,6 +22,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/remoterepo"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/search"
+	"github.com/abhijeet-oxide/configer/backend/internal/sources"
 	"github.com/abhijeet-oxide/configer/backend/internal/store"
 	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
@@ -188,6 +189,7 @@ func (h *Hub) open(e workspace.Entry) error {
 func (h *Hub) openRemote(e workspace.Entry) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
+	sources.Register(reg)
 
 	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")

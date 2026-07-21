@@ -289,6 +289,9 @@ function DetailsTab({
         { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">yes</Tag> : "no" },
         { key: "default", label: "Default Value", children: <span className="mono">{p.default === undefined || p.default === null ? "-" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default)}</span> },
         ...(p.derived ? [{ key: "derived", label: "Derived from", children: <span className="mono">{p.derived}</span> }] : []),
+        ...(p.source ? [{ key: "srcmap", label: "Linked source", children: (
+          <span><Tag color="geekblue">{p.source.sourceId}</Tag><span className="mono">{p.source.key}</span>{p.source.instance ? <Tag style={{ marginInlineStart: 4 }}>{p.source.instance}</Tag> : null}</span>
+        ) }] : []),
         { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
         { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
         { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },

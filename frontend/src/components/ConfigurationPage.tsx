@@ -24,6 +24,7 @@ export const APP_SECTIONS = new Set([
   "instances",
   "files",
   "drift",
+  "sources",
   "import",
   "audit",
 ]);
@@ -40,6 +41,7 @@ const ALL_TABS: { key: string; label: string }[] = [
   { key: "compare", label: "Compare" },
   { key: "approvals", label: "Approvals" },
   { key: "drift", label: "Repository changes" },
+  { key: "sources", label: "Sources" },
   { key: "audit", label: "Audit" },
   { key: "import", label: "Import settings" },
 ];
@@ -79,10 +81,12 @@ export default function ConfigurationPage({
   const { setSection } = useUI();
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const incomingQ = useQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
+  const incoming = incomingQ.data?.changes?.length ?? 0;
   const draftItems = draftQ.data?.draft?.items?.length ?? 0;
 
   // How many real files the pending edits touch, for the Files tab badge: a
@@ -119,7 +123,8 @@ export default function ConfigurationPage({
     key === "config" ? draftItems
       : key === "files" ? changedFiles
       : key === "changes" || key === "approvals" ? awaiting
-      : key === "drift" ? findings : 0;
+      : key === "drift" ? findings
+      : key === "sources" ? incoming : 0;
 
   const { ref: barRef, width: barW } = useElementSize<HTMLDivElement>();
 
@@ -151,11 +156,11 @@ export default function ConfigurationPage({
     }
     return { visible: vis, overflow: of };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barW, active, draftItems, awaiting, findings]);
+  }, [barW, active, draftItems, awaiting, findings, incoming]);
 
   const moreActive = overflow.find((m) => m.key === active);
   // Attention still living inside the folded set surfaces on the More button.
-  const overflowBadge = overflow.reduce((n, t) => n + (t.key === "drift" ? findings : t.key === "approvals" ? awaiting : 0), 0);
+  const overflowBadge = overflow.reduce((n, t) => n + (t.key === "drift" ? findings : t.key === "approvals" ? awaiting : t.key === "sources" ? incoming : 0), 0);
 
   return (
     <div style={{ height: "100%", display: "flex", flexDirection: "column", background: "var(--surface)" }}>
@@ -174,6 +179,7 @@ export default function ConfigurationPage({
             {t.key === "changes" && <CountPill n={awaiting} />}
             {t.key === "approvals" && <CountPill n={awaiting} />}
             {t.key === "drift" && <CountPill n={findings} tone="pending" />}
+            {t.key === "sources" && <CountPill n={incoming} />}
           </button>
         ))}
         {overflow.length > 0 && (
@@ -191,6 +197,9 @@ export default function ConfigurationPage({
                     )}
                     {m.key === "approvals" && awaiting > 0 && (
                       <Badge count={awaiting} size="small" color="var(--c-review)" />
+                    )}
+                    {m.key === "sources" && incoming > 0 && (
+                      <Badge count={incoming} size="small" color="var(--c-review)" />
                     )}
                   </span>
                 ),

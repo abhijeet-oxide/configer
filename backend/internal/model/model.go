@@ -118,6 +118,14 @@ type Parameter struct {
 	// resolved read-only (never written) and any real file value overrides it,
 	// so it stays true to the write-back model: a suggestion, not a stored value.
 	Derived string `yaml:"derived,omitempty" json:"derived,omitempty"`
+	// Source, when set, maps this parameter to a key in an external source
+	// (see .configer/sources.yaml). The source's value is never applied
+	// silently: it surfaces as an "incoming change" the reviewer accepts into a
+	// draft, so the write-back model stays intact (a repo file value is only
+	// changed by a reviewed commit). Analogous to Derived, but the value comes
+	// from another system (another Git repo, a secret store) instead of another
+	// parameter.
+	Source *SourceRef `yaml:"source,omitempty" json:"source,omitempty"`
 	// VersionIntroduced/Deprecated drive version-aware cell state in the grid.
 	VersionIntroduced string   `yaml:"versionIntroduced,omitempty" json:"versionIntroduced,omitempty"`
 	VersionDeprecated string   `yaml:"versionDeprecated,omitempty" json:"versionDeprecated,omitempty"`
@@ -236,4 +244,40 @@ func (i Instance) FolderOrDefault() string {
 		return i.Folder
 	}
 	return "instances/" + i.Name
+}
+
+// SourceRef maps one managed parameter to a single key inside an external
+// source (.configer/sources.yaml). Key addresses the value within the source's
+// key/value set - a dotted path for a Git config file ("$.network.admin.port"),
+// a field name for a secret store. Instance, when set, targets one instance's
+// value; empty means the mapping applies at the parameter's own scope.
+type SourceRef struct {
+	SourceID string `yaml:"sourceId" json:"sourceId"`
+	Key      string `yaml:"key" json:"key"`
+	Instance string `yaml:"instance,omitempty" json:"instance,omitempty"`
+}
+
+// SourceRegistry is the external-source catalog (.configer/sources.yaml): the
+// systems this application pulls parameter values FROM (a different Git
+// repository, a secret store). It holds connection metadata only, never
+// credentials (the file is committed to Git) and never the fetched values.
+type SourceRegistry struct {
+	APIVersion string   `yaml:"apiVersion" json:"apiVersion"`
+	Kind       string   `yaml:"kind" json:"kind"`
+	Sources    []Source `yaml:"sources" json:"sources"`
+}
+
+// Source is one configured external source. Kind names the source plugin that
+// interprets it ("git", "vault", ...). Config carries the plugin's NON-secret
+// connection fields (a Git repo URL/branch/path, a Vault address/mount/path);
+// tokens are resolved server-side from the environment, never stored here.
+type Source struct {
+	ID   string `yaml:"id" json:"id"`
+	Name string `yaml:"name" json:"name"`
+	Kind string `yaml:"kind" json:"kind"`
+	// Secret marks a source that provides secret values (a secret store). Its
+	// values are masked in API responses and written back as a reference, never
+	// as plaintext.
+	Secret bool              `yaml:"secret,omitempty" json:"secret,omitempty"`
+	Config map[string]string `yaml:"config,omitempty" json:"config,omitempty"`
 }

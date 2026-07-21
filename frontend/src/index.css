@@ -1294,6 +1294,42 @@ body {
   animation: cellFlash 2.4s ease-out;
 }
 
+/* Floating "you have staged edits" reminder, shown outside the editor. */
+.pending-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 8px 10px 8px 16px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--c-pending-bd);
+  box-shadow: var(--el-2, 0 8px 24px rgba(0, 0, 0, 0.16));
+  color: var(--text);
+  font-size: 13px;
+  animation: pendingBarIn 0.22s ease-out;
+}
+.pending-bar-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c-pending);
+  box-shadow: 0 0 0 3px var(--c-pending-bg);
+  flex-shrink: 0;
+}
+@keyframes pendingBarIn {
+  from { opacity: 0; transform: translate(-50%, 8px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-bar { animation: none; }
+}
+
 /* Success pulse after an edit is staged: a brief green wash that fades, so a
    save reads as "done" in place without a toast. */
 @keyframes cellSaved {

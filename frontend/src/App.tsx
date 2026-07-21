@@ -18,6 +18,7 @@ import { useUI } from "./store";
 import NavRail from "./components/NavRail";
 import TopBar from "./components/TopBar";
 import SearchPalette from "./components/SearchPalette";
+import PendingChangesBar from "./components/PendingChangesBar";
 import GlobalNewApplication from "./components/GlobalNewApplication";
 import CategoryTree from "./components/CategoryTree";
 import ParameterGrid from "./components/ParameterGrid";
@@ -581,6 +582,7 @@ export default function App() {
       <SearchPalette />
       <GlobalNewApplication />
       <WelcomeTour />
+      <PendingChangesBar />
     </Layout>
   );
 }

@@ -14,6 +14,7 @@ import { ENV_PRESETS } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
 import InstanceTopology from "./InstanceTopology";
+import { EmptyState } from "./ui";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -280,7 +281,21 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         dataSource={shown}
         pagination={false}
         scroll={{ x: "max-content" }}
-        locale={{ emptyText: "No instances. Add one to start managing its configuration." }}
+        locale={{
+          emptyText: (
+            <EmptyState
+              icon={<PlusOutlined />}
+              title={statusFilter === "active" ? "No instances yet" : "None here"}
+              hint={
+                statusFilter === "active"
+                  ? "Add an instance (a deployment target) to start managing its configuration."
+                  : "No instances match this filter."
+              }
+              actionLabel={statusFilter === "active" ? "Add instance" : undefined}
+              onAction={statusFilter === "active" ? () => openModal("add") : undefined}
+            />
+          ),
+        }}
         columns={[
           { title: "Instance", dataIndex: "name", render: (n) => <b>{n}</b> },
           {

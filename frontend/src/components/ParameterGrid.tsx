@@ -36,6 +36,7 @@ import {
   UndoOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
+import { EmptyState } from "./ui";
 import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -1577,6 +1578,26 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           virtual
           scroll={{ x: scrollX, y: tableY }}
           pagination={false}
+          locale={{
+            emptyText:
+              total === 0 ? (
+                <EmptyState
+                  icon={<PlusOutlined />}
+                  title="No parameters yet"
+                  hint="Add a parameter, or import settings from your repository files to bring them under management."
+                  actionLabel="Add parameter"
+                  onAction={() => setAddOpen(true)}
+                />
+              ) : (
+                <EmptyState
+                  icon={<SearchOutlined />}
+                  title="Nothing matches"
+                  hint="No parameters match the current search and filters."
+                  actionLabel="Clear filters"
+                  onAction={clearAllFilters}
+                />
+              ),
+          }}
           rowClassName={(r) => {
             const g = groupMeta?.get(r.param.id);
             // Alternate two identical flash classes per click (by jump parity)

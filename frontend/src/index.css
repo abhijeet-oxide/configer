@@ -1,3 +1,29 @@
+/* JetBrains Mono: the voice for configuration DATA (values, paths, IDs,
+   versions, counts). A real mono here is on-subject and gives the tool a
+   distinct data-instrument character instead of a generic system stack.
+   Self-hosted (no CDN), latin subset, three weights. */
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("/fonts/jbmono-latin-400.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("/fonts/jbmono-latin-500.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("/fonts/jbmono-latin-600.woff2") format("woff2");
+}
+
 html,
 body,
 #root {
@@ -10,6 +36,17 @@ body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Headings carry a touch of negative tracking and balanced wrapping so they
+   read as considered display type, not default bold body text. Applies to
+   both Ant Design titles and the app's own heading utilities, every theme. */
+:where(.ant-typography, h1, h2, h3, h4) {
+  letter-spacing: -0.014em;
+}
+:where(h1, h2).ant-typography,
+:where(.text-xl, .text-2xl) {
+  font-weight: 680;
 }
 
 /* Tailwind's preflight sets svg { display: block }, which stacks Ant Design's
@@ -215,7 +252,7 @@ body {
 }
 
 .mono {
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -289,6 +326,16 @@ body {
   justify-content: center;
   font-weight: 700;
   flex-shrink: 0;
+}
+.logo-tile svg {
+  display: block;
+}
+
+/* Signature on the hero: the Parameters grid header sits on a branded rule, so
+   the matrix reads as the product's centerpiece rather than a plain table.
+   Scoped to .param-grid so other tables keep their quiet default header. */
+.param-grid .ant-table-thead > tr > th {
+  border-bottom: 2px solid var(--brand-border);
 }
 
 /* ------------------------------------------------------------- app tabs */
@@ -389,6 +436,20 @@ body {
 .card-clickable:hover {
   transform: translateY(-1px);
   box-shadow: var(--el-2);
+}
+
+/* Instrument preset: resting cards are flat bordered planes (elevation is
+   reserved for overlays and the hover lift). Applies to the custom soft-UI
+   cards and to Ant Design's own Card, so the whole surface reads as one. */
+:root[data-preset="instrument"] .shadow-neu,
+:root[data-preset="instrument"] .ant-card {
+  border: 1px solid var(--border);
+}
+:root[data-preset="instrument"] .ant-card {
+  box-shadow: none;
+}
+:root[data-preset="instrument"] .card-clickable:hover {
+  border-color: var(--border-strong);
 }
 
 /* gradient accent strip on dashboard stat cards */

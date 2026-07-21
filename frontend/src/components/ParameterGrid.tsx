@@ -1214,7 +1214,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
+    <div className="param-grid" style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
       {/* ONE toolbar row: context (instance, environment), the draft-status
           pills, search, an overflow menu for everything else, and the primary
           action. It wraps only when space truly runs out. */}

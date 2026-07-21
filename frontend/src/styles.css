@@ -46,5 +46,5 @@
   --radius-card: var(--r-lg);
   --radius-card-lg: var(--r-xl);
 
-  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
 }

@@ -1,5 +1,5 @@
 import type { Plugin } from "vite";
-import { theme, renderRootCss, faviconHref } from "../src/theme.config";
+import { theme, renderRootCss, faviconHref, ACTIVE_PRESET } from "../src/theme.config";
 
 // Build-time theming: inlines the brand color variables into <head> (so there
 // is no flash of the wrong theme), and sets the favicon and <title> from the
@@ -13,6 +13,11 @@ export default function brandPlugin(): Plugin {
       const title = `${theme.appName} - ${theme.tagline}`;
 
       let out = html;
+      // Stamp the active preset on <html> at parse time (no flash). CSS scopes
+      // both the palette and the flat/soft elevation to :root[data-preset=...].
+      if (ACTIVE_PRESET && ACTIVE_PRESET !== "default") {
+        out = out.replace(/<html(\s|>)/, `<html data-preset="${ACTIVE_PRESET}"$1`);
+      }
       // Replace the title text.
       out = out.replace(/<title>[\s\S]*?<\/title>/, `<title>${title}</title>`);
       // Drop any existing favicon <link> so ours is authoritative.

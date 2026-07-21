@@ -9,8 +9,8 @@
 // parameters/instances; it registers here the same way and the palette is none
 // the wiser.
 
-import { AppstoreOutlined, TableOutlined, PullRequestOutlined } from "../icons";
-import { bindingsOf, type Grid, type Row, type ChangeState, type RepoSummary } from "../api";
+import { AppstoreOutlined, TableOutlined, PullRequestOutlined, ClusterOutlined } from "../icons";
+import { api, bindingsOf, type Grid, type Row, type ChangeState, type RepoSummary, type SearchHitDTO } from "../api";
 import { fmtValue } from "../rules";
 import { allCommands } from "../commands/registry";
 import { register } from "./registry";
@@ -140,4 +140,52 @@ register({
         },
       }),
     ),
+});
+
+// --- global cross-application index (server-backed, async) -----------------
+
+// The one provider that reaches beyond the loaded app: parameters, instances,
+// and change requests across EVERY application, from GET /api/search. It runs
+// only in global mode and only on a non-empty query (empty global is filled
+// instantly by the client apps + commands providers), and cancels a superseded
+// request so keystrokes do not race. The server already builds each hit's
+// target; the client passes it straight through.
+
+function iconFor(type: SearchHitDTO["type"]) {
+  if (type === "parameter") return <TableOutlined />;
+  if (type === "instance") return <ClusterOutlined />;
+  return <PullRequestOutlined />;
+}
+
+let inflight: AbortController | null = null;
+
+register({
+  id: "global-index",
+  scope: "global",
+  query: async (_ctx, q) => {
+    const query = q.trim();
+    if (!query) return [];
+    inflight?.abort();
+    const ctrl = new AbortController();
+    inflight = ctrl;
+    let res: { hits: SearchHitDTO[] };
+    try {
+      res = await api.search(query, { scope: "global", limit: 20, signal: ctrl.signal });
+    } catch {
+      return []; // aborted or offline: yield nothing, local providers still answer
+    }
+    return res.hits.map(
+      (h): SearchHit => ({
+        type: h.type,
+        id: `${h.appId}:${h.id}`, // param/instance ids are app-scoped; namespace them
+        title: h.title,
+        subtitle: h.subtitle,
+        icon: iconFor(h.type),
+        keywords: h.keywords,
+        score: 0,
+        badges: h.badges,
+        target: h.target,
+      }),
+    );
+  },
 });

@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/httpx"
 )
 
 // PR is the provider-neutral view of a pull request.
@@ -61,7 +63,7 @@ func ForOrigin(origin, token string) Provider {
 		return nil
 	}
 	return &GitHub{Owner: owner, Repo: repo, Token: token,
-		HTTP: &http.Client{Timeout: 30 * time.Second}}
+		HTTP: httpx.Client(30 * time.Second)}
 }
 
 // GitHub implements Provider against the GitHub REST API.

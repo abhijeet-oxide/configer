@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
+	"github.com/abhijeet-oxide/configer/backend/internal/httpx"
 )
 
 // GitHubRepo is one repository the user can pick from.
@@ -48,7 +49,7 @@ func (h *Hub) githubCred(r *http.Request) (token, source, login string) {
 	return "", "", login
 }
 
-var ghHTTP = &http.Client{Timeout: 20 * time.Second}
+var ghHTTP = httpx.Client(20 * time.Second)
 
 // ghGet performs one authenticated GitHub API call and decodes the response.
 func (h *Hub) ghGet(r *http.Request, token, path string, out any) error {

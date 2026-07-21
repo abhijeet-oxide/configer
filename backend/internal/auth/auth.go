@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/httpx"
 	"github.com/abhijeet-oxide/configer/backend/internal/store"
 )
 
@@ -85,7 +86,7 @@ func (s *Service) http() *http.Client {
 	if s.HTTP != nil {
 		return s.HTTP
 	}
-	return &http.Client{Timeout: 15 * time.Second}
+	return httpx.Client(15 * time.Second)
 }
 
 // callbackURL is the redirect_uri GitHub sends the browser back to. An explicit

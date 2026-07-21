@@ -14,6 +14,7 @@ import { languageFor } from "../monaco";
 interface Revealable {
   revealLineInCenter: (line: number) => void;
   setPosition: (pos: { lineNumber: number; column: number }) => void;
+  setSelection?: (sel: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }) => void;
   focus: () => void;
   getValue: () => string;
   onDidChangeModelContent: (cb: () => void) => void;
@@ -74,6 +75,9 @@ export default function MonacoFileView({
     if (!line || !edRef.current) return;
     edRef.current.revealLineInCenter(line);
     edRef.current.setPosition({ lineNumber: line, column: 1 });
+    // Highlight the whole line so the eye lands on it (selecting up to the start
+    // of the next line covers the full row); Monaco clamps at the last line.
+    edRef.current.setSelection?.({ startLineNumber: line, startColumn: 1, endLineNumber: line + 1, endColumn: 1 });
     edRef.current.focus();
   };
 

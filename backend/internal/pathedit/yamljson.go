@@ -50,6 +50,29 @@ func getTreeFromRoot(root *yaml.Node, path string) (any, bool, error) {
 	return out, true, nil
 }
 
+// lineFromRoot walks to the value node at path and returns its 1-based source
+// line, reusing the same descent as Get so path semantics never diverge.
+func lineFromRoot(root *yaml.Node, path string) (int, bool) {
+	segs, err := ParsePath(path)
+	if err != nil {
+		return 0, false
+	}
+	cur := docRoot(root)
+	if cur == nil {
+		return 0, false
+	}
+	for _, seg := range segs {
+		cur = descend(cur, seg)
+		if cur == nil {
+			return 0, false
+		}
+	}
+	if cur.Line <= 0 {
+		return 0, false
+	}
+	return cur.Line, true
+}
+
 func setTree(doc []byte, path string, value any, format string) (string, error) {
 	return editTree(doc, path, value, false, format)
 }

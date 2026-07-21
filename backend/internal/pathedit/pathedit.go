@@ -76,6 +76,28 @@ func (d *Document) Get(path string) (any, bool, error) {
 	return getTreeFromRoot(d.yaml, path)
 }
 
+// Line returns the 1-based source line of the value at path from a parsed
+// Document. It supports YAML and JSON (which share the node tree); XML has no
+// per-node line and returns false. Used to jump straight to where a value lives.
+func (d *Document) Line(path string) (int, bool) {
+	if d == nil || d.empty || d.yaml == nil {
+		return 0, false
+	}
+	return lineFromRoot(d.yaml, path)
+}
+
+// Line is the one-shot form: parse doc and return the value's source line.
+func Line(doc []byte, format, path string) (int, bool) {
+	if normFormat(format) == "xml" {
+		return 0, false
+	}
+	d, err := Parse(doc, format)
+	if err != nil {
+		return 0, false
+	}
+	return d.Line(path)
+}
+
 // Set returns doc with value written at path, creating the file structure and
 // any intermediate containers as needed. ptype selects list semantics for XML
 // (repeated sibling elements).

@@ -1,5 +1,5 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
@@ -147,18 +147,27 @@ function DetailsTab({
             )}
             <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
           </div>
-          <Tooltip title="Open this file in the Files workspace">
+          <Tooltip title="Open the file and jump to this line">
             <Button
               size="small"
               type="text"
-              icon={<FileTextOutlined />}
-              onClick={() => {
+              icon={<LinkOutlined />}
+              onClick={async () => {
                 const inst =
                   grid.instances.find((x) => x.name === selectedInstance) ?? grid.instances[0];
-                setFileFocus({ path: expandBinding(s, inst), instance: inst?.name });
+                const file = expandBinding(s, inst);
+                // Resolve the exact line first (best effort), then open the file
+                // focused on it. A miss just opens the file at the top.
+                let line: number | undefined;
+                try {
+                  line = (await api.locate(file, s.path, s.format)).line || undefined;
+                } catch {
+                  // ignore: fall back to opening the file without a line
+                }
+                setFileFocus({ path: file, line, instance: inst?.name });
                 setSection("files");
               }}
-              aria-label="Open in Files"
+              aria-label="Open in Files at this line"
             />
           </Tooltip>
         </div>

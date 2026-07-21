@@ -164,6 +164,11 @@ export default function FilesView() {
   // Cross-navigation: another view asked to open a file (optionally at a
   // line, for an instance). One-shot; consumed by n.
   const consumedFocus = useRef(0);
+  // A requested file+line that must survive the instance's file list reloading.
+  // Switching instance refetches `files`, and the auto-select effect below would
+  // otherwise snap the selection to the first file before the requested one has
+  // loaded; this ref lets that effect honor the request once it appears.
+  const pendingFocus = useRef<{ path: string; line?: number } | null>(null);
   useEffect(() => {
     if (!fileFocus || consumedFocus.current === fileFocus.n) return;
     consumedFocus.current = fileFocus.n;
@@ -174,9 +179,11 @@ export default function FilesView() {
     // freshly staged instance): leave selection to the auto-select effect,
     // which lands on the first file once the folder renders.
     if (fileFocus.path) {
+      pendingFocus.current = { path: fileFocus.path, line: fileFocus.line };
       setSelected(fileFocus.path);
       setReveal(fileFocus.line);
     } else {
+      pendingFocus.current = null;
       setSelected(null);
       setReveal(undefined);
     }
@@ -186,6 +193,17 @@ export default function FilesView() {
     setDirty(null);
     if (files.length === 0) {
       setSelected(null);
+      return;
+    }
+    // Honor a pending cross-nav request once the right instance's files have
+    // loaded: select the exact file and reveal its line. Until it appears, wait
+    // rather than snapping to the first file (which would open the wrong file).
+    if (pendingFocus.current) {
+      if (files.some((f) => f.path === pendingFocus.current!.path)) {
+        setSelected(pendingFocus.current.path);
+        setReveal(pendingFocus.current.line);
+        pendingFocus.current = null;
+      }
       return;
     }
     if (!selected || !files.some((f) => f.path === selected)) setSelected(files[0].path);

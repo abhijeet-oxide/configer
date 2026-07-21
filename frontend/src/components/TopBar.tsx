@@ -32,7 +32,7 @@ const APP_BREADCRUMB_SECTIONS = new Set([
 ]);
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
-  config: "Configure",
+  config: "Parameters",
   files: "Files",
   compare: "Compare",
   changes: "Changes",

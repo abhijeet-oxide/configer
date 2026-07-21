@@ -140,7 +140,7 @@ export default function ChangeRequestsView() {
             <StatePanel
               art={<EmptyArt size={104} />}
               title="No changes yet"
-              subtitle="Edit some cells in Configure to start a draft; submitting it sends your first change for review."
+              subtitle="Edit some cells in Parameters to start a draft; submitting it sends your first change for review."
             />
           ),
         }}

@@ -23,6 +23,14 @@ export interface Binding {
 /** The parameter's bindings ([] for a design-phase parameter). */
 export const bindingsOf = (p: Parameter): Binding[] => p.bindings ?? [];
 
+/**
+ * The pseudo-instance the Files explorer uses for its default "All instances"
+ * view. The backend's render endpoint understands the same sentinel and returns
+ * every instance's files unioned together, so a parameter link always lands on
+ * its file regardless of which instance the caller was looking at.
+ */
+export const ALL_INSTANCES = "__all__";
+
 /** The parameter's first binding (display convenience). */
 export const primaryBinding = (p: Parameter): Binding =>
   p.bindings?.[0] ?? { file: "", path: "", format: "" };

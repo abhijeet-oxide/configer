@@ -16,11 +16,12 @@ import {
   FolderAddOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
+  LinkOutlined,
 } from "../icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { api, sameContent } from "../api";
+import { api, sameContent, ALL_INSTANCES } from "../api";
 import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
@@ -61,9 +62,18 @@ export default function FilesView() {
   const fileFocus = useUI((s) => s.fileFocus);
   const projectQ = useQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
   const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
-  const [instance, setInstance] = useState<string | null>(null);
+  // Default to "All instances": every instance's files at once, so a linked
+  // parameter always resolves to its file (a single-instance filter would hide
+  // files that instance does not own and leave the link highlighting nothing).
+  const [instance, setInstance] = useState<string | null>(ALL_INSTANCES);
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyManaged, setOnlyManaged] = useState(true);
+  // Provenance for the file the user was linked to: which parameter, instance
+  // and version the value was resolved for. Shown as a banner; it does not
+  // filter the explorer. Cleared once the user navigates away by hand.
+  const [focusCtx, setFocusCtx] = useState<
+    { param?: string; instance?: string; version?: string; path: string } | null
+  >(null);
   const [dirty, setDirty] = useState<string | null>(null);
   const [treeQ, setTreeQ] = useState("");
   const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
@@ -89,11 +99,24 @@ export default function FilesView() {
     () => new Set(instances.filter((i) => i.status === "draft").map((i) => i.name)),
     [instances],
   );
-  const instancePending = !!instance && pendingInstances.has(instance);
+  const allInstances = instance === ALL_INSTANCES;
+  const instancePending = !allInstances && !!instance && pendingInstances.has(instance);
 
   useEffect(() => {
-    if (!instance && instances.length > 0) setInstance(instances[0].name);
+    if (!instance && instances.length > 0) setInstance(ALL_INSTANCES);
   }, [instances, instance]);
+
+  // Which instance owns a real file path (its folder is a prefix), so a save in
+  // the "All instances" view is staged against the right instance; a shared
+  // (base-layer) file returns undefined and stages globally.
+  const ownerInstanceOf = useMemo(() => {
+    const folders = (gridQ.data?.instances ?? []).map((i) => ({
+      name: i.name,
+      folder: i.folder ?? `instances/${i.name}`,
+    }));
+    return (path: string): string | undefined =>
+      folders.find((f) => path === f.folder || path.startsWith(f.folder + "/"))?.name;
+  }, [gridQ.data]);
 
   const draftQ = useQuery({
     queryKey: ["files-draft", instance],
@@ -172,7 +195,27 @@ export default function FilesView() {
   useEffect(() => {
     if (!fileFocus || consumedFocus.current === fileFocus.n) return;
     consumedFocus.current = fileFocus.n;
-    if (fileFocus.instance) setInstance(fileFocus.instance);
+    if (fileFocus.allInstances) {
+      // A parameter link: stay on "All instances" so the file is always
+      // present (a single-instance filter could hide it). The instance and
+      // version ride along as a provenance banner instead of a filter.
+      setInstance(ALL_INSTANCES);
+      setFocusCtx(
+        fileFocus.path && (fileFocus.instance || fileFocus.version || fileFocus.param)
+          ? {
+              param: fileFocus.param,
+              instance: fileFocus.instance,
+              version: fileFocus.version,
+              path: fileFocus.path,
+            }
+          : null,
+      );
+    } else {
+      // A folder/instance-scoped handoff (e.g. "view this instance's files"):
+      // honor the requested instance filter as before.
+      if (fileFocus.instance) setInstance(fileFocus.instance);
+      setFocusCtx(null);
+    }
     setOnlyManaged(false);
     setTreeQ("");
     // An empty path means "just show this instance's folder" (e.g. jumping to a
@@ -215,8 +258,13 @@ export default function FilesView() {
   const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
 
   const save = useMutation({
-    mutationFn: (content: string) =>
-      api.stageFileEdit({ instance: instance ?? undefined, path: selected!, content, author: "demo-user" }),
+    mutationFn: (content: string) => {
+      // In "All instances" view the selected file's folder tells us which
+      // instance to stage against (undefined = a shared/base file, staged
+      // globally). Otherwise it is simply the chosen instance.
+      const stageInstance = allInstances ? ownerInstanceOf(selected ?? "") : instance ?? undefined;
+      return api.stageFileEdit({ instance: stageInstance, path: selected!, content, author: "demo-user" });
+    },
     onSuccess: (r) => {
       setDirty(null);
       if (r.staged === 0) message.info("No changes to save");
@@ -242,10 +290,13 @@ export default function FilesView() {
     URL.revokeObjectURL(a.href);
   };
 
-  // Files -> Editor: jump to the parameter(s) bound into the open file.
+  // Files -> Editor: jump to the parameter(s) bound into the open file. In the
+  // "All instances" view resolve the concrete instance from the file's folder
+  // so the grid lands on the right cell (a shared file jumps to the row).
   const openInEditor = (paramId: string) => {
-    if (instance) selectInstance(instance);
-    setJump("cell", paramId, instance ?? undefined);
+    const inst = allInstances ? ownerInstanceOf(selected ?? "") : instance ?? undefined;
+    if (inst) selectInstance(inst);
+    setJump("cell", paramId, inst ?? undefined);
     setSection("config");
   };
 
@@ -299,6 +350,7 @@ export default function FilesView() {
           onSelect={(p) => {
             setSelected(p);
             setReveal(undefined);
+            if (p !== focusCtx?.path) setFocusCtx(null);
           }}
           onAdd={addToManaged}
           onRemove={(f) => retire.mutate(f)}
@@ -322,22 +374,40 @@ export default function FilesView() {
             value={instance ?? undefined}
             placeholder="Choose an instance"
             showSearch
-            filterOption={(input, opt) => String(opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
-            onChange={(v) => setInstance(v)}
-            options={instances.map((i) => ({
-              value: i.name,
-              label: (
-                <span className="inline-flex items-center gap-1.5">
-                  {i.name}
-                  {i.status === "draft" && (
-                    <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>new</Tag>
-                  )}
-                  {i.status === "retiring" && (
-                    <Tag color="warning" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>retiring</Tag>
-                  )}
-                </span>
-              ),
-            }))}
+            filterOption={(input, opt) =>
+              String(opt?.searchText ?? opt?.value ?? "").toLowerCase().includes(input.toLowerCase())
+            }
+            onChange={(v) => {
+              setInstance(v);
+              setFocusCtx(null);
+            }}
+            options={[
+              {
+                value: ALL_INSTANCES,
+                searchText: "all instances",
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    All instances
+                    <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{instances.length}</Tag>
+                  </span>
+                ),
+              },
+              ...instances.map((i) => ({
+                value: i.name,
+                searchText: i.name,
+                label: (
+                  <span className="inline-flex items-center gap-1.5">
+                    {i.name}
+                    {i.status === "draft" && (
+                      <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>new</Tag>
+                    )}
+                    {i.status === "retiring" && (
+                      <Tag color="warning" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>retiring</Tag>
+                    )}
+                  </span>
+                ),
+              })),
+            ]}
           />
           <Tooltip title="Show only files Configer manages, or the whole repository">
             <span className="inline-flex items-center gap-1.5 text-[13px]">
@@ -447,6 +517,39 @@ export default function FilesView() {
               the repository yet.
             </span>
           }
+          style={{ padding: "6px 12px" }}
+        />
+      )}
+
+      {focusCtx && selected === focusCtx.path && (
+        <Alert
+          type="info"
+          showIcon
+          icon={<LinkOutlined />}
+          message={
+            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>Opened from</span>
+              {focusCtx.param ? (
+                <Tag className="mono" color="processing" style={{ margin: 0 }}>{focusCtx.param}</Tag>
+              ) : (
+                <span>a parameter link</span>
+              )}
+              {focusCtx.instance && (
+                <>
+                  <span>·</span>
+                  <span>
+                    value resolved for <b className="mono">{focusCtx.instance}</b>
+                  </span>
+                </>
+              )}
+              {focusCtx.version && (
+                <Tag style={{ margin: 0, fontSize: 10 }}>{focusCtx.version}</Tag>
+              )}
+              <span className="text-ink-3">· showing all instances</span>
+            </span>
+          }
+          closable
+          onClose={() => setFocusCtx(null)}
           style={{ padding: "6px 12px" }}
         />
       )}

@@ -444,12 +444,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 	if draft != nil {
 		items = draft.Items
 	}
-	files, err := instanceFiles(p, r.PathValue("instance"), items)
+	instance := r.PathValue("instance")
+	var files []FileContent
+	if instance == allInstancesSentinel {
+		files, err = allInstanceFiles(p, items)
+	} else {
+		files, err = instanceFiles(p, instance, items)
+	}
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"instance": r.PathValue("instance"), "files": files})
+	writeJSON(w, http.StatusOK, map[string]any{"instance": instance, "files": files})
 }
 
 // scan detects files and extracts candidate parameters (read-only).

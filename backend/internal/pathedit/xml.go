@@ -1,7 +1,10 @@
 package pathedit
 
 import (
+	"bytes"
+	"encoding/xml"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
@@ -144,6 +147,92 @@ func pruneEmptyXML(el *etree.Element) {
 		}
 		parent.RemoveChild(el)
 		el = parent
+	}
+}
+
+// localTag strips a namespace prefix (rt:routing -> routing) and a positional
+// predicate (interface[1] -> interface, 1). The 1-based index is 0 when the
+// segment carries no predicate. The XML decoder reports local names without
+// their prefix, so paths are matched on the local name across a document.
+func localTag(seg string) (tag string, idx int) {
+	tag = seg
+	if j := strings.Index(tag, "["); j >= 0 {
+		inner := strings.TrimSuffix(tag[j+1:], "]")
+		if n, err := strconv.Atoi(strings.TrimSpace(inner)); err == nil {
+			idx = n
+		}
+		tag = tag[:j]
+	}
+	if k := strings.LastIndex(tag, ":"); k >= 0 {
+		tag = tag[k+1:]
+	}
+	return tag, idx
+}
+
+// xmlLine returns the 1-based source line of the element (or the element that
+// owns the attribute) addressed by an XPath-like path. etree exposes no
+// per-node line, so this re-parses with the standard XML decoder and tracks
+// byte offsets, counting same-name siblings to honor [n] predicates. Best
+// effort: an unresolved path returns ok=false and the caller opens at the top.
+func xmlLine(doc []byte, path string) (int, bool) {
+	elemPath := path
+	if _, ep, isAttr := splitAttrPath(path); isAttr {
+		elemPath = ep
+	}
+	raw := xmlSegments(elemPath)
+	if len(raw) == 0 {
+		return 0, false
+	}
+	type seg struct {
+		tag string
+		idx int // 1-based sibling index; 0 = first match wins
+	}
+	segs := make([]seg, len(raw))
+	for i, s := range raw {
+		tag, idx := localTag(s)
+		segs[i] = seg{tag: tag, idx: idx}
+	}
+
+	dec := xml.NewDecoder(bytes.NewReader(doc))
+	dec.Strict = false // locate is best-effort; never fail on odd real-world XML
+	var stack []string             // open element local names
+	counts := []map[string]int{{}} // per open parent: child local name -> count seen
+	matchDepth := 0                // matched leading segments along the current open path
+	for {
+		off := dec.InputOffset() // start of the token about to be read
+		tok, err := dec.Token()
+		if err != nil {
+			return 0, false
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			name := t.Name.Local
+			parent := counts[len(counts)-1]
+			parent[name]++
+			occ := parent[name]
+			depth := len(stack)
+			// This element extends the target path only when every ancestor
+			// already matched (depth == matchDepth), the local names agree, and
+			// the predicate (if any) picks this sibling occurrence.
+			if depth == matchDepth && matchDepth < len(segs) &&
+				segs[matchDepth].tag == name &&
+				(segs[matchDepth].idx == 0 || segs[matchDepth].idx == occ) {
+				matchDepth++
+				if matchDepth == len(segs) {
+					return 1 + bytes.Count(doc[:off], []byte{'\n'}), true
+				}
+			}
+			stack = append(stack, name)
+			counts = append(counts, map[string]int{})
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+				counts = counts[:len(counts)-1]
+				if matchDepth > len(stack) {
+					matchDepth = len(stack)
+				}
+			}
+		}
 	}
 }
 

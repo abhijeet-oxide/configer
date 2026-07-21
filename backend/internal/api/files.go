@@ -29,6 +29,53 @@ type FileContent struct {
 	Content string `json:"content"`
 }
 
+// allInstancesSentinel is the pseudo-instance the Files explorer sends to see
+// every instance's files at once (the default "All instances" view), so a
+// parameter link always lands on its file no matter which instance the caller
+// was looking at.
+const allInstancesSentinel = "__all__"
+
+// allInstanceFiles unions every instance's files (each with its own draft
+// applied) plus the shared base files, de-duplicated by path. It reuses
+// instanceFiles so a single code path governs how draft items land in a file.
+// Shared base files are identical across instances after the (global) draft is
+// applied, so the first occurrence wins and later duplicates are dropped.
+func allInstanceFiles(p *project.Project, items []change.Item) ([]FileContent, error) {
+	seen := map[string]bool{}
+	out := make([]FileContent, 0)
+	add := func(files []FileContent) {
+		for _, fc := range files {
+			if seen[fc.Path] {
+				continue
+			}
+			seen[fc.Path] = true
+			out = append(out, fc)
+		}
+	}
+	for _, inst := range p.Registry.Instances {
+		files, err := instanceFiles(p, inst.Name, items)
+		if err != nil {
+			return nil, err
+		}
+		add(files)
+	}
+	// Instances that exist only as a pending draft add have no folder on disk
+	// yet; include their synthesized files so the new folder shows up too.
+	for _, it := range items {
+		if it.Act() != change.ActionAddInstance {
+			continue
+		}
+		if _, exists := p.InstanceByName(it.Instance); exists {
+			continue
+		}
+		if files, pending := pendingInstanceFiles(p, it.Instance, items); pending {
+			add(files)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
+	return out, nil
+}
+
 // instanceFiles lists the real files that make up one instance's
 // configuration, with pending draft items applied in memory.
 //

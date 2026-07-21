@@ -89,7 +89,7 @@ func (d *Document) Line(path string) (int, bool) {
 // Line is the one-shot form: parse doc and return the value's source line.
 func Line(doc []byte, format, path string) (int, bool) {
 	if normFormat(format) == "xml" {
-		return 0, false
+		return xmlLine(doc, path)
 	}
 	d, err := Parse(doc, format)
 	if err != nil {

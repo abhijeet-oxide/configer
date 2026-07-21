@@ -577,7 +577,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [pill, setPill] = useState<"all" | "changed" | "added" | "removed">("all");
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
-  const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string } | null>(null);
+  const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string; n?: number } | null>(null);
   // Find & Replace dialog (opened from the toolbar or a cell's right-click)
   const [findReplace, setFindReplace] = useState<{ find: string } | null>(null);
   // The single-row toolbar's overflow menu and the legend dialog.
@@ -896,14 +896,27 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       const idx = rows.findIndex((r) => r.param.id === jump.id);
       if (idx < 0) return; // rows not filtered to it yet; retry on next update
       consumedJump.current = jump.n;
-      tableRef.current?.scrollTo({ index: Math.max(idx - 2, 0) });
+      // Center the target row rather than pinning it near the top. The virtual
+      // body's holder is a native vertical scroller (see index.css), and
+      // antd's scrollTo({index}) is a no-op here, so drive scrollTop directly:
+      // row top minus half a viewport (plus half a row), clamped at 0.
+      const root = rootRef.current;
+      const holder = root?.querySelector<HTMLElement>(".ant-table-tbody-virtual-holder");
+      const rowH =
+        root?.querySelector<HTMLElement>(".ant-table-tbody-virtual .ant-table-row")?.getBoundingClientRect()
+          .height || (prefs.density === "compact" ? 39 : 48);
+      if (holder) {
+        holder.scrollTop = Math.max(idx * rowH - holder.clientHeight / 2 + rowH / 2, 0);
+      } else {
+        tableRef.current?.scrollTo({ index: Math.max(idx - 4, 0) });
+      }
       selectParam(jump.id);
       if (jump.kind === "cell" && jump.inst) scrollToInstance(jump.inst);
     } else {
       consumedJump.current = jump.n;
       scrollToInstance(jump.id);
     }
-    setFlash({ kind: jump.kind, id: jump.id, inst: jump.inst });
+    setFlash({ kind: jump.kind, id: jump.id, inst: jump.inst, n: jump.n });
     const t = setTimeout(() => setFlash(null), 2000);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1548,8 +1561,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           pagination={false}
           rowClassName={(r) => {
             const g = groupMeta?.get(r.param.id);
+            // Alternate two identical flash classes per click (by jump parity)
+            // so the CSS animation restarts even when the same row is clicked
+            // again - re-adding the same class would not replay it.
+            const flashing = (flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id;
+            const flashCls = flashing ? ((flash?.n ?? 0) % 2 ? "row-flash-b " : "row-flash-a ") : "";
             return (
-              ((flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id ? "row-flash " : "") +
+              flashCls +
               (r.param.id === selectedParamId ? "row-selected " : "") +
               (g ? `vgrp vgrp-c${g.color}${g.top ? " vgrp-top" : ""}${g.bot ? " vgrp-bot" : ""}` : "")
             ).trim();

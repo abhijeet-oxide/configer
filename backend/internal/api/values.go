@@ -97,7 +97,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter has no shared file location; edit it per instance")
 			return
 		}
-		res := resolver.New(p.Root).Resolve(param, model.Instance{})
+		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, model.Instance{})
 		oldVal = res.Value
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
@@ -109,7 +109,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter lives only in a shared file; use a global edit to change it for everyone")
 			return
 		}
-		res := resolver.New(p.Root).Resolve(param, inst)
+		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, inst)
 		oldVal = res.Value
 	}
 
@@ -148,6 +148,146 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		pending, changeID = len(d.Items), d.ID
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "value": coerced, "pending": pending, "changeId": changeID})
+}
+
+// stageSetItem validates rawValue for a parameter on one instance and upserts a
+// set item into cr, reusing the shared resolver rv for the committed baseline.
+// It returns whether an edit was actually staged and a user-facing error string
+// ("" on success). Setting a value that already matches the committed one
+// cancels the pending edit (staged=false, no error), mirroring the single-cell
+// write path.
+func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName string, inst model.Instance, rawValue any, rv *resolver.Resolver) (staged bool, msg string) {
+	if len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
+		return false, "this parameter lives only in a shared file; edit it for everyone instead"
+	}
+	coerced, err := validate.CoerceValue(param, rawValue)
+	if err != nil {
+		return false, err.Error()
+	}
+	if vr := validate.Value(param, coerced); !vr.Valid {
+		return false, vr.Message
+	}
+	old := rv.Resolve(param, inst).Value
+	cr.UpsertItem(change.Item{
+		ParamID: param.ID, Instance: instanceName, Action: change.ActionSet,
+		Old: old, New: coerced, UpdatedAt: time.Now().UTC(),
+	})
+	if stringify(old) == stringify(coerced) {
+		cr.RemoveItem(param.ID, instanceName)
+		return false, ""
+	}
+	return true, ""
+}
+
+// bulkStageValue stages one parameter's edit across many instances in a single
+// request and one draft lock: the fan-out a grid exists for ("set this
+// everywhere", "copy a column"). Each target carries its own value, so it also
+// expresses copying differing values. Per-target failures are reported
+// individually; valid targets still stage.
+//
+// @Summary     Stage a value edit across many instances
+// @Description Stage the same parameter's edit on several instances at once. `edits` is a list of `{instance, value}`; `action` defaults to "set" ("reset"/"exclude" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in `results` while valid ones still stage. Nothing touches Git until the draft is submitted.
+// @Tags        Editing & change requests
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "paramId, action, edits[]"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Malformed body"
+// @Failure     404 {object} APIError "Parameter not found"
+// @Security    CookieSession
+// @Router      /api/values/bulk [put]
+func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		ParamID string `json:"paramId"`
+		Action  string `json:"action"`
+		Edits   []struct {
+			Instance string `json:"instance"`
+			Value    any    `json:"value"`
+		} `json:"edits"`
+		Author string `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
+		return
+	}
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	param, found := p.ParamByID(req.ParamID)
+	if !found {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
+		return
+	}
+	action := change.Action(req.Action)
+	if action == "" {
+		action = change.ActionSet
+	}
+	if action != change.ActionSet && action != change.ActionReset && action != change.ActionExclude {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "unsupported action")
+		return
+	}
+
+	type result struct {
+		Instance string `json:"instance"`
+		OK       bool   `json:"ok"`
+		Error    string `json:"error,omitempty"`
+	}
+	results := make([]result, 0, len(req.Edits))
+	staged := 0
+
+	s.writeMu.Lock()
+	defer s.writeMu.Unlock()
+	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		for _, e := range req.Edits {
+			inst, ok := p.InstanceByName(e.Instance)
+			if !ok {
+				results = append(results, result{Instance: e.Instance, Error: "instance not found"})
+				continue
+			}
+			var errMsg string
+			didStage := false
+			if action == change.ActionSet {
+				didStage, errMsg = stageSetItem(cr, param, e.Instance, inst, e.Value, rv)
+			} else if len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
+				errMsg = "this parameter has no instance override to drop"
+			} else {
+				cr.UpsertItem(change.Item{
+					ParamID: param.ID, Instance: e.Instance, Action: action,
+					Old: rv.Resolve(param, inst).Value, UpdatedAt: time.Now().UTC(),
+				})
+				didStage = true
+			}
+			if errMsg != "" {
+				results = append(results, result{Instance: e.Instance, Error: errMsg})
+				continue
+			}
+			if didStage {
+				staged++
+			}
+			results = append(results, result{Instance: e.Instance, OK: true})
+		}
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+
+	d := s.Store.CurrentDraft()
+	pending, changeID := 0, draft.ID
+	if d != nil {
+		pending, changeID = len(d.Items), d.ID
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "staged": staged, "results": results, "pending": pending, "changeId": changeID,
+	})
 }
 
 // revertValue drops one pending edit from the draft.

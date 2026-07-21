@@ -1,0 +1,10 @@
+# Keep the build context small and cache-friendly: only Go sources feed the
+# image. Everything below is either irrelevant to the build or regenerated.
+bin/
+*.test
+*.out
+Dockerfile
+.dockerignore
+
+# Local state the backend writes at runtime (never belongs in an image).
+configer-data/

@@ -23,6 +23,7 @@ import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../a
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { TableSkeleton } from "./Skeletons";
+import PrChecksBadge from "./PrChecksBadge";
 import { ChangeItemsTable } from "./ChangeItemsTable";
 import { EmptyArt, StatePanel } from "./illustrations";
 
@@ -157,6 +158,9 @@ export default function ChangeRequestsView() {
                   <a href={cr.prUrl} target="_blank" rel="noreferrer">
                     <Tag icon={<LinkOutlined />} color="geekblue">PR #{cr.prNumber}</Tag>
                   </a>
+                )}
+                {(cr.state === "under_review" || cr.state === "approved") && (
+                  <PrChecksBadge changeId={cr.id} hasPr={!!cr.prNumber} />
                 )}
               </Space>
             ),

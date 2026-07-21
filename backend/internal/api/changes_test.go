@@ -78,3 +78,67 @@ func TestChangeCommentsAndReviewers(t *testing.T) {
 		t.Fatalf("unknown CR: want 404, got %d", rec.Code)
 	}
 }
+
+// TestApproveTransition covers the explicit approve step: a submitted change
+// advances Draft -> UnderReview -> Approved, and approving anything not under
+// review is a 409.
+func TestApproveTransition(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+
+	doJSON(t, h, http.MethodPut, "/api/values", map[string]any{
+		"paramId": "p1", "instance": "staging", "value": 9090, "author": "alice",
+	}, nil)
+	var draft struct {
+		Draft struct {
+			ID int `json:"id"`
+		} `json:"draft"`
+	}
+	doJSON(t, h, http.MethodGet, "/api/changes/draft", nil, &draft)
+	crPath := "/api/changes/" + itoa(draft.Draft.ID)
+
+	// Approving a draft (before submit) is a conflict.
+	if rec := doRaw(t, h, http.MethodPost, crPath+"/approve", nil); rec.Code != http.StatusConflict {
+		t.Fatalf("approve of a draft = %d, want 409", rec.Code)
+	}
+
+	// Submit, then approve.
+	var cr struct {
+		State    string `json:"state"`
+		Comments []struct {
+			Author string `json:"author"`
+			Body   string `json:"body"`
+		} `json:"comments"`
+	}
+	// Submit is async (202 Accepted).
+	if rec := doRaw(t, h, http.MethodPost, crPath+"/submit", map[string]any{"title": "Bump port", "author": "alice"}); rec.Code != http.StatusAccepted {
+		t.Fatalf("submit status = %d, want 202: %s", rec.Code, rec.Body.String())
+	}
+	doJSON(t, h, http.MethodGet, crPath, nil, &cr)
+	if cr.State != "under_review" {
+		t.Fatalf("after submit state = %q, want under_review", cr.State)
+	}
+	doJSON(t, h, http.MethodPost, crPath+"/approve", map[string]any{"author": "carol"}, &cr)
+	if cr.State != "approved" {
+		t.Fatalf("after approve state = %q, want approved", cr.State)
+	}
+	// The approval is recorded in the discussion for the audit trail.
+	var approved bool
+	for _, c := range cr.Comments {
+		if c.Author == "carol" {
+			approved = true
+		}
+	}
+	if !approved {
+		t.Errorf("approval not recorded as a comment: %+v", cr.Comments)
+	}
+
+	// Approving again (already approved) is a conflict.
+	if rec := doRaw(t, h, http.MethodPost, crPath+"/approve", nil); rec.Code != http.StatusConflict {
+		t.Fatalf("re-approve = %d, want 409", rec.Code)
+	}
+}

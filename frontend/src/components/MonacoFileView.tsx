@@ -7,7 +7,7 @@
 import { Editor, DiffEditor } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import "../monaco";
-import { languageFor } from "../monaco";
+import { languageFor } from "../monacoLang";
 
 // Minimal shape of the Monaco editor instance we use (reveal + cursor), so we
 // avoid importing monaco types into this lazy module's public surface.

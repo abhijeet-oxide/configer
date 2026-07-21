@@ -75,7 +75,7 @@ type CategoryNode struct {
 // Build assembles the grid from a loaded project by resolving every cell from
 // the repository's real files.
 func Build(p *project.Project) Grid {
-	r := resolver.New(p.Root)
+	r := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
 
 	// Archived instances are kept in the registry (and shown in the Instances
 	// view) but drop out of the active grid so archiving declutters editing.

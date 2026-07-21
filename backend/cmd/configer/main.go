@@ -4,10 +4,13 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +19,15 @@ import (
 )
 
 func main() {
+	// -healthcheck lets the container HEALTHCHECK probe liveness without a shell
+	// or curl in the image: the same binary hits its own /api/health and maps
+	// the result to an exit code. Handled before anything else opens state.
+	healthcheck := flag.Bool("healthcheck", false, "probe the local /api/health endpoint and exit 0 (healthy) or 1")
+	flag.Parse()
+	if *healthcheck {
+		os.Exit(runHealthcheck(config.Load().Addr))
+	}
+
 	cfg := config.Load()
 	logger := newLogger(cfg)
 	slog.SetDefault(logger)
@@ -68,6 +80,28 @@ func main() {
 	if err := hub.Close(); err != nil {
 		logger.Error("platform store close failed", slog.Any("error", err))
 	}
+}
+
+// runHealthcheck GETs the local /api/health endpoint and returns a process exit
+// code: 0 when the server answers 200, 1 otherwise. addr is the listen address
+// (e.g. ":8080"); a bare-port form is resolved against localhost.
+func runHealthcheck(addr string) int {
+	host := addr
+	if strings.HasPrefix(host, ":") {
+		host = "127.0.0.1" + host
+	}
+	client := &http.Client{Timeout: 4 * time.Second}
+	resp, err := client.Get(fmt.Sprintf("http://%s/api/health", host))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "healthcheck:", err)
+		return 1
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "healthcheck: status", resp.StatusCode)
+		return 1
+	}
+	return 0
 }
 
 // newLogger builds the structured logger. Text is friendlier in a dev terminal;

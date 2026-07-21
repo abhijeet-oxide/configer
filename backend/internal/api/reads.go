@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -320,14 +321,80 @@ func valueString(v any) string {
 	}
 }
 
-// parameterHistory walks recent config commits and resolves one parameter's
-// effective value at each, so the inspector can show how a value changed over
-// time (VS-Code / GitHub git-graph style). An optional ?instance= resolves the
-// value for that instance; otherwise the catalog default (base value) is used.
+// cellLogPaths returns the repository paths whose commit history can change one
+// cell's value: the parameter's binding files (base layer, plus the instance
+// layer when an instance is given) and .configer (metadata: default, bindings).
+// Scoping the timeline to these paths means it reflects real value edits in the
+// instances' own files, not only .configer metadata commits.
+func cellLogPaths(p *project.Project, id, instance string) []string {
+	var param *model.Parameter
+	for i := range p.Catalog.Parameters {
+		if p.Catalog.Parameters[i].ID == id {
+			param = &p.Catalog.Parameters[i]
+			break
+		}
+	}
+	if param == nil {
+		return []string{".configer"}
+	}
+	seen := map[string]bool{}
+	var paths []string
+	add := func(f string) {
+		if f != "" && !seen[f] {
+			seen[f] = true
+			paths = append(paths, f)
+		}
+	}
+	for _, b := range param.BindingsOn(model.LayerBase, model.Instance{}) {
+		add(b.File)
+	}
+	if instance != "" {
+		for _, inst := range p.Registry.Instances {
+			if inst.Name == instance {
+				for _, b := range param.BindingsOn(model.LayerInstance, inst) {
+					add(b.File)
+				}
+			}
+		}
+	}
+	add(".configer")
+	return paths
+}
+
+// logUnion merges the commit logs of several paths into one list, newest first,
+// deduplicated by SHA and capped at limit. Commit.Date is ISO-8601, so a string
+// comparison orders it correctly.
+func (s *Server) logUnion(paths []string, limit int) ([]repobackend.Commit, error) {
+	seen := map[string]bool{}
+	var all []repobackend.Commit
+	for _, p := range paths {
+		commits, err := s.Backend.Log(context.Background(), p, limit)
+		if err != nil {
+			return nil, err
+		}
+		for _, c := range commits {
+			if !seen[c.SHA] {
+				seen[c.SHA] = true
+				all = append(all, c)
+			}
+		}
+	}
+	sort.SliceStable(all, func(i, j int) bool { return all[i].Date > all[j].Date })
+	if len(all) > limit {
+		all = all[:limit]
+	}
+	return all, nil
+}
+
+// parameterHistory walks recent commits to a cell's backing files and resolves
+// one parameter's effective value at each, so the inspector can show how a value
+// changed over time (VS-Code / GitHub git-graph style) and who last changed it.
+// An optional ?instance= resolves the value for that instance; otherwise the
+// catalog default (base value) is used.
 // parameterHistory returns one parameter's value over recent commits.
 //
 // @Summary     Parameter value timeline
-// @Description Resolves one parameter's effective value at each recent config commit, so the inspector can show how it changed over time. `?instance=` resolves for that instance; otherwise the catalog default is used.
+// @Description Resolves one parameter's effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus .configer), so the inspector can show how it changed over time and who last changed it (`lastChange`). `?instance=` resolves for that instance; otherwise the catalog default is used.
 // @Tags        Grid & parameters
 // @Produce     json
 // @Param       id       path  string true  "Parameter id (slug)"
@@ -343,7 +410,12 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 	if n, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && n > 0 && n <= 40 {
 		limit = n
 	}
-	commits, err := s.Backend.Log(context.Background(), ".configer", limit)
+	head, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	commits, err := s.logUnion(cellLogPaths(head, id, instance), limit)
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -364,7 +436,7 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 		if instance != "" {
 			for _, inst := range p.Registry.Instances {
 				if inst.Name == instance {
-					res := resolver.New(p.Root).Resolve(*param, inst)
+					res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(*param, inst)
 					return valueString(res.Value), true
 				}
 			}
@@ -393,11 +465,21 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 		}
 		entries[i].Changed = entries[i].Value != entries[older].Value || entries[i].Present != entries[older].Present
 	}
+	// Blame: the most recent commit that set the value it currently has - the
+	// newest entry (list is newest-first) where the value actually changed.
+	var lastChange *paramHistoryEntry
+	for i := range entries {
+		if entries[i].Changed && entries[i].Present {
+			lastChange = &entries[i]
+			break
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"parameter": id,
-		"instance":  instance,
-		"entries":   entries,
-		"supported": s.Backend.Kind() == "local",
+		"parameter":  id,
+		"instance":   instance,
+		"entries":    entries,
+		"lastChange": lastChange,
+		"supported":  s.Backend.Kind() == "local",
 	})
 }
 

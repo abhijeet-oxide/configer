@@ -266,6 +266,16 @@ body {
 .prov-default .prov-dot {
   background: var(--c-inherit);
 }
+/* Derived (computed) values borrow the review accent to read as "calculated",
+   distinct from an inherited default. */
+.prov-derived {
+  color: var(--c-review);
+  background: color-mix(in srgb, var(--c-review) 12%, transparent);
+  border-color: color-mix(in srgb, var(--c-review) 30%, transparent);
+}
+.prov-derived .prov-dot {
+  background: var(--c-review);
+}
 
 .mono {
   font-family: var(--font-mono);

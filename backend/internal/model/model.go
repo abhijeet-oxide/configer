@@ -46,6 +46,7 @@ const (
 // instance's own files. Later layers win.
 const (
 	LayerDefault  = "default"
+	LayerDerived  = "derived"
 	LayerBase     = "base"
 	LayerInstance = "instance"
 )
@@ -111,6 +112,12 @@ type Parameter struct {
 	// Default is metadata: the value shown (and written on first set) when no
 	// bound file carries the key. It is never rendered anywhere by itself.
 	Default any `yaml:"default,omitempty" json:"default,omitempty"`
+	// Derived, when set, is a computed default expressed in terms of another
+	// parameter: "{other-id}" copies that parameter's effective value for the
+	// same instance, optionally with an integer offset ("{other-id}+1"). It is
+	// resolved read-only (never written) and any real file value overrides it,
+	// so it stays true to the write-back model: a suggestion, not a stored value.
+	Derived string `yaml:"derived,omitempty" json:"derived,omitempty"`
 	// VersionIntroduced/Deprecated drive version-aware cell state in the grid.
 	VersionIntroduced string   `yaml:"versionIntroduced,omitempty" json:"versionIntroduced,omitempty"`
 	VersionDeprecated string   `yaml:"versionDeprecated,omitempty" json:"versionDeprecated,omitempty"`

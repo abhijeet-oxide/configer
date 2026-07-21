@@ -7,7 +7,7 @@ import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 export type Scope = "instance" | "global";
 
 /** Which precedence layer supplied a cell's value. */
-export type CellSource = "default" | "base" | "instance" | "";
+export type CellSource = "default" | "derived" | "base" | "instance" | "";
 
 /** One real-file location a parameter's value lives at. File may contain
  *  "{folder}" / "{instance}" templates expanded per instance. */
@@ -125,6 +125,9 @@ export interface Parameter {
   bindings?: Binding[];
   validation?: Validation;
   default?: unknown;
+  /** a computed default expressed in terms of another parameter, e.g.
+   *  "{admin-port}+1"; resolved read-only and overridden by any file value */
+  derived?: string;
   versionIntroduced?: string;
   versionDeprecated?: string;
   dependsOn?: string[];
@@ -197,6 +200,42 @@ export interface ChangeItem {
   old: unknown;
   new: unknown;
   updatedAt: string;
+}
+
+/** One file a change request would rewrite, with exact before/after content
+ * (the same bytes the submit will commit) so the UI can render a real diff. */
+export interface FilePreview {
+  file: string;
+  status: "modified" | "added" | "removed";
+  before: string;
+  after: string;
+  additions: number;
+  deletions: number;
+}
+
+/** The byte-level plan for a change request: files it rewrites plus one-line
+ * summaries of structural instance changes. */
+export interface ChangePreview {
+  files: FilePreview[] | null;
+  structural: string[] | null;
+}
+
+/** Live pull-request status for a change request (CI checks + mergeability),
+ * read fresh from the host. `supported` is false for pure-git deployments or a
+ * change without a hosted PR. */
+export interface PrStatus {
+  supported: boolean;
+  pr?: {
+    number: number;
+    url: string;
+    state: string;
+    merged: boolean;
+    /** host merge-readiness: clean | blocked | dirty | unstable | behind | ... */
+    mergeable?: string;
+    /** rolled-up CI: passing | failing | pending | none */
+    checks?: string;
+    headSha?: string;
+  };
 }
 
 /** One review note on a change request. */
@@ -411,6 +450,12 @@ export interface ScanCandidate {
   value: unknown;
   file: string;
   format: string;
+}
+
+/** A candidate parameter proposed from a pasted config blob (a ScanCandidate
+ * plus whether the same file+path is already managed). */
+export interface AnalyzeCandidate extends ScanCandidate {
+  managed: boolean;
 }
 
 export interface ScanFile {
@@ -853,12 +898,20 @@ export const api = {
     if (opts?.instance) qs.set("instance", opts.instance);
     if (opts?.limit) qs.set("limit", String(opts.limit));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return get<{ parameter: string; instance: string; entries: ParamHistoryEntry[] | null; supported: boolean }>(
-      rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`),
-    );
+    return get<{
+      parameter: string;
+      instance: string;
+      entries: ParamHistoryEntry[] | null;
+      lastChange: ParamHistoryEntry | null;
+      supported: boolean;
+    }>(rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`));
   },
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
+  // Parse a pasted config blob into candidate parameters (incremental import).
+  analyzeImport: (content: string, file?: string) =>
+    send<{ file: string; count: number; candidates: AnalyzeCandidate[] | null }>(
+      "POST", rp("/import/analyze"), { content, file }),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
     send<{ ok: boolean; imported: number; skipped: string[] }>("POST", rp("/import"), p),
   findings: () => get<FindingsResult>(rp("/repo/findings")),
@@ -880,6 +933,15 @@ export const api = {
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
+  // Fan a single parameter's edit across many instances in one request. Each
+  // target reports success or a per-target error; valid targets still stage.
+  bulkSetValue: (p: { paramId: string; edits: { instance: string; value?: unknown }[]; action?: CellAction }) =>
+    put<{ ok: boolean; staged: number; results: { instance: string; ok: boolean; error?: string }[]; pending: number; changeId: number }>(
+      rp("/values/bulk"), p),
+  // Seed one instance from another: stage every parameter whose value differs.
+  copyInstanceFrom: (target: string, source: string) =>
+    send<{ ok: boolean; staged: number; source: string; pending: number; changeId: number }>(
+      "POST", rp(`/instances/${encodeURIComponent(target)}/copy-from`), { source }),
   addParameter: (param: Partial<Parameter>, author?: string) =>
     send<Parameter>("POST", rp("/parameters"), { param, author }),
   // --- instances (registry lifecycle) ---
@@ -911,6 +973,8 @@ export const api = {
       scope?: Scope;
       secret?: boolean;
       default?: unknown;
+      /** computed default from another parameter, e.g. "{admin-port}+1" */
+      derived?: string;
       /** attach or re-map: always produced by the interactive picker */
       bindings?: Binding[];
       author?: string;
@@ -942,10 +1006,13 @@ export const api = {
     get<RepoStatus>(`/repos/${encodeURIComponent(repoId)}/repo/status`),
   draft: () => snapGet<{ draft: ChangeRequest | null }>(rp("/changes/draft"), snapKey("draft")),
   change: (id: number) => get<ChangeRequest>(rp(`/changes/${id}`)),
+  previewChange: (id: number) => get<ChangePreview>(rp(`/changes/${id}/preview`)),
+  prStatus: (id: number) => get<PrStatus>(rp(`/changes/${id}/pr-status`)),
   submitChange: (
     id: number,
     p: { title: string; description?: string; reference?: string; category?: string; author?: string },
   ) => send<ChangeRequest>("POST", rp(`/changes/${id}/submit`), p),
+  approveChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/approve`), { author: "demo-user" }),
   mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
   rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),
   addComment: (id: number, body: string, author?: string) =>

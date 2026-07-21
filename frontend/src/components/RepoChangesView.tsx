@@ -97,16 +97,34 @@ function DriftTile({
   );
 }
 
+// isManagedDrift is the case that matters most: a value Configer manages was
+// changed or deleted directly on Git, so the grid and the repository disagree.
+// (A new file or an edit to an unmanaged file is drift too, but not a conflict
+// with anything Configer tracks.)
+function isManagedDrift(f: Finding): boolean {
+  return (f.type === "file_changed" || f.type === "file_deleted") && (f.params?.length ?? 0) > 0;
+}
+
+// The tile filter is either a finding type, the synthetic "managed" bucket, or
+// null (show everything).
+type DriftFilter = Finding["type"] | "managed" | null;
+
 export default function RepoChangesView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { setSection, setImportFocus, selectParam } = useUI();
-  const [filter, setFilter] = useState<Finding["type"] | null>(null);
+  const [filter, setFilter] = useState<DriftFilter>(null);
 
   const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000 });
   const data = findingsQ.data;
   const findings = data?.findings ?? [];
-  const shown = filter ? findings.filter((f) => f.type === filter) : findings;
+  const managedCount = findings.filter(isManagedDrift).length;
+  const shown =
+    filter === "managed"
+      ? findings.filter(isManagedDrift)
+      : filter
+        ? findings.filter((f) => f.type === filter)
+        : findings;
   // Latest commits fill the all-clear state, proving the watch is live.
   const historyQ = useQuery({
     queryKey: ["history", 8],
@@ -179,6 +197,14 @@ export default function RepoChangesView() {
           count={findings.length}
           active={filter === null}
           onClick={() => setFilter(null)}
+        />
+        <DriftTile
+          icon={<TableOutlined />}
+          hex="var(--c-danger)"
+          label="Managed drift"
+          count={managedCount}
+          active={filter === "managed"}
+          onClick={() => managedCount > 0 && setFilter(filter === "managed" ? null : "managed")}
         />
         {(Object.keys(findingMeta) as Finding["type"][]).map((t) => {
           const m = findingMeta[t];

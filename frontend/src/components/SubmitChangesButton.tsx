@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type ChangeItem, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable } from "./ChangeItemsTable";
+import ChangePreview from "./ChangePreview";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
 // the global header): pending-edit badge, review-before-submit modal with
@@ -25,6 +26,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const qc = useQueryClient();
   const { setSection, selectParam } = useUI();
   const [open, setOpen] = useState(false);
+  const [showDiffs, setShowDiffs] = useState(false);
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
 
@@ -118,6 +120,20 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             }}
           />
         </div>
+
+        {pending > 0 && draftQ.data?.draft && (
+          <div style={{ marginBottom: 14 }}>
+            <Button
+              type="link"
+              size="small"
+              style={{ paddingLeft: 0 }}
+              onClick={() => setShowDiffs((v) => !v)}
+            >
+              {showDiffs ? "Hide file diffs" : "View exact file changes"}
+            </Button>
+            {showDiffs && <ChangePreview changeId={draftQ.data.draft.id} />}
+          </div>
+        )}
         <Form form={form} layout="vertical" onFinish={(v) => submit.mutate(v)} initialValues={{ title: "" }}>
           <Form.Item
             name="title"

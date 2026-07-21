@@ -13,10 +13,6 @@ self.MonacoEnvironment = {
 
 loader.config({ monaco });
 
-// languageFor maps a file path to a Monaco language id for highlighting.
-export function languageFor(path: string): string {
-  if (path.endsWith(".xml")) return "xml";
-  if (path.endsWith(".json")) return "json";
-  if (path.endsWith(".yaml") || path.endsWith(".yml")) return "yaml";
-  return "plaintext";
-}
+// Re-exported for callers that already have the editor loaded; light callers
+// should import from ./monacoLang directly to avoid pulling monaco-editor.
+export { languageFor } from "./monacoLang";

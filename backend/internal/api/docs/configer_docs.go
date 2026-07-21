@@ -422,6 +422,58 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/{id}/approve": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Record approver sign-off on an under-review change request, advancing it to Approved without publishing (Publish/merge is a separate step). Requires the approver role when auth is enabled. 409 if not under review.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Approve a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "403": {
+                        "description": "Approver role required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Not under review",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes/{id}/comments": {
             "post": {
                 "security": [
@@ -537,6 +589,94 @@ const docTemplateconfiger = `{
                     },
                     "504": {
                         "description": "The merge timed out upstream",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/pr-status": {
+            "get": {
+                "description": "Live CI check roll-up (passing/failing/pending/none) and host merge-readiness for a change request's pull request, read fresh from the provider. Returns ` + "`" + `{supported:false}` + "`" + ` when the change has no hosted PR (pure-git deployment or not yet submitted).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Pull-request status (CI + mergeability)",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/changes/{id}/preview": {
+            "get": {
+                "description": "The byte-level plan for a change request: for every file its value and file edits would rewrite, the exact content before and after (so the UI can show a real diff), plus +/- line counts and one-line summaries of any structural instance changes. Builds the edits in a throwaway checkout of the base branch; nothing is committed or pushed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Preview a change request's file edits",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "A downstream (git) step failed",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -1179,6 +1319,47 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/import/analyze": {
+            "post": {
+                "description": "Parse a pasted YAML/JSON/XML blob and propose candidate parameters (name, path, inferred type, sample value), each flagged if it is already managed. ` + "`" + `file` + "`" + ` names the repository path this content represents (for format detection and as the binding target); it defaults to a .yaml hint. Read-only: nothing is written. Select candidates and POST them to /api/import to commit.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Analyze pasted configuration",
+                "parameters": [
+                    {
+                        "description": "{content: string, file?: string}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Empty content or unrecognized format",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/init": {
             "post": {
                 "security": [
@@ -1409,6 +1590,109 @@ const docTemplateconfiger = `{
                         "description": "Unknown instance",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/instances/{name}/copy-from": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage, into the draft, every parameter whose effective value on the ` + "`" + `source` + "`" + ` instance differs from this instance's, seeding one instance from another. Only per-instance parameters are copied; nothing touches Git until the draft is submitted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Copy values from another instance",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Target instance name",
+                        "name": "name",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "source, author",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Instance not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/locate": {
+            "get": {
+                "description": "Returns the 1-based line of the value at ` + "`" + `path` + "`" + ` inside ` + "`" + `file` + "`" + ` (YAML/JSON; XML returns 0). Lets the Details pane jump to the exact line a parameter is defined on.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reads"
+                ],
+                "summary": "Locate a value's line",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository-relative file path (instance-expanded)",
+                        "name": "file",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Dotted value path (e.g. $.network.admin.port)",
+                        "name": "path",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "yaml | json | xml",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
                         }
                     }
                 }
@@ -1711,7 +1995,7 @@ const docTemplateconfiger = `{
         },
         "/api/parameters/{id}/history": {
             "get": {
-                "description": "Resolves one parameter's effective value at each recent config commit, so the inspector can show how it changed over time. ` + "`" + `?instance=` + "`" + ` resolves for that instance; otherwise the catalog default is used.",
+                "description": "Resolves one parameter's effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus .configer), so the inspector can show how it changed over time and who last changed it (` + "`" + `lastChange` + "`" + `). ` + "`" + `?instance=` + "`" + ` resolves for that instance; otherwise the catalog default is used.",
                 "produces": [
                     "application/json"
                 ],
@@ -2418,6 +2702,54 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/search": {
+            "get": {
+                "description": "Search application metadata (parameters, instances, change requests) across every connected application. Returns lightweight hits with a navigation target; never values or file contents.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Global search",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Query text",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "global (default) or app",
+                        "name": "scope",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Restrict to one application id",
+                        "name": "repo",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max results (default 20, cap 50)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/validation/presets": {
             "get": {
                 "description": "The predefined validation-rule library (port, cidr, ipv4, ...) available to attach to parameters.",
@@ -2548,6 +2880,57 @@ const docTemplateconfiger = `{
                     },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/values/bulk": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage the same parameter's edit on several instances at once. ` + "`" + `edits` + "`" + ` is a list of ` + "`" + `{instance, value}` + "`" + `; ` + "`" + `action` + "`" + ` defaults to \"set\" (\"reset\"/\"exclude\" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in ` + "`" + `results` + "`" + ` while valid ones still stage. Nothing touches Git until the draft is submitted.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Stage a value edit across many instances",
+                "parameters": [
+                    {
+                        "description": "paramId, action, edits[]",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Malformed body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Parameter not found",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -3310,6 +3693,10 @@ const docTemplateconfiger = `{
                     "items": {
                         "type": "string"
                     }
+                },
+                "derived": {
+                    "description": "Derived, when set, is a computed default expressed in terms of another\nparameter: \"{other-id}\" copies that parameter's effective value for the\nsame instance, optionally with an integer offset (\"{other-id}+1\"). It is\nresolved read-only (never written) and any real file value overrides it,\nso it stays true to the write-back model: a suggestion, not a stored value.",
+                    "type": "string"
                 },
                 "description": {
                     "type": "string"

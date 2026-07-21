@@ -87,7 +87,7 @@ func roleRank(r store.Role) int {
 // requiredRole derives the capability a request needs: reads are viewer+,
 // writes editor+, and publishing (merge) approver.
 func requiredRole(r *http.Request) store.Role {
-	if strings.HasSuffix(r.URL.Path, "/merge") {
+	if strings.HasSuffix(r.URL.Path, "/merge") || strings.HasSuffix(r.URL.Path, "/approve") {
 		return store.RoleApprover
 	}
 	switch r.Method {
@@ -232,6 +232,8 @@ func humanizeAction(method, path string) string {
 		switch tail {
 		case "submit":
 			return "Submitted change request #" + arg + " for review"
+		case "approve":
+			return "Approved change request #" + arg
 		case "merge":
 			return "Published change request #" + arg
 		case "reject":

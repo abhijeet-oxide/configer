@@ -303,6 +303,62 @@ func TestSubmitAddInstance(t *testing.T) {
 	}
 }
 
+// Preview reports the exact bytes a submit would write, without creating a
+// branch or committing: a per-instance value edit, a global edit, and a
+// structural add-instance summarized separately.
+func TestPreviewShowsByteLevelDiff(t *testing.T) {
+	_, _, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("alice", "main")
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
+	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com"})
+	cr.UpsertItem(change.Item{Instance: "dr", Action: change.ActionAddInstance, Old: "prod", New: map[string]any{"environment": "production"}})
+
+	res, err := svc.Preview(ctx, cr.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	byFile := map[string]FilePreview{}
+	for _, f := range res.Files {
+		byFile[f.File] = f
+	}
+
+	sv, ok := byFile["instances/staging/values.yaml"]
+	if !ok {
+		t.Fatalf("no preview for staging values: %+v", res.Files)
+	}
+	if sv.Status != "modified" {
+		t.Errorf("status = %q, want modified", sv.Status)
+	}
+	if !strings.Contains(sv.Before, "8080") || !strings.Contains(sv.After, "9443") {
+		t.Errorf("before/after wrong:\n--before--\n%s\n--after--\n%s", sv.Before, sv.After)
+	}
+	if sv.Additions != 1 || sv.Deletions != 1 {
+		t.Errorf("line delta = +%d/-%d, want +1/-1", sv.Additions, sv.Deletions)
+	}
+	// The preview is the real surgical write: comment + unmanaged key survive.
+	for _, keep := range []string{"# Staging values.", "unmanaged: keep-me", "name: demo"} {
+		if !strings.Contains(sv.After, keep) {
+			t.Errorf("preview lost %q:\n%s", keep, sv.After)
+		}
+	}
+	if _, ok := byFile["shared/platform.yaml"]; !ok {
+		t.Errorf("no preview for the global (shared) edit: %+v", res.Files)
+	}
+
+	// Structural change is summarized, not byte-diffed.
+	if len(res.Structural) != 1 || !strings.Contains(res.Structural[0], "add instance dr") {
+		t.Errorf("structural summary = %v, want [add instance dr (clone of prod)]", res.Structural)
+	}
+
+	// Preview must not commit or branch: the draft stays the current draft.
+	if d := svc.Store.CurrentDraft(); d == nil || d.ID != cr.ID {
+		t.Errorf("preview disturbed the draft state")
+	}
+}
+
 func TestRejectDraftAndSubmitted(t *testing.T) {
 	_, _, svc := fixture(t)
 	ctx := context.Background()

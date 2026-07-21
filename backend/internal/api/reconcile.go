@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -214,6 +215,71 @@ func (s *Server) ackFindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "ackSha": head})
+}
+
+// analyzeImport extracts candidate parameters from a pasted configuration blob
+// (not a repository file), so settings can be brought in incrementally without
+// re-onboarding. The proposed candidates feed the same selection UI and the
+// same POST /api/import commit path as a repository scan.
+//
+// @Summary     Analyze pasted configuration
+// @Description Parse a pasted YAML/JSON/XML blob and propose candidate parameters (name, path, inferred type, sample value), each flagged if it is already managed. `file` names the repository path this content represents (for format detection and as the binding target); it defaults to a .yaml hint. Read-only: nothing is written. Select candidates and POST them to /api/import to commit.
+// @Tags        Import & reconcile
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{content: string, file?: string}"
+// @Success     200 {object} map[string]interface{}
+// @Failure     400 {object} APIError "Empty content or unrecognized format"
+// @Router      /api/import/analyze [post]
+func (s *Server) analyzeImport(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string `json:"content"`
+		File    string `json:"file"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Content) == "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "paste some configuration to analyze")
+		return
+	}
+	file := strings.TrimSpace(req.File)
+	if file == "" {
+		file = "pasted.yaml" // a sensible default so YAML detection engages
+	}
+	content := []byte(req.Content)
+	parser, err := s.Registry.ParserFor(file, content)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest,
+			"could not recognize the format; name the file (e.g. values.yaml, config.json, app.xml) so the right parser is used")
+		return
+	}
+	cands, err := parser.Extract(file, content)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "could not parse the pasted content: "+err.Error())
+		return
+	}
+
+	// Flag candidates already managed at the same file+path so the UI can
+	// pre-deselect them (importing a duplicate is skipped anyway).
+	managed := map[string]bool{}
+	if p, lerr := s.load(); lerr == nil {
+		for _, param := range p.Catalog.Parameters {
+			for _, b := range param.Bindings {
+				managed[b.File+"|"+b.Path] = true
+			}
+		}
+	}
+	type analyzed struct {
+		plugin.Candidate
+		Managed bool `json:"managed"`
+	}
+	out := make([]analyzed, 0, len(cands))
+	for _, c := range cands {
+		out = append(out, analyzed{Candidate: c, Managed: managed[c.File+"|"+c.Path]})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"file": file, "count": len(out), "candidates": out})
 }
 
 // importParameters promotes scanned candidates into the catalog in one

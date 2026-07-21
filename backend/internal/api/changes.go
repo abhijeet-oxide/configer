@@ -103,6 +103,75 @@ func (s *Server) getChange(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, cr)
 }
 
+// previewChange returns the exact per-file before/after content a change
+// request would write, without creating a branch or committing anything.
+//
+// @Summary     Preview a change request's file edits
+// @Description The byte-level plan for a change request: for every file its value and file edits would rewrite, the exact content before and after (so the UI can show a real diff), plus +/- line counts and one-line summaries of any structural instance changes. Builds the edits in a throwaway checkout of the base branch; nothing is committed or pushed.
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     404 {object} APIError "Unknown change request"
+// @Failure     502 {object} APIError "A downstream (git) step failed"
+// @Router      /api/changes/{id}/preview [get]
+func (s *Server) previewChange(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	if _, err := s.Store.Get(id); err != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
+		return
+	}
+	res, err := s.Changes.Preview(r.Context(), id)
+	if err != nil {
+		writeChangeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// prStatus returns the live pull-request status for a change request: CI
+// checks and merge-readiness, read fresh from the host.
+//
+// @Summary     Pull-request status (CI + mergeability)
+// @Description Live CI check roll-up (passing/failing/pending/none) and host merge-readiness for a change request's pull request, read fresh from the provider. Returns `{supported:false}` when the change has no hosted PR (pure-git deployment or not yet submitted).
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     404 {object} APIError "Unknown change request"
+// @Router      /api/changes/{id}/pr-status [get]
+func (s *Server) prStatus(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	cr, err := s.Store.Get(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
+		return
+	}
+	prov := s.Backend.Provider()
+	if prov == nil || cr.PRNumber == 0 {
+		writeJSON(w, http.StatusOK, map[string]any{"supported": false})
+		return
+	}
+	pr, err := prov.Get(r.Context(), cr.PRNumber)
+	if err != nil {
+		// The host is unreachable or rate-limited: report unsupported rather
+		// than failing the panel; the linked PR is still openable directly.
+		writeJSON(w, http.StatusOK, map[string]any{"supported": false})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"supported": true, "pr": pr})
+}
+
 // submitChange turns a draft into a branch + commit + PR.
 //
 // @Summary     Submit a change request
@@ -146,6 +215,37 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	// Accepted: the work continues on the host (branch/commit/PR). The client
 	// polls GET /api/changes/{id} and reads `state`.
 	writeJSON(w, http.StatusAccepted, cr)
+}
+
+// approveChange records approver sign-off, advancing a change to Approved.
+//
+// @Summary     Approve a change request
+// @Description Record approver sign-off on an under-review change request, advancing it to Approved without publishing (Publish/merge is a separate step). Requires the approver role when auth is enabled. 409 if not under review.
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     403 {object} APIError "Approver role required"
+// @Failure     409 {object} APIError "Not under review"
+// @Security    CookieSession
+// @Router      /api/changes/{id}/approve [post]
+func (s *Server) approveChange(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Author string `json:"author"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	cr, err := s.Changes.Approve(r.Context(), id, author(r, req.Author))
+	if err != nil {
+		writeChangeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cr)
 }
 
 // mergeChange publishes an approved change request.

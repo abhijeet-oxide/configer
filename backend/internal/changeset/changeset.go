@@ -148,50 +148,9 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	// 1) Apply every item by editing the repository's OWN files in the
 	//    isolated worktree - the write-back-native model. Each edit is
 	//    surgical (comments, order and unmanaged content preserved), exactly
-	//    the diff a careful engineer would have produced by hand. Structural
-	//    items (add/remove instance) go first so value edits for a brand-new
-	//    instance land in its freshly scaffolded folder.
-	proj, err := project.Load(wt)
-	if err != nil {
-		return nil, fmt.Errorf("load project from worktree: %w", err)
-	}
-	structuralApplied := false
-	for _, it := range cr.Items {
-		if !it.Structural() {
-			continue
-		}
-		if err := applyStructural(wt, proj, it); err != nil {
-			return nil, fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)
-		}
-		structuralApplied = true
-	}
-	if structuralApplied {
-		if proj, err = project.Load(wt); err != nil {
-			return nil, fmt.Errorf("reload project from worktree: %w", err)
-		}
-	}
-	// Direct file edits (file mode) go next: full-content writes that value
-	// items then refine on top.
-	for _, it := range cr.Items {
-		if it.Act() != change.ActionEditFile {
-			continue
-		}
-		content, _ := it.New.(string)
-		full := filepath.Join(wt, filepath.FromSlash(it.File))
-		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			return nil, fmt.Errorf("apply file edit %s: %w", it.File, err)
-		}
-	}
-	for _, it := range cr.Items {
-		if it.Structural() || it.Act() == change.ActionEditFile {
-			continue
-		}
-		if err := applyItem(wt, proj, it); err != nil {
-			return nil, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
-		}
+	//    the diff a careful engineer would have produced by hand.
+	if err := applyDraft(wt, cr); err != nil {
+		return nil, err
 	}
 
 	// 2) One commit for the whole CR (worktree commit+push locally, a
@@ -230,6 +189,56 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		c.State = change.StateUnderReview
 		return nil
 	})
+}
+
+// applyDraft applies every item of a change request into the worktree wt
+// (already checked out at the base), in the order Submit commits them:
+// structural instance changes first (so value edits for a brand-new instance
+// land in its freshly scaffolded folder), then whole-file edits, then value
+// edits refined on top. Both Submit and Preview go through here so what a
+// reviewer previews is byte-for-byte what gets committed.
+func applyDraft(wt string, cr *change.ChangeRequest) error {
+	proj, err := project.Load(wt)
+	if err != nil {
+		return fmt.Errorf("load project from worktree: %w", err)
+	}
+	structuralApplied := false
+	for _, it := range cr.Items {
+		if !it.Structural() {
+			continue
+		}
+		if err := applyStructural(wt, proj, it); err != nil {
+			return fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)
+		}
+		structuralApplied = true
+	}
+	if structuralApplied {
+		if proj, err = project.Load(wt); err != nil {
+			return fmt.Errorf("reload project from worktree: %w", err)
+		}
+	}
+	for _, it := range cr.Items {
+		if it.Act() != change.ActionEditFile {
+			continue
+		}
+		content, _ := it.New.(string)
+		full := filepath.Join(wt, filepath.FromSlash(it.File))
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("apply file edit %s: %w", it.File, err)
+		}
+	}
+	for _, it := range cr.Items {
+		if it.Structural() || it.Act() == change.ActionEditFile {
+			continue
+		}
+		if err := applyItem(wt, proj, it); err != nil {
+			return fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
+		}
+	}
+	return nil
 }
 
 // applyItem writes one draft item into the repository files inside root.
@@ -409,6 +418,28 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		c.State = change.StatePublished
+		return nil
+	})
+}
+
+// Approve records an approver's sign-off on an under-review change request,
+// advancing it to Approved without publishing. Publishing (Merge) then needs
+// only one more click, and the two-step approve-then-publish separation gives a
+// clear "approved but not yet live" state. The approver login is recorded as a
+// review comment for the audit trail.
+func (s *Service) Approve(ctx context.Context, id int, approver string) (*change.ChangeRequest, error) {
+	cr, err := s.Store.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if cr.State != change.StateUnderReview {
+		return nil, conflictf("change request %d is %s, not awaiting review", id, cr.State)
+	}
+	return s.Store.Update(id, func(c *change.ChangeRequest) error {
+		if approver != "" {
+			c.AddComment(approver, "Approved this change.")
+		}
+		c.State = change.StateApproved
 		return nil
 	})
 }

@@ -48,7 +48,10 @@ export interface Instance {
   region?: string;
   zone?: string;
   site?: string;
+  /** version identifier, e.g. "v24.3.1" */
   softwareVersion?: string;
+  /** optional human label for the same release, e.g. "Titanium" */
+  versionName?: string;
   labels?: Record<string, string>;
   status?: string;
 }
@@ -62,6 +65,7 @@ export interface InstanceInput {
   zone?: string;
   site?: string;
   softwareVersion?: string;
+  versionName?: string;
   status?: string;
   labels?: Record<string, string>;
   cloneFrom?: string;

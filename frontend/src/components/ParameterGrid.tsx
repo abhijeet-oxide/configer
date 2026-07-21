@@ -472,8 +472,11 @@ function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) =>
         />
         <span>{inst.name}</span>
       </Space>
-      <div style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}>
-        {inst.softwareVersion}
+      <div
+        style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}
+        title={inst.versionName && inst.versionName !== inst.softwareVersion ? `Version ${inst.softwareVersion}` : undefined}
+      >
+        {inst.versionName || inst.softwareVersion}
         {inst.region ? ` · ${inst.region}` : ""}
       </div>
       {onResizeStart && (

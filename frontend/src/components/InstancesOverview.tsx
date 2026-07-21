@@ -102,7 +102,17 @@ export default function InstancesOverview() {
           ),
         },
         ...(sel.inst.softwareVersion
-          ? [{ label: "Software version", value: <span className="mono">{sel.inst.softwareVersion}</span> }]
+          ? [{
+              label: "Version",
+              value: (
+                <span>
+                  {sel.inst.versionName || sel.inst.softwareVersion}
+                  {sel.inst.versionName && sel.inst.versionName !== sel.inst.softwareVersion && (
+                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: 11 }}>{sel.inst.softwareVersion}</span>
+                  )}
+                </span>
+              ),
+            }]
           : []),
         ...(sel.inst.region ? [{ label: "Region", value: sel.inst.region }] : []),
         ...(sel.inst.site ? [{ label: "Site", value: sel.inst.site }] : []),
@@ -203,13 +213,20 @@ export default function InstancesOverview() {
               },
               {
                 title: "Version",
-                width: 110,
-                render: (_v, r) =>
-                  r.inst.softwareVersion ? (
-                    <span className="mono text-xs">{r.inst.softwareVersion}</span>
-                  ) : (
-                    <span className="text-ink-3">-</span>
-                  ),
+                width: 130,
+                render: (_v, r) => {
+                  const id = r.inst.softwareVersion;
+                  if (!id) return <span className="text-ink-3">-</span>;
+                  const name = r.inst.versionName || id;
+                  return (
+                    <span className="inline-flex flex-col leading-tight">
+                      <span className="text-xs">{name}</span>
+                      {r.inst.versionName && r.inst.versionName !== id && (
+                        <span className="mono text-ink-3" style={{ fontSize: 10 }}>{id}</span>
+                      )}
+                    </span>
+                  );
+                },
               },
               {
                 title: "Folder",

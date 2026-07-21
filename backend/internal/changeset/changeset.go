@@ -316,6 +316,9 @@ func applyStructural(root string, proj *project.Project, it change.Item) error {
 			if meta.SoftwareVersion == "" {
 				meta.SoftwareVersion = from.SoftwareVersion
 			}
+			if meta.VersionName == "" {
+				meta.VersionName = from.VersionName
+			}
 		}
 		return writer.AddInstance(root, meta)
 	case change.ActionRemoveInstance:

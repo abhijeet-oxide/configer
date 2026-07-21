@@ -386,7 +386,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                     {bound} parameter{bound === 1 ? "" : "s"}
                   </span>
                   <span className="mono" style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", width: 64, textAlign: "right" }}>
-                    {inst.softwareVersion ?? ""}
+                    {inst.versionName || inst.softwareVersion || ""}
                   </span>
                 </div>
               ))}

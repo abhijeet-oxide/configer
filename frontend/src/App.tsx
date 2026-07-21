@@ -18,6 +18,7 @@ import { useUI } from "./store";
 import NavRail from "./components/NavRail";
 import TopBar from "./components/TopBar";
 import SearchPalette from "./components/SearchPalette";
+import GlobalNewApplication from "./components/GlobalNewApplication";
 import CategoryTree from "./components/CategoryTree";
 import ParameterGrid from "./components/ParameterGrid";
 import DetailsPanel from "./components/DetailsPanel";
@@ -218,7 +219,10 @@ export default function App() {
         if (section !== "config") return;
         e.preventDefault();
         togglePanel(e.altKey ? "right" : "left");
-      } else if (k === "j") {
+      } else if (k === "i") {
+        // Details/Inspector pane. Ctrl/Cmd+I is free in Chrome and Edge (unlike
+        // the previous Ctrl/Cmd+J, which those browsers bind to Downloads), and
+        // "I" for Inspector is easy to remember.
         if (section !== "config") return;
         e.preventDefault();
         togglePanel("right");
@@ -575,6 +579,7 @@ export default function App() {
         <Content style={{ overflow: "hidden" }}>{body()}</Content>
       </Layout>
       <SearchPalette />
+      <GlobalNewApplication />
       <WelcomeTour />
     </Layout>
   );

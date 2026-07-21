@@ -91,6 +91,9 @@ setApiRepo(initialRepo);
 const initialSection = parsed0.section;
 const initialParam = parsed0.param;
 const initialInstance = parsed0.inst;
+// The New Application dialog is deep-linkable: ?new=1 opens it on load (and any
+// surface that opens it writes that param), so the modal has a shareable URL.
+const initialNewApp = new URLSearchParams(window.location.search).get("new") === "1";
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -199,6 +202,9 @@ interface UIState {
   reviewCrId: number | null;
   /** the welcome tour is showing (first visit, or replayed from Settings) */
   welcomeOpen: boolean;
+  /** the New Application dialog is open; deep-linked via ?new=1 so it has a
+   *  shareable URL and can be triggered from anywhere (the command palette) */
+  newAppOpen: boolean;
   setMode: (m: Mode) => void;
   setThemePref: (p: ThemePref) => void;
   setFontScale: (f: FontScale) => void;
@@ -224,6 +230,8 @@ interface UIState {
   setFileFocus: (f: { path: string; line?: number; instance?: string } | null) => void;
   setReviewCr: (id: number | null) => void;
   setWelcomeOpen: (open: boolean) => void;
+  openNewApp: () => void;
+  closeNewApp: () => void;
 }
 
 // Personal settings (appearance, comfort, time) load once and persist as one
@@ -266,6 +274,7 @@ export const useUI = create<UIState>((set) => ({
   fileFocus: null,
   reviewCrId: null,
   welcomeOpen: false,
+  newAppOpen: initialNewApp,
   // setMode is the quick toggle (top bar): an explicit choice, so it also
   // pins the preference - toggling away from "system" is intentional.
   setMode: (mode) =>
@@ -349,6 +358,10 @@ export const useUI = create<UIState>((set) => ({
     set((s) => ({ fileFocus: f ? { ...f, n: (s.fileFocus?.n ?? 0) + 1 } : null })),
   setReviewCr: (reviewCrId) => set({ reviewCrId }),
   setWelcomeOpen: (welcomeOpen) => set({ welcomeOpen }),
+  // Opening roots the backdrop at the Applications collection, so the dialog's
+  // URL reads /applications?new=1 - a natural, shareable context.
+  openNewApp: () => set({ newAppOpen: true, section: "workspace" }),
+  closeNewApp: () => set({ newAppOpen: false }),
 }));
 
 // ------------------------------------------------------------------ URL sync
@@ -360,6 +373,9 @@ function pathFor(s: UIState): string {
   const q = new URLSearchParams();
   if (s.selectedParamId) q.set("param", s.selectedParamId);
   if (s.selectedInstance) q.set("inst", s.selectedInstance);
+  // The New Application dialog rides in the URL so it is shareable and reopens
+  // on reload; it is a refinement of the current view, not a history stop.
+  if (s.newAppOpen) q.set("new", "1");
   const qs = q.toString() ? `?${q.toString()}` : "";
 
   const section = s.section === "drafts" ? "changes" : s.section;
@@ -418,5 +434,6 @@ window.addEventListener("popstate", () => {
     setApiRepo(repoId);
     if (repoId) localStorage.setItem("configer.repoId", repoId);
   }
-  useUI.setState({ repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst });
+  const newAppOpen = new URLSearchParams(window.location.search).get("new") === "1";
+  useUI.setState({ repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst, newAppOpen });
 });

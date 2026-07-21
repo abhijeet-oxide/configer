@@ -18,6 +18,7 @@ import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
+import { modLabel, shortcut } from "../platform";
 import { AppContextChips } from "./ui";
 import MembersModal from "./MembersModal";
 
@@ -172,7 +173,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
       {/* Global "search anything" opener: applications, actions, and (inside an
           app) that app's parameters, values, and changes. Cmd/Ctrl-K opens the
           same palette. */}
-      <Tooltip title="Search everything (⌘K)">
+      <Tooltip title={`Search everything (${shortcut("K")})`}>
         <Button
           size="small"
           icon={<SearchOutlined />}
@@ -180,7 +181,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           style={{ flexShrink: 0, color: "var(--text-3)" }}
         >
           Search
-          <kbd style={{ marginLeft: 8, fontSize: 10, border: "1px solid var(--border)", borderRadius: 4, padding: "0 4px", color: "var(--text-3)" }}>⌘K</kbd>
+          <kbd style={{ marginLeft: 8, fontSize: 10, border: "1px solid var(--border)", borderRadius: 4, padding: "0 4px", color: "var(--text-3)" }}>{modLabel} K</kbd>
         </Button>
       </Tooltip>
       {/* The in-view filter stays what it always was: a live filter of the open

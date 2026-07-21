@@ -578,6 +578,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
   const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string; n?: number } | null>(null);
+  // A brief success pulse on the cell(s) an edit just staged, so a save reads as
+  // "done" without a toast. inst "" pulses every cell of a global edit.
+  const [saved, setSaved] = useState<{ param: string; inst: string } | null>(null);
+  const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flashSaved = (paramId: string, instance: string) => {
+    setSaved({ param: paramId, inst: instance });
+    clearTimeout(savedTimer.current);
+    savedTimer.current = setTimeout(() => setSaved(null), 900);
+  };
   // Find & Replace dialog (opened from the toolbar or a cell's right-click)
   const [findReplace, setFindReplace] = useState<{ find: string } | null>(null);
   // The single-row toolbar's overflow menu and the legend dialog.
@@ -638,11 +647,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const save = useMutation({
     mutationFn: (p: { instance: string; paramId: string; value?: unknown; action?: "set" | "reset" | "exclude"; scope?: "global" }) =>
       api.setValue(p),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
       qc.invalidateQueries({ queryKey: ["render"] });
+      flashSaved(vars.paramId, vars.scope === "global" ? "" : vars.instance);
     },
     onError: (e: Error, vars) => {
       if (e instanceof OfflineError) {
@@ -1049,6 +1059,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           (selectedInstance === inst.name ? "col-selected" : "") +
           (flash?.kind === "cell" && flash.id === r.param.id && flash.inst === inst.name
             ? " cell-flash"
+            : "") +
+          (saved && saved.param === r.param.id && (saved.inst === "" || saved.inst === inst.name)
+            ? " cell-saved"
             : ""),
         // Value cells own click-to-edit; keep the click here so it never
         // bubbles up to the row handler and collapses the details panel.
@@ -1154,7 +1167,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +

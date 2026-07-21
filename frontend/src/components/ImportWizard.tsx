@@ -37,6 +37,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
+import PasteImportModal from "./PasteImportModal";
 import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
 import FileExplorer from "./FileExplorer";
@@ -149,6 +150,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
     sessionStorage.removeItem(STEP_HANDOFF);
   }, []);
   const [scan, setScan] = useState<ScanResult | null>(null);
+  const [pasteOpen, setPasteOpen] = useState(false);
   const [included, setIncluded] = useState<Record<string, boolean>>({});
   const [persistIgnore, setPersistIgnore] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
@@ -350,13 +352,19 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   return (
     <div className="h-full overflow-auto bg-canvas">
       <div className="flex flex-col gap-5 px-6 py-6">
-        <div>
-          <div className="text-xl font-semibold text-ink">Import settings</div>
-          <div className="mt-0.5 text-[13px] text-ink-2">
-            Bring settings from your repository files under management. Scanning is read-only; no
-            changes are committed until you confirm.
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xl font-semibold text-ink">Import settings</div>
+            <div className="mt-0.5 text-[13px] text-ink-2">
+              Bring settings from your repository files under management. Scanning is read-only; no
+              changes are committed until you confirm.
+            </div>
           </div>
+          <Button icon={<PlusOutlined />} onClick={() => setPasteOpen(true)}>
+            Paste configuration
+          </Button>
         </div>
+        <PasteImportModal open={pasteOpen} onClose={() => setPasteOpen(false)} />
         {/* The one clean progress row: short single-line labels, brand fill as
             you advance, no wrapping. */}
         <div className="rounded-card-lg bg-surface px-5 py-4 shadow-neu">

@@ -1264,6 +1264,47 @@
                 }
             }
         },
+        "/api/import/analyze": {
+            "post": {
+                "description": "Parse a pasted YAML/JSON/XML blob and propose candidate parameters (name, path, inferred type, sample value), each flagged if it is already managed. `file` names the repository path this content represents (for format detection and as the binding target); it defaults to a .yaml hint. Read-only: nothing is written. Select candidates and POST them to /api/import to commit.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Import \u0026 reconcile"
+                ],
+                "summary": "Analyze pasted configuration",
+                "parameters": [
+                    {
+                        "description": "{content: string, file?: string}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Empty content or unrecognized format",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/init": {
             "post": {
                 "security": [

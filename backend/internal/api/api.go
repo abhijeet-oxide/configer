@@ -149,6 +149,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PUT /api/instances/{name}", s.updateInstance)
 	mux.HandleFunc("DELETE /api/instances/{name}", s.deleteInstance)
 	mux.HandleFunc("POST /api/instances/{name}/copy-from", s.copyInstanceValues)
+	mux.HandleFunc("POST /api/import/analyze", s.analyzeImport)
 	mux.HandleFunc("GET /api/changes", s.listChanges)
 	mux.HandleFunc("GET /api/changes/draft", s.currentDraft)
 	mux.HandleFunc("GET /api/changes/{id}", s.getChange)

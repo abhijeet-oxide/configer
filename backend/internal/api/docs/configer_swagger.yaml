@@ -1520,6 +1520,37 @@ paths:
       summary: Import scanned parameters
       tags:
       - Import & reconcile
+  /api/import/analyze:
+    post:
+      consumes:
+      - application/json
+      description: 'Parse a pasted YAML/JSON/XML blob and propose candidate parameters
+        (name, path, inferred type, sample value), each flagged if it is already managed.
+        `file` names the repository path this content represents (for format detection
+        and as the binding target); it defaults to a .yaml hint. Read-only: nothing
+        is written. Select candidates and POST them to /api/import to commit.'
+      parameters:
+      - description: '{content: string, file?: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Empty content or unrecognized format
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Analyze pasted configuration
+      tags:
+      - Import & reconcile
   /api/init:
     post:
       consumes:

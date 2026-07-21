@@ -449,6 +449,12 @@ export interface ScanCandidate {
   format: string;
 }
 
+/** A candidate parameter proposed from a pasted config blob (a ScanCandidate
+ * plus whether the same file+path is already managed). */
+export interface AnalyzeCandidate extends ScanCandidate {
+  managed: boolean;
+}
+
 export interface ScanFile {
   file: string;
   format: string;
@@ -899,6 +905,10 @@ export const api = {
   },
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   scan: () => send<ScanResult>("POST", rp("/scan")),
+  // Parse a pasted config blob into candidate parameters (incremental import).
+  analyzeImport: (content: string, file?: string) =>
+    send<{ file: string; count: number; candidates: AnalyzeCandidate[] | null }>(
+      "POST", rp("/import/analyze"), { content, file }),
   importParameters: (p: { parameters: Partial<Parameter>[]; ignoreFiles: string[]; author?: string }) =>
     send<{ ok: boolean; imported: number; skipped: string[] }>("POST", rp("/import"), p),
   findings: () => get<FindingsResult>(rp("/repo/findings")),

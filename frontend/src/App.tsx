@@ -230,6 +230,34 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [section, editorFocus, togglePanel, setEditorFocus]);
 
+  // Ctrl/Cmd+Enter submits whatever modal is open, from anywhere inside it
+  // (including a focused text field, where Enter alone must not submit). It
+  // clicks the top-most open modal's primary action - the footer OK button,
+  // or the first enabled primary button when a modal supplies its own footer.
+  // One global convention so every dialog behaves the same.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Enter" || !(e.metaKey || e.ctrlKey)) return;
+      // A closed modal keeps its wrap in the DOM with display:none. The wrap is
+      // position:fixed, so offsetParent is always null - test real visibility
+      // via client rects instead.
+      const wraps = Array.from(
+        document.querySelectorAll<HTMLElement>(".ant-modal-wrap"),
+      ).filter((w) => w.style.display !== "none" && w.getClientRects().length > 0);
+      const wrap = wraps[wraps.length - 1];
+      if (!wrap) return;
+      const btn =
+        wrap.querySelector<HTMLButtonElement>(".ant-modal-footer .ant-btn-primary:not([disabled])") ||
+        wrap.querySelector<HTMLButtonElement>(".ant-btn-primary:not([disabled])");
+      if (btn) {
+        e.preventDefault();
+        btn.click();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, []);
+
   // Focus mode strips ALL workspace chrome (nav rail, header, and the tab
   // strip) so only the configuration surface remains; it applies while the
   // editor is the active view.

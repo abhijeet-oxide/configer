@@ -49,6 +49,22 @@ body {
   font-weight: 680;
 }
 
+/* Buttons flex-center their label, but the font's built-in leading is split
+   evenly above and below - and Segoe UI (Windows) carries its visual weight
+   below the line-box centre, so the label reads as sitting low in the control.
+   Trimming the line-height to the glyph makes flex centring land on the text
+   itself, on every platform. 1.1 at 13px still clears descenders (g/y/p). This
+   is chrome-wide: Ant Design buttons, the app's tab strip, and rail labels. */
+.ant-btn,
+.app-tab,
+.rail-item-label {
+  line-height: 1.1;
+}
+/* An icon-only button has no text baseline to fight; let it center naturally. */
+.ant-btn.ant-btn-icon-only {
+  line-height: 1;
+}
+
 /* Tailwind's preflight sets svg { display: block }, which stacks Ant Design's
    inline icons onto their own line (menus, trees, buttons). Icons are inline
    glyphs in this product; restore that. */

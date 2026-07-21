@@ -588,6 +588,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     clearTimeout(savedTimer.current);
     savedTimer.current = setTimeout(() => setSaved(null), 900);
   };
+  // Keyboard navigation: the cell the arrow keys act on (by ids, so it survives
+  // sorting/filtering). A single click selects it; Enter/F2 edits; Esc clears.
+  const [active, setActive] = useState<{ param: string; inst: string } | null>(null);
   // Find & Replace dialog (opened from the toolbar or a cell's right-click)
   const [findReplace, setFindReplace] = useState<{ find: string } | null>(null);
   // The single-row toolbar's overflow menu and the legend dialog.
@@ -1063,10 +1066,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             : "") +
           (saved && saved.param === r.param.id && (saved.inst === "" || saved.inst === inst.name)
             ? " cell-saved"
-            : ""),
+            : "") +
+          (active && active.param === r.param.id && active.inst === inst.name ? " cell-active" : ""),
         // Value cells own click-to-edit; keep the click here so it never
-        // bubbles up to the row handler and collapses the details panel.
-        onClick: (e: React.MouseEvent) => e.stopPropagation(),
+        // bubbles up to the row handler and collapses the details panel. A
+        // single click also selects the cell for keyboard navigation.
+        onClick: (e: React.MouseEvent) => {
+          e.stopPropagation();
+          setActive({ param: r.param.id, inst: inst.name });
+        },
       }),
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
@@ -1168,7 +1176,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -1193,6 +1201,83 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     setSearch("");
     setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
   };
+
+  // Bring the active cell into view within the virtual body (vertical scrollTop
+  // + horizontal wheel-delta, mirroring the jump-to-cell scroller above).
+  const scrollActiveIntoView = (rowIdx: number, instName: string) => {
+    const root = rootRef.current;
+    if (!root) return;
+    const holder = root.querySelector<HTMLElement>(".ant-table-tbody-virtual-holder");
+    if (holder) {
+      const rowH =
+        root.querySelector<HTMLElement>(".ant-table-tbody-virtual .ant-table-row")?.getBoundingClientRect().height ||
+        (prefs.density === "compact" ? 39 : 48);
+      const top = rowIdx * rowH;
+      if (top < holder.scrollTop) holder.scrollTop = top;
+      else if (top + rowH > holder.scrollTop + holder.clientHeight)
+        holder.scrollTop = top + rowH - holder.clientHeight;
+    }
+    // Horizontal: only nudge if the column is off-screen either side.
+    let left = 0;
+    for (const inst of visibleInstances) {
+      if (inst.name === instName) break;
+      left += instWidths[inst.name] ?? 150;
+    }
+    const width = instWidths[instName] ?? 150;
+    const header = root.querySelector<HTMLElement>(".ant-table-header");
+    if (holder && header) {
+      const viewLeft = header.scrollLeft;
+      const viewW = holder.clientWidth - (PARAM_W + (prefs.showTypeCol ? TYPE_W : 0) + (prefs.showScopeCol ? SCOPE_W : 0) + (prefs.showDescCol ? DESC_W : 0));
+      let delta = 0;
+      if (left < viewLeft) delta = left - viewLeft - 8;
+      else if (left + width > viewLeft + viewW) delta = left + width - (viewLeft + viewW) + 8;
+      if (delta !== 0) holder.dispatchEvent(new WheelEvent("wheel", { deltaX: delta, bubbles: true, cancelable: true }));
+    }
+  };
+
+  // Arrow-key navigation over the grid, spreadsheet-style. It listens globally
+  // but only acts when a cell is active and focus is not inside an input, so it
+  // never hijacks typing in an editor, the search box, or a dialog.
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (editing) return; // the open editor owns the keyboard
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || t?.isContentEditable) return;
+
+      const rowIdx = rows.findIndex((r) => r.param.id === active.param);
+      const colIdx = visibleInstances.findIndex((i) => i.name === active.inst);
+      if (rowIdx < 0 || colIdx < 0) return;
+
+      if (e.key === "Escape") {
+        setActive(null);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "F2") {
+        e.preventDefault();
+        const cell = rows[rowIdx].cells[active.inst];
+        if (cell?.editable) setEditing(`${active.param}|${active.inst}`);
+        return;
+      }
+      let nr = rowIdx;
+      let nc = colIdx;
+      if (e.key === "ArrowUp") nr = Math.max(0, rowIdx - 1);
+      else if (e.key === "ArrowDown") nr = Math.min(rows.length - 1, rowIdx + 1);
+      else if (e.key === "ArrowLeft") nc = Math.max(0, colIdx - 1);
+      else if (e.key === "ArrowRight") nc = Math.min(visibleInstances.length - 1, colIdx + 1);
+      else return;
+      e.preventDefault();
+      const np = rows[nr].param.id;
+      const ni = visibleInstances[nc].name;
+      setActive({ param: np, inst: ni });
+      scrollActiveIntoView(nr, ni);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, editing, rows, visibleInstances]);
 
   // The editor stays editing-focused: the table fills the available height.
   // Category inventory lives in the Overview dashboard, not here.

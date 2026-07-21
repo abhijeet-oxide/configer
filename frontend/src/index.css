@@ -1339,6 +1339,13 @@ body {
 .param-grid .ant-table-cell.cell-saved {
   animation: cellSaved 0.9s ease-out;
 }
+
+/* The keyboard-navigation cursor: a crisp ring on the active cell. */
+.param-grid .ant-table-cell.cell-active {
+  outline: 2px solid var(--c-review);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
 @media (prefers-reduced-motion: reduce) {
   .param-grid .ant-table-cell.cell-saved { animation: none; }
 }

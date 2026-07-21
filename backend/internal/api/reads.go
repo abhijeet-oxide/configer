@@ -8,19 +8,59 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/diff"
 	"github.com/abhijeet-oxide/configer/backend/internal/grid"
 	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
+
+// locate returns the 1-based source line where a value lives inside a real
+// repository file, so the UI can open the file and jump straight to that line.
+// It reads the working-tree file (values move rarely between commit and draft,
+// so this is accurate in practice) and reuses the single path engine.
+//
+// @Summary     Locate a value's line
+// @Description Returns the 1-based line of the value at `path` inside `file` (YAML/JSON; XML returns 0). Lets the Details pane jump to the exact line a parameter is defined on.
+// @Tags        Reads
+// @Produce     json
+// @Param       file   query string true  "Repository-relative file path (instance-expanded)"
+// @Param       path   query string true  "Dotted value path (e.g. $.network.admin.port)"
+// @Param       format query string false "yaml | json | xml"
+// @Success     200 {object} map[string]int
+// @Router      /api/locate [get]
+func (s *Server) locate(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	file := strings.TrimSpace(q.Get("file"))
+	path := strings.TrimSpace(q.Get("path"))
+	if file == "" || path == "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "file and path are required")
+		return
+	}
+	// Keep the read inside the repository working tree.
+	clean := filepath.Clean(file)
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, ".."+string(os.PathSeparator)) {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid file path")
+		return
+	}
+	line := 0
+	if b, err := os.ReadFile(filepath.Join(s.RepoPath, clean)); err == nil {
+		if n, ok := pathedit.Line(b, q.Get("format"), path); ok {
+			line = n
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"line": line})
+}
 
 // projectInfo returns the project summary or an onboarding-needed marker.
 //

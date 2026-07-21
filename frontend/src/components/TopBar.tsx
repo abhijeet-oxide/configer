@@ -1,6 +1,5 @@
 import {
   Breadcrumb,
-  Input,
   Space,
   Tooltip,
   Button,
@@ -8,16 +7,16 @@ import {
   Avatar,
   Dropdown,
   Typography,
-  type InputRef,
 } from "antd";
 import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
+import { modLabel, shortcut } from "../platform";
 import { AppContextChips } from "./ui";
 import MembersModal from "./MembersModal";
 
@@ -58,10 +57,9 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 }
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { search, setSearch, setSection, repoId, section, mode } = useUI();
+  const { setSection, repoId, section, mode } = useUI();
   const switchRepo = useSwitchRepo();
   const openSearch = useSearchOpen((s) => s.openSearch);
-  const searchRef = useRef<InputRef>(null);
 
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
@@ -172,7 +170,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
       {/* Global "search anything" opener: applications, actions, and (inside an
           app) that app's parameters, values, and changes. Cmd/Ctrl-K opens the
           same palette. */}
-      <Tooltip title="Search everything (⌘K)">
+      <Tooltip title={`Search everything (${shortcut("K")})`}>
         <Button
           size="small"
           icon={<SearchOutlined />}
@@ -180,25 +178,9 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
           style={{ flexShrink: 0, color: "var(--text-3)" }}
         >
           Search
-          <kbd style={{ marginLeft: 8, fontSize: 10, border: "1px solid var(--border)", borderRadius: 4, padding: "0 4px", color: "var(--text-3)" }}>⌘K</kbd>
+          <kbd style={{ marginLeft: 8, fontSize: 10, border: "1px solid var(--border)", borderRadius: 4, padding: "0 4px", color: "var(--text-3)" }}>{modLabel} K</kbd>
         </Button>
       </Tooltip>
-      {/* The in-view filter stays what it always was: a live filter of the open
-          application's grid. It has no meaning outside an application. */}
-      {inApp && (
-        <Tooltip title="Filter the current view">
-          <Input
-            ref={searchRef}
-            prefix={<SearchOutlined />}
-            placeholder="Filter this view…"
-            size="small"
-            allowClear
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ width: "clamp(140px, 16vw, 260px)", flexShrink: 0 }}
-          />
-        </Tooltip>
-      )}
       <Space size={4} style={{ flexShrink: 0 }}>
         {inApp && gitUrl && (
           <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">

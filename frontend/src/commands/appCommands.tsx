@@ -22,6 +22,7 @@ import {
 } from "../icons";
 import type { ReactNode } from "react";
 import type { AppCtx } from "../search/types";
+import { useUI } from "../store";
 import { registerCommand, type Command } from "./registry";
 
 // nav is the common shape: a command that simply moves to a section. Global
@@ -98,7 +99,8 @@ const actions: Command[] = [
     icon: <PlusOutlined />,
     category: "Actions",
     keywords: "new connect add repository onboard import",
-    run: (ctx) => ctx.nav.setSection("workspace"),
+    // Open the deep-linked New Application dialog (writes ?new=1 to the URL).
+    run: () => useUI.getState().openNewApp(),
   },
   {
     id: "action.submit-changes",

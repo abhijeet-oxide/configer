@@ -824,6 +824,13 @@ export const api = {
     author?: string;
   }) => send<{ ok: boolean; parameters: number; instances: number; skipped?: string[] }>("POST", rp("/init"), p),
   grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
+  // locate returns the 1-based line where a value lives in a real file, so the
+  // Details pane can open the file and jump straight to it (0 when unknown).
+  locate: (file: string, path: string, format?: string) => {
+    const qs = new URLSearchParams({ file, path });
+    if (format) qs.set("format", format);
+    return get<{ line: number }>(rp(`/locate?${qs.toString()}`));
+  },
   compare: (left: string, right: string, opts?: { leftRef?: string; rightRef?: string }) => {
     const qs = new URLSearchParams({ left, right });
     if (opts?.leftRef) qs.set("leftRef", opts.leftRef);

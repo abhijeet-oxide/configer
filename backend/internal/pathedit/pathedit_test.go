@@ -181,6 +181,24 @@ func TestYAMLGet(t *testing.T) {
 	}
 }
 
+func TestYAMLLine(t *testing.T) {
+	// line: 1 service, 2 port, 3 servers, 4/5 elements, 6 rules, 7 name, 8 port
+	base := "service:\n  port: 8080\nservers:\n  - a\n  - b\nrules:\n  - name: ssh\n    port: 22\n"
+	if line, ok := Line([]byte(base), "yaml", "$.service.port"); !ok || line != 2 {
+		t.Errorf("Line scalar = %d %v, want 2", line, ok)
+	}
+	if line, ok := Line([]byte(base), "yaml", "$.rules[name=ssh].port"); !ok || line != 8 {
+		t.Errorf("Line selector = %d %v, want 8", line, ok)
+	}
+	if _, ok := Line([]byte(base), "yaml", "$.missing.path"); ok {
+		t.Error("Line missing: want ok=false")
+	}
+	// XML has no per-node line: locating returns false, never a wrong number.
+	if _, ok := Line([]byte("<a><b>1</b></a>"), "xml", "/a/b"); ok {
+		t.Error("Line xml: want ok=false")
+	}
+}
+
 // --- JSON ---------------------------------------------------------------------
 
 func TestJSONSetPreservesKeyOrder(t *testing.T) {

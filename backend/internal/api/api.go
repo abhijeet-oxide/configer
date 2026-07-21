@@ -135,6 +135,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/parameters/{id}", s.parameter)
 	mux.HandleFunc("GET /api/parameters/{id}/history", s.parameterHistory)
 	mux.HandleFunc("GET /api/compare", s.compare)
+	mux.HandleFunc("GET /api/locate", s.locate)
 	mux.HandleFunc("GET /api/render/{instance}", s.render)
 	mux.HandleFunc("POST /api/scan", s.scan)
 	mux.HandleFunc("GET /api/validation/presets", s.presets)

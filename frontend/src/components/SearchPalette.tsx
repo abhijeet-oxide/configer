@@ -208,7 +208,7 @@ export default function SearchPalette() {
           overflow: "hidden",
           borderRadius: 16,
           border: "1px solid var(--border)",
-          boxShadow: "var(--shadow-neu-xl)",
+          boxShadow: "var(--shadow-neu-lg)",
           background: "var(--surface)",
         },
       }}
@@ -271,8 +271,10 @@ export default function SearchPalette() {
                   padding: "8px 10px",
                   borderRadius: 10,
                   cursor: "pointer",
-                  background: active ? "var(--brand-soft)" : "transparent",
-                  boxShadow: active ? "inset 2px 0 0 var(--brand)" : "none",
+                  // Neutral, low-contrast highlight (no brand glow); a thin left
+                  // accent marks the selection without straining the eye.
+                  background: active ? "var(--surface-2)" : "transparent",
+                  boxShadow: active ? "inset 2px 0 0 var(--brand-border)" : "none",
                 }}
               >
                 {/* Icon tile */}
@@ -287,7 +289,7 @@ export default function SearchPalette() {
                     borderRadius: 9,
                     border: "1px solid var(--border)",
                     background: active ? "var(--surface)" : "var(--surface-2)",
-                    color: active ? "var(--brand-strong)" : "var(--text-3)",
+                    color: active ? "var(--text)" : "var(--text-3)",
                     fontSize: 15,
                   }}
                 >

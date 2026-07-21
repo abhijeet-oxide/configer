@@ -1005,7 +1005,7 @@ function ReviewStep({
             these parameters to the Configer catalog
             {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
             Your existing configuration files keep their values; from now on you edit them per
-            system in the Editor, with validation and review built in.
+            system in Configure, with validation and review built in.
           </>
         }
       />

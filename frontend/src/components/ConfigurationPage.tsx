@@ -5,8 +5,9 @@ import { api } from "../api";
 import { useUI } from "../store";
 
 // ConfigurationPage is the single home of everything about ONE application:
-// a quiet underline tab row (Overview, Editor, Files, Compare, Releases,
-// Approvals, Instances, More) over the active view. Tabs map 1:1 to the
+// a quiet underline tab row (Overview, Configure, Instances, Changes) over the
+// active view, with lower-traffic surfaces (Files, Compare, Approvals,
+// Repository changes, Audit, Import) folded under More. Tabs map 1:1 to the
 // store's `section`, so deep links and browser history keep working exactly
 // as before; this is chrome, not a router.
 
@@ -27,16 +28,18 @@ export const APP_SECTIONS = new Set([
 
 const TABS: { key: string; label: string }[] = [
   { key: "overview", label: "Overview" },
-  { key: "config", label: "Editor" },
-  { key: "files", label: "Files" },
-  { key: "compare", label: "Compare" },
-  { key: "changes", label: "Releases" },
-  { key: "approvals", label: "Approvals" },
+  { key: "config", label: "Configure" },
   { key: "instances", label: "Instances" },
+  { key: "changes", label: "Changes" },
 ];
 
-// Lower-traffic surfaces fold under More so the strip stays calm.
+// Lower-traffic surfaces fold under More so the strip stays calm. Files and
+// Compare are advanced/inspection views over the same configuration; Approvals
+// is reached from the workspace Inbox or a Change row.
 const MORE: { key: string; label: string }[] = [
+  { key: "files", label: "Files" },
+  { key: "compare", label: "Compare" },
+  { key: "approvals", label: "Approvals" },
   { key: "drift", label: "Repository changes" },
   { key: "audit", label: "Audit" },
   { key: "import", label: "Import settings" },
@@ -98,8 +101,8 @@ export default function ConfigurationPage({
             onClick={() => setSection(t.key)}
           >
             {t.label}
-            {t.key === "approvals" && <CountPill n={awaiting} />}
-            {t.key === "files" && <CountPill n={draftItems} tone="pending" />}
+            {t.key === "config" && <CountPill n={draftItems} tone="pending" />}
+            {t.key === "changes" && <CountPill n={awaiting} />}
           </button>
         ))}
         <Dropdown
@@ -113,6 +116,9 @@ export default function ConfigurationPage({
                   {m.label}
                   {m.key === "drift" && findings > 0 && (
                     <Badge count={findings} size="small" color="var(--c-pending)" />
+                  )}
+                  {m.key === "approvals" && awaiting > 0 && (
+                    <Badge count={awaiting} size="small" color="var(--c-review)" />
                   )}
                 </span>
               ),

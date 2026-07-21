@@ -132,6 +132,28 @@ body {
   background: var(--c-pending);
   vertical-align: middle;
 }
+/* The inline undo on a pending cell: a quiet counter-clockwise arrow that sits
+   just after the value and lights up on hover. Always present on a changed
+   cell (a visible affordance, not a hidden menu item), but muted enough that a
+   screen of edits does not turn into a wall of buttons. */
+.cell-undo-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: var(--c-pending);
+  opacity: 0.55;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: opacity 0.12s ease, background 0.12s ease;
+}
+.cell-undo-btn:hover {
+  opacity: 1;
+  background: var(--c-pending-bg);
+}
 /* An invalid value keeps its red identity even while edited: the red well
    dominates, and the left accent stays red rather than amber. */
 .cell-invalid.cell-pending {

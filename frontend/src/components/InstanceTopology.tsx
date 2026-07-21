@@ -6,16 +6,14 @@ import { useUI } from "../store";
 import { envHex } from "../theme";
 import { StatusPill } from "./ui";
 
-// InstanceTopology answers relationship questions the table cannot: which
-// shared base files do instances inherit from, which instances share a
-// baseline, and where do local overrides live. Everything is derived from
-// the grid's real bindings and cell provenance; nothing is invented. Base
-// files sit left, instances right (grouped by environment); an edge's weight
-// is how many parameters flow across it. Clicking a file opens it in the
-// Files workspace; clicking an instance opens a small dossier with an
-// "Open configuration" action that lands on the editor filtered to it.
-// Without a shared base layer there are no edges to draw, but the instances
-// still show as standalone blocks - the map never goes blank.
+// InstanceTopology answers the question the table cannot: WHY does an instance
+// hold the value it does. It lays the real inheritance chain out top to bottom
+// - shared base files, then each environment, then the instances inside it
+// (with region and how many values they inherit vs. override). Everything is
+// derived from the grid's real bindings and cell provenance; nothing is
+// invented. Clicking a base file opens it in Files; clicking an instance opens
+// a dossier with "Open configuration". Without a shared base layer the base
+// node simply says so - the map never goes blank.
 
 interface BaseNode {
   file: string;
@@ -81,10 +79,6 @@ function derive(grid: Grid): { bases: BaseNode[]; insts: InstNode[]; edges: Edge
   );
   return { bases, insts, edges: [...edgeMap.values()] };
 }
-
-const NODE_W = 250;
-const ROW_H = 60;
-const PAD = 16;
 
 // The dossier behind an instance click: what this instance is, then the
 // explicit decision to jump into its filtered configuration sheet.
@@ -165,40 +159,35 @@ function InstanceDossier({
   );
 }
 
-function InstanceCard({
+// One instance leaf in the hierarchy: name, region, and the inherited/override
+// split that explains where its values come from.
+function InstanceRow({
   node,
-  style,
-  className,
-  onHover,
+  region,
+  version,
   onClick,
 }: {
   node: InstNode;
-  style?: React.CSSProperties;
-  className?: string;
-  onHover?: (on: boolean) => void;
+  region?: string;
+  version?: string;
   onClick: () => void;
 }) {
   return (
     <div
-      className={`card-clickable flex cursor-pointer items-center gap-2 rounded-card bg-surface px-3 py-2 shadow-neu ${className ?? ""}`}
-      style={style}
-      onMouseEnter={() => onHover?.(true)}
-      onMouseLeave={() => onHover?.(false)}
+      className="card-clickable flex cursor-pointer items-center gap-2.5 rounded-card bg-surface px-3 py-2 shadow-neu"
       onClick={onClick}
       title={`${node.name}: instance details`}
     >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ background: envHex(node.environment) }}
-        title={node.environment}
-      />
-      <div className="min-w-0 flex-1">
-        <div className="mono overflow-hidden text-xs text-ellipsis whitespace-nowrap">{node.name}</div>
-        <div className="text-[11px] text-ink-3">{node.inherited} inherited</div>
-      </div>
+      <span className="size-2 shrink-0 rounded-full" style={{ background: envHex(node.environment) }} />
+      <span className="mono flex-1 overflow-hidden text-xs text-ellipsis whitespace-nowrap">{node.name}</span>
+      {region && <span className="text-[11px] text-ink-3">{region}</span>}
+      {version && <span className="mono text-[11px] text-ink-3">{version}</span>}
+      <span className="text-[11px] text-ink-3" title="Values inherited from the base layer">
+        {node.inherited} inherited
+      </span>
       {node.overrides > 0 && (
         <StatusPill tone="review" size="sm" dot={false}>
-          {node.overrides}
+          {node.overrides} override{node.overrides === 1 ? "" : "s"}
         </StatusPill>
       )}
     </div>
@@ -207,122 +196,86 @@ function InstanceCard({
 
 export default function InstanceTopology({ grid }: { grid: Grid }) {
   const { setSection, setFileFocus } = useUI();
-  const [hover, setHover] = useState<{ kind: "base" | "inst"; key: string } | null>(null);
   const [selInst, setSelInst] = useState<InstNode | null>(null);
-  const { bases, insts, edges } = useMemo(() => derive(grid), [grid]);
+  const { bases, insts } = useMemo(() => derive(grid), [grid]);
 
   const metaOf = (name: string) => grid.instances.find((i) => i.name === name);
   const dossier = (
     <InstanceDossier node={selInst} meta={selInst ? metaOf(selInst.name) : undefined} onClose={() => setSelInst(null)} />
   );
 
-  if (bases.length === 0) {
-    // No shared base layer: there is nothing to connect, but the instances
-    // themselves are still the map - show them as standalone blocks.
-    return (
-      <div className="h-full overflow-auto">
-        <div className="mb-3 px-1 text-xs text-ink-3">
-          No shared base layer: every parameter here lives in the instance's own files, so there are
-          no inheritance edges to draw. Each instance stands alone; click one for details.
-        </div>
-        <div className="flex flex-wrap gap-3 px-1">
-          {insts.map((x) => (
-            <InstanceCard key={x.name} node={x} style={{ width: NODE_W }} onClick={() => setSelInst(x)} />
-          ))}
-        </div>
-        {dossier}
-      </div>
-    );
-  }
-
-  const H = Math.max(bases.length, insts.length) * ROW_H + PAD * 2;
-  const W = 860;
-  const leftX = PAD;
-  const rightX = W - NODE_W - PAD;
-  const yFor = (i: number, n: number) => PAD + ((H - PAD * 2) / n) * (i + 0.5);
-  const maxCount = Math.max(...edges.map((e) => e.count), 1);
-
-  const baseIdx = new Map(bases.map((b, i) => [b.file, i]));
-  const instIdx = new Map(insts.map((x, i) => [x.name, i]));
-
-  const active = (e: Edge) =>
-    !hover || (hover.kind === "base" ? hover.key === e.file : hover.key === e.instance);
+  // Group instances by environment - the middle layer of the inheritance
+  // chain. `insts` is already sorted by environment then name.
+  const envGroups = useMemo(() => {
+    const m = new Map<string, InstNode[]>();
+    for (const x of insts) {
+      const e = x.environment || "other";
+      m.set(e, [...(m.get(e) ?? []), x]);
+    }
+    return [...m.entries()];
+  }, [insts]);
 
   return (
     <div className="h-full overflow-auto">
-      <div className="mb-1 flex items-center gap-4 px-1 text-xs text-ink-3">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-6 rounded" style={{ background: "var(--brand)" }} />
-          parameters shared from a base file
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <StatusPill tone="review" size="sm" dot={false}>n overrides</StatusPill>
-          values set locally on the instance
-        </span>
+      <div className="mb-3 px-1 text-xs text-ink-3">
+        How each instance gets its values: the shared base layer flows down into every environment,
+        and each instance adds its own overrides on top. Click a file to open it, or an instance for details.
       </div>
-      <div className="relative" style={{ width: W, height: H }}>
-        <svg width={W} height={H} className="absolute inset-0">
-          {edges.map((e) => {
-            const bi = baseIdx.get(e.file);
-            const ii = instIdx.get(e.instance);
-            if (bi === undefined || ii === undefined) return null;
-            const y1 = yFor(bi, bases.length);
-            const y2 = yFor(ii, insts.length);
-            const x1 = leftX + NODE_W;
-            const x2 = rightX;
-            const mid = (x1 + x2) / 2;
-            const on = active(e);
-            // When a node is hovered, its live edges show a gentle flowing dash
-            // from the base file toward the instance - inheritance made visible.
-            const flowing = hover !== null && on;
-            return (
-              <path
-                key={`${e.file}|${e.instance}`}
-                className={`topo-edge${flowing ? " topo-edge--flow" : ""}`}
-                d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`}
-                fill="none"
-                stroke={on ? "var(--brand)" : "var(--brand-border)"}
-                strokeOpacity={on ? 0.8 : 0.25}
-                strokeWidth={1.5 + (e.count / maxCount) * 3.5}
-                style={{ transition: "stroke-opacity var(--dur-hover) var(--ease)" }}
-              >
-                <title>
-                  {e.count} parameter{e.count === 1 ? "" : "s"} inherited from {e.file}
-                </title>
-              </path>
-            );
-          })}
-        </svg>
-        {bases.map((b, i) => (
-          <div
-            key={b.file}
-            className="card-clickable absolute flex cursor-pointer items-center gap-2 rounded-card bg-surface px-3 py-2 shadow-neu"
-            style={{ left: leftX, top: yFor(i, bases.length) - 22, width: NODE_W, height: 44 }}
-            onMouseEnter={() => setHover({ kind: "base", key: b.file })}
-            onMouseLeave={() => setHover(null)}
-            onClick={() => {
-              setFileFocus({ path: b.file });
-              setSection("files");
-            }}
-            title={`${b.file}: open in Files`}
-          >
-            <FileTextOutlined style={{ color: "var(--brand)" }} />
-            <div className="min-w-0 flex-1">
-              <div className="mono overflow-hidden text-xs text-ellipsis whitespace-nowrap">{b.file}</div>
-              <div className="text-[11px] text-ink-3">{b.params} parameter{b.params === 1 ? "" : "s"}</div>
+
+      <div className="flex max-w-3xl flex-col gap-2">
+        {/* Base layer */}
+        {bases.length > 0 ? (
+          bases.map((b) => (
+            <div
+              key={b.file}
+              className="card-clickable flex cursor-pointer items-center gap-2 rounded-card bg-surface px-3 py-2 shadow-neu"
+              onClick={() => {
+                setFileFocus({ path: b.file });
+                setSection("files");
+              }}
+              title={`${b.file}: open in Files`}
+            >
+              <FileTextOutlined style={{ color: "var(--brand)" }} />
+              <span className="mono flex-1 overflow-hidden text-xs text-ellipsis whitespace-nowrap">{b.file}</span>
+              <span className="text-[11px] text-ink-3">
+                base layer · {b.params} parameter{b.params === 1 ? "" : "s"}
+              </span>
             </div>
+          ))
+        ) : (
+          <div className="rounded-card border border-dashed border-line-strong bg-surface/60 px-3 py-2 text-xs text-ink-3">
+            No shared base layer: every value lives in each instance's own files.
           </div>
-        ))}
-        {insts.map((x, i) => (
-          <InstanceCard
-            key={x.name}
-            node={x}
-            className="absolute"
-            style={{ left: rightX, top: yFor(i, insts.length) - 22, width: NODE_W, height: 44 }}
-            onHover={(on) => setHover(on ? { kind: "inst", key: x.name } : null)}
-            onClick={() => setSelInst(x)}
-          />
-        ))}
+        )}
+
+        {/* Environment groups, indented under the base to show inheritance. */}
+        <div className="ml-3 flex flex-col gap-3 border-l border-line pl-4 pt-1">
+          {envGroups.map(([env, group]) => (
+            <div key={env} className="flex flex-col gap-1.5">
+              <div className="flex items-center gap-2">
+                <span className="size-2.5 rounded-full" style={{ background: envHex(env) }} />
+                <span className="text-[13px] font-semibold capitalize text-ink">{env}</span>
+                <span className="text-[11px] text-ink-3">
+                  {group.length} instance{group.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="ml-3 flex flex-col gap-1.5 border-l border-line pl-4">
+                {group.map((x) => {
+                  const meta = metaOf(x.name);
+                  return (
+                    <InstanceRow
+                      key={x.name}
+                      node={x}
+                      region={meta?.region}
+                      version={meta?.softwareVersion}
+                      onClick={() => setSelInst(x)}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
       {dossier}
     </div>

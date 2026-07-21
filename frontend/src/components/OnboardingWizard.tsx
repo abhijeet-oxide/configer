@@ -81,6 +81,45 @@ function prettyBinding(b: Binding): { file: string; perInstance: boolean } {
   return { file: b.file, perInstance: false };
 }
 
+// DiscoverySummary is the onboarding "aha": the three numbers that turn a
+// messy repository into structured configuration, shown big and up front.
+function DiscoverySummary({
+  parameters,
+  instances,
+  formats,
+}: {
+  parameters: number;
+  instances: number;
+  formats: string[];
+}) {
+  const stats = [
+    { n: parameters, label: parameters === 1 ? "parameter" : "parameters" },
+    { n: instances, label: instances === 1 ? "instance" : "instances" },
+    { n: formats.length, label: formats.length === 1 ? "format" : "formats", hint: formats.map((f) => f.toUpperCase()).join(" · ") },
+  ];
+  return (
+    <div className="mb-5 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-card-lg border border-brand-border bg-brand-soft px-5 py-4">
+      <div className="min-w-40">
+        <div className="text-[13px] font-semibold text-ink">Configuration discovered</div>
+        <div className="text-[12px] text-ink-2">Your existing files, now one structured surface.</div>
+      </div>
+      <div className="flex flex-wrap gap-x-8 gap-y-2">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <div className="text-2xl font-semibold leading-none text-ink" style={{ fontVariantNumeric: "tabular-nums" }}>
+              {s.n}
+            </div>
+            <div className="mt-1 text-[11px] text-ink-3">
+              {s.label}
+              {s.hint ? <span className="ml-1 text-ink-2">{s.hint}</span> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // A discovered value rendered compactly for the per-instance preview columns.
 // Lists join with commas; objects collapse to JSON; anything long rides in a
 // tooltip so the row stays single-line.
@@ -187,6 +226,13 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const d = discoverQ.data;
 
   const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
+  // Distinct configuration formats found across every discovered parameter -
+  // the "3 formats" part of the discovery summary.
+  const discoveredFormats = useMemo(() => {
+    const s = new Set<string>();
+    for (const p of d?.parameters ?? []) for (const b of bindingsOf(p)) if (b.format) s.add(b.format);
+    return [...s].sort();
+  }, [d]);
   const patchInstance = (name: string, patch: Partial<Instance>) =>
     setInstances(insts.map((i) => (i.name === name ? { ...i, ...patch } : i)));
 
@@ -323,6 +369,15 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         final step, which makes one reviewable Git commit adding metadata under{" "}
         <span className="mono">.configer/</span>. Your configuration files stay exactly where they are.
       </Typography.Paragraph>
+
+      {/* The "aha": what the scan turned this repository into, stated once and
+          up front - messy files become structured, countable configuration. */}
+      <DiscoverySummary
+        parameters={d.parameters.length}
+        instances={insts.length}
+        formats={discoveredFormats}
+      />
+
       <div className="mb-5 rounded-card-lg bg-surface px-5 py-4 shadow-neu">
         <Stepper current={step} steps={steps} />
       </div>

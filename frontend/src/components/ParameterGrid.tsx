@@ -33,6 +33,7 @@ import {
   UpOutlined,
   DownOutlined,
   MoreOutlined,
+  UndoOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -50,7 +51,7 @@ import {
   type PresetRule,
   type Row,
 } from "../api";
-import { effectiveRules, fmtValue } from "../rules";
+import { effectiveRules, fmtValue, typeLabel } from "../rules";
 import {
   CellView,
   EnumEditor,
@@ -79,6 +80,7 @@ function EditableCell({
   onCommit,
   onAction,
   onCopyTo,
+  onBulkSet,
   onUndo,
   onFind,
   onReplace,
@@ -96,6 +98,8 @@ function EditableCell({
   onCommit: (v: unknown) => void;
   onAction: (action: "reset" | "exclude") => void;
   onCopyTo: (target: string) => void;
+  /** open the "set this value across many instances" picker */
+  onBulkSet: () => void;
   onUndo: () => void;
   onFind: (value: string) => void;
   onReplace: (value: string) => void;
@@ -136,10 +140,13 @@ function EditableCell({
     ...(cell.editable && cell.set
       ? [{ key: "exclude", label: "Remove from this instance (delete the key)" }]
       : []),
+    ...(cell.set && cell.value != null && allInstances.length > 1
+      ? [{ key: "bulkset", label: "Set on other instances…" }]
+      : []),
     ...(cell.set && allInstances.length > 1
       ? [{
           key: "copy",
-          label: "Copy value to…",
+          label: "Copy value to one…",
           children: allInstances
             .filter((n) => n !== instance)
             .map((n) => ({ key: `copy:${n}`, label: n })),
@@ -160,19 +167,40 @@ function EditableCell({
       : []),
   ];
 
+  // A pending cell carries its own one-click undo, so reverting never requires
+  // discovering the right-click menu: the affordance is visible on the change
+  // itself (with the full undo/reset menu still a right-click away).
+  const undoBtn = cell.pending ? (
+    <Tooltip title="Undo this change">
+      <span
+        role="button"
+        aria-label="Undo this change"
+        onClick={(e) => {
+          e.stopPropagation();
+          onUndo();
+        }}
+        className="cell-undo-btn"
+      >
+        <UndoOutlined />
+      </span>
+    </Tooltip>
+  ) : null;
+
   const body =
     param.type === "boolean" && cell.editable && cell.set ? (
-      <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined}>
+      <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined} style={{ display: "inline-flex", alignItems: "center" }}>
         <Switch size="small" checked={!!cell.value} onChange={(v) => onCommit(v)} />
         <SourceBadge cell={cell} />
+        {undoBtn}
       </span>
     ) : (
       <div
-        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined }}
+        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined, display: "flex", alignItems: "center" }}
         title={cell.editable && !cell.pending ? "Double-click to edit · right-click for actions" : undefined}
         onDoubleClick={cell.editable ? onStartEdit : undefined}
       >
         <CellView cell={cell} pendingItem={pendingItem} />
+        {undoBtn}
       </div>
     );
 
@@ -186,6 +214,7 @@ function EditableCell({
           domEvent.stopPropagation();
           if (key === "undo") onUndo();
           else if (key === "edit") onStartEdit();
+          else if (key === "bulkset") onBulkSet();
           else if (key === "reset") onAction("reset");
           else if (key === "exclude") onAction("exclude");
           else if (key === "find") onFind(fmtValue(cell.value));
@@ -331,6 +360,103 @@ function ColumnManager({
   );
 }
 
+// BulkSetModal is the "change once, apply to many" surface - the point of a
+// parameter x instance grid. Pick target instances (pre-selected to the source
+// instance's own environment, the common intent), see exactly how many will
+// change, and stage them all as ordinary pending changes to review before
+// publishing.
+function BulkSetModal({
+  grid,
+  param,
+  value,
+  from,
+  applying,
+  onClose,
+  onApply,
+}: {
+  grid: Grid;
+  param: Parameter;
+  value: unknown;
+  from: string;
+  applying: boolean;
+  onClose: () => void;
+  onApply: (targets: string[]) => void;
+}) {
+  const fromEnv = grid.instances.find((i) => i.name === from)?.environment;
+  const others = useMemo(() => grid.instances.filter((i) => i.name !== from), [grid.instances, from]);
+  const [sel, setSel] = useState<Set<string>>(
+    () => new Set(others.filter((i) => i.environment === fromEnv).map((i) => i.name)),
+  );
+  const toggle = (name: string) =>
+    setSel((s) => {
+      const n = new Set(s);
+      if (n.has(name)) n.delete(name);
+      else n.add(name);
+      return n;
+    });
+  const setMany = (insts: Instance[], on: boolean) =>
+    setSel((s) => {
+      const n = new Set(s);
+      for (const i of insts) {
+        if (on) n.add(i.name);
+        else n.delete(i.name);
+      }
+      return n;
+    });
+  const byEnv = new Map<string, Instance[]>();
+  for (const i of others) {
+    const e = i.environment || "other";
+    byEnv.set(e, [...(byEnv.get(e) ?? []), i]);
+  }
+  return (
+    <Modal
+      open
+      width={460}
+      title={
+        <span>
+          Set <span className="mono">{param.name}</span> on multiple instances
+        </span>
+      }
+      okText={sel.size ? `Apply to ${sel.size} instance${sel.size === 1 ? "" : "s"}` : "Apply"}
+      okButtonProps={{ disabled: sel.size === 0, loading: applying }}
+      onOk={() => onApply([...sel])}
+      onCancel={onClose}
+    >
+      <div style={{ marginBottom: 12, fontSize: 13 }}>
+        Set the value to{" "}
+        <span className="mono" style={{ color: "var(--c-review)", fontWeight: 600 }}>{fmtValue(value)}</span>{" "}
+        on the instances you choose. Each becomes a pending change you review before publishing.
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxHeight: 320, overflow: "auto" }}>
+        {[...byEnv.entries()].map(([env, insts]) => {
+          const allOn = insts.every((i) => sel.has(i.name));
+          return (
+            <div key={env}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>
+                  <span style={{ width: 7, height: 7, borderRadius: 4, background: envHex(env) }} />
+                  {env}
+                </span>
+                <a style={{ fontSize: 12 }} onClick={() => setMany(insts, !allOn)}>
+                  {allOn ? "Clear" : "Select all"}
+                </a>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 13 }}>
+                {insts.map((i) => (
+                  <Checkbox key={i.name} checked={sel.has(i.name)} onChange={() => toggle(i.name)}>
+                    <span className="mono" style={{ fontSize: 12 }}>{i.name}</span>
+                    {i.region && <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 6 }}>{i.region}</span>}
+                  </Checkbox>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
+  );
+}
+
 function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) => void) {
   return (
     <div style={{ lineHeight: 1.25, position: "relative" }}>
@@ -369,7 +495,7 @@ function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) =>
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -400,6 +526,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [matchCursor, setMatchCursor] = useState(0);
   // pending "this is a global setting" question for a just-committed value
   const [globalAsk, setGlobalAsk] = useState<{ param: Parameter; instance: string; value: unknown } | null>(null);
+  // "set this value on many instances" picker, opened from a cell's menu
+  const [bulkSet, setBulkSet] = useState<{ param: Parameter; value: unknown; from: string } | null>(null);
   // Single-instance view: pick one instance and the matrix collapses to a
   // Parameter / Value / Source / Changed sheet for that instance alone.
   // Single-instance view. It initializes from the ?inst= selection so a
@@ -479,6 +607,24 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
+  // Fan-out write: stage the same value on many instances at once (the whole
+  // reason a grid beats editing files one by one). Applied sequentially so a
+  // rejection surfaces against a real instance; queries refresh once at the end.
+  const bulkSave = useMutation({
+    mutationFn: async (p: { paramId: string; value: unknown; targets: string[] }) => {
+      for (const t of p.targets) await api.setValue({ instance: t, paramId: p.paramId, value: p.value });
+    },
+    onSuccess: (_r, vars) => {
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
+      message.success(`Set on ${vars.targets.length} instance${vars.targets.length === 1 ? "" : "s"}`);
+      setBulkSet(null);
+    },
+    onError: (e: Error) => message.error(`Rejected: ${e.message}`),
+  });
+
   // body: the area the virtualized table body may occupy (auto-fits height/width)
   const { ref: bodyRef, width: bodyW, height: bodyH } = useElementSize<HTMLDivElement>();
 
@@ -644,7 +790,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // supporting hint (the full text is always in the details panel), so it stays
   // narrow and truncates.
   const PARAM_W = 240;
-  const TYPE_W = prefs.showTypeCol ? 82 : 0; // fits "Type" + sort/filter icons
+  const TYPE_W = prefs.showTypeCol ? 104 : 0; // fits "list<ipv4>" + sort/filter icons
   const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
   const DESC_W = prefs.showDescCol ? 140 : 0;
   const instWidths = useMemo(() => {
@@ -808,7 +954,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         sorter: (a, b) => a.param.type.localeCompare(b.param.type),
         filters: types.map((t) => ({ text: t, value: t })),
         onFilter: (v, r) => r.param.type === v,
-        render: (_v, r) => <Tag>{r.param.type}</Tag>,
+        render: (_v, r) => (
+          <Tooltip title={r.param.type === "list" && r.param.itemType ? `List of ${r.param.itemType} values` : undefined}>
+            <Tag>{typeLabel(r.param.type, r.param.itemType)}</Tag>
+          </Tooltip>
+        ),
       });
     }
     if (prefs.showScopeCol) {
@@ -914,6 +1064,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             onCopyTo={(target) =>
               save.mutate({ instance: target, paramId: r.param.id, value: cell?.value })
             }
+            onBulkSet={() => setBulkSet({ param: r.param, value: cell?.value, from: inst.name })}
             onUndo={() =>
               revert.mutate({
                 paramId: r.param.id,
@@ -990,6 +1141,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
   const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
+
+  // Any dimension that narrows the visible rows. Several are independent (the
+  // parameter tree's category, the Changed/Added/Removed pill, the row filters,
+  // and both search boxes), so "All Parameters" alone never guarantees the full
+  // list. A single count-with-Clear makes the narrowing visible and gives one
+  // reliable way back to everything.
+  const total = grid.rows.length;
+  const isFiltered =
+    !!categoryKey || pill !== "all" || !!q || !!lq || activeFilters > 0;
+  const clearAllFilters = () => {
+    setCategory(null);
+    selectParam(null);
+    setPill("all");
+    setLocalQ("");
+    setSearch("");
+    setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
+  };
 
   // The editor stays editing-focused: the table fills the available height.
   // Category inventory lives in the Overview dashboard, not here.
@@ -1121,7 +1289,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             ]}
           />
         )}
-        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0 }}>{rows.length}</span>
+        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+          {isFiltered ? `${rows.length} of ${total}` : rows.length}
+        </span>
+        {isFiltered && (
+          <Tooltip title="Clear the category, filters and search - show every parameter">
+            <Button size="small" type="link" style={{ padding: "0 2px", height: "auto", flexShrink: 0 }} onClick={clearAllFilters}>
+              Clear filters
+            </Button>
+          </Tooltip>
+        )}
         {q && (
           <Tag
             color="blue"
@@ -1281,6 +1458,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </div>
       </Modal>
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
+      {bulkSet && (
+        <BulkSetModal
+          grid={grid}
+          param={bulkSet.param}
+          value={bulkSet.value}
+          from={bulkSet.from}
+          applying={bulkSave.isPending}
+          onClose={() => setBulkSet(null)}
+          onApply={(targets) => bulkSave.mutate({ paramId: bulkSet.param.id, value: bulkSet.value, targets })}
+        />
+      )}
       {/* Column manager lives in a modal so it opens the same way from the
           toolbar button or from the ⋮ menu when the button has folded away. */}
       {!viewInstance && (

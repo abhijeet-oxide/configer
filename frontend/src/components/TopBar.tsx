@@ -10,9 +10,9 @@ import {
   Typography,
   type InputRef,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined } from "../icons";
+import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
@@ -32,11 +32,11 @@ const APP_BREADCRUMB_SECTIONS = new Set([
 ]);
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
-  config: "Editor",
+  config: "Configure",
   files: "Files",
   compare: "Compare",
-  changes: "Releases",
-  drafts: "Releases",
+  changes: "Changes",
+  drafts: "Changes",
   approvals: "Approvals",
   instances: "Instances",
   drift: "Repository changes",
@@ -69,20 +69,12 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   // so the breadcrumb reads Applications / <name> / <tab>.
   const inApp = APP_BREADCRUMB_SECTIONS.has(section);
   const tabLabel = TAB_LABELS[section];
-  // "View in Git" opens the repository at its hosting provider.
+  // Opens the repository at its hosting provider; GitHub gets its own label.
   const gitUrl = activeRepo?.origin?.startsWith("http") ? activeRepo.origin : undefined;
+  const isGitHub = !!gitUrl && /(^|\.)github\.com/i.test(gitUrl);
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
+  // Cmd/Ctrl-K is owned by the command palette (a richer jump-to-anything
+  // surface); this box stays a quick filter of the current view.
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
@@ -94,7 +86,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             ...(section === "home"
               ? []
               : section === "inbox"
-                ? [{ title: <span>Approvals</span> }]
+                ? [{ title: <span>Inbox</span> }]
                 : section === "estate"
                 ? [{ title: <span>Instances</span> }]
                 : section === "changelog"
@@ -172,20 +164,22 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         </div>
       )}
       <div style={{ flex: 1, minWidth: 8 }} />
-      <Input
-        ref={searchRef}
-        prefix={<SearchOutlined />}
-        placeholder="Search everything… (⌘K)"
-        size="small"
-        allowClear
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
-      />
+      <Tooltip title="Jump to any parameter or section (⌘K)">
+        <Input
+          ref={searchRef}
+          prefix={<SearchOutlined />}
+          placeholder="Filter this view…"
+          size="small"
+          allowClear
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
+        />
+      </Tooltip>
       <Space size={4} style={{ flexShrink: 0 }}>
         {inApp && gitUrl && (
-          <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
-            View in Git
+          <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">
+            {isGitHub ? "Open in GitHub" : "View in Git"}
           </Button>
         )}
         <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
@@ -199,7 +193,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         </Tooltip>
         <Tooltip
           placement="bottomRight"
-          title={awaiting ? `${awaiting} change request(s) waiting for approval` : "No approvals waiting"}
+          title={awaiting ? `${awaiting} change(s) waiting for review` : "Nothing waiting for review"}
         >
           <Badge count={awaiting} size="small" color="var(--c-review)">
             <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />

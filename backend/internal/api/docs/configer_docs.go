@@ -3218,7 +3218,13 @@ const docTemplateconfiger = `{
                 "number",
                 "enum",
                 "ipv4",
+                "ipv6",
                 "cidr",
+                "hostname",
+                "port",
+                "email",
+                "url",
+                "mac",
                 "list"
             ],
             "x-enum-varnames": [
@@ -3228,7 +3234,13 @@ const docTemplateconfiger = `{
                 "TypeNumber",
                 "TypeEnum",
                 "TypeIPv4",
+                "TypeIPv6",
                 "TypeCIDR",
+                "TypeHostname",
+                "TypePort",
+                "TypeEmail",
+                "TypeURL",
+                "TypeMAC",
                 "TypeList"
             ]
         },
@@ -3273,6 +3285,11 @@ const docTemplateconfiger = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "observed": {
+                    "description": "Observed carries the value discovery read from each instance's files\n(instance name -\u003e value), so the onboarding proposal can preview the grid.\nIt is display-only: never persisted to .configer (yaml:\"-\"), only carried\nthrough the discovery JSON.",
+                    "type": "object",
+                    "additionalProperties": {}
                 },
                 "scope": {
                     "$ref": "#/definitions/model.Scope"

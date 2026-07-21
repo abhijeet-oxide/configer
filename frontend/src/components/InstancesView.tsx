@@ -3,12 +3,13 @@ import {
   Segmented, Tooltip, App as AntApp,
 } from "antd";
 import {
-  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined,
+  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined,
 } from "../icons";
 import { useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
+import { useUI } from "../store";
 import { ENV_PRESETS } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
@@ -51,8 +52,25 @@ interface FormValues {
 }
 
 export default function InstancesView({ grid }: { grid: Grid }) {
-  const { message } = AntApp.useApp();
+  const { message, notification } = AntApp.useApp();
   const qc = useQueryClient();
+  const { setCompare, setSection, setFileFocus } = useUI();
+
+  // Take the user straight to the new instance's staged folder in Files, so a
+  // structural add reads as what it is - new files appearing in the repository.
+  const viewStagedFolder = (name: string) => {
+    setFileFocus({ instance: name, path: "" });
+    setSection("files");
+  };
+
+  // Compare from context: seed this instance as the left side (and the nearest
+  // other instance as the right) and open Compare already configured, so a
+  // comparison starts from intent instead of an empty two-by-two picker.
+  const compareFrom = (name: string) => {
+    const other = grid.instances.find((i) => i.name !== name)?.name ?? name;
+    setCompare(name, other);
+    setSection("compare");
+  };
   const regQ = useQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
   const instances = useMemo(() => regQ.data?.instances ?? [], [regQ.data]);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
@@ -93,13 +111,26 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     onSuccess: (_r, v) => {
       setModal(null);
       qc.invalidateQueries({ queryKey: ["draft"] });
-      done(
-        v.mode === "edit"
-          ? "Instance change staged in your draft: submit to send it for review"
-          : v.mode === "clone"
-            ? "New instance staged in your draft; preview its folder in Files, then submit for review"
-            : "New instance staged in your draft: submit to send it for review",
-      );
+      qc.invalidateQueries({ queryKey: ["files-draft"] });
+      if (v.mode === "edit") {
+        done("Instance change staged in your draft: submit to send it for review");
+        return;
+      }
+      // A new instance is a new folder in the repository. Refresh the estate,
+      // then point the user straight at those staged files.
+      done("New instance staged in your draft");
+      const name = v.input.name;
+      if (name)
+        notification.success({
+          message: `Instance "${name}" staged`,
+          description: "Its folder will be created in the repository when you submit. You can preview the new files now.",
+          btn: (
+            <Button type="primary" size="small" onClick={() => viewStagedFolder(name)}>
+              View files
+            </Button>
+          ),
+          duration: 8,
+        });
     },
     onError: (e: Error) => message.error(e.message),
   });
@@ -260,6 +291,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               const archived = (i.status || "active") === "archived";
               return (
                 <Space size={2}>
+                  <Tooltip title="Compare this instance with another">
+                    <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => compareFrom(i.name)} />
+                  </Tooltip>
                   <Tooltip title="Edit metadata">
                     <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openModal("edit", i)} />
                   </Tooltip>

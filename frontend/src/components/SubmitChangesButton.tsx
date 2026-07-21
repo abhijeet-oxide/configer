@@ -62,18 +62,18 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
       qc.invalidateQueries();
       message.success(
         cr.prUrl
-          ? `Change request #${cr.id} submitted, PR ${cr.prUrl}`
-          : `Change request #${cr.id} submitted on branch ${cr.branch}`,
+          ? `Submitted for review as CR-${cr.id}, PR ${cr.prUrl}`
+          : `Submitted for review as CR-${cr.id}`,
         6,
       );
-      setSection("approvals");
+      setSection("changes");
     },
     onError: (e: Error) => message.error(e.message),
   });
 
   return (
     <>
-      {/* Unsent edits are "pending" everywhere in the product: amber, not red. */}
+      {/* Pending changes are "pending" everywhere in the product: amber, not red. */}
       <Badge count={pending} size="small" offset={[-4, 0]} color="var(--c-pending)">
         <Button
           size="small"
@@ -82,7 +82,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           disabled={pending === 0}
           onClick={() => setOpen(true)}
         >
-          Create change request
+          {pending > 0 ? `Review ${pending} change${pending === 1 ? "" : "s"}` : "Review changes"}
         </Button>
       </Badge>
 
@@ -91,7 +91,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         open={open}
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
-        okText="Send for review"
+        okText="Submit for review"
         okButtonProps={{ disabled: pending === 0 }}
         confirmLoading={submit.isPending}
         width={760}

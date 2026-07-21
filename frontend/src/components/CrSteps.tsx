@@ -15,7 +15,7 @@ export const stateMeta: Record<ChangeState, { color: string; label: string; expl
   },
   under_review: {
     color: "processing",
-    label: "Under Review",
+    label: "In review",
     explain: "Saved to Git on its own branch (with a pull request when GitHub is connected), waiting for an approver.",
   },
   approved: {
@@ -48,7 +48,7 @@ export function StateTag({ state }: { state: ChangeState }) {
 // "Pending review" pill); one mapping so state colors never diverge.
 const stateTone: Record<ChangeState, { tone: PillTone; label: string }> = {
   draft: { tone: "neutral", label: "Draft" },
-  under_review: { tone: "pending", label: "Pending review" },
+  under_review: { tone: "pending", label: "In review" },
   approved: { tone: "review", label: "Approved" },
   published: { tone: "ok", label: "Published" },
   rejected: { tone: "danger", label: "Rejected" },
@@ -78,7 +78,7 @@ export default function CrSteps({ state }: { state: ChangeState }) {
   const steps = [
     { label: "Draft", icon: <EditOutlined />, explain: stateMeta.draft.explain },
     {
-      label: failed ? "Rejected" : "Under review",
+      label: failed ? "Rejected" : "In review",
       icon: failed ? <CloseOutlined /> : <EyeOutlined />,
       explain: failed ? stateMeta.rejected.explain : stateMeta.under_review.explain,
       error: failed,

@@ -1,6 +1,5 @@
 import {
   Alert, Button, Dropdown, Input, Select, Switch, Tag, Tooltip, App as AntApp,
-  theme as antdTheme,
 } from "antd";
 import {
   CopyOutlined,
@@ -52,7 +51,6 @@ const TREE_KEY = "configer.filesTreeOpen";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
-  const { token } = antdTheme.useToken();
   const qc = useQueryClient();
   const mode = useUI((s) => s.mode);
   const setSection = useUI((s) => s.setSection);
@@ -172,8 +170,16 @@ export default function FilesView() {
     if (fileFocus.instance) setInstance(fileFocus.instance);
     setOnlyManaged(false);
     setTreeQ("");
-    setSelected(fileFocus.path);
-    setReveal(fileFocus.line);
+    // An empty path means "just show this instance's folder" (e.g. jumping to a
+    // freshly staged instance): leave selection to the auto-select effect,
+    // which lands on the first file once the folder renders.
+    if (fileFocus.path) {
+      setSelected(fileFocus.path);
+      setReveal(fileFocus.line);
+    } else {
+      setSelected(null);
+      setReveal(undefined);
+    }
   }, [fileFocus]);
 
   useEffect(() => {
@@ -351,20 +357,22 @@ export default function FilesView() {
               )}
               {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
               {currentParams.length > 0 && (
-                <Dropdown
-                  trigger={["click"]}
-                  menu={{
-                    items: currentParams.map((id) => ({
-                      key: id,
-                      label: <span className="mono">{id}</span>,
-                    })),
-                    onClick: ({ key }) => openInEditor(key),
-                  }}
-                >
-                  <Button size="small" icon={<TableOutlined />}>
-                    Open in editor
-                  </Button>
-                </Dropdown>
+                <Tooltip title="Parameters whose values live in this file - open any in Configure">
+                  <Dropdown
+                    trigger={["click"]}
+                    menu={{
+                      items: currentParams.map((id) => ({
+                        key: id,
+                        label: <span className="mono">{id}</span>,
+                      })),
+                      onClick: ({ key }) => openInEditor(key),
+                    }}
+                  >
+                    <Button size="small" icon={<TableOutlined />}>
+                      {currentParams.length} parameter{currentParams.length === 1 ? "" : "s"} here
+                    </Button>
+                  </Dropdown>
+                </Tooltip>
               )}
               <Button
                 size="small"
@@ -503,19 +511,13 @@ export default function FilesView() {
             <Tooltip
               title={
                 draftItems > 0
-                  ? `Your ${draftItems} unsent edit(s) build on ${statusQ.data?.branch ?? "the base branch"} and will be committed to the review branch shown.`
+                  ? `Your ${draftItems} change(s) build on ${statusQ.data?.branch ?? "the base branch"}. Configer commits them to a review branch when you submit.`
                   : "The branch your saved edits build on."
               }
             >
               <span className="inline-flex items-center gap-1.5">
                 <BranchesOutlined />
                 <span className="mono">{statusQ.data?.branch ?? "…"}</span>
-                {draftItems > 0 && crDraft?.branch && (
-                  <>
-                    <span style={{ opacity: 0.6 }}>→</span>
-                    <span className="mono" style={{ color: token.colorWarning }}>{crDraft.branch}</span>
-                  </>
-                )}
               </span>
             </Tooltip>
             <span>

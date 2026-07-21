@@ -1,5 +1,5 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined } from "../icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
@@ -17,13 +17,20 @@ import { relTime } from "./DashboardView";
 // and valued, rendered nowhere until attached.
 
 const scopeOptions: Scope[] = ["global", "instance"];
-const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
+const typeOptions = [
+  "string", "integer", "number", "boolean", "enum",
+  "ipv4", "ipv6", "cidr", "port", "hostname", "email", "url", "mac",
+  "list",
+];
+// A list's element type: any scalar type (not another list).
+const itemTypeOptions = typeOptions.filter((t) => t !== "list" && t !== "enum");
 
 interface EditValues {
   displayName?: string;
   description?: string;
   category: string;
   type: string;
+  itemType?: string;
   scope: Scope;
   secret: boolean;
   default?: string;
@@ -91,6 +98,7 @@ function DetailsTab({
       description: p.description,
       category: p.category,
       type: p.type,
+      itemType: p.itemType ?? "string",
       scope: p.scope,
       secret: p.secret,
       default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
@@ -104,6 +112,9 @@ function DetailsTab({
       description: v.description ?? "",
       category: v.category,
       type: v.type,
+      // itemType is only meaningful for a list; clear it otherwise so a
+      // parameter that stops being a list does not carry a stale element type.
+      itemType: v.type === "list" ? v.itemType || "string" : "",
       scope: v.scope,
       secret: v.secret,
       ...(d !== undefined ? { default: d } : {}),
@@ -176,6 +187,15 @@ function DetailsTab({
           </Form.Item>
           <Form.Item name="type" label="Data type" style={{ width: 110, marginBottom: 8 }}>
             <Select options={typeOptions.map((t) => ({ value: t, label: t }))} />
+          </Form.Item>
+          <Form.Item noStyle shouldUpdate={(prev, cur) => prev.type !== cur.type}>
+            {({ getFieldValue }) =>
+              getFieldValue("type") === "list" ? (
+                <Form.Item name="itemType" label="Each entry is" style={{ width: 120, marginBottom: 8 }}>
+                  <Select options={itemTypeOptions.map((t) => ({ value: t, label: t }))} />
+                </Form.Item>
+              ) : null
+            }
           </Form.Item>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -254,8 +274,32 @@ function DetailsTab({
 // out of the way; the application-wide numbers live on the Overview tab.
 function IdlePanel({ grid }: { grid: Grid }) {
   const { setFilters, selectParam, setJump } = useUI();
+  const qc = useQueryClient();
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const draftItems = (draftQ.data?.draft?.items ?? []).filter((it) => !it.action || it.action === "set");
+  const allDraftItems = draftQ.data?.draft?.items ?? [];
+
+  const refetchAll = () => {
+    qc.invalidateQueries({ queryKey: ["grid"] });
+    qc.invalidateQueries({ queryKey: ["draft"] });
+    qc.invalidateQueries({ queryKey: ["changes"] });
+    qc.invalidateQueries({ queryKey: ["render"] });
+  };
+  const revert = useMutation({
+    mutationFn: (it: { paramId: string; instance: string; scope?: string }) =>
+      api.revertValue(it.paramId, it.scope === "global" ? "" : it.instance),
+    onSuccess: refetchAll,
+  });
+  const discardAll = useMutation({
+    mutationFn: async () => {
+      for (const it of allDraftItems)
+        await api.revertValue(
+          it.action === "edit-file" ? `file:${it.file}` : it.paramId,
+          it.scope === "global" ? "" : it.instance,
+        );
+    },
+    onSuccess: refetchAll,
+  });
 
   // Parameters with at least one invalid cell, worst first.
   const invalidRows = grid.rows
@@ -314,27 +358,49 @@ function IdlePanel({ grid }: { grid: Grid }) {
       {draftItems.length > 0 && (
         <>
           <Divider style={{ margin: "12px 0" }} />
-          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-            YOUR UNSENT EDITS
-          </Typography.Text>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+              YOUR CHANGES
+            </Typography.Text>
+            <Popconfirm
+              title="Discard every change?"
+              description="This removes all your pending edits. It cannot be undone."
+              okText="Discard all"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => discardAll.mutate()}
+            >
+              <a style={{ fontSize: 11 }}>Discard all</a>
+            </Popconfirm>
+          </div>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-            {draftItems.slice(0, 4).map((it) => (
-              <a
+            {draftItems.slice(0, 6).map((it) => (
+              <div
                 key={`${it.paramId}|${it.instance}`}
-                onClick={() => jumpTo(it.paramId)}
-                style={{ display: "flex", flexDirection: "column", fontSize: 12 }}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
               >
-                <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {it.paramId} · {it.instance || "global"}
-                </span>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  {fmtValue(it.old)} → {fmtValue(it.new)}
-                </Typography.Text>
-              </a>
+                <a onClick={() => jumpTo(it.paramId)} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                  <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {it.paramId} · {it.instance || "global"}
+                  </span>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {fmtValue(it.old)} → {fmtValue(it.new)}
+                  </Typography.Text>
+                </a>
+                <Tooltip title="Undo this change">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<UndoOutlined />}
+                    loading={revert.isPending}
+                    onClick={() => revert.mutate(it)}
+                    aria-label="Undo this change"
+                  />
+                </Tooltip>
+              </div>
             ))}
-            {draftItems.length > 4 && (
+            {draftItems.length > 6 && (
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                and {draftItems.length - 4} more in the draft
+                and {draftItems.length - 6} more in the draft
               </Typography.Text>
             )}
           </div>

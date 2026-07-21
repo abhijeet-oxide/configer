@@ -1,19 +1,22 @@
-import { PlusOutlined, AppstoreOutlined, CheckCircleFilled } from "../icons";
+import { PlusOutlined, AppstoreOutlined, CheckCircleFilled, EditOutlined, ArrowRightOutlined } from "../icons";
+import { Button } from "antd";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { attentionOf } from "../attention";
-import { StatTile, SectionCard, AttentionCard, EmptyState, Stagger, StaggerItem } from "./ui";
+import { SectionCard, AttentionCard, EmptyState, Stagger, StaggerItem } from "./ui";
 import { HomeAppCard } from "./AppCard";
 import NewApplicationWizard from "./NewApplicationWizard";
 import { STEP_HANDOFF } from "./ImportWizard";
 import { WorkspaceSkeleton } from "./Skeletons";
 
-// HomeView is the operational start page: what needs attention, how the
-// estate is doing, and the applications you manage, in that order. It reads
-// only the workspace summary (one request), so it is fast and honest.
+// HomeView is the operational start page. It answers, in order, the only three
+// questions someone has when they open Configer: can I pick up where I left
+// off, does anything need me, and which application do I open. It reads only
+// the workspace summary (one request), so it is fast and honest - and it never
+// restates the same count in two cards.
 
 function greeting(name?: string): string {
   const h = new Date().getHours();
@@ -29,12 +32,18 @@ export default function HomeView() {
   const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
 
   const repos = wsQ.data?.repos ?? [];
-  const instances = repos.reduce((n, r) => n + (r.instances || 0), 0);
-  const synced = repos.filter((r) => !r.error && !r.syncError && !(r.behind ?? 0)).length;
   const attention = repos
     .flatMap((r) => attentionOf(r).map((it) => ({ r, it })))
     .sort((a, b) => (a.it.severity === "danger" ? -1 : 0) - (b.it.severity === "danger" ? -1 : 0));
   const firstName = meQ.data?.user?.name?.split(" ")[0] || meQ.data?.user?.login;
+
+  // "Continue where you left off": the application with unsent edits (work
+  // literally in progress) leads; a draft is the one thing worth resuming
+  // without being asked. Nothing in progress means no resume card at all.
+  const resume = [...repos].filter((r) => (r.drafts ?? 0) > 0).sort((a, b) => (b.drafts ?? 0) - (a.drafts ?? 0))[0];
+  // Attention, minus the resume app's own draft item (the resume card already
+  // owns that), so the same work never appears twice.
+  const attentionRest = attention.filter((a) => !(resume && a.r.id === resume.id && a.it.key === "drafts"));
 
   const goto = (repoIdTarget: string, section: string) => {
     if (repoIdTarget !== repoId) switchRepo(repoIdTarget);
@@ -51,17 +60,16 @@ export default function HomeView() {
   return (
     <div className="h-full overflow-auto bg-canvas px-6 py-5">
       <div>
-        {/* Greeting + estate numbers, restrained like the reference. */}
-        <div className="mb-5 flex flex-wrap items-start gap-4">
-          <div className="min-w-60 flex-1">
-            <div className="text-xl font-semibold text-ink">{greeting(firstName)}</div>
-            <div className="mt-0.5 text-[13px] text-ink-2">
-              An overview of your applications and anything requiring attention.
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <StatTile label="Applications" value={repos.length} onClick={() => setSection("workspace")} />
-            <StatTile label="Instances" value={instances} />
+        {/* Greeting only - no estate counters here; the numbers live where
+            they are actionable (on each application and its Overview). */}
+        <div className="mb-5">
+          <div className="text-xl font-semibold text-ink">{greeting(firstName)}</div>
+          <div className="mt-0.5 text-[13px] text-ink-2">
+            {resume
+              ? "Pick up where you left off, or open an application below."
+              : attentionRest.length > 0
+                ? "A few things need your attention."
+                : "Everything is synced and nothing is waiting. Open an application to make a change."}
           </div>
         </div>
 
@@ -77,14 +85,35 @@ export default function HomeView() {
           </SectionCard>
         ) : (
           <Stagger>
-            {/* Attention is shown ONLY when something actually needs the
-                user; a clean estate simply omits the card (no "nothing needs
-                you" noise) and leads with system health. */}
-            {attention.length > 0 && (
+            {/* Continue where you left off: one clear primary action to resume
+                an in-progress draft. Shown only when there is one. */}
+            {resume && (
+              <StaggerItem className="mb-5">
+                <div className="flex flex-wrap items-center gap-4 rounded-card border border-brand-border bg-brand-soft px-5 py-4">
+                  <EditOutlined style={{ fontSize: 20, color: "var(--brand)" }} />
+                  <div className="min-w-40 flex-1">
+                    <div className="text-[13px] font-semibold text-ink">
+                      Continue in {resume.name}
+                    </div>
+                    <div className="text-[12px] text-ink-2">
+                      {resume.drafts} change{resume.drafts === 1 ? "" : "s"} not yet submitted for review.
+                    </div>
+                  </div>
+                  <Button type="primary" onClick={() => goto(resume.id, "config")}>
+                    Continue editing <ArrowRightOutlined />
+                  </Button>
+                </div>
+              </StaggerItem>
+            )}
+
+            {/* Anything that needs the user, each with its own next step. A
+                clean estate omits the section entirely - no "nothing needs
+                you" noise. */}
+            {attentionRest.length > 0 && (
               <StaggerItem className="mb-5">
                 <SectionCard title="Needs your attention">
                   <div className="flex flex-col gap-2">
-                    {attention.slice(0, 5).map(({ r, it }) => (
+                    {attentionRest.slice(0, 5).map(({ r, it }) => (
                       <AttentionCard
                         key={`${r.id}-${it.key}`}
                         severity={it.severity}
@@ -100,40 +129,14 @@ export default function HomeView() {
               </StaggerItem>
             )}
 
-            <StaggerItem className="mb-5">
-              <SectionCard title="System health">
-                <div className="mb-3 flex items-center gap-2.5">
-                  {attention.length === 0 ? (
-                    <>
-                      <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 18 }} />
-                      <div>
-                        <div className="text-[13px] font-semibold">All systems operational</div>
-                        <div className="text-[11px] text-ink-3">All applications synchronized with Git</div>
-                      </div>
-                    </>
-                  ) : (
-                    <div>
-                      <div className="text-[13px] font-semibold">
-                        {attention.length} item{attention.length === 1 ? "" : "s"} to look at
-                      </div>
-                      <div className="text-[11px] text-ink-3">Listed above, each with its next step</div>
-                    </div>
-                  )}
+            {!resume && attentionRest.length === 0 && (
+              <StaggerItem className="mb-5">
+                <div className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3">
+                  <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
+                  <span className="text-[13px] text-ink-2">All clear. Everything is synced and nothing is waiting for review.</span>
                 </div>
-                <div className="grid grid-cols-3 gap-3 border-t border-line pt-3">
-                  {[
-                    { label: "Applications", value: `${synced} synced` },
-                    { label: "Instances", value: String(instances) },
-                    { label: "Waiting review", value: String(repos.reduce((n, r) => n + r.openChanges, 0)) },
-                  ].map((s) => (
-                    <div key={s.label}>
-                      <div className="text-[11px] text-ink-3">{s.label}</div>
-                      <div className="text-sm font-semibold">{s.value}</div>
-                    </div>
-                  ))}
-                </div>
-              </SectionCard>
-            </StaggerItem>
+              </StaggerItem>
+            )}
 
             {/* The application collection, compact. */}
             <StaggerItem className="mb-3 text-[13px] font-semibold text-ink">Your applications</StaggerItem>

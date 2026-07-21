@@ -7,13 +7,13 @@ import {
   MoreOutlined,
   PullRequestOutlined,
   HistoryOutlined,
+  GithubOutlined,
 } from "../icons";
 import UserAvatar from "./UserAvatar";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Grid } from "../api";
 import { useActivity } from "../activity";
-import { ActivitySparkline } from "./charts";
 import { useUI } from "../store";
 import { envHex } from "../theme";
 import { StatTile, SectionCard, AttentionCard, AppContextChips, StatusPill, Stagger, StaggerItem } from "./ui";
@@ -151,16 +151,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const st = statusQ.data;
   const findings = findingsQ.data?.findings ?? [];
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);
+  // A browsable web URL for the repository. GitHub gets its own label and
+  // icon; any other http(s) remote falls back to a generic "View in Git".
   const gitUrl = repo?.origin?.startsWith("http") ? repo.origin : undefined;
-
-  // change activity per day, last 14 days
-  const days: { label: string; count: number }[] = [];
-  for (let d = 13; d >= 0; d--) {
-    const day = new Date(Date.now() - d * 86400_000);
-    const key = day.toISOString().slice(0, 10);
-    const count = (changesQ.data ?? []).filter((c) => c.updatedAt?.slice(0, 10) === key).length;
-    days.push({ label: key.slice(5), count });
-  }
+  const isGitHub = !!gitUrl && /(^|\.)github\.com/i.test(gitUrl);
 
   // Jump straight to the first broken cell (the editor scrolls + flashes it).
   const fixFirstInvalid = () => {
@@ -213,16 +207,16 @@ export default function DashboardView({ grid }: { grid: Grid }) {
     attention.push({
       key: "drafts",
       severity: "warn",
-      title: `${pending} local edit${pending === 1 ? "" : "s"} haven't been submitted`,
-      sub: "Create a change request to publish",
-      actionLabel: "Review edits",
+      title: `${pending} change${pending === 1 ? "" : "s"} not yet submitted`,
+      sub: "Review and submit to publish",
+      actionLabel: "Review changes",
       onAction: () => setSection("config"),
     });
   if (awaiting.length > 0)
     attention.push({
       key: "review",
       severity: "info",
-      title: `${awaiting.length} change request${awaiting.length === 1 ? "" : "s"} waiting for review`,
+      title: `${awaiting.length} change${awaiting.length === 1 ? "" : "s"} waiting for review`,
       sub: "Approve or reject in the review workspace",
       actionLabel: "Review",
       onAction: () => setSection("approvals"),
@@ -246,8 +240,14 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <AppContextChips />
           <div style={{ flex: 1 }} />
           {gitUrl && (
-            <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">
-              View in Git
+            <Button
+              size="small"
+              icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />}
+              href={gitUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              {isGitHub ? "Open in GitHub" : "View in Git"}
             </Button>
           )}
           <Dropdown
@@ -290,9 +290,9 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             onClick={invalid ? fixFirstInvalid : () => setSection("config")}
           />
           <StatTile
-            label="Unsent edits"
+            label="Changes"
             value={pending}
-            sub={pending ? "Waiting to be submitted" : "Nothing waiting"}
+            sub={pending ? "Ready to review and submit" : "Nothing waiting"}
             icon={<EditOutlined style={{ color: pending ? "var(--c-pending)" : "var(--text-3)" }} />}
             onClick={() => setSection("config")}
           />
@@ -406,7 +406,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           >
             {activity.items.length === 0 ? (
               <div style={{ color: "var(--text-3)", fontSize: "var(--fs-12)", padding: "var(--sp-2) 0" }}>
-                No activity yet. Edit a setting in the editor to start a draft.
+                No activity yet. Edit a setting in Configure to start a draft.
               </div>
             ) : (
               <List
@@ -431,13 +431,6 @@ export default function DashboardView({ grid }: { grid: Grid }) {
                 )}
               />
             )}
-          </SectionCard>
-
-          <SectionCard title="Changes over time (14 days)">
-            <ActivitySparkline days={days} width={280} height={90} />
-            <div style={{ fontSize: "var(--fs-11)", color: "var(--text-3)", marginTop: 4 }}>
-              {(changesQ.data ?? []).length} change request{(changesQ.data ?? []).length === 1 ? "" : "s"} total
-            </div>
           </SectionCard>
 
           <SectionCard

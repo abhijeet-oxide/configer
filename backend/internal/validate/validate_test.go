@@ -37,6 +37,56 @@ func TestTypeEnforcement(t *testing.T) {
 	}
 }
 
+func TestNewScalarTypes(t *testing.T) {
+	cases := []struct {
+		typ   model.ParamType
+		value any
+		valid bool
+	}{
+		{model.TypeIPv6, "2001:db8::1", true},
+		{model.TypeIPv6, "fe80::1", true},
+		{model.TypeIPv6, "10.0.0.1", false}, // an IPv4 is not IPv6
+		{model.TypeIPv6, "nope", false},
+		{model.TypePort, 8080, true},
+		{model.TypePort, "443", true},
+		{model.TypePort, 0, false},
+		{model.TypePort, 70000, false},
+		{model.TypeHostname, "api.example.com", true},
+		{model.TypeHostname, "bad host", false},
+		{model.TypeEmail, "ops@example.com", true},
+		{model.TypeEmail, "nope", false},
+		{model.TypeURL, "https://example.com", true},
+		{model.TypeURL, "example.com", false}, // no scheme
+		{model.TypeMAC, "00:1a:2b:3c:4d:5e", true},
+		{model.TypeMAC, "zz:zz", false},
+	}
+	for _, c := range cases {
+		got := Value(param(c.typ, model.Validation{}), c.value)
+		if got.Valid != c.valid {
+			t.Errorf("type %s value %v: valid=%v (%s), want %v", c.typ, c.value, got.Valid, got.Message, c.valid)
+		}
+	}
+}
+
+func TestTypedList(t *testing.T) {
+	// A list<ipv6> validates each entry against IPv6.
+	p := model.Parameter{ID: "p", Name: "p", Type: model.TypeList, ItemType: model.TypeIPv6}
+	if r := Value(p, []any{"2001:db8::1", "fe80::2"}); !r.Valid {
+		t.Errorf("all-ipv6 list should pass: %s", r.Message)
+	}
+	if r := Value(p, []any{"2001:db8::1", "10.0.0.1"}); r.Valid {
+		t.Error("an ipv4 entry should fail a list<ipv6>")
+	}
+	// list<port>
+	pp := model.Parameter{ID: "p", Name: "p", Type: model.TypeList, ItemType: model.TypePort}
+	if r := Value(pp, []any{80, 443, 8080}); !r.Valid {
+		t.Errorf("all-port list should pass: %s", r.Message)
+	}
+	if r := Value(pp, []any{80, 70000}); r.Valid {
+		t.Error("out-of-range port should fail a list<port>")
+	}
+}
+
 func TestMinMax(t *testing.T) {
 	v := model.Validation{Min: fptr(100), Max: fptr(500)}
 	if r := Value(param(model.TypeInteger, v), 99); r.Valid {

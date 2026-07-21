@@ -17,6 +17,7 @@ import { useConn, loadSnapshot, drainQueue, requeue, OfflineError, type QueuedEd
 import { useUI } from "./store";
 import NavRail from "./components/NavRail";
 import TopBar from "./components/TopBar";
+import CommandPalette from "./components/CommandPalette";
 import CategoryTree from "./components/CategoryTree";
 import ParameterGrid from "./components/ParameterGrid";
 import DetailsPanel from "./components/DetailsPanel";
@@ -194,7 +195,7 @@ export default function App() {
   // Editor keyboard shortcuts, chosen to echo tools people already know:
   //   ⌘B      toggle the parameters panel   (VS Code: toggle sidebar)
   //   ⌘⌥B     toggle the details panel       (the opposite-side companion)
-  //   ⌘J      toggle the systems pane        (VS Code: toggle bottom panel)
+  //   ⌘J      toggle the details/inspector   (VS Code: toggle panel)
   //   ⌘⇧F     focus mode on/off              (F for focus)
   //   Esc     leave focus mode
   // Panel shortcuts only act inside the editor; none fire while typing.
@@ -218,7 +219,7 @@ export default function App() {
       } else if (k === "j") {
         if (section !== "config") return;
         e.preventDefault();
-        togglePanel("systems");
+        togglePanel("right");
       } else if (k === "f" && e.shiftKey) {
         if (section !== "config") return;
         e.preventDefault();
@@ -482,7 +483,7 @@ export default function App() {
   if (phone) {
     const tabs = [
       { key: "home", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Editor" },
+      { key: "config", icon: <TableOutlined />, label: "Configure" },
       { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
       { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
     ];
@@ -540,6 +541,7 @@ export default function App() {
         <ConnectionBanner />
         <Content style={{ overflow: "hidden" }}>{body()}</Content>
       </Layout>
+      <CommandPalette />
     </Layout>
   );
 }

@@ -118,7 +118,11 @@ export interface PanelsOpen {
   systems: boolean;
 }
 
-const defaultPanels: PanelsOpen = { left: true, right: true, systems: true };
+// The matrix is the hero: on first entry only the Parameters tree flanks it.
+// The inspector (right) stays closed until a cell or row is selected - it opens
+// itself then - and the Systems pane starts collapsed under Parameters. Both
+// are one click from their edge rail, and the choice persists once changed.
+const defaultPanels: PanelsOpen = { left: true, right: false, systems: false };
 
 function loadPanels(): PanelsOpen {
   try {

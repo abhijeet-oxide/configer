@@ -48,6 +48,7 @@ func mutateCatalog(root string, fn func(*model.Catalog) error) error {
 // rename); it is never edited as free text in the UI.
 type ParamPatch struct {
 	Type        *model.ParamType
+	ItemType    *model.ParamType
 	Validation  *model.Validation
 	DisplayName *string
 	Description *string
@@ -76,6 +77,18 @@ func UpdateParameter(root, paramID string, patch ParamPatch) (model.Parameter, e
 		p := &cat.Parameters[idx]
 		if patch.Type != nil {
 			p.Type = *patch.Type
+		}
+		// ItemType only makes sense on a list; clear it otherwise so a stale
+		// element type never lingers after a type change.
+		if patch.ItemType != nil {
+			p.ItemType = *patch.ItemType
+		}
+		effectiveType := p.Type
+		if patch.Type != nil {
+			effectiveType = *patch.Type
+		}
+		if effectiveType != model.TypeList {
+			p.ItemType = ""
 		}
 		if patch.Validation != nil {
 			p.Validation = *patch.Validation

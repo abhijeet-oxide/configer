@@ -833,6 +833,8 @@ export const api = {
     id: string,
     patch: {
       type?: string;
+      /** element type when type is "list" (e.g. ipv4, integer) */
+      itemType?: string;
       validation?: Validation;
       displayName?: string;
       description?: string;

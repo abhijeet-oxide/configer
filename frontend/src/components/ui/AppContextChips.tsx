@@ -64,29 +64,42 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
   const pending = draftQ.data?.draft?.items?.length ?? 0;
   if (!repoId) return null;
 
+  // Object-importance hierarchy: context (branch, instance count) is quiet
+  // text; only state (git sync) and the one actionable item (pending changes)
+  // earn a pill.
   return (
-    <span className="inline-flex min-w-0 items-center gap-2">
+    <span className="inline-flex min-w-0 items-center gap-3">
       {st?.branch && (
-        <MonoChip icon={<BranchesOutlined style={{ fontSize: 11 }} />} title={`Branch ${st.branch}`}>
+        <span
+          className="mono inline-flex items-center gap-1 whitespace-nowrap text-ink-3"
+          title={`Branch ${st.branch}`}
+          style={{ fontSize: "var(--fs-11)" }}
+        >
+          <BranchesOutlined style={{ fontSize: 11 }} />
           {st.branch}
-        </MonoChip>
+        </span>
       )}
-      {st && (
+      {st && !st.remote ? null : st ? (
         <Tooltip title={syncPill(st).title}>
           <span style={{ display: "inline-flex" }}>
             <StatusPill tone={syncPill(st).tone}>{syncPill(st).label}</StatusPill>
           </span>
         </Tooltip>
-      )}
+      ) : null}
       {repo && (
-        <MonoChip icon={<ClusterOutlined style={{ fontSize: 11 }} />} title="Instances in this application">
+        <span
+          className="inline-flex items-center gap-1 whitespace-nowrap text-ink-3"
+          title="Instances in this application"
+          style={{ fontSize: "var(--fs-11)" }}
+        >
+          <ClusterOutlined style={{ fontSize: 11 }} />
           {repo.instances} instance{repo.instances === 1 ? "" : "s"}
-        </MonoChip>
+        </span>
       )}
       {showDraft && pending > 0 && (
         <span onClick={() => setSection("config")} style={{ cursor: "pointer", display: "inline-flex" }}>
-          <StatusPill tone="pending" title="Local edits not yet submitted for review">
-            {pending} unsent edit{pending === 1 ? "" : "s"}
+          <StatusPill tone="pending" title="Changes not yet submitted for review">
+            {pending} change{pending === 1 ? "" : "s"}
           </StatusPill>
         </span>
       )}

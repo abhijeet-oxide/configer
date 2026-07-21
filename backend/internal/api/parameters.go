@@ -43,6 +43,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Scope       *model.Scope      `json:"scope,omitempty"`
 		Secret      *bool             `json:"secret,omitempty"`
 		Default     *any              `json:"default,omitempty"`
+		Derived     *string           `json:"derived,omitempty"`
 		// Bindings attaches a design-phase parameter to real file locations
 		// (or re-maps an existing one). Always set through the interactive
 		// picker, never free text.
@@ -89,6 +90,7 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Scope:       req.Scope,
 		Secret:      req.Secret,
 		Default:     req.Default,
+		Derived:     req.Derived,
 		Bindings:    req.Bindings,
 	})
 	if err != nil {

@@ -11,12 +11,14 @@ import { validateString, validateTyped, fmtValue, type Rules } from "../../rules
 // explanations surfaced on hover (and in the Legend).
 export const scopeAbbrev: Record<string, string> = {
   default: "def",
+  derived: "calc",
   base: "base",
   instance: "inst",
 };
 
 export const scopeExplain: Record<string, string> = {
   default: "Declared default: applies while no file carries the key",
+  derived: "Computed from another parameter; overridden by any file value",
   base: "From a shared file every instance reads; one edit applies to all",
   instance: "Set in this instance's own files",
 };

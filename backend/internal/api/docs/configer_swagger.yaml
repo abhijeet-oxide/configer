@@ -576,6 +576,14 @@ definitions:
         items:
           type: string
         type: array
+      derived:
+        description: |-
+          Derived, when set, is a computed default expressed in terms of another
+          parameter: "{other-id}" copies that parameter's effective value for the
+          same instance, optionally with an integer offset ("{other-id}+1"). It is
+          resolved read-only (never written) and any real file value overrides it,
+          so it stays true to the write-back model: a suggestion, not a stored value.
+        type: string
       description:
         type: string
       displayName:

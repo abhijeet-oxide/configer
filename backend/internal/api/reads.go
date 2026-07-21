@@ -436,7 +436,7 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 		if instance != "" {
 			for _, inst := range p.Registry.Instances {
 				if inst.Name == instance {
-					res := resolver.New(p.Root).Resolve(*param, inst)
+					res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(*param, inst)
 					return valueString(res.Value), true
 				}
 			}

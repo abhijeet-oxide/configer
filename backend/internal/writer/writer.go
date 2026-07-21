@@ -56,6 +56,7 @@ type ParamPatch struct {
 	Scope       *model.Scope
 	Secret      *bool
 	Default     *any
+	Derived     *string
 	Bindings    *[]model.Binding
 }
 
@@ -110,6 +111,9 @@ func UpdateParameter(root, paramID string, patch ParamPatch) (model.Parameter, e
 		}
 		if patch.Default != nil {
 			p.Default = *patch.Default
+		}
+		if patch.Derived != nil {
+			p.Derived = *patch.Derived
 		}
 		if patch.Bindings != nil {
 			for _, b := range *patch.Bindings {

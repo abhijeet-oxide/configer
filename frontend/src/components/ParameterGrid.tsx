@@ -1120,7 +1120,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             render: (_v, r) => {
               const c = r.cells[viewInstance];
               if (!c || !c.set) return <span style={{ color: "var(--text-3)" }}>-</span>;
-              const label = c.source === "instance" ? "Local" : c.source === "base" ? "Base" : "Default";
+              const label =
+                c.source === "instance" ? "Local" : c.source === "base" ? "Base" : c.source === "derived" ? "Derived" : "Default";
               return (
                 <span
                   style={{

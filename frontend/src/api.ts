@@ -7,7 +7,7 @@ import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 export type Scope = "instance" | "global";
 
 /** Which precedence layer supplied a cell's value. */
-export type CellSource = "default" | "base" | "instance" | "";
+export type CellSource = "default" | "derived" | "base" | "instance" | "";
 
 /** One real-file location a parameter's value lives at. File may contain
  *  "{folder}" / "{instance}" templates expanded per instance. */
@@ -125,6 +125,9 @@ export interface Parameter {
   bindings?: Binding[];
   validation?: Validation;
   default?: unknown;
+  /** a computed default expressed in terms of another parameter, e.g.
+   *  "{admin-port}+1"; resolved read-only and overridden by any file value */
+  derived?: string;
   versionIntroduced?: string;
   versionDeprecated?: string;
   dependsOn?: string[];
@@ -970,6 +973,8 @@ export const api = {
       scope?: Scope;
       secret?: boolean;
       default?: unknown;
+      /** computed default from another parameter, e.g. "{admin-port}+1" */
+      derived?: string;
       /** attach or re-map: always produced by the interactive picker */
       bindings?: Binding[];
       author?: string;

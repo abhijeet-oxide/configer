@@ -3694,6 +3694,10 @@ const docTemplateconfiger = `{
                         "type": "string"
                     }
                 },
+                "derived": {
+                    "description": "Derived, when set, is a computed default expressed in terms of another\nparameter: \"{other-id}\" copies that parameter's effective value for the\nsame instance, optionally with an integer offset (\"{other-id}+1\"). It is\nresolved read-only (never written) and any real file value overrides it,\nso it stays true to the write-back model: a suggestion, not a stored value.",
+                    "type": "string"
+                },
                 "description": {
                     "type": "string"
                 },

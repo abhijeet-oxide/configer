@@ -97,7 +97,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter has no shared file location; edit it per instance")
 			return
 		}
-		res := resolver.New(p.Root).Resolve(param, model.Instance{})
+		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, model.Instance{})
 		oldVal = res.Value
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
@@ -109,7 +109,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter lives only in a shared file; use a global edit to change it for everyone")
 			return
 		}
-		res := resolver.New(p.Root).Resolve(param, inst)
+		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, inst)
 		oldVal = res.Value
 	}
 
@@ -244,7 +244,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	rv := resolver.New(p.Root)
+	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
 	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for _, e := range req.Edits {
 			inst, ok := p.InstanceByName(e.Instance)

@@ -2,6 +2,7 @@ import {
   Button,
   Input,
   List,
+  Modal,
   Popconfirm,
   Select,
   Table,
@@ -177,6 +178,7 @@ export default function ApprovalsView() {
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const [filter, setFilter] = useState<StateFilter>("waiting");
   const [selId, setSelId] = useState<number | null>(null);
+  const [reqNote, setReqNote] = useState<string | null>(null);
 
   const all = useMemo(() => q.data ?? [], [q.data]);
 
@@ -208,6 +210,23 @@ export default function ApprovalsView() {
     },
     onError: (e: Error) => message.error(e.message),
   });
+  const approve = useMutation({
+    mutationFn: (id: number) => api.approveChange(id),
+    onSuccess: (cr) => {
+      message.success(`Change request CR-${cr.id} approved; publish when ready`);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+  const requestChanges = useMutation({
+    mutationFn: (p: { id: number; note: string }) =>
+      api.addComment(p.id, `Requested changes: ${p.note}`, "demo-user"),
+    onSuccess: (cr) => {
+      message.info(`Changes requested on CR-${cr.id}`);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
   const reject = useMutation({
     mutationFn: (id: number) => api.rejectChange(id),
     onSuccess: (cr) => {
@@ -229,7 +248,7 @@ export default function ApprovalsView() {
         <div className="min-w-0 flex-1">
           <div className="text-xl font-semibold text-ink">Approvals</div>
           <div className="text-[13px] text-ink-2">
-            Review and approve change requests. Approval publishes the change to Git.
+            Review, approve, and publish change requests. Approving signs off; publishing merges to Git.
           </div>
         </div>
         {hasDraft && (
@@ -403,20 +422,61 @@ export default function ApprovalsView() {
                       Reject
                     </Button>
                   </Popconfirm>
-                  <Popconfirm
-                    title={`Publish these changes to ${selected.targetBranch}?`}
-                    description="They will become the live configuration."
-                    okText="Publish"
-                    onConfirm={() => merge.mutate(selected.id)}
-                  >
-                    <Tooltip title="Approving publishes (merges) to the target branch">
-                      <Button type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                        Approve
+                  {selected.state === "under_review" && (
+                    <>
+                      <Button
+                        icon={<SendOutlined />}
+                        loading={requestChanges.isPending}
+                        onClick={() => setReqNote("")}
+                      >
+                        Request changes
                       </Button>
-                    </Tooltip>
-                  </Popconfirm>
+                      <Tooltip title="Sign off without publishing; publish is a separate step">
+                        <Button
+                          type="primary"
+                          icon={<CheckCircleOutlined />}
+                          loading={approve.isPending}
+                          onClick={() => approve.mutate(selected.id)}
+                        >
+                          Approve
+                        </Button>
+                      </Tooltip>
+                    </>
+                  )}
+                  {selected.state === "approved" && (
+                    <Popconfirm
+                      title={`Publish these changes to ${selected.targetBranch}?`}
+                      description="They will become the live configuration."
+                      okText="Publish"
+                      onConfirm={() => merge.mutate(selected.id)}
+                    >
+                      <Button type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
+                        Publish
+                      </Button>
+                    </Popconfirm>
+                  )}
                 </div>
               )}
+
+              <Modal
+                open={reqNote !== null}
+                title="Request changes"
+                okText="Send"
+                okButtonProps={{ disabled: !reqNote?.trim() }}
+                onOk={() => {
+                  if (selected && reqNote?.trim()) requestChanges.mutate({ id: selected.id, note: reqNote.trim() });
+                  setReqNote(null);
+                }}
+                onCancel={() => setReqNote(null)}
+              >
+                <Input.TextArea
+                  rows={3}
+                  autoFocus
+                  placeholder="What needs to change before this can be approved?"
+                  value={reqNote ?? ""}
+                  onChange={(e) => setReqNote(e.target.value)}
+                />
+              </Modal>
             </SectionCard>
             </FadeIn>
           )}

@@ -217,6 +217,37 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, cr)
 }
 
+// approveChange records approver sign-off, advancing a change to Approved.
+//
+// @Summary     Approve a change request
+// @Description Record approver sign-off on an under-review change request, advancing it to Approved without publishing (Publish/merge is a separate step). Requires the approver role when auth is enabled. 409 if not under review.
+// @Tags        Editing & change requests
+// @Produce     json
+// @Param       id path int true "Change request id"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid id"
+// @Failure     403 {object} APIError "Approver role required"
+// @Failure     409 {object} APIError "Not under review"
+// @Security    CookieSession
+// @Router      /api/changes/{id}/approve [post]
+func (s *Server) approveChange(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
+		return
+	}
+	var req struct {
+		Author string `json:"author"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	cr, err := s.Changes.Approve(r.Context(), id, author(r, req.Author))
+	if err != nil {
+		writeChangeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cr)
+}
+
 // mergeChange publishes an approved change request.
 //
 // @Summary     Merge (publish) a change request

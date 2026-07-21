@@ -422,6 +422,28 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 	})
 }
 
+// Approve records an approver's sign-off on an under-review change request,
+// advancing it to Approved without publishing. Publishing (Merge) then needs
+// only one more click, and the two-step approve-then-publish separation gives a
+// clear "approved but not yet live" state. The approver login is recorded as a
+// review comment for the audit trail.
+func (s *Service) Approve(ctx context.Context, id int, approver string) (*change.ChangeRequest, error) {
+	cr, err := s.Store.Get(id)
+	if err != nil {
+		return nil, err
+	}
+	if cr.State != change.StateUnderReview {
+		return nil, conflictf("change request %d is %s, not awaiting review", id, cr.State)
+	}
+	return s.Store.Update(id, func(c *change.ChangeRequest) error {
+		if approver != "" {
+			c.AddComment(approver, "Approved this change.")
+		}
+		c.State = change.StateApproved
+		return nil
+	})
+}
+
 // Reject closes an under-review CR (closing the PR when one exists) or
 // discards a draft entirely.
 func (s *Service) Reject(ctx context.Context, id int) (*change.ChangeRequest, error) {

@@ -134,6 +134,10 @@ func TestRoleEnforcement(t *testing.T) {
 	if w := call(t, h, "POST", base+"/changes/1/merge", "tok-editor", ""); w.Code != http.StatusForbidden {
 		t.Errorf("editor merge = %d, want 403: %s", w.Code, w.Body.String())
 	}
+	// Approving is likewise approver-gated: the editor is denied.
+	if w := call(t, h, "POST", base+"/changes/1/approve", "tok-editor", ""); w.Code != http.StatusForbidden {
+		t.Errorf("editor approve = %d, want 403: %s", w.Code, w.Body.String())
+	}
 	// Demote the editor to viewer: writes are denied too.
 	if err := hub.platform.SetMember(context.Background(), store.Member{Repo: repoID, Login: "eddy", Role: store.RoleViewer}); err != nil {
 		t.Fatal(err)

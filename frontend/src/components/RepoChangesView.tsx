@@ -311,21 +311,18 @@ function FindingCard({
 }) {
   const m = findingMeta[f.type];
   return (
-    <Card size="small" className="stat-accent" style={{ "--accent": m.hex } as React.CSSProperties}>
-      <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-        <div
-          style={{
-            width: 38, height: 38, borderRadius: 10, flexShrink: 0,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 17, color: m.hex, background: `${m.hex}1a`,
-          }}
+    <Card size="small" styles={{ body: { padding: 14 } }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start" }}>
+        <span
+          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-[16px]"
+          style={{ color: m.hex, background: `color-mix(in srgb, ${m.hex} 13%, transparent)` }}
         >
           {m.icon}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Space size={8} wrap>
-            <Tag color={m.color}>{m.label.replace(/s$/, "")}</Tag>
-            <span className="mono" style={{ fontWeight: 600 }}>
+        </span>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
+            <Tag color={m.color} style={{ marginInlineEnd: 0 }}>{m.label.replace(/s$/, "")}</Tag>
+            <span className="mono" style={{ fontWeight: 600, wordBreak: "break-all" }}>
               {f.type === "file_renamed" && f.oldPath ? (
                 <>
                   <span style={{ opacity: 0.55, textDecoration: "line-through" }}>{f.oldPath}</span>
@@ -335,8 +332,8 @@ function FindingCard({
                 f.path
               )}
             </span>
-            {f.candidates ? <Tag color="green">{f.candidates} candidate setting(s)</Tag> : null}
-          </Space>
+            {f.candidates ? <Tag color="green" style={{ marginInlineEnd: 0 }}>{f.candidates} candidate setting(s)</Tag> : null}
+          </div>
           <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 13 }}>
             {f.detail}
           </Typography.Paragraph>
@@ -347,7 +344,7 @@ function FindingCard({
               </Typography.Text>
               {f.params.slice(0, 8).map((p) => (
                 <Tooltip key={p} title="Open in Parameters">
-                  <Tag style={{ cursor: "pointer" }} className="mono" onClick={() => onViewParam(p)}>
+                  <Tag style={{ cursor: "pointer", marginInlineEnd: 0 }} className="mono" onClick={() => onViewParam(p)}>
                     {p}
                   </Tag>
                 </Tooltip>
@@ -360,14 +357,14 @@ function FindingCard({
             </Space>
           )}
         </div>
-        <div style={{ flexShrink: 0 }}>
+        <div style={{ flexShrink: 0, marginLeft: "auto" }}>
           {f.type === "new_file" && (
-            <Button type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
+            <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
               Import settings
             </Button>
           )}
           {f.type === "new_folder" && (
-            <Button type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
+            <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
               Scan this folder
             </Button>
           )}
@@ -379,13 +376,13 @@ function FindingCard({
               okButtonProps={{ danger: true }}
               onConfirm={() => onRetire(f.path)}
             >
-              <Button danger icon={<DeleteOutlined />} loading={retiring}>
+              <Button size="small" danger icon={<DeleteOutlined />} loading={retiring}>
                 Retire parameters
               </Button>
             </Popconfirm>
           )}
           {f.type === "file_changed" && f.params && f.params.length > 0 && (
-            <Button icon={<TableOutlined />} onClick={() => onViewParam(f.params![0])}>
+            <Button size="small" icon={<TableOutlined />} onClick={() => onViewParam(f.params![0])}>
               View in editor
             </Button>
           )}

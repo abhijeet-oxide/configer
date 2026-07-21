@@ -6,31 +6,20 @@ import {
   Input,
   Modal,
   Select,
-  Table,
-  Tag,
-  Tooltip,
   Typography,
   App as AntApp,
 } from "antd";
-import { PullRequestOutlined, ArrowRightOutlined, DeleteOutlined } from "../icons";
+import { PullRequestOutlined } from "../icons";
 import { useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, structuralLabel, type ChangeItem, type Instance } from "../api";
-import { fmtValue } from "../rules";
+import { api, type ChangeItem, type Instance } from "../api";
 import { useUI } from "../store";
+import { ChangeItemsTable } from "./ChangeItemsTable";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
 // the global header): pending-edit badge, review-before-submit modal with
 // per-row undo, change type + reference, and the git-native explanation.
-
-function afterValue(it: ChangeItem & { action?: string }) {
-  const structural = structuralLabel(it);
-  if (structural) return structural;
-  if (it.action === "exclude") return "∅ removed from this instance";
-  if (it.action === "reset") return "(back to inherited value)";
-  return fmtValue(it.new);
-}
 
 export default function SubmitChangesButton({ instances }: { instances?: Instance[] }) {
   const { message } = AntApp.useApp();
@@ -106,65 +95,18 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             description="It will only go live after an approver publishes it."
           />
         )}
-        <Table<ChangeItem>
-          size="small"
-          rowKey={(it) => `${it.paramId}|${it.instance}`}
-          dataSource={items}
-          pagination={false}
-          style={{ marginBottom: 14 }}
-          columns={[
-            {
-              title: "Setting",
-              dataIndex: "paramId",
-              render: (v: string) => (
-                <Typography.Link
-                  onClick={() => {
-                    selectParam(v);
-                    setSection("config");
-                    setOpen(false);
-                  }}
-                >
-                  <span className="mono">{v}</span>
-                </Typography.Link>
-              ),
-            },
-            {
-              title: "Instance",
-              dataIndex: "instance",
-              width: 140,
-              render: (v: string, it: ChangeItem) =>
-                it.scope === "global" ? <Tag color="purple">everyone (global)</Tag> : <Tag>{v}</Tag>,
-            },
-            {
-              title: "Before",
-              dataIndex: "old",
-              render: (v) => <span className="mono" style={{ opacity: 0.6 }}>{fmtValue(v)}</span>,
-            },
-            { title: "", width: 30, render: () => <ArrowRightOutlined style={{ opacity: 0.45 }} /> },
-            {
-              title: "After",
-              render: (_v, it) => (
-                <span className="mono" style={{ color: "#389e0d" }}>{afterValue(it)}</span>
-              ),
-            },
-            {
-              title: "",
-              width: 46,
-              render: (_v, it) => (
-                <Tooltip title="Undo this change">
-                  <Button
-                    size="small"
-                    type="text"
-                    danger
-                    icon={<DeleteOutlined />}
-                    loading={revert.isPending}
-                    onClick={() => revert.mutate(it)}
-                  />
-                </Tooltip>
-              ),
-            },
-          ]}
-        />
+        <div style={{ marginBottom: 14 }}>
+          <ChangeItemsTable
+            items={items}
+            onUndo={(it) => revert.mutate(it)}
+            undoLoading={revert.isPending}
+            onOpenParam={(v) => {
+              selectParam(v);
+              setSection("config");
+              setOpen(false);
+            }}
+          />
+        </div>
         <Form form={form} layout="vertical" onFinish={(v) => submit.mutate(v)} initialValues={{ title: "" }}>
           <Form.Item
             name="title"

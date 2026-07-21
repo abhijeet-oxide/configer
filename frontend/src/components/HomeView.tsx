@@ -89,17 +89,23 @@ export default function HomeView() {
                 an in-progress draft. Shown only when there is one. */}
             {resume && (
               <StaggerItem className="mb-5">
-                <div className="flex flex-wrap items-center gap-4 rounded-card border border-brand-border bg-brand-soft px-5 py-4">
-                  <EditOutlined style={{ fontSize: 20, color: "var(--brand)" }} />
-                  <div className="min-w-40 flex-1">
-                    <div className="text-[13px] font-semibold text-ink">
-                      Continue in {resume.name}
-                    </div>
-                    <div className="text-[12px] text-ink-2">
-                      {resume.drafts} change{resume.drafts === 1 ? "" : "s"} not yet submitted for review.
-                    </div>
+                <div
+                  className="flex items-center gap-3 rounded-card border px-3.5 py-2.5"
+                  style={{ borderColor: "var(--c-pending-bd)", background: "var(--c-pending-bg)" }}
+                >
+                  <span
+                    className="flex size-7 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: "var(--c-pending)", color: "#fff" }}
+                  >
+                    <EditOutlined style={{ fontSize: 14 }} />
+                  </span>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <span className="text-[13px] font-semibold text-ink">Continue in {resume.name}</span>
+                    <span className="ml-2 text-[12px]" style={{ color: "var(--c-pending)" }}>
+                      {resume.drafts} draft change{resume.drafts === 1 ? "" : "s"} not yet submitted
+                    </span>
                   </div>
-                  <Button type="primary" onClick={() => goto(resume.id, "config")}>
+                  <Button size="small" type="primary" onClick={() => goto(resume.id, "config")}>
                     Continue editing <ArrowRightOutlined />
                   </Button>
                 </div>

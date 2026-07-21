@@ -4,7 +4,8 @@ import {
   WarningFilled,
   EditOutlined,
   ExportOutlined,
-  MoreOutlined,
+  SettingOutlined,
+  DownOutlined,
   PullRequestOutlined,
   HistoryOutlined,
   GithubOutlined,
@@ -266,7 +267,9 @@ export default function DashboardView({ grid }: { grid: Grid }) {
               },
             }}
           >
-            <Button size="small" icon={<MoreOutlined />} />
+            <Button size="small" icon={<SettingOutlined />}>
+              Manage <DownOutlined style={{ fontSize: 9 }} />
+            </Button>
           </Dropdown>
         </StaggerItem>
 

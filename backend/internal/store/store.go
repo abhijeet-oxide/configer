@@ -145,6 +145,11 @@ func (s *Store) Close() error { return s.db.Close() }
 // Dialect names the active backend ("sqlite" or "postgres").
 func (s *Store) Dialect() string { return s.dialect }
 
+// DB exposes the shared connection so a derived index (e.g. the search FTS5
+// table) can live in the same database. The returned handle is the store's own
+// pool; callers must not close it.
+func (s *Store) DB() *sql.DB { return s.db }
+
 // migrations are dialect-portable statements (SERIAL vs AUTOINCREMENT is
 // avoided by generating ids in the driver-portable ways below).
 var migrations = []string{

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/remoterepo"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/search"
 	"github.com/abhijeet-oxide/configer/backend/internal/store"
 	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
@@ -51,6 +53,14 @@ type Hub struct {
 	// portfolio with status "connecting" and, on failure, "error", so the UI
 	// can show progress and outcome by polling instead of blocking the request.
 	connecting map[string]*connecting
+
+	// index is the cross-application metadata search index (nil is tolerated:
+	// every use is guarded). reindexCh feeds a single worker that rebuilds one
+	// app's docs; reindexPending coalesces bursts so a flurry of writes to the
+	// same app collapses to one rebuild.
+	index          *search.Index
+	reindexCh      chan string
+	reindexPending map[string]bool
 }
 
 // connecting is the transient state of a repository being connected in the
@@ -92,6 +102,17 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		errs:        map[string]string{},
 		connecting:  map[string]*connecting{},
 	}
+	// The search index lives in the platform database (SQLite FTS5) with a
+	// bounded in-memory tier; on Postgres it runs memory-only. A single worker
+	// drains reindex requests off a buffered channel.
+	idx, ierr := search.New(platform.DB(), platform.Dialect(), getenvInt("CONFIGER_SEARCH_MEM_MAX", 50000))
+	if ierr != nil {
+		return nil, ierr
+	}
+	h.index = idx
+	h.reindexCh = make(chan string, 256)
+	h.reindexPending = map[string]bool{}
+	go h.reindexWorker()
 	if authSvc.Enabled() {
 		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
 	} else {
@@ -116,6 +137,12 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 			slog.Warn("repository unavailable", slog.String("id", e.ID), slog.Any("error", oerr))
 			h.errs[e.ID] = oerr.Error()
 		}
+	}
+	// Populate the index in the background so startup is not blocked on loading
+	// every app's metadata; the worker rebuilds each one and the index answers
+	// what it has meanwhile.
+	for _, e := range reg.List() {
+		h.enqueueReindex(e.ID)
 	}
 	return h, nil
 }
@@ -188,6 +215,83 @@ func (h *Hub) server(id string) (*Server, http.Handler) {
 	return h.servers[id], h.handlers[id]
 }
 
+// enqueueReindex schedules a rebuild of one application's search docs. It
+// coalesces: while a rebuild for the same id is already pending, extra requests
+// are no-ops, so a burst of writes to one app collapses to a single rebuild. A
+// full channel is tolerated (the pending flag is cleared so a later write
+// re-enqueues) - the index is best-effort and always reconstructible.
+func (h *Hub) enqueueReindex(id string) {
+	if id == "" || h.index == nil {
+		return
+	}
+	h.mu.Lock()
+	if h.reindexPending[id] {
+		h.mu.Unlock()
+		return
+	}
+	h.reindexPending[id] = true
+	h.mu.Unlock()
+
+	select {
+	case h.reindexCh <- id:
+	default:
+		h.mu.Lock()
+		delete(h.reindexPending, id)
+		h.mu.Unlock()
+	}
+}
+
+func (h *Hub) reindexWorker() {
+	for id := range h.reindexCh {
+		h.mu.Lock()
+		delete(h.reindexPending, id)
+		h.mu.Unlock()
+		h.reindexApp(id)
+	}
+}
+
+// reindexApp rebuilds one application's docs from its committed metadata and the
+// current change requests. An app that no longer loads (disconnected, or not yet
+// initialized) is simply dropped from the index.
+func (h *Hub) reindexApp(id string) {
+	if h.index == nil {
+		return
+	}
+	s, _ := h.server(id)
+	if s == nil {
+		_ = h.index.RemoveApp(id)
+		return
+	}
+	p, err := s.load()
+	if err != nil {
+		_ = h.index.RemoveApp(id)
+		return
+	}
+	docs := search.DocsFor(id, p.Name(), p, s.Store.List())
+	if rerr := h.index.ReplaceApp(id, docs); rerr != nil {
+		h.log().Warn("search reindex failed", slog.String("id", id), slog.Any("error", rerr))
+	}
+}
+
+// isMutating reports whether a method changes state, so the dispatch seam knows
+// when a successful request warrants a reindex.
+func isMutating(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	}
+	return false
+}
+
+func getenvInt(k string, def int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
+}
+
 // defaultHandler serves the unscoped legacy routes: the first healthy
 // repository in connection order.
 func (h *Hub) defaultHandler() http.Handler {
@@ -226,6 +330,7 @@ func (h *Hub) Routes() http.Handler {
 	// Local-folder picker for the New Application flow (localhost mode).
 	mux.HandleFunc("GET /api/fs/browse", h.browseFolders)
 	mux.HandleFunc("GET /api/workspace", h.list)
+	mux.HandleFunc("GET /api/search", h.search)
 	mux.HandleFunc("GET /api/repos", h.list)
 	mux.HandleFunc("POST /api/repos", h.connect)
 	mux.HandleFunc("PATCH /api/repos/{id}", h.rename)
@@ -314,6 +419,12 @@ func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 	rec := &statusRecorder{ResponseWriter: w}
 	hd.ServeHTTP(rec, r2)
 	h.audit(r, id, rec.status)
+	// One reindex seam for every write route: a successful mutating request to
+	// this app rebuilds its search docs. Cheap (one project load) and coalesced,
+	// so it also auto-covers any endpoint added later.
+	if isMutating(r.Method) && rec.status < 400 {
+		h.enqueueReindex(id)
+	}
 }
 
 func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
@@ -336,6 +447,9 @@ func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
 	rec := &statusRecorder{ResponseWriter: w}
 	hd.ServeHTTP(rec, r)
 	h.audit(r, defaultID, rec.status)
+	if isMutating(r.Method) && rec.status < 400 {
+		h.enqueueReindex(defaultID)
+	}
 }
 
 // RepoSummary is the portfolio card for one repository: identity plus enough
@@ -459,6 +573,41 @@ func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
 		"environment": h.Environment,
 		"repos":       out,
 	})
+}
+
+// search answers the global metadata query across every application. It exposes
+// the same class of information the portfolio listing already does (names and
+// shapes, never values or file contents), so it needs no extra gating beyond the
+// shared middleware. Results carry a structured target the client navigates to.
+//
+// @Summary     Global search
+// @Description Search application metadata (parameters, instances, change requests) across every connected application. Returns lightweight hits with a navigation target; never values or file contents.
+// @Tags        Workspace
+// @Produce     json
+// @Param       q     query string true  "Query text"
+// @Param       scope query string false "global (default) or app"
+// @Param       repo  query string false "Restrict to one application id"
+// @Param       limit query int    false "Max results (default 20, cap 50)"
+// @Success     200 {object} map[string]any
+// @Router      /api/search [get]
+func (h *Hub) search(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := 0
+	if v := q.Get("limit"); v != "" {
+		limit, _ = strconv.Atoi(v)
+	}
+	hits := []search.Hit{}
+	if h.index != nil {
+		found, err := h.index.Search(q.Get("q"), q.Get("scope"), q.Get("repo"), limit)
+		if err != nil {
+			writeError(w, r, http.StatusInternalServerError, CodeInternalError, "search failed")
+			return
+		}
+		if found != nil {
+			hits = found
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hits": hits})
 }
 
 // connect starts connecting a repository and returns immediately. Cloning a
@@ -613,6 +762,7 @@ func (h *Hub) connectWorker(sp connectSpec) {
 	h.mu.Lock()
 	delete(h.connecting, sp.id)
 	h.mu.Unlock()
+	h.enqueueReindex(e.ID)
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
 }
 
@@ -724,6 +874,9 @@ func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	if s != nil {
 		s.StopSync()
+	}
+	if h.index != nil {
+		_ = h.index.RemoveApp(id)
 	}
 	if !e.Local && strings.HasPrefix(e.Path, filepath.Join(h.dataDir, "repos")+string(os.PathSeparator)) {
 		_ = os.RemoveAll(e.Path)

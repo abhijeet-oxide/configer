@@ -1,10 +1,9 @@
 import { Modal, Segmented, Tag } from "antd";
 import { SearchOutlined } from "../icons";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
-import { useSwitchRepo } from "../useSwitchRepo";
 import {
   queryAll,
   resolveTarget,
@@ -40,10 +39,33 @@ const TYPE_LABEL: Record<SearchHit["type"], string> = {
   file: "File",
 };
 
+// Kbd is the small keycap used in the input row and the footer legend, styled
+// once so every shortcut hint reads the same across the palette.
+function Kbd({ children }: { children: React.ReactNode }) {
+  return (
+    <kbd
+      style={{
+        fontFamily: "inherit",
+        fontSize: 11,
+        lineHeight: "16px",
+        minWidth: 18,
+        textAlign: "center",
+        color: "var(--text-3)",
+        background: "var(--surface-2)",
+        border: "1px solid var(--border)",
+        borderRadius: 6,
+        padding: "0 5px",
+      }}
+    >
+      {children}
+    </kbd>
+  );
+}
+
 export default function SearchPalette() {
   const { open, mode: openedMode, close, toggle } = useSearchOpen();
-  const { setSection, selectParam, setJump, repoId, section } = useUI();
-  const switchRepo = useSwitchRepo();
+  const { setSection, selectParam, setJump, setRepo, repoId, section } = useUI();
+  const qc = useQueryClient();
 
   const [q, setQ] = useState("");
   const [mode, setMode] = useState<SearchScope>("global");
@@ -53,6 +75,18 @@ export default function SearchPalette() {
   const listRef = useRef<HTMLDivElement>(null);
 
   const inApp = !!repoId && APP_SECTIONS.has(section);
+
+  // A stable repo switch (setRepo and qc are stable, so this never changes
+  // identity). Rebuilding it every render is what made the search effect below
+  // re-fire on every keystroke/arrow and reset the cursor - keeping it stable is
+  // half of that fix.
+  const switchRepo = useCallback(
+    (id: string | null) => {
+      setRepo(id);
+      qc.clear();
+    },
+    [setRepo, qc],
+  );
 
   // Cmd/Ctrl-K opens (and toggles closed). It opens on the surface that fits
   // where you are: inside an application it defaults to searching that app.
@@ -73,10 +107,13 @@ export default function SearchPalette() {
     if (!open) return;
     setMode(inApp ? openedMode : "global");
     setQ("");
-    setCursor(0);
     const t = setTimeout(() => inputRef.current?.focus(), 40);
     return () => clearTimeout(t);
   }, [open, openedMode, inApp]);
+
+  // The cursor returns to the top only when the query or mode changes - never on
+  // an unrelated re-render, so arrow-key navigation stays put.
+  useEffect(() => setCursor(0), [q, mode]);
 
   // The data providers search over - all from the shared react-query cache, so
   // opening the palette does not trigger fetches when a view already loaded it.
@@ -95,10 +132,7 @@ export default function SearchPalette() {
     [switchRepo, setSection, selectParam, setJump],
   );
 
-  const appCtx: AppCtx = useMemo(
-    () => ({ repoId, section, inApp, nav }),
-    [repoId, section, inApp, nav],
-  );
+  const appCtx: AppCtx = useMemo(() => ({ repoId, section, inApp, nav }), [repoId, section, inApp, nav]);
 
   const ctx: SearchContext = useMemo(
     () => ({
@@ -111,17 +145,18 @@ export default function SearchPalette() {
     [mode, repoId, inApp, wsQ.data, gridQ.data, changesQ.data, appCtx],
   );
 
-  // Run the providers whenever the query, mode, or underlying data changes. A
-  // guard drops a stale in-flight result if inputs change before it resolves.
+  // Run the providers whenever the query, mode, or underlying data changes. The
+  // ctx above is now stable across unrelated renders, so this fires only on real
+  // input changes. A guard drops a stale in-flight result; the cursor is clamped
+  // (not reset) so a shrinking result set never yanks the selection to the top.
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
     const id = setTimeout(() => {
       queryAll(ctx, q).then((hits) => {
-        if (!cancelled) {
-          setResults(hits);
-          setCursor(0);
-        }
+        if (cancelled) return;
+        setResults(hits);
+        setCursor((c) => Math.min(c, Math.max(0, hits.length - 1)));
       });
     }, 40);
     return () => {
@@ -133,7 +168,7 @@ export default function SearchPalette() {
   useEffect(() => {
     const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${cursor}"]`);
     el?.scrollIntoView({ block: "nearest" });
-  }, [cursor]);
+  }, [cursor, results]);
 
   const choose = (hit: SearchHit) => {
     close();
@@ -143,10 +178,10 @@ export default function SearchPalette() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
       e.preventDefault();
-      setCursor((c) => Math.min(c + 1, results.length - 1));
+      setCursor((c) => (results.length ? (c + 1) % results.length : 0));
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
-      setCursor((c) => Math.max(c - 1, 0));
+      setCursor((c) => (results.length ? (c - 1 + results.length) % results.length : 0));
     } else if (e.key === "Enter") {
       e.preventDefault();
       const hit = results[cursor];
@@ -165,19 +200,38 @@ export default function SearchPalette() {
       footer={null}
       closable={false}
       width={640}
-      style={{ top: 90 }}
-      styles={{ body: { padding: 0 }, content: { padding: 0, overflow: "hidden" } }}
+      style={{ top: "12vh" }}
+      styles={{
+        body: { padding: 0 },
+        content: {
+          padding: 0,
+          overflow: "hidden",
+          borderRadius: 16,
+          border: "1px solid var(--border)",
+          boxShadow: "var(--shadow-neu-xl)",
+          background: "var(--surface)",
+        },
+      }}
       destroyOnClose
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid var(--border)" }}>
-        <SearchOutlined style={{ fontSize: 16, color: "var(--text-3)" }} />
+      {/* Input row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 18px", borderBottom: "1px solid var(--border)" }}>
+        <SearchOutlined style={{ fontSize: 18, color: "var(--text-3)" }} />
         <input
           ref={inputRef}
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onKeyDown={onKeyDown}
           placeholder={placeholder}
-          style={{ flex: 1, border: "none", outline: "none", background: "transparent", fontSize: 16, color: "var(--text-1)" }}
+          style={{
+            flex: 1,
+            minWidth: 0,
+            border: "none",
+            outline: "none",
+            background: "transparent",
+            fontSize: 16,
+            color: "var(--text)",
+          }}
         />
         {repoId && (
           <Segmented
@@ -190,64 +244,150 @@ export default function SearchPalette() {
             ]}
           />
         )}
-        <kbd style={{ fontSize: 11, color: "var(--text-3)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 6px" }}>esc</kbd>
       </div>
 
-      <div ref={listRef} style={{ maxHeight: 440, overflow: "auto", padding: 6 }}>
-        {results.length === 0 && (
-          <div style={{ padding: "28px 16px", textAlign: "center", color: "var(--text-3)", fontSize: 13 }}>
-            {loading ? "Loading…" : q ? `No matches for "${q.trim()}"` : "Type to search."}
+      {/* Results */}
+      <div ref={listRef} style={{ maxHeight: "56vh", overflow: "auto", padding: 8 }}>
+        {results.length === 0 ? (
+          <div style={{ padding: "44px 16px", textAlign: "center", color: "var(--text-3)" }}>
+            <SearchOutlined style={{ fontSize: 26, opacity: 0.35 }} />
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              {loading ? "Loading…" : q ? `No matches for "${q.trim()}"` : "Search across your applications, or jump to anything."}
+            </div>
           </div>
-        )}
-        {results.map((r, i) => {
-          const active = i === cursor;
-          return (
-            <div
-              key={`${r.type}:${r.id}`}
-              data-idx={i}
-              onMouseEnter={() => setCursor(i)}
-              onClick={() => choose(r)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "9px 12px",
-                borderRadius: 8,
-                cursor: "pointer",
-                background: active ? "var(--surface-2)" : "transparent",
-              }}
-            >
-              <span style={{ color: "var(--text-3)", display: "flex", flexShrink: 0 }}>{r.icon}</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span
-                    className={r.type === "parameter" ? "mono" : undefined}
-                    style={{ fontSize: 13, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                  >
-                    {r.title}
-                  </span>
-                  {r.badges?.map((b) => (
-                    <Tag key={b.text} color={b.color} style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
-                      {b.text}
-                    </Tag>
-                  ))}
-                </div>
-                {r.subtitle && (
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {r.subtitle}
+        ) : (
+          results.map((r, i) => {
+            const active = i === cursor;
+            return (
+              <div
+                key={`${r.type}:${r.id}`}
+                data-idx={i}
+                onMouseMove={() => setCursor(i)}
+                onClick={() => choose(r)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  padding: "8px 10px",
+                  borderRadius: 10,
+                  cursor: "pointer",
+                  background: active ? "var(--brand-soft)" : "transparent",
+                  boxShadow: active ? "inset 2px 0 0 var(--brand)" : "none",
+                }}
+              >
+                {/* Icon tile */}
+                <span
+                  style={{
+                    width: 30,
+                    height: 30,
+                    flexShrink: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    borderRadius: 9,
+                    border: "1px solid var(--border)",
+                    background: active ? "var(--surface)" : "var(--surface-2)",
+                    color: active ? "var(--brand-strong)" : "var(--text-3)",
+                    fontSize: 15,
+                  }}
+                >
+                  {r.icon}
+                </span>
+
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span
+                      className={r.type === "parameter" ? "mono" : undefined}
+                      style={{
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        color: "var(--text)",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {r.title}
+                    </span>
+                    {r.badges?.map((b) => (
+                      <Tag key={b.text} color={b.color} style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                        {b.text}
+                      </Tag>
+                    ))}
                   </div>
+                  {r.subtitle && (
+                    <div
+                      style={{
+                        fontSize: 11.5,
+                        color: "var(--text-3)",
+                        marginTop: 1,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {r.subtitle}
+                    </div>
+                  )}
+                </div>
+
+                {/* Trailing: an Enter hint on the active row, the type otherwise. */}
+                {active ? (
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, color: "var(--text-3)", fontSize: 11 }}>
+                    Open <Kbd>↵</Kbd>
+                  </span>
+                ) : (
+                  <span
+                    style={{
+                      flexShrink: 0,
+                      fontSize: 10,
+                      fontWeight: 600,
+                      letterSpacing: 0.3,
+                      textTransform: "uppercase",
+                      color: "var(--text-3)",
+                      background: "var(--surface-2)",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                      padding: "1px 7px",
+                    }}
+                  >
+                    {TYPE_LABEL[r.type]}
+                  </span>
                 )}
               </div>
-              <span style={{ fontSize: 11, color: "var(--text-3)", flexShrink: 0 }}>{TYPE_LABEL[r.type]}</span>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
-      <div style={{ display: "flex", gap: 16, padding: "8px 16px", borderTop: "1px solid var(--border)", fontSize: 11, color: "var(--text-3)" }}>
-        <span><kbd>↑</kbd> <kbd>↓</kbd> navigate</span>
-        <span><kbd>↵</kbd> open</span>
-        <span><kbd>esc</kbd> close</span>
+      {/* Footer legend */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          padding: "9px 16px",
+          borderTop: "1px solid var(--border)",
+          fontSize: 11.5,
+          color: "var(--text-3)",
+          background: "var(--surface-2)",
+        }}
+      >
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Kbd>↑</Kbd>
+          <Kbd>↓</Kbd> navigate
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Kbd>↵</Kbd> open
+        </span>
+        <span style={{ display: "flex", alignItems: "center", gap: 5 }}>
+          <Kbd>esc</Kbd> close
+        </span>
+        {results.length > 0 && (
+          <span style={{ marginLeft: "auto" }}>
+            {results.length} result{results.length === 1 ? "" : "s"}
+          </span>
+        )}
       </div>
     </Modal>
   );

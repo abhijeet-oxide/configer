@@ -428,6 +428,30 @@ export interface PluginManifest {
   description: string;
 }
 
+// --- global search ---------------------------------------------------------
+
+/** A structured navigation intent returned by the search index; the client
+ *  resolves it through the same deep-links the store owns. */
+export interface SearchTarget {
+  kind: "navigate";
+  app?: string;
+  view: string;
+  param?: string;
+  inst?: string;
+}
+
+/** One cross-application search result (metadata only - never a value). */
+export interface SearchHitDTO {
+  type: "parameter" | "instance" | "change";
+  id: string;
+  appId: string;
+  title: string;
+  subtitle?: string;
+  keywords?: string;
+  badges?: { text: string; color?: string }[];
+  target: SearchTarget;
+}
+
 // One repository in the workspace, as summarized by the portfolio endpoint.
 export interface RepoSummary {
   id: string;
@@ -610,6 +634,9 @@ function emitUnauthorized() {
 interface ReqOpts {
   timeoutMs?: number;
   headers?: Record<string, string>;
+  /** external cancellation (e.g. a superseded search keystroke); aborting it
+   *  aborts the request in flight alongside the built-in timeout */
+  signal?: AbortSignal;
 }
 
 // request performs one fetch with a hard timeout, keeps the offline/online
@@ -619,6 +646,12 @@ interface ReqOpts {
 async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+  // Chain an external abort signal (a caller cancelling a superseded request)
+  // into the same controller, so either the timeout or the caller can abort.
+  if (opts?.signal) {
+    if (opts.signal.aborted) controller.abort();
+    else opts.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
@@ -726,6 +759,15 @@ export const api = {
     return get<{ events: AuditEvent[] | null }>(`/audit${suffix}`);
   },
   workspace: () => get<Workspace>("/workspace"),
+  // Global metadata search across every application. Cancellable so a superseded
+  // keystroke aborts its request rather than racing later ones.
+  search: (q: string, opts?: { scope?: "global" | "app"; repo?: string; limit?: number; signal?: AbortSignal }) => {
+    const qs = new URLSearchParams({ q });
+    if (opts?.scope) qs.set("scope", opts.scope);
+    if (opts?.repo) qs.set("repo", opts.repo);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    return get<{ hits: SearchHitDTO[] }>(`/search?${qs.toString()}`, { signal: opts?.signal });
+  },
   githubStatus: () => get<GitHubStatus>("/github/status"),
   browseFolders: (path?: string) =>
     get<FolderListing>(`/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),

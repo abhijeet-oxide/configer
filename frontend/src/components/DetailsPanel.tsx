@@ -1,5 +1,5 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined } from "../icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, FileTextOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
@@ -254,8 +254,32 @@ function DetailsTab({
 // out of the way; the application-wide numbers live on the Overview tab.
 function IdlePanel({ grid }: { grid: Grid }) {
   const { setFilters, selectParam, setJump } = useUI();
+  const qc = useQueryClient();
   const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
   const draftItems = (draftQ.data?.draft?.items ?? []).filter((it) => !it.action || it.action === "set");
+  const allDraftItems = draftQ.data?.draft?.items ?? [];
+
+  const refetchAll = () => {
+    qc.invalidateQueries({ queryKey: ["grid"] });
+    qc.invalidateQueries({ queryKey: ["draft"] });
+    qc.invalidateQueries({ queryKey: ["changes"] });
+    qc.invalidateQueries({ queryKey: ["render"] });
+  };
+  const revert = useMutation({
+    mutationFn: (it: { paramId: string; instance: string; scope?: string }) =>
+      api.revertValue(it.paramId, it.scope === "global" ? "" : it.instance),
+    onSuccess: refetchAll,
+  });
+  const discardAll = useMutation({
+    mutationFn: async () => {
+      for (const it of allDraftItems)
+        await api.revertValue(
+          it.action === "edit-file" ? `file:${it.file}` : it.paramId,
+          it.scope === "global" ? "" : it.instance,
+        );
+    },
+    onSuccess: refetchAll,
+  });
 
   // Parameters with at least one invalid cell, worst first.
   const invalidRows = grid.rows
@@ -314,27 +338,49 @@ function IdlePanel({ grid }: { grid: Grid }) {
       {draftItems.length > 0 && (
         <>
           <Divider style={{ margin: "12px 0" }} />
-          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-            YOUR CHANGES
-          </Typography.Text>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+              YOUR CHANGES
+            </Typography.Text>
+            <Popconfirm
+              title="Discard every change?"
+              description="This removes all your pending edits. It cannot be undone."
+              okText="Discard all"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => discardAll.mutate()}
+            >
+              <a style={{ fontSize: 11 }}>Discard all</a>
+            </Popconfirm>
+          </div>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
-            {draftItems.slice(0, 4).map((it) => (
-              <a
+            {draftItems.slice(0, 6).map((it) => (
+              <div
                 key={`${it.paramId}|${it.instance}`}
-                onClick={() => jumpTo(it.paramId)}
-                style={{ display: "flex", flexDirection: "column", fontSize: 12 }}
+                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
               >
-                <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {it.paramId} · {it.instance || "global"}
-                </span>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  {fmtValue(it.old)} → {fmtValue(it.new)}
-                </Typography.Text>
-              </a>
+                <a onClick={() => jumpTo(it.paramId)} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+                  <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {it.paramId} · {it.instance || "global"}
+                  </span>
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {fmtValue(it.old)} → {fmtValue(it.new)}
+                  </Typography.Text>
+                </a>
+                <Tooltip title="Undo this change">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<UndoOutlined />}
+                    loading={revert.isPending}
+                    onClick={() => revert.mutate(it)}
+                    aria-label="Undo this change"
+                  />
+                </Tooltip>
+              </div>
             ))}
-            {draftItems.length > 4 && (
+            {draftItems.length > 6 && (
               <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                and {draftItems.length - 4} more in the draft
+                and {draftItems.length - 6} more in the draft
               </Typography.Text>
             )}
           </div>

@@ -12,7 +12,7 @@ import {
 } from "antd";
 import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
@@ -72,17 +72,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   // "View in Git" opens the repository at its hosting provider.
   const gitUrl = activeRepo?.origin?.startsWith("http") ? activeRepo.origin : undefined;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
+  // Cmd/Ctrl-K is owned by the command palette (a richer jump-to-anything
+  // surface); this box stays a quick filter of the current view.
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
@@ -172,16 +163,18 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
         </div>
       )}
       <div style={{ flex: 1, minWidth: 8 }} />
-      <Input
-        ref={searchRef}
-        prefix={<SearchOutlined />}
-        placeholder="Search everything… (⌘K)"
-        size="small"
-        allowClear
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
-      />
+      <Tooltip title="Jump to any parameter or section (⌘K)">
+        <Input
+          ref={searchRef}
+          prefix={<SearchOutlined />}
+          placeholder="Filter this view…"
+          size="small"
+          allowClear
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{ width: "clamp(150px, 20vw, 340px)", flexShrink: 0 }}
+        />
+      </Tooltip>
       <Space size={4} style={{ flexShrink: 0 }}>
         {inApp && gitUrl && (
           <Button size="small" icon={<ExportOutlined />} href={gitUrl} target="_blank">

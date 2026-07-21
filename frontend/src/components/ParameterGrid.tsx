@@ -33,6 +33,7 @@ import {
   UpOutlined,
   DownOutlined,
   MoreOutlined,
+  UndoOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -166,19 +167,40 @@ function EditableCell({
       : []),
   ];
 
+  // A pending cell carries its own one-click undo, so reverting never requires
+  // discovering the right-click menu: the affordance is visible on the change
+  // itself (with the full undo/reset menu still a right-click away).
+  const undoBtn = cell.pending ? (
+    <Tooltip title="Undo this change">
+      <span
+        role="button"
+        aria-label="Undo this change"
+        onClick={(e) => {
+          e.stopPropagation();
+          onUndo();
+        }}
+        className="cell-undo-btn"
+      >
+        <UndoOutlined />
+      </span>
+    </Tooltip>
+  ) : null;
+
   const body =
     param.type === "boolean" && cell.editable && cell.set ? (
-      <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined}>
+      <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined} style={{ display: "inline-flex", alignItems: "center" }}>
         <Switch size="small" checked={!!cell.value} onChange={(v) => onCommit(v)} />
         <SourceBadge cell={cell} />
+        {undoBtn}
       </span>
     ) : (
       <div
-        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined }}
+        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined, display: "flex", alignItems: "center" }}
         title={cell.editable && !cell.pending ? "Double-click to edit · right-click for actions" : undefined}
         onDoubleClick={cell.editable ? onStartEdit : undefined}
       >
         <CellView cell={cell} pendingItem={pendingItem} />
+        {undoBtn}
       </div>
     );
 

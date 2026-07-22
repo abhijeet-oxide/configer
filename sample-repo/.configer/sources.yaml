@@ -1,0 +1,15 @@
+apiVersion: configer.io/v1
+kind: SourceRegistry
+# External parameter sources: systems this application can pull values FROM.
+# This file holds connection metadata only - never credentials (tokens resolve
+# server-side from GITHUB_TOKEN / VAULT_TOKEN) and never fetched values. Map a
+# parameter to a source key with a `source:` field in parameters.yaml; the
+# upstream value then surfaces as a reviewable incoming change.
+sources:
+  - id: platform-defaults
+    name: Platform defaults (example)
+    kind: git
+    config:
+      repoUrl: https://github.com/example/platform-defaults
+      branch: main
+      path: defaults/network.yaml

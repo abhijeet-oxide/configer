@@ -1,4 +1,20 @@
-# golangci-lint configuration. The default linter set (errcheck, gosimple,
-# govet, ineffassign, staticcheck, unused) - correctness only, no style bikeshed.
+# golangci-lint configuration (v2 schema). Correctness only, no style bikeshed:
+# the default linter set (errcheck, govet, ineffassign, staticcheck, unused).
+# The two settings below reproduce golangci-lint v1's defaults under v2:
+#   - std-error-handling restores v1's default exclusion of the noisy
+#     .Close/.Flush/os.Remove/print errcheck reports.
+#   - staticcheck ran SA+S only under v1; the stylecheck (ST*) and quickfix
+#     (QF*) checks folded into staticcheck by v2 are disabled to match.
+version: "2"
 run:
   timeout: 5m
+linters:
+  exclusions:
+    presets:
+      - std-error-handling
+  settings:
+    staticcheck:
+      checks:
+        - all
+        - -ST1*
+        - -QF1*

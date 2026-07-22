@@ -57,6 +57,12 @@ type Candidate struct {
 	// Line is the 1-based line the value sits on in the source file (0 when
 	// the format can't report one, e.g. JSON). Used for display only.
 	Line int `json:"line,omitempty"`
+	// AliasOf is set (to the anchor name) when this candidate was reached
+	// through a YAML alias (`*anchor`) rather than an owned value. Such a
+	// candidate is a MIRROR of the anchor's definition, not an independent
+	// setting; discovery drops it so the anchor is managed once, at its
+	// definition, and edits propagate to every alias site at render.
+	AliasOf string `json:"aliasOf,omitempty"`
 }
 
 // IngestParser detects and extracts parameters from a source file format.

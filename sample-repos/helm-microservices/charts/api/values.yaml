@@ -1,0 +1,21 @@
+# Subchart defaults for `api`. The umbrella overrides these under the `api:` key,
+# which means the SAME logical setting (e.g. replicaCount) exists here AND in the
+# umbrella values AND in every environment override: three files, one meaning.
+replicaCount: 1
+image:
+  repository: shop/api
+  tag: "3.2.1"
+  pullPolicy: IfNotPresent
+service:
+  port: 8080
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: "500m"
+    memory: 512Mi
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10

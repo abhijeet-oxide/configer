@@ -94,7 +94,21 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		if len(fr.Candidates) == 0 || skipFile(fr.File) {
 			continue
 		}
-		cands := foldLists(fr.Candidates)
+		// Reference-aware anchors: a candidate reached through a YAML alias
+		// (`*anchor`) is a mirror of the anchor's definition, not an independent
+		// setting. Drop the mirrors so the anchor is managed once, at its
+		// definition; edits propagate to every alias site at render, and the
+		// file's dedup structure is preserved (no anchor is expanded inline).
+		owned := fr.Candidates[:0:0]
+		for _, c := range fr.Candidates {
+			if c.AliasOf == "" {
+				owned = append(owned, c)
+			}
+		}
+		// Identity-addressed lists: rewrite positional list-of-maps bindings
+		// (env[0].value) to a stable key selector (env[name=LOG_LEVEL].value) so
+		// every entry is managed and the binding survives reordering.
+		cands := keyListSelectors(foldLists(owned))
 		li, rel, inInstance := folderOf(fr.File)
 		// A Kubernetes manifest (has top-level apiVersion + kind) carries
 		// envelope fields that are structure, not configuration; drop them so
@@ -194,6 +208,25 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 			Bindings: []model.Binding{{File: g.file, Path: g.path, Format: g.format, Layer: model.LayerBase, Line: g.line}},
 		})
 	}
+	// Subchart canonicalization (Helm umbrella): a subchart's own defaults live
+	// at bare paths (charts/api/values.yaml: replicaCount) while the umbrella and
+	// each environment address the SAME setting under the subchart's alias key
+	// (api.replicaCount). Re-scope the subchart defaults under their alias and
+	// tag them the lowest (chart-default) layer, so they (a) stop over-merging
+	// across sibling subcharts - api's replicaCount is not worker's - and (b)
+	// unify with the aliased override, by logical name, in mergeSubchartDefaults.
+	for i := range sharedParams {
+		if len(sharedParams[i].Bindings) == 0 {
+			continue
+		}
+		if sub, ok := subchartOf(root, sharedParams[i].Bindings[0].File); ok {
+			sharedParams[i].Name = sub + "." + sharedParams[i].Name
+			sharedParams[i].Category = categoryFor(sharedParams[i].Name)
+			for j := range sharedParams[i].Bindings {
+				sharedParams[i].Bindings[j].Layer = model.LayerChartDefault
+			}
+		}
+	}
 	sharedParams = mergeIdentical(sharedParams, func(p model.Parameter) string {
 		return p.Name + "|" + fmt.Sprintf("%v", p.Default)
 	})
@@ -219,6 +252,13 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		}
 	}
 	params = append(params, remaining...)
+
+	// Fold each subchart default into the same-named parameter the umbrella or an
+	// environment aliases (api.replicaCount here, api.replicaCount there), so one
+	// logical setting is one row with layered bindings instead of two rows the
+	// user cannot tell apart. Guarded to same-name pairs where a chart-default
+	// binding is involved, so repositories with no subcharts are untouched.
+	params = mergeSubchartDefaults(params)
 
 	// Attach schema-derived validation and assign unique IDs. One schema cache
 	// serves every parameter, so a shared schema file is read + parsed once.
@@ -271,6 +311,55 @@ func mergeIdentical(params []model.Parameter, keyFn func(model.Parameter) string
 	return out
 }
 
+// subchartOf reports the alias of the Helm subchart a file belongs to, when the
+// file lives under a "charts/<sub>/" directory that actually holds a subchart
+// (has its own Chart.yaml). The Chart.yaml existence check - not the directory
+// name alone - is the robust signal: a kpt "packages/" folder or a kustomize
+// "components/" folder never matches, because neither carries a Chart.yaml.
+func subchartOf(root, file string) (string, bool) {
+	parts := strings.Split(file, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "charts" {
+			chartYaml := strings.Join(parts[:i+2], "/") + "/Chart.yaml"
+			if _, err := osReadFile(root, chartYaml); err == nil {
+				return parts[i+1], true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// hasChartDefault reports whether any of the parameter's bindings is a
+// chart-default (subchart built-in) layer.
+func hasChartDefault(p model.Parameter) bool {
+	for _, b := range p.Bindings {
+		if b.Layer == model.LayerChartDefault {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeSubchartDefaults collapses parameters that share a logical name when a
+// chart-default binding is involved, concatenating their bindings. This unifies
+// a subchart's built-in default with the umbrella/environment override of the
+// same setting. Order is preserved and the first (typically the override, which
+// carries the richer type/validation) keeps its metadata.
+func mergeSubchartDefaults(params []model.Parameter) []model.Parameter {
+	idx := map[string]int{}
+	var out []model.Parameter
+	for _, p := range params {
+		if j, ok := idx[p.Name]; ok && (hasChartDefault(p) || hasChartDefault(out[j])) {
+			out[j].Bindings = append(out[j].Bindings, p.Bindings...)
+			continue
+		}
+		idx[p.Name] = len(out)
+		out = append(out, p)
+	}
+	return out
+}
+
 // candidate is plugin.Candidate plus the folded list element type.
 type candidate struct {
 	Name     string
@@ -313,6 +402,126 @@ func foldLists(cands []plugin.Candidate) []candidate {
 	}
 	return out
 }
+
+// listMapEntry matches a path segment "<prefix>[<index>].<field><rest>", the
+// shape of a leaf inside a list of maps (env[0].name, servers[2].port.min).
+var listMapEntry = regexp.MustCompile(`^(.*?)\[(\d+)\]\.([^.\[]+)(.*)$`)
+
+// identityKeyPriority is the ordered set of fields treated as an entry's stable
+// identity in a list of maps. It is a plain configurable list, not per-format
+// hardcoding; the first one present-on-every-entry and unique wins. A JSON
+// Schema key hint (future) would slot in ahead of this.
+var identityKeyPriority = []string{
+	"name", "id", "key", "host", "hostname", "path", "mountPath",
+	"containerName", "device", "interface", "port",
+}
+
+// keyListSelectors rewrites positional list-of-maps candidates to identity-key
+// selectors. For each list whose entries share a usable identity field, every
+// non-identity leaf's path changes from `x[<i>].field` to `x[<key>=<val>].field`
+// and the identity leaf itself is dropped (it is the selector, not a tunable).
+// Lists without a usable identity key are left positional (safe fallback), and
+// scalars pass through untouched. Only YAML/JSON candidates are considered; XML
+// list candidates arrive whole from the XML parser.
+func keyListSelectors(cands []candidate) []candidate {
+	// Group entries by (list prefix). For each prefix collect index -> field -> value.
+	type entryField struct{ idx, field string }
+	byPrefix := map[string]map[string]map[string]any{} // prefix -> idx -> field -> value
+	prefixOrder := []string{}
+	for _, c := range cands {
+		if c.Format == "xml" {
+			continue
+		}
+		m := listMapEntry.FindStringSubmatch(c.Path)
+		if m == nil {
+			continue
+		}
+		prefix, idx, field := m[1], m[2], m[3]
+		if _, ok := byPrefix[prefix]; !ok {
+			byPrefix[prefix] = map[string]map[string]any{}
+			prefixOrder = append(prefixOrder, prefix)
+		}
+		if _, ok := byPrefix[prefix][idx]; !ok {
+			byPrefix[prefix][idx] = map[string]any{}
+		}
+		// Only a scalar directly under the entry ("[i].field", no deeper rest)
+		// can serve as an identity key.
+		if m[4] == "" {
+			byPrefix[prefix][idx][field] = c.Value
+		} else if _, ok := byPrefix[prefix][idx][field]; !ok {
+			byPrefix[prefix][idx][field] = nil // present but not a scalar identity candidate
+		}
+	}
+
+	// Decide the identity key per prefix, and the per-index selector to use.
+	keyForPrefix := map[string]string{}       // prefix -> identity field
+	selectorForEntry := map[string]string{}   // prefix+"\x00"+idx -> "field=value"
+	for _, prefix := range prefixOrder {
+		entries := byPrefix[prefix]
+		chosen := ""
+		for _, k := range identityKeyPriority {
+			ok, seen := true, map[string]bool{}
+			for _, fields := range entries {
+				v, present := fields[k]
+				if !present || v == nil {
+					ok = false
+					break
+				}
+				s := fmt.Sprintf("%v", v)
+				if seen[s] { // not unique across entries: unusable as identity
+					ok = false
+					break
+				}
+				seen[s] = true
+			}
+			if ok {
+				chosen = k
+				break
+			}
+		}
+		if chosen == "" {
+			continue // no usable identity: leave this list positional
+		}
+		keyForPrefix[prefix] = chosen
+		for idx, fields := range entries {
+			selectorForEntry[prefix+"\x00"+idx] = fmt.Sprintf("%s=%v", chosen, fields[chosen])
+		}
+	}
+
+	out := cands[:0:0]
+	for _, c := range cands {
+		m := listMapEntry.FindStringSubmatch(c.Path)
+		if m == nil || c.Format == "xml" {
+			out = append(out, c)
+			continue
+		}
+		prefix, idx, field := m[1], m[2], m[3]
+		key, ok := keyForPrefix[prefix]
+		if !ok {
+			out = append(out, c) // positional fallback
+			continue
+		}
+		if field == key && m[4] == "" {
+			continue // the identity leaf becomes the selector, not a parameter
+		}
+		sel := selectorForEntry[prefix+"\x00"+idx]
+		newPath := prefix + "[" + sel + "]." + field + m[4]
+		c.Path = newPath
+		c.Name = nameFromKeyedPath(newPath)
+		out = append(out, c)
+	}
+	return out
+}
+
+// nameFromKeyedPath renders a display name from a keyed path:
+// "$.api.env[name=LOG_LEVEL].value" -> "api.env.LOG_LEVEL.value".
+func nameFromKeyedPath(path string) string {
+	s := strings.TrimPrefix(strings.TrimPrefix(path, "$."), "$")
+	s = selectorInName.ReplaceAllString(s, ".$1")
+	return strings.TrimPrefix(s, ".")
+}
+
+var selectorInName = regexp.MustCompile(`\[[^=\]]+=([^\]]+)\]`)
 
 func leafOf(path string) string {
 	s := indexSuffix.ReplaceAllString(path, "")

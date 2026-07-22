@@ -115,6 +115,17 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		relInst = inst
 	}
 
+	// A committed value that is a template expression is computed when the chart
+	// renders; the file holds the expression, not the effective value. Replacing
+	// it with a literal through the grid would corrupt the template for every
+	// instance, so reject the edit and point the user to file mode (where the
+	// expression is explicit). Replacing one template with another is allowed.
+	if action == change.ActionSet && model.IsTemplateExpression(oldVal) && !model.IsTemplateExpression(coerced) {
+		writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed,
+			"this value is a template expression, computed when the chart renders; edit it in file mode so the template is preserved")
+		return
+	}
+
 	// Cross-parameter relations (a resource limit must be at least its request,
 	// and vice versa) can only be checked now that the instance context is
 	// known. The sibling's effective value is read from the committed files.

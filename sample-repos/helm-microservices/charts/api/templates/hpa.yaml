@@ -1,0 +1,16 @@
+# A whole resource that exists only when autoscaling is enabled. In some
+# environments this file renders; in others it produces nothing. The "min
+# replicas" parameter is therefore present or absent per environment.
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "api.fullname" . }}
+spec:
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "api.fullname" . }}
+{{- end }}

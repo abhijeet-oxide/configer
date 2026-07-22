@@ -1,0 +1,21 @@
+global:
+  domain: staging.shop.example.com
+
+api:
+  replicaCount: 2
+  autoscaling:
+    enabled: false
+  env:
+    - name: LOG_LEVEL
+      value: info
+    - name: FEATURE_CHECKOUT_V2
+      value: "true"
+
+worker:
+  replicaCount: 2
+  concurrency: 6
+
+db:
+  primary:
+    persistence:
+      size: 10Gi

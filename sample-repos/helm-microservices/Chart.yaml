@@ -1,0 +1,17 @@
+apiVersion: v2
+name: microservices
+description: Umbrella chart for the shop platform (api + worker + postgres)
+version: 1.4.0
+type: application
+dependencies:
+  - name: api
+    version: 0.x.x
+    repository: file://charts/api
+  - name: worker
+    version: 0.x.x
+    repository: file://charts/worker
+  - name: postgresql
+    version: 13.x.x
+    repository: https://charts.bitnami.com/bitnami
+    alias: db            # subchart is referenced as `db`, not `postgresql`
+    condition: db.enabled

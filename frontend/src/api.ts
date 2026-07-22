@@ -150,6 +150,12 @@ export interface Cell {
   valid: boolean;
   message?: string;
   editable: boolean;
+  /**
+   * The committed value is a template EXPRESSION (Helm "{{ ... }}", a "${...}"
+   * reference), not a literal. Such a cell is read-only in the grid: editing it
+   * as a plain value would overwrite the template. Change it in file mode.
+   */
+  templated?: boolean;
   /** staged in the current draft change request, not yet on Git */
   pending?: boolean;
 }

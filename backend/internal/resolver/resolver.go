@@ -50,6 +50,17 @@ func NewWithCatalog(root string, catalog []model.Parameter) *Resolver {
 	return &Resolver{Root: root, Catalog: catalog, docs: map[string]*pathedit.Document{}}
 }
 
+// Param looks up a catalog parameter by id. Used to resolve cross-parameter
+// relations (e.g. a resource limit reading its request's effective value).
+func (r *Resolver) Param(id string) (model.Parameter, bool) {
+	for _, p := range r.Catalog {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return model.Parameter{}, false
+}
+
 // doc returns the parsed document for a file, parsing (and caching) it on first
 // use. A missing or malformed file caches a nil document, so every lookup in it
 // cleanly misses without re-reading from disk.

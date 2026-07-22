@@ -230,6 +230,58 @@ func TestFunctionalWriteBack(t *testing.T) {
 	}
 }
 
+// TestFunctionalQuantityTypesAndRelations checks that the K8s-shaped repos get
+// their resource quantities typed as cpu/memory and that each limit is wired to
+// require at least its matching request (and vice versa).
+func TestFunctionalQuantityTypesAndRelations(t *testing.T) {
+	for _, name := range []string{"helm-umbrella", "kustomize-fleet", "k8s-multicluster"} {
+		t.Run(name, func(t *testing.T) {
+			res, err := Discover(sampleRepo(t, name), registry(), project.Ignore{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			byID := map[string]model.Parameter{}
+			for _, p := range res.Parameters {
+				byID[p.ID] = p
+			}
+			var limitCPU, reqCPU, limitMem, reqMem *model.Parameter
+			for i := range res.Parameters {
+				p := &res.Parameters[i]
+				leaf := p.Name
+				switch {
+				case strings.HasSuffix(leaf, "limits.cpu"):
+					limitCPU = p
+				case strings.HasSuffix(leaf, "requests.cpu"):
+					reqCPU = p
+				case strings.HasSuffix(leaf, "limits.memory"):
+					limitMem = p
+				case strings.HasSuffix(leaf, "requests.memory"):
+					reqMem = p
+				}
+			}
+			if limitCPU == nil || reqCPU == nil || limitMem == nil || reqMem == nil {
+				t.Fatalf("resource params missing: limCPU=%v reqCPU=%v limMem=%v reqMem=%v",
+					limitCPU != nil, reqCPU != nil, limitMem != nil, reqMem != nil)
+			}
+			if limitCPU.Type != model.TypeCPU || reqCPU.Type != model.TypeCPU {
+				t.Errorf("cpu types not detected: limit=%s request=%s", limitCPU.Type, reqCPU.Type)
+			}
+			if limitMem.Type != model.TypeMemory || reqMem.Type != model.TypeMemory {
+				t.Errorf("memory types not detected: limit=%s request=%s", limitMem.Type, reqMem.Type)
+			}
+			if limitCPU.Validation.AtLeast != reqCPU.ID {
+				t.Errorf("cpu limit not linked to request: atLeast=%q want %q", limitCPU.Validation.AtLeast, reqCPU.ID)
+			}
+			if reqCPU.Validation.AtMost != limitCPU.ID {
+				t.Errorf("cpu request not bounded by limit: atMost=%q want %q", reqCPU.Validation.AtMost, limitCPU.ID)
+			}
+			if limitMem.Validation.AtLeast != reqMem.ID {
+				t.Errorf("memory limit not linked to request: atLeast=%q", limitMem.Validation.AtLeast)
+			}
+		})
+	}
+}
+
 func instNames(res Result) []string {
 	var out []string
 	for _, i := range res.Instances {

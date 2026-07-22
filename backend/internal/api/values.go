@@ -91,6 +91,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	// repository's real files.
 	var oldVal any
 	instance := req.Instance
+	relInst := model.Instance{}
 	if req.Scope == "global" {
 		instance = ""
 		if len(param.BindingsOn(model.LayerBase, model.Instance{})) == 0 {
@@ -111,6 +112,25 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		}
 		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, inst)
 		oldVal = res.Value
+		relInst = inst
+	}
+
+	// Cross-parameter relations (a resource limit must be at least its request,
+	// and vice versa) can only be checked now that the instance context is
+	// known. The sibling's effective value is read from the committed files.
+	if action == change.ActionSet && (param.Validation.AtLeast != "" || param.Validation.AtMost != "") {
+		rz := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+		related := func(id string) (model.Parameter, any, bool) {
+			sp, ok := p.ParamByID(id)
+			if !ok {
+				return model.Parameter{}, nil, false
+			}
+			return sp, rz.Resolve(sp, relInst).Value, true
+		}
+		if vr := validate.RelationCheck(param, coerced, related); !vr.Valid {
+			writeFieldErrors(w, r, "the value is not valid for this parameter", FieldError{Field: "value", Message: vr.Message})
+			return
+		}
 	}
 
 	s.writeMu.Lock()
@@ -166,6 +186,18 @@ func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName 
 	}
 	if vr := validate.Value(param, coerced); !vr.Valid {
 		return false, vr.Message
+	}
+	if param.Validation.AtLeast != "" || param.Validation.AtMost != "" {
+		related := func(id string) (model.Parameter, any, bool) {
+			sp, ok := rv.Param(id)
+			if !ok {
+				return model.Parameter{}, nil, false
+			}
+			return sp, rv.Resolve(sp, inst).Value, true
+		}
+		if vr := validate.RelationCheck(param, coerced, related); !vr.Valid {
+			return false, vr.Message
+		}
 	}
 	old := rv.Resolve(param, inst).Value
 	cr.UpsertItem(change.Item{

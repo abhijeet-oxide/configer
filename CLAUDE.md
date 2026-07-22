@@ -143,7 +143,11 @@ parameters:
   - id: net-admin-port          # slug, unique
     name: network.admin.port    # dotted logical name
     category: Networking/IP     # "/" nests the tree
-    type: integer               # string|integer|number|boolean|enum|ipv4|cidr|list
+    type: integer               # string|integer|number|boolean|enum|ipv4|ipv6|cidr|
+                                #   hostname|port|email|url|mac|cpu|memory|duration|
+                                #   percentage|list  (cpu/memory validate positivity)
+    # validation may also carry atLeast/atMost: <paramId> for cross-field rules
+    # (a resource limit must be at least its request, and vice versa).
     scope: instance             # instance | global (lives in a shared file)
     bindings:
       - { file: "{folder}/values.yaml", path: $.network.admin.port, format: yaml }

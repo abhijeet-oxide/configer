@@ -76,6 +76,16 @@ const (
 	TypeEmail    ParamType = "email"
 	TypeURL      ParamType = "url"
 	TypeMAC      ParamType = "mac"
+	// TypeCPU / TypeMemory are Kubernetes resource quantities: CPU in cores or
+	// millicores ("500m", "2"), memory/storage as a binary or decimal SI byte
+	// quantity ("256Mi", "1Gi", "512M"). They validate the format AND that the
+	// amount is positive (a request or limit of zero or negative is invalid).
+	TypeCPU    ParamType = "cpu"
+	TypeMemory ParamType = "memory"
+	// TypeDuration is a unit-suffixed duration string ("500ms", "30s", "5m").
+	TypeDuration ParamType = "duration"
+	// TypePercentage is an integer percentage with a trailing "%" ("75%").
+	TypePercentage ParamType = "percentage"
 	// TypeList holds an ordered collection; ItemType declares the element
 	// type. Instances may hold different lengths: this is how one instance
 	// carries 1 NTP server and another 10.
@@ -204,6 +214,14 @@ type Validation struct {
 	MaxItems  *int     `yaml:"maxItems,omitempty" json:"maxItems,omitempty"`
 	Preset    string   `yaml:"preset,omitempty" json:"preset,omitempty"` // id of a predefined rule
 	SchemaRef string   `yaml:"schemaRef,omitempty" json:"schemaRef,omitempty"`
+	// AtLeast / AtMost name another parameter (by id) whose effective value at
+	// the same instance bounds this one: a resource limit must be AtLeast its
+	// request, a request AtMost its limit. The comparison is quantity-aware
+	// (CPU millicores, memory bytes, otherwise numeric), so "1" >= "500m" and
+	// "1Gi" >= "512Mi" compare correctly. Enforced on write when the related
+	// parameter can be resolved.
+	AtLeast string `yaml:"atLeast,omitempty" json:"atLeast,omitempty"`
+	AtMost  string `yaml:"atMost,omitempty" json:"atMost,omitempty"`
 }
 
 // InstanceRegistry is the central instance catalog (.configer/instances.yaml).

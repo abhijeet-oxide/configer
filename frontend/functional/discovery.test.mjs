@@ -32,9 +32,11 @@ const cases = [
     layout: "plain-folders",
     minInstances: 4,
     instance: "prod-us",
-    present: ["replicaCount", "image.tag", "service.port", "service.type"],
+    present: ["replicaCount", "image.tag", "service.port", "service.type", "resources.limits.cpu", "resources.requests.memory"],
     absent: ["version", "appVersion", "apiVersion", "dependencies.name"],
     validated: { "service.type": (v) => (v.enum || []).length > 0, "replicaCount": (v) => v.min != null && v.max != null },
+    // resource quantities are typed and the limit is bound to at least its request.
+    resourcePairs: true,
   },
   {
     name: "kustomize-fleet",
@@ -173,6 +175,17 @@ async function main() {
       const p = params.get(c.multiDoc);
       const sel = p?.bindings?.some((b) => /^\[\d+\]\$/.test(b.path));
       if (!sel) fail(c.name, `${c.multiDoc} should have a multi-document selector binding`);
+    }
+    // Kubernetes resource quantities: cpu/memory typed, limit linked to request.
+    if (c.resourcePairs) {
+      const lim = [...params.values()].find((p) => /limits\.cpu$/.test(p.name));
+      const req = [...params.values()].find((p) => /requests\.cpu$/.test(p.name));
+      if (!lim || lim.type !== "cpu") fail(c.name, `cpu limit not typed as cpu (got ${lim?.type})`);
+      if (!req || req.type !== "cpu") fail(c.name, `cpu request not typed as cpu (got ${req?.type})`);
+      if (lim && req && lim.validation?.atLeast !== req.id)
+        fail(c.name, `cpu limit not linked atLeast the request (got ${lim.validation?.atLeast})`);
+      const mlim = [...params.values()].find((p) => /limits\.memory$/.test(p.name));
+      if (!mlim || mlim.type !== "memory") fail(c.name, `memory limit not typed as memory (got ${mlim?.type})`);
     }
 
     console.log(`ok (${c.layout}, ${insts.length} instances, ${disc.parameters?.length ?? 0} params)`);

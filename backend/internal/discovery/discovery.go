@@ -226,6 +226,9 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	used := map[string]bool{}
 	for i := range params {
 		attachSchema(root, schemas, &params[i], res.Instances)
+		// After the schema has had first say, sharpen still-generic parameters
+		// into their well-known operational types (CPU/memory/duration/…).
+		refineType(&params[i])
 		id := slugify(params[i].Name)
 		for n := 2; used[id]; n++ {
 			id = fmt.Sprintf("%s-%d", slugify(params[i].Name), n)
@@ -233,6 +236,8 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		used[id] = true
 		params[i].ID = id
 	}
+	// With IDs assigned, wire resource limit >= request constraints across pairs.
+	linkResourceConstraints(params)
 
 	res.Parameters = params
 	return res, nil

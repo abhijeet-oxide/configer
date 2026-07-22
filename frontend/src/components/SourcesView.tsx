@@ -96,7 +96,11 @@ export default function SourcesView() {
         </Space>
       </div>
 
-      {/* Incoming changes: the reviewer's queue. */}
+      {/* Incoming changes: the reviewer's queue. Only meaningful once at least
+          one source is configured - with no sources there is nothing to reconcile
+          against, so we skip it entirely and show the single "no sources" empty
+          state below rather than two stacked empty states. */}
+      {sources.length > 0 && (
       <Card
         size="small"
         style={{ marginBottom: 16 }}
@@ -179,6 +183,7 @@ export default function SourcesView() {
           />
         )}
       </Card>
+      )}
 
       {/* Configured sources. */}
       {sources.length === 0 ? (

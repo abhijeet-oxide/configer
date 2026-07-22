@@ -170,7 +170,12 @@ export default function App() {
   const gridQ = useQuery({
     queryKey: ["grid"],
     queryFn: api.grid,
-    enabled: !uninitialized,
+    // Only load the grid once we positively know the repository carries a
+    // Configer application. Before projectInfo resolves, `uninitialized` is
+    // still false, so gating on `!uninitialized` would fire a grid load against
+    // a possibly un-onboarded repo - which reads .configer/parameters.yaml and
+    // fails with a spurious "parameter file not found" toast.
+    enabled: projectQ.data?.initialized === true,
     refetchInterval: online ? false : 10_000,
   });
   // lightweight heartbeat: keeps probing while unreachable so recovery is automatic
@@ -494,6 +499,17 @@ export default function App() {
       );
     // Personal settings: a global level, independent of any repository.
     if (section === "settings") return <SettingsView />;
+    // Hold every application-level view until we actually know whether this
+    // repo carries a Configer application. Rendering the editor (or the tab
+    // strip, which fires its own draft/grid/sources queries) before projectInfo
+    // resolves would hit .configer against a possibly un-onboarded repository
+    // and raise a spurious "parameter file not found" error.
+    if (repoId && projectQ.isPending)
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <GridSkeleton />
+        </div>
+      );
     // A repository without a .configer application goes through onboarding
     // before any other view makes sense.
     if (uninitialized)

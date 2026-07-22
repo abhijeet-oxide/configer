@@ -127,6 +127,50 @@ func TestApplyDraft(t *testing.T) {
 	}
 }
 
+// A staged clone add-instance must preview the column with the SAME folder a
+// submit will scaffold (beside the clone source, dir(source)/name), so the
+// Files explorer - which expands {folder} bindings from the grid column - lands
+// on the real staged paths instead of the instances/<name> default.
+func TestApplyDraftAddInstanceFolder(t *testing.T) {
+	g := Build(mkProject(t))
+	ApplyDraft(&g, []change.Item{
+		{Instance: "dr", Action: change.ActionAddInstance, Old: "old", New: map[string]any{"environment": "production"}},
+	})
+	var dr *model.Instance
+	for i := range g.Instances {
+		if g.Instances[i].Name == "dr" {
+			dr = &g.Instances[i]
+		}
+	}
+	if dr == nil {
+		t.Fatal("staged add-instance column missing from the grid")
+	}
+	if dr.Status != "draft" {
+		t.Errorf("status=%q, want draft", dr.Status)
+	}
+	// "old" lives at instances/old, so the clone lands at instances/dr.
+	if dr.Folder != "instances/dr" {
+		t.Errorf("folder=%q, want instances/dr (beside the clone source)", dr.Folder)
+	}
+}
+
+// An empty (non-clone) add-instance falls back to instances/<name>.
+func TestApplyDraftAddInstanceEmptyFolder(t *testing.T) {
+	g := Build(mkProject(t))
+	ApplyDraft(&g, []change.Item{
+		{Instance: "fresh", Action: change.ActionAddInstance, New: map[string]any{}},
+	})
+	for i := range g.Instances {
+		if g.Instances[i].Name == "fresh" {
+			if g.Instances[i].Folder != "instances/fresh" {
+				t.Errorf("folder=%q, want instances/fresh", g.Instances[i].Folder)
+			}
+			return
+		}
+	}
+	t.Fatal("staged add-instance column missing from the grid")
+}
+
 func TestCategoryTree(t *testing.T) {
 	g := Build(mkProject(t))
 	// Expect a top-level "Net" node with two children (IP, TLS) and an "Adv" node.

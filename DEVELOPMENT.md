@@ -1,244 +1,126 @@
-# Local Development Guide
+# Development
 
-## Quick Start
+How to develop, test, and ship Configer. Architecture and code conventions live
+in [CLAUDE.md](CLAUDE.md); the configuration reference in [CONFIG.md](CONFIG.md);
+the feature tour in [FEATURES.md](FEATURES.md).
 
-### Prerequisites
+## Prerequisites
 
-- **Node.js** 18+ (for frontend and tooling)
-- **Go** 1.25+ (for backend)
-- **npm** or **pnpm** (frontend package manager)
-- **Docker & Docker Compose** (optional, for containerized setup)
+- Go 1.25+
+- Node 22+ (npm)
+- git (the backend shells out to it)
+- Docker (only for the compose stack)
 
-### One-Command Setup
-
-```bash
-npm install -g concurrently
-npm setup
-npm start
-```
-
-This will:
-1. Create `.env` from `.env.example`
-2. Install frontend and backend dependencies
-3. Start both backend and frontend concurrently
-
-### Manual Setup
-
-**Backend:**
-```bash
-cd backend
-go mod download
-CONFIGER_REPO=../sample-repo go run ./cmd/configer
-# Backend running on http://localhost:8080
-```
-
-**Frontend** (in another terminal):
-```bash
-cd frontend
-npm install
-npm run dev
-# Frontend running on http://localhost:5173
-```
-
-## Development Workflow
-
-### Making Changes to Backend
-
-The backend runs via `go run`, so changes to Go files trigger automatic reloads (if using a file watcher like `nodemon` or VS Code's Go extension).
-
-For manual rebuild:
-```bash
-cd backend
-go run ./cmd/configer
-```
-
-### Making Changes to Frontend
-
-The frontend dev server (Vite) automatically hot-reloads when TypeScript/React files change.
+## Setup and daily workflow
 
 ```bash
-cd frontend
-npm run dev
+make install     # go mod download + npm install
+make dev         # backend :8080 (serving ./sample-repo) + frontend :5173
 ```
 
-### Configuration Changes
+`make help` lists every target. The pieces individually:
 
-Edit `.env` and restart the respective service:
-- Backend: `ctrl+c` the backend, then restart
-- Frontend: Usually auto-reloads; if not, restart with `npm run dev`
+```bash
+# Backend against the bundled fixture
+cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
 
-## API Documentation
-
-### Live Swagger UI
-
-When running locally:
-```
-http://localhost:8080/api/docs
+# Frontend (Vite proxies /api -> :8080)
+cd frontend && npm run dev
 ```
 
-The spec is generated from the handler annotations (the `// @Summary`,
-`// @Router`, ... comments on each handler in `backend/internal/api`). It is
-committed under `backend/internal/api/docs/` and embedded in the binary, so the
-UI and raw spec work offline. Regenerate after changing any handler:
+Copy `.env.example` to `.env` to override anything. Interactive API docs:
+`http://localhost:8080/api/docs`.
+
+## Testing and verification
+
+```bash
+make test            # go test ./... + tsc --noEmit
+make lint            # go vet + eslint + no em-dashes (CI also runs golangci-lint)
+./scripts/smoke.sh   # end-to-end: boot on a fixture copy, stage edits via the
+                     # API, submit, assert the CR branch's surgical diffs
+make functional-test # scanner functional + scale suite over sample-repos/
+```
+
+Conventions worth knowing before writing tests:
+
+- Anything that edits files gets a **golden-style test**: exact expected bytes,
+  not just "contains" (see `internal/pathedit/pathedit_test.go`,
+  `internal/changeset/changeset_test.go`).
+- Layout/discovery fixtures for all three conventions live under
+  `backend/internal/layout/testdata/{kpt,kustomize,plain}` and are shared by the
+  discovery tests.
+- The scanner is exercised against realistic repos in `sample-repos/` by the
+  build-tagged functional suite (`go test -tags functional ./internal/discovery/...`)
+  and the Node API suite (`frontend/functional/discovery.test.mjs`); run both
+  with `make functional-test`.
+- `internal/api/platform_test.go` is the role-enforcement matrix (anonymous 401,
+  editor writes, merge approver-gated, admin-only member management) plus the
+  single-user-mode regression.
+
+## The sample fixtures
+
+`sample-repo/` is a plain-folders application: six instances under
+`instances/<name>/` (YAML + an XML vendor file each), shared fleet config in
+`shared/platform.yaml`, a deduplicated `namespace` bound to both files of every
+instance, and validated CPU/memory resource limits. The backend git-initializes
+it on first run; delete `sample-repo/.git` to reset local experiments.
+
+`sample-repos/` is a corpus of realistic repos with no `.configer/` (Helm
+umbrella, Kustomize base+overlays, kpt packages, raw multi-cluster Kubernetes,
+telco RAN) used to test onboarding end to end. See `sample-repos/README.md`.
+
+## Screenshots and the demo GIF
+
+The README and [FEATURES.md](FEATURES.md) images are captured from the live app:
+
+```bash
+# with backend + frontend running (make dev)
+node scripts/capture-media.mjs
+```
+
+It refreshes `docs/screenshots/` and the README's `docs/demo.gif`. The GIF is
+encoded in pure JavaScript (`gifenc` + `pngjs`), so no system video tooling is
+needed. The demo only stages a draft edit, leaving the sample repo untouched.
+
+## API documentation
+
+The OpenAPI spec is generated from the handler annotations (the `// @Summary`,
+`// @Router`, ... comments in `backend/internal/api`), committed under
+`backend/internal/api/docs/`, and embedded in the binary so the UI and raw spec
+work offline. Regenerate after changing any handler:
 
 ```bash
 make docs        # or: cd backend && go generate ./internal/api
 ```
 
 CI runs `make docs-check`, which fails the build if the committed spec is stale,
-so the documentation can never silently drift from the code.
+so the docs can never silently drift from the code.
 
-### Manual API Testing
-
-```bash
-# Health check
-curl http://localhost:8080/api/health
-
-# Get deployment metadata
-curl http://localhost:8080/api/meta
-
-# Get the OpenAPI spec (JSON or YAML)
-curl http://localhost:8080/api/openapi.json | jq
-curl http://localhost:8080/api/openapi.yaml
-```
-
-## Environment Variables
-
-See [CONFIG.md](CONFIG.md) for full documentation.
-
-Common overrides during development:
+## Building and deployment
 
 ```bash
-# Faster Git sync
-CONFIGER_SYNC_SECONDS=5
-
-# Verbose logging
-CONFIGER_LOG_LEVEL=debug
-
-# Disable Swagger (if you're modifying the spec)
-FEATURE_SWAGGER_DOCS=false
+make build                          # backend binary + frontend dist/
+cd deploy && docker compose up --build
 ```
 
-## Testing
+The compose stack runs the backend (repo mounted read-write), the SPA behind
+nginx (:8088), and Postgres as the platform database. Single-node deployments
+can skip Postgres entirely - the platform store defaults to an embedded SQLite
+file under `CONFIGER_DATA`.
 
-### Backend Tests
-
-```bash
-cd backend
-go test ./...
-```
-
-### Frontend Tests
-
-```bash
-cd frontend
-npm run test
-```
-
-### Run All Tests
-
-```bash
-npm test
-```
-
-## Building for Production
-
-### Local Build
-
-```bash
-npm run build
-```
-
-Outputs:
-- Backend binary: `backend/configer`
-- Frontend dist: `frontend/dist/`
-
-### Docker Build
-
-```bash
-npm run docker:up
-```
-
-Services:
-- Frontend: http://localhost:8088
-- Backend: http://localhost:8080
-- Database: postgres://localhost:5432
-
-Stop with:
-```bash
-npm run docker:down
-```
+To enable multi-user mode, create a GitHub OAuth app (callback
+`<public-url>/api/auth/callback`) and set `GITHUB_OAUTH_CLIENT_ID`/`SECRET` plus
+`CONFIGER_ADMINS`; see [CONFIG.md](CONFIG.md).
 
 ## Troubleshooting
 
-### Port already in use
-
-Backend (8080):
-```bash
-lsof -i :8080
-kill -9 <PID>
-```
-
-Frontend (5173):
-```bash
-lsof -i :5173
-kill -9 <PID>
-```
-
-### Frontend can't reach backend
-
-1. Ensure backend is running: `http://localhost:8080/health`
-2. Check `VITE_API_URL` in `.env`: should be `http://localhost:8080`
-3. Check browser console for CORS errors
-
-### Go module issues
-
-```bash
-cd backend
-go mod tidy
-go mod download
-go run ./cmd/configer
-```
-
-### Node version mismatch
-
-Use a Node version manager (nvm, fnm, asdf):
-```bash
-nvm use 18
-```
-
-## Project Structure
-
-```
-configer/
-├── backend/              # Go REST API
-│   ├── cmd/configer/    # Main entry point (with config loading)
-│   ├── internal/        # Core logic (to be organized)
-│   └── go.mod
-├── frontend/             # React + Vite SPA
-│   ├── src/
-│   │   ├── config.ts    # Runtime config loader
-│   │   ├── main.tsx     # Entry point
-│   │   └── ...
-│   └── package.json
-├── sample-repo/          # Fixture managed repository
-├── deploy/               # Docker setup
-│   └── docker-compose.yml
-├── scripts/              # Utility scripts
-│   └── setup.js         # First-time setup
-├── package.json          # Root scripts (unified dev command)
-├── .env.example          # Configuration template
-├── CONFIG.md             # Configuration guide
-└── DEVELOPMENT.md        # This file
-```
-
-## Next Steps
-
-- Read [CONFIG.md](CONFIG.md) for advanced configuration
-- Check [README.md](README.md) for feature overview
-
-## Getting Help
-
-- Check the [CONFIG.md](CONFIG.md) troubleshooting section
-- Review backend logs: `CONFIGER_LOG_LEVEL=debug npm start`
-- Open an issue on GitHub
+- **Backend won't start / "parameters.yaml not found"** - the repo isn't
+  initialized; the UI routes to onboarding, or POST `/api/discover` + `/api/init`
+  by hand.
+- **Grid empty after external commits** - check `GET /api/repo/status`; sync is
+  polling (`CONFIGER_SYNC_SECONDS`), `POST /api/repo/sync` forces it.
+- **403 on merge** - publishing is approver-gated in multi-user mode; assign the
+  role via People & roles (deployment admins only).
+- **Where is CR state?** - workflow state is a JSON file under `.git/configer/`
+  (or the data dir for no-clone repos); it is a rebuildable cache, never the
+  source of truth.

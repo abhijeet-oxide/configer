@@ -1330,6 +1330,62 @@ body {
   .pending-bar { animation: none; }
 }
 
+/* Collapsed form: a slim orange tab pinned to the bottom edge. It reads as a
+   handle for the tucked-away draft - a click expands it back into the full
+   bar - and stays out of the way of the editor / file viewer beneath it. */
+.pending-bar-tab {
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 7px;
+  width: 108px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  background: var(--c-pending);
+  box-shadow: 0 -2px 12px color-mix(in srgb, var(--c-pending) 45%, transparent);
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  transition: height 0.16s ease, width 0.16s ease;
+}
+.pending-bar-tab:hover,
+.pending-bar-tab:focus-visible {
+  height: 22px;
+  width: 132px;
+  outline: none;
+}
+.pending-bar-tab .pending-bar-dot {
+  background: #fff;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #fff 35%, transparent);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.pending-bar-tab-count {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.pending-bar-tab:hover .pending-bar-dot,
+.pending-bar-tab:focus-visible .pending-bar-dot,
+.pending-bar-tab:hover .pending-bar-tab-count,
+.pending-bar-tab:focus-visible .pending-bar-tab-count {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pending-bar-tab { transition: none; }
+  .pending-bar-tab .pending-bar-dot,
+  .pending-bar-tab-count { transition: none; }
+}
+
 /* Success pulse after an edit is staged: a brief green wash that fades, so a
    save reads as "done" in place without a toast. */
 @keyframes cellSaved {

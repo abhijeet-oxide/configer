@@ -12,6 +12,7 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/changeset"
+	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 )
 
 // writeChangeError maps a change-request lifecycle error to the right status.
@@ -50,11 +51,32 @@ func writeChangeError(w http.ResponseWriter, r *http.Request, err error) {
 func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
 	all := s.Store.List() // already newest-first by id
 	limit, afterID := pageParams(r)
-	items := make([]*change.ChangeRequest, 0, limit)
-	page := Page[*change.ChangeRequest]{Items: items}
+	// Reuse one resolver (and its document cache) across every change on the
+	// page, so computing each one's blast radius stays cheap.
+	var rv *resolver.Resolver
+	if p, err := s.load(); err == nil {
+		rv = resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+		page := Page[changeResponse]{Items: make([]changeResponse, 0, limit)}
+		for _, cr := range all {
+			if afterID > 0 && int64(cr.ID) >= afterID {
+				continue // cursor points past everything with id >= the last seen
+			}
+			if len(page.Items) == limit {
+				page.HasMore = true
+				page.NextCursor = encodeCursor(int64(page.Items[len(page.Items)-1].ID))
+				break
+			}
+			page.Items = append(page.Items, changeResponse{ChangeRequest: cr, Impact: computeImpact(p, rv, cr)})
+		}
+		writeJSON(w, http.StatusOK, page)
+		return
+	}
+	// Uninitialized repository (no project to resolve against): return the bare
+	// change requests without a blast radius rather than failing the list.
+	page := Page[*change.ChangeRequest]{Items: make([]*change.ChangeRequest, 0, limit)}
 	for _, cr := range all {
 		if afterID > 0 && int64(cr.ID) >= afterID {
-			continue // cursor points past everything with id >= the last seen
+			continue
 		}
 		if len(page.Items) == limit {
 			page.HasMore = true
@@ -74,8 +96,8 @@ func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
 // @Produce     json
 // @Success     200 {object} map[string]interface{}
 // @Router      /api/changes/draft [get]
-func (s *Server) currentDraft(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"draft": s.Store.CurrentDraft()})
+func (s *Server) currentDraft(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"draft": s.Store.CurrentDraft(draftOwner(r))})
 }
 
 // getChange returns one change request, refreshing hosted PR state.
@@ -100,7 +122,12 @@ func (s *Server) getChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, cr)
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, withImpact(p, cr))
 }
 
 // previewChange returns the exact per-file before/after content a change
@@ -380,8 +407,9 @@ func (s *Server) setChangeReviewers(w http.ResponseWriter, r *http.Request) {
 // rejectChange rejects or discards a change request.
 //
 // @Summary     Reject a change request
-// @Description Reject/close the change request (a draft is discarded, a submitted one is closed).
+// @Description Reject/close the change request (a draft is discarded, a submitted one is closed). An optional reason is recorded as a review comment.
 // @Tags        Editing & change requests
+// @Accept      json
 // @Produce     json
 // @Param       id path int true "Change request id"
 // @Success     200 {object} object
@@ -396,9 +424,14 @@ func (s *Server) rejectChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
 		return
 	}
+	var req struct {
+		Reason string `json:"reason"`
+		Author string `json:"author"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	cr, err := s.Changes.Reject(r.Context(), id)
+	cr, err := s.Changes.Reject(r.Context(), id, author(r, req.Author), req.Reason)
 	if err != nil {
 		writeChangeError(w, r, err)
 		return

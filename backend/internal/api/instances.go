@@ -96,7 +96,7 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A pending add for the same name is also a conflict.
-	if d := s.Store.CurrentDraft(); d != nil {
+	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
 		for _, it := range d.Items {
 			if it.Act() == change.ActionAddInstance && it.Instance == name {
 				writeError(w, r, http.StatusConflict, CodeConflict, "instance "+name+" is already pending in your draft")
@@ -128,7 +128,7 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	// New carries the metadata; Old carries the clone source name ("" = empty).
-	s.stageStructural(w, author(r, req.Author), change.Item{
+	s.stageStructural(w, draftOwner(r), change.Item{
 		Instance: name,
 		Action:   change.ActionAddInstance,
 		Old:      req.CloneFrom,
@@ -136,15 +136,17 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// stageStructural puts a topology item into the draft change request.
-func (s *Server) stageStructural(w http.ResponseWriter, author string, it change.Item) {
+// stageStructural puts a topology item into the caller's draft change request.
+// owner is the draft owner (see draftOwner), so a structural edit lands in the
+// same author-scoped draft as value edits.
+func (s *Server) stageStructural(w http.ResponseWriter, owner string, it change.Item) {
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	if author == "" {
-		author = "anonymous"
+	if owner == "" {
+		owner = "anonymous"
 	}
 	it.UpdatedAt = time.Now().UTC()
-	draft, err := s.Store.Draft(author, s.branch())
+	draft, err := s.Store.Draft(owner, s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -156,7 +158,7 @@ func (s *Server) stageStructural(w http.ResponseWriter, author string, it change
 		writeErr(w, err)
 		return
 	}
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(owner)
 	pending := 0
 	if d != nil {
 		pending = len(d.Items)
@@ -200,7 +202,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	defer s.writeMu.Unlock()
 
 	// Folding into a pending add keeps the new instance one reviewable item.
-	if d := s.Store.CurrentDraft(); d != nil {
+	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
 		for _, it := range d.Items {
 			if it.Act() == change.ActionAddInstance && it.Instance == name {
 				meta := decodeInstance(it.New)
@@ -221,7 +223,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance "+name+" not found")
 		return
 	}
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -233,7 +235,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(draftOwner(r))
 	pending := 0
 	if d != nil {
 		pending = len(d.Items)
@@ -279,7 +281,7 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance "+name+" not found")
 		return
 	}
-	s.stageStructural(w, author(r, req.Author), change.Item{
+	s.stageStructural(w, draftOwner(r), change.Item{
 		Instance: name,
 		Action:   change.ActionRemoveInstance,
 	})
@@ -336,7 +338,7 @@ func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -366,7 +368,7 @@ func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(draftOwner(r))
 	pending, changeID := 0, draft.ID
 	if d != nil {
 		pending, changeID = len(d.Items), d.ID

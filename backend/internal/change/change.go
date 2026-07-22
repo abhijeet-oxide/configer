@@ -91,6 +91,15 @@ type Comment struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// Approval is one recorded sign-off on a change request. Separation-of-duties
+// and minimum-approval policy read from this list. The approver login is
+// authoritative (unlike a free-text comment it cannot be spoofed by the request
+// body): the handler records the session identity.
+type Approval struct {
+	Approver  string    `json:"approver"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // ChangeRequest is a reviewable unit of configuration change. While in draft
 // it accumulates items; on submit it becomes a git branch + commit (+ PR when
 // a provider is configured) and advances through the state machine.
@@ -116,9 +125,32 @@ type ChangeRequest struct {
 	// only: approval rights stay role-based (approver merges).
 	Reviewers []string `json:"reviewers,omitempty"`
 	// Comments is the in-app review discussion, oldest first.
-	Comments  []Comment `json:"comments,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Comments []Comment `json:"comments,omitempty"`
+	// Approvals are the recorded sign-offs, oldest first. Distinct by approver;
+	// the review gate (separation of duties, minimum approvals) reads from here.
+	Approvals []Approval `json:"approvals,omitempty"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt time.Time  `json:"updatedAt"`
+}
+
+// HasApprovalFrom reports whether login has already signed off.
+func (cr *ChangeRequest) HasApprovalFrom(login string) bool {
+	for _, a := range cr.Approvals {
+		if strings.EqualFold(a.Approver, login) {
+			return true
+		}
+	}
+	return false
+}
+
+// AddApproval records a distinct sign-off and returns whether it was newly
+// added (a repeat approval by the same login is a no-op).
+func (cr *ChangeRequest) AddApproval(login string) bool {
+	if login == "" || cr.HasApprovalFrom(login) {
+		return false
+	}
+	cr.Approvals = append(cr.Approvals, Approval{Approver: login, CreatedAt: time.Now().UTC()})
+	return true
 }
 
 // AddComment appends a review note and returns it. IDs are per-CR and

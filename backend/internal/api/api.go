@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
@@ -61,6 +62,36 @@ func getenv(k, def string) string {
 		return v
 	}
 	return def
+}
+
+// envBool reads a boolean environment variable, falling back to def when unset
+// or unparseable. Recognizes 1/true/yes/on (case-insensitive) as true.
+func envBool(k string, def bool) bool {
+	v := strings.TrimSpace(os.Getenv(k))
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(v) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	}
+	return def
+}
+
+// changePolicy builds the review gate from the environment. It defaults to the
+// permissive single-user tool, and tightens automatically once login is
+// configured (GITHUB_OAUTH_CLIENT_ID present): on a shared deployment an author
+// cannot self-approve and nothing publishes without a recorded approval. Each
+// gate is individually overridable.
+func changePolicy() changeset.Policy {
+	multiUser := os.Getenv("GITHUB_OAUTH_CLIENT_ID") != ""
+	return changeset.Policy{
+		RequireApproval:         envBool("CONFIGER_REQUIRE_APPROVAL", multiUser),
+		RequireSeparateApprover: envBool("CONFIGER_REQUIRE_SEPARATE_APPROVER", multiUser),
+		MinApprovals:            getenvInt("CONFIGER_MIN_APPROVALS", 1),
+	}
 }
 
 // New builds a Server: plugins registered, repo opened (or bootstrapped into
@@ -112,7 +143,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *cr
 		Registry:    reg,
 		Backend:     backend,
 		Store:       store,
-		Changes:     &changeset.Service{Backend: backend, Store: store, Bot: bot()},
+		Changes:     &changeset.Service{Backend: backend, Store: store, Bot: bot(), Policy: changePolicy()},
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
 	}
@@ -192,15 +223,16 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) load() (*project.Project, error) { return project.Load(s.RepoPath) }
 
-// loadWithDraft loads the project alongside the current draft; grid builders
+// loadWithDraft loads the project alongside the caller's draft; grid builders
 // preview the draft's pending items on top via grid.ApplyDraft, so the UI
-// shows exactly what submitting would write.
-func (s *Server) loadWithDraft() (*project.Project, *change.ChangeRequest, error) {
+// shows exactly what submitting would write. The draft is author-scoped, so
+// each editor previews their own pending changes, never a colleague's.
+func (s *Server) loadWithDraft(author string) (*project.Project, *change.ChangeRequest, error) {
 	p, err := s.load()
 	if err != nil {
 		return nil, nil, err
 	}
-	return p, s.Store.CurrentDraft(), nil
+	return p, s.Store.CurrentDraft(author), nil
 }
 
 // projectAtRef loads the project at a git ref for read-only compare/render.

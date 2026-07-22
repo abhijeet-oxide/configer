@@ -75,7 +75,7 @@ func TestSourcesMapIncomingAccept(t *testing.T) {
 		t.Fatalf("want 1 staged, got %d", acc.Staged)
 	}
 
-	draft := s.Store.CurrentDraft()
+	draft := s.Store.CurrentDraft(singleUserAuthor)
 	if draft == nil || len(draft.Items) != 1 {
 		t.Fatalf("draft item was not staged: %+v", draft)
 	}
@@ -116,7 +116,7 @@ func TestSourcesSecretStagesReference(t *testing.T) {
 	doJSON(t, h, http.MethodPost, "/api/sources/incoming/accept",
 		map[string]any{"changes": []map[string]string{{"paramId": "p1", "instance": "staging"}}}, &struct{}{})
 
-	draft := s.Store.CurrentDraft()
+	draft := s.Store.CurrentDraft(singleUserAuthor)
 	if draft == nil || len(draft.Items) != 1 || draft.Items[0].New != ref {
 		t.Fatalf("reference was not staged as-is: %+v", draft)
 	}

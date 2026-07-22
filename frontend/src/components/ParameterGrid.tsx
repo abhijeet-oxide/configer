@@ -1774,9 +1774,33 @@ function FindReplaceModal({
 
   const apply = useMutation({
     mutationFn: async () => {
-      // Sequential so validation errors surface per cell without racing writes.
+      // Group matches by parameter so each parameter fans out in ONE bulk
+      // request (a single draft lock, per-cell validation) instead of a
+      // separate write per cell. A 300-match replace becomes a handful of
+      // requests, not 300 round trips, and any per-cell failure is reported
+      // with the instance it happened on rather than an opaque single error.
+      const byParamId = new Map<string, FRMatch[]>();
       for (const m of matches) {
-        await api.setValue({ instance: m.instance, paramId: m.paramId, value: coerceToType(replace, m.type) });
+        const group = byParamId.get(m.paramId) ?? [];
+        group.push(m);
+        byParamId.set(m.paramId, group);
+      }
+      const failures: string[] = [];
+      for (const group of byParamId.values()) {
+        const value = coerceToType(replace, group[0].type); // one param, one type
+        const res = await api.bulkSetValue({
+          paramId: group[0].paramId,
+          edits: group.map((m) => ({ instance: m.instance, value })),
+        });
+        for (const r of res.results) {
+          if (!r.ok) failures.push(`${group[0].name} · ${r.instance}: ${r.error ?? "invalid"}`);
+        }
+      }
+      if (failures.length) {
+        const shown = failures.slice(0, 3).join("; ");
+        throw new Error(
+          `${failures.length} value${failures.length === 1 ? "" : "s"} could not be replaced - ${shown}${failures.length > 3 ? " ..." : ""}`,
+        );
       }
     },
     onSuccess: () => {
@@ -1784,7 +1808,7 @@ function FindReplaceModal({
       qc.invalidateQueries();
       onClose();
     },
-    onError: (e: Error) => message.error(`Replace failed: ${e.message}`, 6),
+    onError: (e: Error) => message.error(`Replace failed: ${e.message}`, 8),
   });
 
   const byParam = matches.reduce((n, m) => n.add(m.paramId), new Set<string>()).size;

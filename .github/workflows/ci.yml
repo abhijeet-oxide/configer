@@ -23,9 +23,13 @@ jobs:
         working-directory: .
         run: make docs-check
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
+        # golangci-lint v2 (the .golangci.yml is v2 schema). The binary must be
+        # built with Go >= the module's target (go 1.25.0), so pin a v2.5.x
+        # release built with go1.25; the older v1 the v6 action installed was
+        # built with go1.24 and refused to run against a go1.25 module.
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.5.0
           working-directory: backend
       - name: Test
         run: go test ./...

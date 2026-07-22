@@ -135,7 +135,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -161,7 +161,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(draftOwner(r))
 	pending := 0
 	changeID := draft.ID
 	if d != nil {
@@ -271,7 +271,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -312,7 +312,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(draftOwner(r))
 	pending, changeID := 0, draft.ID
 	if d != nil {
 		pending, changeID = len(d.Items), d.ID
@@ -340,7 +340,7 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	instance := r.URL.Query().Get("instance")
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft := s.Store.CurrentDraft()
+	draft := s.Store.CurrentDraft(draftOwner(r))
 	if draft == nil {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "no draft")
 		return

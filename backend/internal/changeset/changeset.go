@@ -21,6 +21,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/layout"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/writeback"
@@ -37,6 +38,33 @@ type Service struct {
 	// the bot is credited on the commit via a Co-authored-by trailer instead
 	// of authoring it.
 	Bot repobackend.Author
+	// Policy is the review gate. Its zero value is the single-user tool: any
+	// approver may approve and an under-review change may be published directly.
+	Policy Policy
+}
+
+// Policy governs the review gate. The zero value is deliberately permissive so
+// the single-user tool can submit-and-publish in one step; a shared deployment
+// tightens it (see the api layer, which turns these on when login is enabled).
+type Policy struct {
+	// RequireApproval makes Merge refuse an under-review change: it must carry a
+	// recorded approval (be in the Approved state) before it can be published.
+	RequireApproval bool
+	// RequireSeparateApprover enforces separation of duties: the approver must
+	// not be the change's own author. A single identity cannot self-approve.
+	RequireSeparateApprover bool
+	// MinApprovals is how many distinct approvers must sign off before a change
+	// becomes Approved. Zero or one means a single approval suffices.
+	MinApprovals int
+}
+
+// approvalsNeeded is the number of distinct sign-offs required to reach the
+// Approved state (at least one).
+func (p Policy) approvalsNeeded() int {
+	if p.MinApprovals < 1 {
+		return 1
+	}
+	return p.MinApprovals
 }
 
 // branchName turns a change request into a readable feature branch. The user
@@ -265,6 +293,9 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 		for _, b := range bindings {
 			var err error
 			if it.Act() == change.ActionSet {
+				if err = ensureNotStale(root, b, param.Type, it); err != nil {
+					return err
+				}
 				err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
 			} else {
 				err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
@@ -290,6 +321,9 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 		case change.ActionReset, change.ActionExclude:
 			err = writeback.RemoveValue(root, b.File, b.Format, b.Path, param.Type)
 		default:
+			if err = ensureNotStale(root, b, param.Type, it); err != nil {
+				return err
+			}
 			err = writeback.SetValue(root, b.File, b.Format, b.Path, param.Type, it.New)
 		}
 		if err != nil {
@@ -297,6 +331,40 @@ func applyItem(root string, proj *project.Project, it change.Item) error {
 		}
 	}
 	return nil
+}
+
+// ensureNotStale guards against silently clobbering an external change: if the
+// value living at the binding no longer matches what the user saw when they
+// staged the edit (it.Old), someone changed it on Git in between, and applying
+// our set would overwrite their change with a clean-looking diff. We refuse with
+// a conflict so the drift surfaces for review instead of vanishing. A legacy
+// item with no captured baseline, or a target that does not yet exist, is not a
+// clobber and passes through.
+func ensureNotStale(root string, b model.Binding, ptype model.ParamType, it change.Item) error {
+	if it.Old == nil {
+		return nil
+	}
+	data, err := os.ReadFile(filepath.Join(root, b.File))
+	if err != nil {
+		return nil // absent/unreadable: SetValue creates it, nothing to overwrite
+	}
+	live, ok, err := pathedit.Get(data, b.Format, b.Path)
+	if err != nil || !ok {
+		return nil // not present to clobber
+	}
+	if !sameScalar(live, it.Old) {
+		return conflictf(
+			"cannot apply %q: %s now holds %v, but this edit was staged against %v - someone changed it on Git in the meantime; reload and re-stage",
+			it.ParamID, b.File, live, it.Old)
+	}
+	return nil
+}
+
+// sameScalar compares two scalar values tolerantly across the type skew of
+// YAML/JSON decoding (the integer 8080 vs the string "8080"): equal rendered
+// forms count as equal, so a faithful round-trip never reads as drift.
+func sameScalar(a, b any) bool {
+	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
 // applyStructural performs an instance-topology item in the worktree: a new
@@ -402,6 +470,11 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 	if cr.State != change.StateUnderReview && cr.State != change.StateApproved {
 		return nil, conflictf("change request %d is %s, not mergeable", id, cr.State)
 	}
+	// Approval-before-publish: a shared deployment refuses to publish a change
+	// that no separate approver has signed off on.
+	if s.Policy.RequireApproval && cr.State != change.StateApproved {
+		return nil, conflictf("change request %d must be approved before it can be published", id)
+	}
 
 	msg := fmt.Sprintf("Publish change request #%d: %s", cr.ID, cr.Title)
 	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
@@ -423,30 +496,50 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 }
 
 // Approve records an approver's sign-off on an under-review change request,
-// advancing it to Approved without publishing. Publishing (Merge) then needs
-// only one more click, and the two-step approve-then-publish separation gives a
-// clear "approved but not yet live" state. The approver login is recorded as a
-// review comment for the audit trail.
+// advancing it to Approved (once enough distinct approvers have signed off)
+// without publishing. Publishing (Merge) then needs only one more click, and
+// the two-step approve-then-publish separation gives a clear "approved but not
+// yet live" state. The approver login is recorded as a structured approval and
+// a review comment for the audit trail.
+//
+// Two governance gates apply when policy enables them: separation of duties
+// (an author cannot approve their own change) and a minimum number of distinct
+// approvals before the change is considered approved.
 func (s *Service) Approve(ctx context.Context, id int, approver string) (*change.ChangeRequest, error) {
 	cr, err := s.Store.Get(id)
 	if err != nil {
 		return nil, err
 	}
+	// A change stays under review until enough approvals accumulate, so multiple
+	// approvers sign off here; once it reaches Approved the gate is closed.
 	if cr.State != change.StateUnderReview {
 		return nil, conflictf("change request %d is %s, not awaiting review", id, cr.State)
 	}
+	if s.Policy.RequireSeparateApprover && approver != "" && strings.EqualFold(approver, cr.Author) {
+		return nil, conflictf("you cannot approve your own change request; a separate approver must sign off")
+	}
+	if approver != "" && cr.HasApprovalFrom(approver) {
+		return nil, conflictf("you have already approved change request %d", id)
+	}
+	needed := s.Policy.approvalsNeeded()
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		if approver != "" {
+			c.AddApproval(approver)
 			c.AddComment(approver, "Approved this change.")
 		}
-		c.State = change.StateApproved
+		// Advance to Approved once enough distinct approvers have signed off. In
+		// single-user mode (no identity) a single approve suffices.
+		if approver == "" || len(c.Approvals) >= needed {
+			c.State = change.StateApproved
+		}
 		return nil
 	})
 }
 
 // Reject closes an under-review CR (closing the PR when one exists) or
-// discards a draft entirely.
-func (s *Service) Reject(ctx context.Context, id int) (*change.ChangeRequest, error) {
+// discards a draft entirely. The rejecter and their reason (when given) are
+// recorded as a review comment so "why was this turned down" survives.
+func (s *Service) Reject(ctx context.Context, id int, rejecter, reason string) (*change.ChangeRequest, error) {
 	cr, err := s.Store.Get(id)
 	if err != nil {
 		return nil, err
@@ -468,6 +561,13 @@ func (s *Service) Reject(ctx context.Context, id int) (*change.ChangeRequest, er
 	}
 	s.Backend.DeleteBranch(ctx, cr.Branch)
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
+		if rejecter != "" {
+			body := "Rejected this change."
+			if reason != "" {
+				body = "Rejected this change: " + reason
+			}
+			c.AddComment(rejecter, body)
+		}
 		c.State = change.StateRejected
 		return nil
 	})

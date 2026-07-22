@@ -43,7 +43,7 @@ func (s *Server) revertChange(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, ""), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return

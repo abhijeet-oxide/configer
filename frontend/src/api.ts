@@ -249,6 +249,26 @@ export interface ChangeComment {
   createdAt: string;
 }
 
+/** one recorded sign-off on a change request */
+export interface ChangeApproval {
+  approver: string;
+  createdAt: string;
+}
+
+/**
+ * A change request's blast radius: how many instances it effectively changes
+ * (including those a shared/global edit fans out to) and across which
+ * environments, so the reviewer sees true reach, not just the rows edited.
+ */
+export interface ChangeImpact {
+  instances: string[];
+  instanceCount: number;
+  environments: string[];
+  touchesProduction: boolean;
+  /** the change includes a shared (base-layer) edit whose reach is the fleet */
+  global: boolean;
+}
+
 export interface ChangeRequest {
   id: number;
   title: string;
@@ -270,6 +290,10 @@ export interface ChangeRequest {
   reviewers?: string[];
   /** in-app review discussion, oldest first */
   comments?: ChangeComment[];
+  /** recorded sign-offs (separation of duties + minimum-approval policy) */
+  approvals?: ChangeApproval[];
+  /** blast radius, present on change detail and list responses */
+  impact?: ChangeImpact;
   createdAt: string;
   updatedAt: string;
 }

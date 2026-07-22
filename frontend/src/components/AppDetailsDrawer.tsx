@@ -242,7 +242,7 @@ export default function AppDetailsDrawer({
                       </span>
                     ) : (
                       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                        all valid
+                        schema valid
                       </Typography.Text>
                     )}
                   </div>

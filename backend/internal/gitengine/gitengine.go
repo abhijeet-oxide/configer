@@ -256,10 +256,15 @@ func (r *Repo) Push(branch string) error {
 }
 
 // MergeBranch merges branch into the primary working tree's current branch
-// with a merge commit (mirroring a PR merge).
+// with a merge commit (mirroring a PR merge). On any failure (a conflict, most
+// commonly) it aborts the merge so the primary tree is never left in a
+// half-merged MERGING state that readers of the grid would then see.
 func (r *Repo) MergeBranch(branch, message string) error {
-	_, err := r.git(r.Dir, "merge", "--no-ff", "-m", message, branch)
-	return err
+	if _, err := r.git(r.Dir, "merge", "--no-ff", "-m", message, branch); err != nil {
+		_, _ = r.git(r.Dir, "merge", "--abort") // best effort: restore a clean tree
+		return err
+	}
+	return nil
 }
 
 // Pull fast-forwards the primary tree from origin (used after a provider-side

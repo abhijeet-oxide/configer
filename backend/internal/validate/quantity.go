@@ -21,12 +21,9 @@ var (
 	cpuRe = regexp.MustCompile(`^\d+(\.\d+)?m?$`)
 	// Memory / byte quantity: a number with an optional binary (Ki..Ei) or
 	// decimal (k/K..E, and milli "m") SI suffix, per resource.Quantity.
-	memoryRe = regexp.MustCompile(`^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$`)
-	// A memory quantity that carries a unit suffix - used for DETECTION so a
-	// plain integer count is not mistaken for a byte size.
-	memoryUnitRe = regexp.MustCompile(`^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE])$`)
-	durationRe   = regexp.MustCompile(`^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$`)
-	percentRe    = regexp.MustCompile(`^\d+(\.\d+)?%$`)
+	memoryRe   = regexp.MustCompile(`^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$`)
+	durationRe = regexp.MustCompile(`^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$`)
+	percentRe  = regexp.MustCompile(`^\d+(\.\d+)?%$`)
 )
 
 // binary/decimal SI multipliers for byte quantities.

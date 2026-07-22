@@ -17,11 +17,13 @@ import {
   BranchesOutlined,
   SendOutlined,
   UndoOutlined,
+  WarningFilled,
+  ClusterOutlined,
 } from "../icons";
 import UserAvatar from "./UserAvatar";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type ChangeRequest, type ChangeState } from "../api";
+import { api, type ChangeImpact, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
@@ -167,6 +169,45 @@ function ReviewersPanel({ cr, repoId }: { cr: ChangeRequest; repoId: string | nu
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ImpactBanner leads the review with a change's blast radius: how many
+// instances it effectively changes (including a shared edit's fan-out) and
+// across which environments, so an approver never mistakes a fleet-wide change
+// for a single innocent row. A change touching production is weighted with a
+// warning treatment (amber, matching "pending" everywhere else in the product).
+function ImpactBanner({ impact }: { impact?: ChangeImpact }) {
+  if (!impact || impact.instanceCount === 0) return null;
+  const prod = impact.touchesProduction;
+  const envs = impact.environments.join(", ");
+  const noun = impact.instanceCount === 1 ? "instance" : "instances";
+  return (
+    <div
+      className="mt-2 flex flex-wrap items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px]"
+      style={{
+        background: prod ? "var(--c-pending-bg)" : "var(--surface-2)",
+        border: `1px solid ${prod ? "var(--c-pending-bd)" : "var(--border)"}`,
+      }}
+    >
+      {prod ? (
+        <WarningFilled style={{ color: "var(--c-pending)", fontSize: 14, flexShrink: 0 }} />
+      ) : (
+        <ClusterOutlined style={{ color: "var(--text-3)", fontSize: 14, flexShrink: 0 }} />
+      )}
+      <span>
+        <span style={{ fontWeight: 600, color: "var(--text)" }}>
+          Affects {impact.instanceCount} {noun}
+        </span>
+        {envs && <span style={{ color: "var(--text-2)" }}> across {envs}</span>}
+        {impact.global && (
+          <span style={{ color: "var(--text-2)" }}> · includes a fleet-wide shared edit</span>
+        )}
+        {prod && (
+          <span style={{ fontWeight: 600, color: "var(--text)" }}> · touches production</span>
+        )}
+      </span>
     </div>
   );
 }
@@ -366,6 +407,9 @@ export default function ApprovalsView() {
                   )}
                 </div>
               </div>
+
+              {/* Blast radius, up front: what this change actually reaches. */}
+              <ImpactBanner impact={selected.impact} />
 
               <div className="mt-2 flex flex-wrap gap-5">
                 {/* Changes / Details / Activity */}

@@ -284,6 +284,43 @@ func TestXMLSetAndGet(t *testing.T) {
 	}
 }
 
+// TestXMLScalarEditIsSurgical pins the guarantee that setting one value edits
+// only that value's bytes: a multi-line attribute layout, namespace prefixes,
+// comments, and blank lines must all survive verbatim. A whole-tree reserialize
+// (etree's Indent) would collapse the multi-line tag and fail this.
+func TestXMLScalarEditIsSurgical(t *testing.T) {
+	base := "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+		"<config xmlns:nc=\"urn:base\"\n" +
+		"        xmlns:rt=\"urn:routing\"\n" +
+		"        namespace=\"telco-use1\">\n" +
+		"  <!-- managed by configer -->\n" +
+		"\n" +
+		"  <rt:routing>\n" +
+		"    <rt:name>mgmt</rt:name>\n" +
+		"  </rt:routing>\n" +
+		"</config>\n"
+
+	// Attribute edit: only the attribute value changes.
+	got, err := Set([]byte(base), "xml", "/config/@namespace", model.TypeString, "telco-east")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Replace(base, `namespace="telco-use1"`, `namespace="telco-east"`, 1)
+	if got != want {
+		t.Errorf("attribute edit was not surgical.\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+
+	// Element text edit: only the leaf text changes; multi-line tag untouched.
+	got, err = Set([]byte(base), "xml", "/config/rt:routing/rt:name", model.TypeString, "management")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = strings.Replace(base, "<rt:name>mgmt</rt:name>", "<rt:name>management</rt:name>", 1)
+	if got != want {
+		t.Errorf("element text edit was not surgical.\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+}
+
 func TestXMLListRoundTrip(t *testing.T) {
 	base := "<network>\n  <syslog>\n    <collector>10.0.9.1</collector>\n    <collector>10.0.9.2</collector>\n  </syslog>\n</network>\n"
 	v, ok, _ := Get([]byte(base), "xml", "/network/syslog/collector")

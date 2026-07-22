@@ -1,0 +1,5 @@
+apiVersion: v2
+name: worker
+description: Shop async worker
+version: 0.9.0
+type: application

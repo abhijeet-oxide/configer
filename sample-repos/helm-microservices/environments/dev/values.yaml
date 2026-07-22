@@ -1,0 +1,16 @@
+# dev: minimal overrides. Note this file OMITS most keys - the grid column for
+# dev is therefore sparse, and most cells resolve from the chart default, not
+# from any file in this folder.
+global:
+  domain: dev.shop.example.com
+
+api:
+  replicaCount: 1
+  env:
+    - name: LOG_LEVEL
+      value: debug
+    - name: FEATURE_CHECKOUT_V2
+      value: "true"
+
+db:
+  enabled: false   # dev uses an external database; the whole subchart is off

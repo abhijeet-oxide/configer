@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/xml"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -58,6 +59,18 @@ func getXMLFromDoc(d *etree.Document, path string) (any, bool, error) {
 }
 
 func editXML(doc []byte, path string, ptype model.ParamType, value any, remove bool) (string, error) {
+	// Surgical fast path: setting a single scalar value (an attribute or a leaf
+	// element's text) is spliced straight into the original bytes, so every
+	// unrelated line - comments, blank lines, multi-line attribute layouts,
+	// namespace declarations - survives untouched. Only structural edits (lists,
+	// removals, creating a node that does not exist) fall through to etree, which
+	// necessarily re-serializes and thus reflows the document.
+	if ptype != model.TypeList && !remove && len(doc) > 0 {
+		if out, ok := editXMLInPlace(doc, path, scalarString(value)); ok {
+			return out, nil
+		}
+	}
+
 	d := etree.NewDocument()
 	if len(doc) > 0 {
 		if err := d.ReadFromBytes(doc); err != nil {
@@ -95,8 +108,209 @@ func editXML(doc []byte, path string, ptype model.ParamType, value any, remove b
 		}
 	}
 
-	d.Indent(2)
+	// A structural edit re-serializes the whole tree; match the source's own
+	// indentation so the reflow at least stays in the file's own style.
+	if n, tabs, ok := detectXMLIndent(doc); ok && tabs {
+		d.IndentTabs()
+	} else if ok {
+		d.Indent(n)
+	} else {
+		d.Indent(2)
+	}
 	return d.WriteToString()
+}
+
+// editXMLInPlace sets one scalar (attribute value or leaf element text) by
+// splicing into the original bytes and returns ok=false when it cannot do so
+// surgically (the node does not exist yet, the element is not a simple leaf, or
+// the value could not be located) so the caller can fall back to etree.
+func editXMLInPlace(doc []byte, path, newVal string) (string, bool) {
+	attr, elemPath, isAttr := splitAttrPath(path)
+	target := path
+	if isAttr {
+		target = elemPath
+	}
+	raw := xmlSegments(target)
+	if len(raw) == 0 {
+		return "", false
+	}
+	type seg struct {
+		tag string
+		idx int
+	}
+	segs := make([]seg, len(raw))
+	for i, s := range raw {
+		tag, idx := localTag(s)
+		segs[i] = seg{tag: tag, idx: idx}
+	}
+
+	dec := xml.NewDecoder(bytes.NewReader(doc))
+	dec.Strict = false
+	var stack []string
+	counts := []map[string]int{{}}
+	matchDepth := 0
+	for {
+		startOff := dec.InputOffset()
+		tok, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		switch t := tok.(type) {
+		case xml.StartElement:
+			name := t.Name.Local
+			parent := counts[len(counts)-1]
+			parent[name]++
+			occ := parent[name]
+			depth := len(stack)
+			matched := depth == matchDepth && matchDepth < len(segs) &&
+				segs[matchDepth].tag == name &&
+				(segs[matchDepth].idx == 0 || segs[matchDepth].idx == occ)
+			if matched {
+				matchDepth++
+				if matchDepth == len(segs) {
+					endTag := dec.InputOffset() // just past '>' of this start tag
+					if isAttr {
+						return spliceAttrValue(doc, startOff, endTag, t, attr, newVal)
+					}
+					return spliceElementText(doc, dec, endTag, newVal)
+				}
+			}
+			stack = append(stack, name)
+			counts = append(counts, map[string]int{})
+		case xml.EndElement:
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+				counts = counts[:len(counts)-1]
+				if matchDepth > len(stack) {
+					matchDepth = len(stack)
+				}
+			}
+		}
+	}
+}
+
+// spliceAttrValue rewrites just the quoted value of `attr` inside the start-tag
+// byte span [tagStart,tagEnd), leaving the rest of the tag (and document) intact.
+func spliceAttrValue(doc []byte, tagStart, tagEnd int64, el xml.StartElement, attr, newVal string) (string, bool) {
+	var oldVal string
+	found := false
+	for _, a := range el.Attr {
+		if a.Name.Local == attr {
+			oldVal, found = a.Value, true
+			break
+		}
+	}
+	if !found {
+		return "", false // attribute absent: let etree create it
+	}
+	tag := doc[tagStart:tagEnd]
+	re := regexp.MustCompile(`(?:^|\s)(?:[A-Za-z_][\w.\-]*:)?` + regexp.QuoteMeta(attr) + `\s*=\s*`)
+	for _, loc := range re.FindAllIndex(tag, -1) {
+		p := loc[1]
+		if p >= len(tag) {
+			continue
+		}
+		q := tag[p]
+		if q != '"' && q != '\'' {
+			continue
+		}
+		rel := bytes.IndexByte(tag[p+1:], q)
+		if rel < 0 {
+			continue
+		}
+		vs, ve := p+1, p+1+rel
+		if xmlUnescape(string(tag[vs:ve])) != oldVal {
+			continue // a different attribute of the same local name; keep looking
+		}
+		var b bytes.Buffer
+		b.Write(doc[:tagStart])
+		b.Write(tag[:vs])
+		b.WriteString(xmlEscapeAttr(newVal, q))
+		b.Write(tag[ve:])
+		b.Write(doc[tagEnd:])
+		return b.String(), true
+	}
+	return "", false
+}
+
+// spliceElementText rewrites the text of a leaf element that starts at textStart
+// (the byte just past its start tag). It handles both a filled leaf
+// (<x>old</x>) and an empty one (<x></x>); anything else (children, mixed
+// content, self-closing) returns ok=false.
+func spliceElementText(doc []byte, dec *xml.Decoder, textStart int64, newVal string) (string, bool) {
+	tok, err := dec.Token()
+	if err != nil {
+		return "", false
+	}
+	switch tok.(type) {
+	case xml.EndElement:
+		// Empty element: insert the escaped text between the tags.
+		var b bytes.Buffer
+		b.Write(doc[:textStart])
+		b.WriteString(xmlEscapeText(newVal))
+		b.Write(doc[textStart:])
+		return b.String(), true
+	case xml.CharData:
+		textEnd := dec.InputOffset()
+		next, err := dec.Token()
+		if err != nil {
+			return "", false
+		}
+		if _, ok := next.(xml.EndElement); !ok {
+			return "", false // mixed or nested content: not a simple leaf
+		}
+		body := doc[textStart:textEnd]
+		lead := len(body) - len(bytes.TrimLeft(body, " \t\r\n"))
+		trail := len(body) - len(bytes.TrimRight(body, " \t\r\n"))
+		if lead+trail >= len(body) { // whitespace-only: treat as empty
+			lead, trail = len(body), 0
+		}
+		var b bytes.Buffer
+		b.Write(doc[:textStart])
+		b.Write(body[:lead])
+		b.WriteString(xmlEscapeText(newVal))
+		b.Write(body[len(body)-trail:])
+		b.Write(doc[textEnd:])
+		return b.String(), true
+	default:
+		return "", false
+	}
+}
+
+// detectXMLIndent sniffs the document's indentation unit from its first indented
+// line, so a fall-through re-serialize keeps the file's own style.
+func detectXMLIndent(doc []byte) (n int, tabs bool, ok bool) {
+	for _, line := range bytes.Split(doc, []byte{'\n'}) {
+		if len(line) == 0 || (line[0] != ' ' && line[0] != '\t') {
+			continue
+		}
+		if line[0] == '\t' {
+			return 1, true, true
+		}
+		w := len(line) - len(bytes.TrimLeft(line, " "))
+		if w > 0 {
+			return w, false, true
+		}
+	}
+	return 0, false, false
+}
+
+var xmlEntityUnescape = strings.NewReplacer(
+	"&lt;", "<", "&gt;", ">", "&quot;", `"`, "&apos;", "'", "&amp;", "&",
+)
+
+func xmlUnescape(s string) string { return xmlEntityUnescape.Replace(s) }
+
+func xmlEscapeText(s string) string {
+	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+}
+
+func xmlEscapeAttr(s string, quote byte) string {
+	s = strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(s)
+	if quote == '\'' {
+		return strings.ReplaceAll(s, "'", "&apos;")
+	}
+	return strings.ReplaceAll(s, `"`, "&quot;")
 }
 
 // applyXMLList replaces every <tag> child at the path's parent with one

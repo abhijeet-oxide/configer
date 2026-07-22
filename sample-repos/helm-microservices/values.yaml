@@ -1,0 +1,63 @@
+# Umbrella defaults. Real-world messiness on purpose:
+#  - a `global` block shared across every subchart
+#  - subchart values nested under the alias key (`db`, `api`, `worker`)
+#  - YAML anchors/aliases reused across environments
+#  - list-of-maps (env vars) that have no single scalar "cell"
+#  - values that only take effect through template conditionals
+
+global:
+  domain: shop.example.com
+  imageRegistry: registry.example.com
+  # A logical "namespace" that fans out into every subchart at render time.
+  namespace: shop
+  tlsIssuer: letsencrypt-prod
+
+# Reusable anchor: the standard probe block, aliased into each service below.
+commonProbes: &probes
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 10
+  readiness:
+    path: /ready
+    initialDelaySeconds: 5
+
+api:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: shop/api
+    tag: "3.2.1"
+  service:
+    port: 8080
+  # These env vars are a list of {name,value} maps: not addressable as one cell.
+  env:
+    - name: LOG_LEVEL
+      value: info
+    - name: FEATURE_CHECKOUT_V2
+      value: "false"
+    - name: DB_HOST
+      value: "{{ .Release.Name }}-db"   # value is itself a Helm template
+  probes: *probes
+  ingress:
+    enabled: true
+    # Host is computed from globals at render time, not stored literally.
+    host: "api.{{ .Values.global.domain }}"
+
+worker:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: shop/worker
+    tag: "3.2.1"
+  concurrency: 8
+  queue: default
+  probes: *probes
+
+db:
+  enabled: true
+  auth:
+    database: shop
+    username: shop
+  primary:
+    persistence:
+      size: 20Gi

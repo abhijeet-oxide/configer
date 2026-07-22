@@ -1,0 +1,24 @@
+global:
+  domain: eu.shop.example.com
+  tlsIssuer: letsencrypt-prod-eu
+
+api:
+  replicaCount: 4
+  autoscaling:
+    enabled: true
+    minReplicas: 4
+    maxReplicas: 16
+  env:
+    - name: LOG_LEVEL
+      value: warn
+    - name: FEATURE_CHECKOUT_V2
+      value: "false"     # feature held back in EU for compliance review
+
+worker:
+  replicaCount: 6
+  concurrency: 12
+
+db:
+  primary:
+    persistence:
+      size: 100Gi

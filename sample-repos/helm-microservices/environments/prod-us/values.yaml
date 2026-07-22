@@ -1,0 +1,37 @@
+# prod-us: full scale. Uses a YAML anchor for the resource block and reuses it,
+# and turns autoscaling ON - which makes api.replicaCount a no-op here even
+# though the key is still present a few lines down.
+global:
+  domain: us.shop.example.com
+
+api:
+  replicaCount: 6            # inert: autoscaling below wins at render time
+  autoscaling:
+    enabled: true
+    minReplicas: 6
+    maxReplicas: 24
+  resources: &prodres
+    requests:
+      cpu: 500m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+  env:
+    - name: LOG_LEVEL
+      value: warn
+    - name: FEATURE_CHECKOUT_V2
+      value: "true"
+    - name: DB_HOST
+      value: "{{ .Release.Name }}-db"
+
+worker:
+  replicaCount: 8
+  concurrency: 16
+  queue: priority
+  resources: *prodres        # same block, reused via alias
+
+db:
+  primary:
+    persistence:
+      size: 100Gi

@@ -1,0 +1,5 @@
+apiVersion: v2
+name: api
+description: Shop API service
+version: 0.9.0
+type: application

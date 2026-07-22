@@ -128,6 +128,7 @@ export function ChangeItemsTable({
                       size="small"
                       type="text"
                       danger
+                      aria-label={`Undo change to ${it.paramId || it.instance || "item"}`}
                       icon={<DeleteOutlined />}
                       loading={undoLoading}
                       onClick={() => onUndo(it)}

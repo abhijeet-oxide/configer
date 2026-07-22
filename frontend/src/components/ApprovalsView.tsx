@@ -451,7 +451,7 @@ export default function ApprovalsView() {
                       onConfirm={() => merge.mutate(selected.id)}
                     >
                       <Button type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
-                        Publish
+                        Publish to Git
                       </Button>
                     </Popconfirm>
                   )}

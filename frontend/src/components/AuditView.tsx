@@ -114,7 +114,9 @@ export default function AuditView() {
                   return (
                     <div>
                       <div className="text-ink">{h.action}</div>
-                      {h.detail && <div className="mono text-[11px] text-ink-3">{h.detail}</div>}
+                      {h.detail && !HTTP.test(h.detail) && (
+                        <div className="mono text-[11px] text-ink-3">{h.detail}</div>
+                      )}
                     </div>
                   );
                 },

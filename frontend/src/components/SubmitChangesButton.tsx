@@ -164,8 +164,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           </Form.Item>
         </Form>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          On Git this saves your edits to branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>
-          {" "}and opens a review; nothing goes live until an approver publishes it.
+          On Git this saves your edits to a dedicated review branch (named after this
+          change) and opens a review; nothing goes live until an approver publishes it.
         </Typography.Text>
       </Modal>
     </>

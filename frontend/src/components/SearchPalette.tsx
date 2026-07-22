@@ -184,9 +184,12 @@ export default function SearchPalette() {
         content: {
           padding: 0,
           overflow: "hidden",
-          borderRadius: 16,
+          borderRadius: 14,
           border: "1px solid var(--border)",
-          boxShadow: "var(--shadow-neu-lg)",
+          // Crisp overlay elevation (shared with every floating surface); no
+          // soft-UI halo, so the palette reads as a focused sheet on the dimmed
+          // backdrop rather than a glowing orb.
+          boxShadow: "var(--el-overlay)",
           background: "var(--surface)",
         },
       }}

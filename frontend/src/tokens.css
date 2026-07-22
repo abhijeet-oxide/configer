@@ -30,6 +30,16 @@
   --el-3: 16px 16px 36px rgba(143, 157, 178, 0.4), -8px -8px 20px rgba(255, 255, 255, 0.9);
   --el-inset: inset 3px 3px 7px rgba(163, 177, 198, 0.3), inset -3px -3px 7px rgba(255, 255, 255, 0.85);
 
+  /* Overlay elevation: floating surfaces (the command palette, modals, menus,
+     popovers) do NOT use the soft-UI dual shadow - a top-left light source on a
+     dimmed backdrop reads as a halo/glow. They lift with a crisp, single-
+     direction cast plus a hairline seat, so they sit as focused sheets above the
+     page. The mask darkens and faintly blurs the page so the surface, not its
+     glow, holds the eye. */
+  --el-overlay: 0 12px 32px -10px rgba(16, 24, 40, 0.18), 0 4px 10px -4px rgba(16, 24, 40, 0.1);
+  --overlay-seat: 0 0 0 1px var(--border);
+  --overlay-mask: rgba(20, 27, 40, 0.42);
+
   /* Motion: state change only, never decoration. */
   --dur-hover: 120ms;
   --dur-panel: 220ms;
@@ -56,6 +66,10 @@
   --el-2: 8px 8px 18px rgba(0, 0, 0, 0.55), -6px -6px 14px rgba(255, 255, 255, 0.045);
   --el-3: 16px 16px 36px rgba(0, 0, 0, 0.6), -8px -8px 20px rgba(255, 255, 255, 0.05);
   --el-inset: inset 3px 3px 7px rgba(0, 0, 0, 0.5), inset -3px -3px 7px rgba(255, 255, 255, 0.04);
+  /* Dark: a deep downward cast with no top-left light, so overlays read as
+     crisp sheets against the dimmed canvas instead of glowing orbs. */
+  --el-overlay: 0 18px 44px -14px rgba(0, 0, 0, 0.72), 0 6px 16px -8px rgba(0, 0, 0, 0.6);
+  --overlay-mask: rgba(4, 7, 12, 0.58);
 }
 
 /* --- "instrument" preset elevation -----------------------------------------

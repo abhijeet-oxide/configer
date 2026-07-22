@@ -102,6 +102,42 @@ body {
   z-index: 2147483646;
 }
 
+/* --- Floating surfaces: crisp sheets, not glowing orbs ----------------------
+   Resting cards keep their soft-UI depth (the look this product is built on),
+   but anything that LIFTS above the page - the command palette, modals, menus,
+   popovers - shares one elevation language: a downward cast plus a hairline
+   seat, over a dimmed and faintly blurred backdrop. On the dark canvas the old
+   dual shadow's top-left light read as a halo; this seats the surface instead.
+   The override wins over Ant Design's own resting shadow, so overlays are
+   consistent regardless of which primitive draws them. */
+.ant-modal .ant-modal-content,
+.ant-dropdown .ant-dropdown-menu,
+.ant-popover .ant-popover-inner {
+  box-shadow: var(--el-overlay), var(--overlay-seat) !important;
+}
+.ant-modal-mask,
+.ant-drawer-mask {
+  background: var(--overlay-mask);
+  backdrop-filter: blur(2px);
+}
+/* Menus and the app switcher borrow the palette's calm rhythm: a soft
+   container radius with rounded, breathing rows, so a dropdown feels like the
+   same family as the command palette rather than a default list. */
+.ant-dropdown .ant-dropdown-menu {
+  border-radius: var(--r-xl);
+  padding: 6px;
+}
+.ant-dropdown .ant-dropdown-menu-item,
+.ant-dropdown .ant-dropdown-menu-submenu-title {
+  border-radius: var(--r-md);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ant-modal-mask,
+  .ant-drawer-mask {
+    backdrop-filter: none;
+  }
+}
+
 /* Two-per-row form grouping for compact modals: paired fields sit side by
    side and wrap to their own row on narrow widths, so a form fits on screen
    without scrolling. */

@@ -691,7 +691,10 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Reject/close the change request (a draft is discarded, a submitted one is closed).",
+                "description": "Reject/close the change request (a draft is discarded, a submitted one is closed). An optional reason is recorded as a review comment.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -3874,9 +3877,27 @@ const docTemplateconfiger = `{
                 "ActionEditFile"
             ]
         },
+        "change.Approval": {
+            "type": "object",
+            "properties": {
+                "approver": {
+                    "type": "string"
+                },
+                "createdAt": {
+                    "type": "string"
+                }
+            }
+        },
         "change.ChangeRequest": {
             "type": "object",
             "properties": {
+                "approvals": {
+                    "description": "Approvals are the recorded sign-offs, oldest first. Distinct by approver;\nthe review gate (separation of duties, minimum approvals) reads from here.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/change.Approval"
+                    }
+                },
                 "author": {
                     "type": "string"
                 },

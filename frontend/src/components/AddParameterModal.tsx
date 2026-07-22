@@ -69,7 +69,7 @@ export default function AddParameterModal({
                   },
                 ],
         },
-        "demo-user",
+        "Local user",
       ),
     onSuccess: (p) => {
       message.success(

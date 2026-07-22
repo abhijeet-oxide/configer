@@ -45,7 +45,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
 
   const submit = useMutation({
     mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
-      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "demo-user" }),
+      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "Local user" }),
     onSuccess: (cr) => {
       setOpen(false);
       form.resetFields();

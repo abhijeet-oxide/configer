@@ -58,7 +58,7 @@ function DeleteApplicationModal({
     mutationFn: async () => {
       // Delete the .configer metadata first (a commit on the repo), then drop
       // the workspace connection.
-      if (alsoConfiger) await api.deinit("demo-user");
+      if (alsoConfiger) await api.deinit("Local user");
       if (repoId) await api.removeRepo(repoId);
     },
     onSuccess: () => {

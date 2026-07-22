@@ -47,7 +47,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
           bindings: [{ file: c.file, path: c.path, format: c.format as never }],
         })),
         ignoreFiles: [],
-        author: "demo-user",
+        author: "Local user",
       });
     },
     onSuccess: (res) => {

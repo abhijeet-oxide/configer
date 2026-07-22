@@ -148,7 +148,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     onError: (e: Error) => message.error(e.message),
   });
   const remove = useMutation({
-    mutationFn: (name: string) => api.deleteInstance(name, "demo-user"),
+    mutationFn: (name: string) => api.deleteInstance(name, "Local user"),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["draft"] });
       done("Instance retirement staged in your draft: submit the changes to send it for review");
@@ -156,7 +156,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     onError: (e: Error) => message.error(e.message),
   });
   const setStatus = useMutation({
-    mutationFn: (p: { name: string; status: string }) => api.updateInstance(p.name, { status: p.status, author: "demo-user" }),
+    mutationFn: (p: { name: string; status: string }) => api.updateInstance(p.name, { status: p.status, author: "Local user" }),
     onSuccess: (_r, p) => done(p.status === "archived" ? "Archive staged in your draft: submit to apply" : "Activation staged in your draft: submit to apply"),
     onError: (e: Error) => message.error(e.message),
   });
@@ -200,7 +200,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       // Send ONLY what actually changed: an untouched field must not turn
       // into a registry write (and a spurious line in the Git diff).
       const orig = modal.instance!;
-      const input: InstanceInput = { name: v.name, author: "demo-user" };
+      const input: InstanceInput = { name: v.name, author: "Local user" };
       const diff = (a?: string, b?: string) => (a ?? "") !== (b ?? "");
       if (diff(v.environment, orig.environment)) input.environment = v.environment ?? "";
       if (diff(v.region, orig.region)) input.region = v.region ?? "";
@@ -219,7 +219,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       versionName: v.versionName,
       status: v.status,
       labels: v.labels ? parseLabels(v.labels) : undefined,
-      author: "demo-user",
+      author: "Local user",
     };
     if (v.baseInstance) input.cloneFrom = v.baseInstance;
     save.mutate({ mode: modal!.mode, orig: modal?.instance?.name, input });

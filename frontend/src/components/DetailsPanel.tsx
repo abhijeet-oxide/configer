@@ -81,7 +81,7 @@ function DetailsTab({
 
   const patch = useMutation({
     mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
-      api.updateParameter(p.id, { ...v, author: "demo-user" }),
+      api.updateParameter(p.id, { ...v, author: "Local user" }),
     onSuccess: () => {
       message.success("Saved to the catalog (committed to Git with attribution)");
       setEditing(false);
@@ -703,7 +703,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   useEffect(() => setEditing(false), [selectedParamId]);
 
   const retire = useMutation({
-    mutationFn: (id: string) => api.deleteParameter(id, "demo-user"),
+    mutationFn: (id: string) => api.deleteParameter(id, "Local user"),
     onSuccess: () => {
       message.success("Parameter retired: removed from the catalog and deleted from every file it lived in");
       selectParam(null);

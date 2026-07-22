@@ -1638,7 +1638,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             // The parameter is no longer managed as one shared value, so its
             // declared scope follows: global -> instance (attributed commit).
             api
-              .updateParameter(param.id, { scope: "instance", author: "demo-user" })
+              .updateParameter(param.id, { scope: "instance", author: "Local user" })
               .then(() => {
                 message.info(`${param.name} is now scoped per instance; other systems keep the previous shared value.`, 5);
                 qc.invalidateQueries();

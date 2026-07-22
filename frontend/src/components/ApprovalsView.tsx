@@ -68,7 +68,7 @@ function CommentsPanel({ cr }: { cr: ChangeRequest }) {
   const qc = useQueryClient();
   const [body, setBody] = useState("");
   const add = useMutation({
-    mutationFn: () => api.addComment(cr.id, body.trim(), "demo-user"),
+    mutationFn: () => api.addComment(cr.id, body.trim(), "Local user"),
     onSuccess: () => {
       setBody("");
       qc.invalidateQueries({ queryKey: ["changes"] });
@@ -220,7 +220,7 @@ export default function ApprovalsView() {
   });
   const requestChanges = useMutation({
     mutationFn: (p: { id: number; note: string }) =>
-      api.addComment(p.id, `Requested changes: ${p.note}`, "demo-user"),
+      api.addComment(p.id, `Requested changes: ${p.note}`, "Local user"),
     onSuccess: (cr) => {
       message.info(`Changes requested on CR-${cr.id}`);
       qc.invalidateQueries();

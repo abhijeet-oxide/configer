@@ -169,7 +169,7 @@ export default function FilesView() {
   }, [allFiles, committedOf]);
 
   const retire = useMutation({
-    mutationFn: (file: string) => api.retireFile(file, "demo-user"),
+    mutationFn: (file: string) => api.retireFile(file, "Local user"),
     onSuccess: (r) => {
       message.success(`Stopped managing: ${r.retired.length} parameter(s) retired.`);
       qc.invalidateQueries();
@@ -263,7 +263,7 @@ export default function FilesView() {
       // instance to stage against (undefined = a shared/base file, staged
       // globally). Otherwise it is simply the chosen instance.
       const stageInstance = allInstances ? ownerInstanceOf(selected ?? "") : instance ?? undefined;
-      return api.stageFileEdit({ instance: stageInstance, path: selected!, content, author: "demo-user" });
+      return api.stageFileEdit({ instance: stageInstance, path: selected!, content, author: "Local user" });
     },
     onSuccess: (r) => {
       setDirty(null);

@@ -54,10 +54,18 @@ func resolveAuthor(r *http.Request, fallback string) string {
 		return u.Login
 	}
 	if fallback == "" {
-		return "anonymous"
+		// Single-user mode has one real operator (the frontend shows them as
+		// "Local user"); attribute their actions to that name so the audit trail
+		// and commits never read "anonymous". In OAuth mode the session identity
+		// above always wins, and anonymous requests never reach a handler.
+		return singleUserAuthor
 	}
 	return fallback
 }
+
+// singleUserAuthor is who acts when login is not configured: the local
+// operator, named to match the frontend's identity ("Local user").
+const singleUserAuthor = "Local user"
 
 // identity resolves the git author for a UI-made commit: the authenticated
 // session user (the identity behind the Git approval) with their real email,

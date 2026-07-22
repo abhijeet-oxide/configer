@@ -45,7 +45,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
 
   const submit = useMutation({
     mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
-      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "demo-user" }),
+      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "Local user" }),
     onSuccess: (cr) => {
       setOpen(false);
       form.resetFields();
@@ -164,8 +164,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           </Form.Item>
         </Form>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          On Git this saves your edits to branch <code>configer/cr-{draftQ.data?.draft?.id ?? "…"}</code>
-          {" "}and opens a review; nothing goes live until an approver publishes it.
+          On Git this saves your edits to a dedicated review branch (named after this
+          change) and opens a review; nothing goes live until an approver publishes it.
         </Typography.Text>
       </Modal>
     </>

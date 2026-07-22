@@ -39,7 +39,7 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
   (Draft→UnderReview→Approved→Published). `changeset.Submit` opens an
-  isolated worktree on `configer/cr-<n>`, applies draft items (structural
+  isolated worktree on `feature/<slug>`, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
   `Changed-by:` trailer, pushes, opens a GitHub PR. CR workflow state lives
   in a JSON file beside the repo (rebuildable; not the platform DB).

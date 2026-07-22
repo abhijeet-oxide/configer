@@ -271,10 +271,22 @@ func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
+	// Remember where HEAD was so we can tell our own merge apart from external
+	// drift below.
+	preHead, _ := s.Backend.HeadSHA(r.Context(), "HEAD")
 	cr, err := s.Changes.Merge(r.Context(), id)
 	if err != nil {
 		writeChangeError(w, r, err)
 		return
+	}
+	// Publishing advances HEAD with a Configer-authored commit. Without this the
+	// reconcile inbox would report the tool's own publish as a change "made
+	// directly on Git". Mark our merge as seen - but only when there were no
+	// unacknowledged external commits before it, so genuine drift still surfaces.
+	if newHead, herr := s.Backend.HeadSHA(r.Context(), "HEAD"); herr == nil && newHead != "" && newHead != preHead {
+		if ack := s.Store.GetMeta(ackKey); ack == "" || ack == preHead {
+			_ = s.Store.SetMeta(ackKey, newHead)
+		}
 	}
 	writeJSON(w, http.StatusAccepted, cr)
 }

@@ -42,11 +42,16 @@ var presets = []PresetRule{
 		Min:         fptr(1), Max: fptr(65535),
 	},
 	{
-		ID: "hostname", Name: "Hostname label",
-		Description: "Single RFC 1123 hostname label, up to 63 characters.",
-		Example:     "web-01",
-		Pattern:     `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$`,
-		MaxLength:   iptr(63),
+		ID: "hostname", Name: "Hostname",
+		// RFC 1123 hostname: one or more dot-separated labels (each label up to
+		// 63 chars). Accepts a bare label (web-01) and a fully qualified name
+		// (app.example.com) alike, matching the JSON-Schema "hostname" format and
+		// the hostname data type. A stricter FQDN (dotted, with a TLD) is the
+		// separate "fqdn" preset.
+		Description: "RFC 1123 hostname: a bare label or a dotted name, up to 253 characters.",
+		Example:     "app.example.com",
+		Pattern:     `^(?i)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$`,
+		MaxLength:   iptr(253),
 	},
 	{
 		ID: "fqdn", Name: "Fully qualified domain name",

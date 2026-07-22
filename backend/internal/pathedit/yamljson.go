@@ -191,7 +191,48 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 	if err := enc.Close(); err != nil {
 		return "", err
 	}
-	return b.String(), nil
+	return reflowBlanks(string(doc), b.String()), nil
+}
+
+// reflowBlanks re-inserts the blank lines that existed in the original document
+// into freshly re-encoded output. yaml.v3 drops bare blank lines when it
+// re-serializes a node tree (it only retains lines attached to comments), so a
+// structural edit - a new key, a removal, a list resize - would otherwise strip
+// the blank lines separating blocks, breaking the byte-for-byte promise for
+// every line the edit did not touch. The pass is deliberately conservative: it
+// walks the encoded output and, whenever a line exactly matches the next
+// not-yet-consumed non-blank line of the original, it first replays the blank
+// line(s) that preceded that line in the original. Lines the edit added (which
+// match nothing in the original) pass through untouched.
+func reflowBlanks(original, encoded string) string {
+	if !strings.Contains(original, "\n\n") {
+		return encoded // no blank lines to restore
+	}
+	var content []string
+	var blanksBefore []int
+	pending := 0
+	for _, ln := range strings.Split(strings.TrimRight(original, "\n"), "\n") {
+		if strings.TrimSpace(ln) == "" {
+			pending++
+			continue
+		}
+		content = append(content, ln)
+		blanksBefore = append(blanksBefore, pending)
+		pending = 0
+	}
+
+	out := make([]string, 0, len(content)+len(blanksBefore))
+	ptr := 0
+	for _, ln := range strings.Split(strings.TrimRight(encoded, "\n"), "\n") {
+		if ptr < len(content) && ln == content[ptr] {
+			for k := 0; k < blanksBefore[ptr] && len(out) > 0; k++ {
+				out = append(out, "")
+			}
+			ptr++
+		}
+		out = append(out, ln)
+	}
+	return strings.Join(out, "\n") + "\n"
 }
 
 // editMultiDoc applies one path edit to the idx-th document of a YAML stream
@@ -221,7 +262,11 @@ func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (str
 			return "", err
 		}
 	}
-	return encodeDocs(docs, detectIndent(doc))
+	encoded, err := encodeDocs(docs, detectIndent(doc))
+	if err != nil {
+		return "", err
+	}
+	return reflowBlanks(string(doc), encoded), nil
 }
 
 // setScalarInPlace replaces an existing single-line scalar at path with a new
@@ -395,7 +440,7 @@ func EditDoc(doc []byte, fn func(root *yaml.Node) error) (string, error) {
 	if err := enc.Close(); err != nil {
 		return "", err
 	}
-	return b.String(), nil
+	return reflowBlanks(string(doc), b.String()), nil
 }
 
 // detectIndent reads the document's own indentation step (first indented line)

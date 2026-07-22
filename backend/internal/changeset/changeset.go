@@ -1,7 +1,7 @@
 // Package changeset orchestrates the git-native change request lifecycle.
 //
 // Submit turns a draft's pending items into a real change on Git: an isolated
-// worktree on branch configer/cr-<id>, surgical write-back edits into the
+// worktree on branch feature/<slug> (named after the change), surgical write-back edits into the
 // repository's own files, one commit (the session user as git author, the
 // machine identity as committer and Co-authored-by credit, plus a Changed-by
 // trailer), a push when a remote exists, and a hosted PR when a provider is

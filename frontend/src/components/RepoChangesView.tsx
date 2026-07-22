@@ -143,7 +143,7 @@ export default function RepoChangesView() {
   });
 
   const retire = useMutation({
-    mutationFn: (file: string) => api.retireFile(file, "demo-user"),
+    mutationFn: (file: string) => api.retireFile(file, "Local user"),
     onSuccess: (res) => {
       message.success(`${res.retired.length} parameter(s) retired with one commit on Git.`);
       qc.invalidateQueries();

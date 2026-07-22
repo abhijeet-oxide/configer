@@ -98,7 +98,7 @@ reverse.
 
 Drafts accumulate edits (cells, file edits, instance changes) shown in a Source
 Control panel grouped by file with one-click undo. Submitting cuts a branch
-`configer/cr-<n>`, makes one attributed commit, and opens a GitHub PR when
+`feature/<slug>` (named after the change), makes one attributed commit, and opens a GitHub PR when
 configured. The state machine (`Draft -> Under Review -> Approved -> Published /
 Rejected`) reflects PR activity both ways.
 

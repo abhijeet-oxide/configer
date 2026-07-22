@@ -290,7 +290,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         layout: d?.detection.layout,
         instances: insts,
         parameters: chosenParams,
-        author: "demo-user",
+        author: "Local user",
       }),
     onSuccess: (r) => {
       message.success(

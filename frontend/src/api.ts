@@ -1109,9 +1109,15 @@ export const api = {
     id: number,
     p: { title: string; description?: string; reference?: string; category?: string; author?: string },
   ) => send<ChangeRequest>("POST", rp(`/changes/${id}/submit`), p),
-  approveChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/approve`), { author: "demo-user" }),
+  approveChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/approve`), { author: "Local user" }),
   mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
   rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),
+  revertChange: (id: number) =>
+    send<{ draftId: number; applied: number; skipped: string[]; source: number }>(
+      "POST",
+      rp(`/changes/${id}/revert`),
+      { author: "Local user" },
+    ),
   addComment: (id: number, body: string, author?: string) =>
     send<ChangeRequest>("POST", rp(`/changes/${id}/comments`), { body, author }),
   setReviewers: (id: number, reviewers: string[]) =>

@@ -71,7 +71,7 @@ export default function PathPicker({
     mutationFn: (c: ScanCandidate) =>
       api.updateParameter(param.id, {
         bindings: [{ file: c.file, path: c.path, format: c.format }],
-        author: "demo-user",
+        author: "Local user",
       }),
     onSuccess: (p) => {
       message.success(

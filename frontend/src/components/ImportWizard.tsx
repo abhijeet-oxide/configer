@@ -285,7 +285,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
         // {folder}/… bindings and merges duplicates.
         bindings: [{ file: d.cand.file, path: d.cand.path, format: d.cand.format }],
       }));
-      return api.importParameters({ parameters, ignoreFiles: ignoredFiles, author: "demo-user" });
+      return api.importParameters({ parameters, ignoreFiles: ignoredFiles, author: "Local user" });
     },
     onSuccess: (res) => {
       setDoneInfo({ imported: res.imported, skipped: res.skipped ?? [], ignored: ignoredFiles.length });

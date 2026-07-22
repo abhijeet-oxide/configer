@@ -44,6 +44,12 @@ type Cell struct {
 	Valid    bool      `json:"valid"`
 	Message  string    `json:"message,omitempty"`
 	Editable bool      `json:"editable"`
+	// Templated marks a cell whose committed value is a template EXPRESSION
+	// (Helm "{{ ... }}", a "${...}" reference), not a literal. Editing it as a
+	// plain value would overwrite the template and break rendering, so the cell
+	// is not editable in the grid; it stays visible and can be changed in file
+	// mode where the expression is explicit.
+	Templated bool `json:"templated,omitempty"`
 	// Pending marks a value staged in the current draft change request but
 	// not yet committed to Git.
 	Pending bool `json:"pending,omitempty"`
@@ -100,14 +106,16 @@ func Build(p *project.Project) Grid {
 		for _, inst := range active {
 			state := cellState(param, inst)
 			res := r.Resolve(param, inst)
+			templated := model.IsTemplateExpression(res.Value)
 			cell := Cell{
-				Value:    res.Value,
-				Source:   res.Layer,
-				File:     res.File,
-				Path:     res.Path,
-				Set:      res.Set,
-				State:    state,
-				Editable: state != StateNotApplicable && state != StateDeprecated,
+				Value:     res.Value,
+				Source:    res.Layer,
+				File:      res.File,
+				Path:      res.Path,
+				Set:       res.Set,
+				State:     state,
+				Templated: templated,
+				Editable:  state != StateNotApplicable && state != StateDeprecated && !templated,
 			}
 			if state == StateNotApplicable || !res.Set {
 				cell.Valid = true

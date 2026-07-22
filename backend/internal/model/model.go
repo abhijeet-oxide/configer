@@ -45,14 +45,18 @@ const (
 // parameter's declared default (metadata), a shared base file, or the
 // instance's own files. Later layers win.
 const (
-	LayerDefault  = "default"
-	LayerDerived  = "derived"
-	LayerBase     = "base"
-	LayerInstance = "instance"
+	LayerDefault = "default"
+	LayerDerived = "derived"
+	// LayerChartDefault is a package's own built-in default (a Helm subchart's
+	// charts/<sub>/values.yaml), the lowest file layer: an umbrella-global or a
+	// per-instance value overrides it, exactly as the tool merges them.
+	LayerChartDefault = "chart-default"
+	LayerBase         = "base"
+	LayerInstance     = "instance"
 )
 
 // LayerOrder is the read precedence, lowest to highest.
-var LayerOrder = []string{LayerBase, LayerInstance}
+var LayerOrder = []string{LayerChartDefault, LayerBase, LayerInstance}
 
 // ParamType is the logical type of a parameter value, used for validation and
 // for rendering the correct editor in the UI.
@@ -197,6 +201,23 @@ func (p Parameter) BindingsOn(layer string, inst Instance) []Binding {
 		}
 	}
 	return out
+}
+
+// IsTemplateExpression reports whether a value is a template expression rather
+// than a literal: a Helm/Go template ("{{ .Values.x }}") or a "${...}"
+// reference (kustomize vars, envsubst). Such a value is computed at render time;
+// the file holds the expression, not the effective value, so overwriting it
+// with a literal would corrupt the template. Used to make such cells read-only
+// in the grid and to reject a grid edit that would clobber them.
+func IsTemplateExpression(v any) bool {
+	s, ok := v.(string)
+	if !ok {
+		return false
+	}
+	if strings.Contains(s, "${") {
+		return true
+	}
+	return strings.Contains(s, "{{") && strings.Contains(s, "}}")
 }
 
 // Validation holds the rules derived from imported schemas, chosen from the

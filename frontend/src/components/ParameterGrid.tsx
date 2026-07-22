@@ -197,7 +197,13 @@ function EditableCell({
     ) : (
       <div
         style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined, display: "flex", alignItems: "center" }}
-        title={cell.editable && !cell.pending ? "Double-click to edit · right-click for actions" : undefined}
+        title={
+          cell.templated
+            ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."
+            : cell.editable && !cell.pending
+              ? "Double-click to edit · right-click for actions"
+              : undefined
+        }
         onDoubleClick={cell.editable ? onStartEdit : undefined}
       >
         <CellView cell={cell} pendingItem={pendingItem} />

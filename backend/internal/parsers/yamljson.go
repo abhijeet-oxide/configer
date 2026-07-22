@@ -73,37 +73,46 @@ func (YAMLParser) Extract(file string, content []byte) ([]plugin.Candidate, erro
 		if len(docs) > 1 {
 			prefix = fmt.Sprintf("[%d]$", i)
 		}
-		flattenNode(root, prefix, file, &out)
+		flattenNode(root, prefix, file, "", &out)
 	}
 	return out, nil
 }
 
 // flattenNode walks a yaml.Node tree, emitting one candidate per scalar leaf
 // with its 1-based source line. Mapping keys and their value nodes are paired;
-// sequence items are indexed.
-func flattenNode(n *yaml.Node, path, file string, out *[]plugin.Candidate) {
+// sequence items are indexed. aliasOf carries the anchor name when the current
+// subtree was reached through a YAML alias (`*anchor`), so the leaves it emits
+// are tagged as mirrors of that anchor's definition.
+func flattenNode(n *yaml.Node, path, file, aliasOf string, out *[]plugin.Candidate) {
 	switch n.Kind {
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			flattenNode(n.Content[i+1], path+"."+n.Content[i].Value, file, out)
+			flattenNode(n.Content[i+1], path+"."+n.Content[i].Value, file, aliasOf, out)
 		}
 	case yaml.SequenceNode:
 		for i, c := range n.Content {
-			flattenNode(c, fmt.Sprintf("%s[%d]", path, i), file, out)
+			flattenNode(c, fmt.Sprintf("%s[%d]", path, i), file, aliasOf, out)
 		}
 	case yaml.AliasNode:
 		if n.Alias != nil {
-			flattenNode(n.Alias, path, file, out)
+			// n.Value is the anchor name this alias points at. Keep the
+			// outermost alias name when aliases nest.
+			ao := aliasOf
+			if ao == "" {
+				ao = n.Value
+			}
+			flattenNode(n.Alias, path, file, ao, out)
 		}
 	case yaml.ScalarNode:
 		*out = append(*out, plugin.Candidate{
-			Name:   nameFromPath(path),
-			Path:   path,
-			Type:   inferType(scalarValue(n)),
-			Value:  scalarValue(n),
-			File:   file,
-			Format: "yaml",
-			Line:   n.Line,
+			Name:    nameFromPath(path),
+			Path:    path,
+			Type:    inferType(scalarValue(n)),
+			Value:   scalarValue(n),
+			File:    file,
+			Format:  "yaml",
+			Line:    n.Line,
+			AliasOf: aliasOf,
 		})
 	}
 }

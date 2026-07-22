@@ -2038,6 +2038,64 @@
                 }
             }
         },
+        "/api/parameters/{id}/source": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Point a managed parameter at a key in an external source, or clear the mapping (send null / {\"clear\":true}).",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Map a parameter to a source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{sourceId, key, instance?} or {clear:true}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins": {
             "get": {
                 "description": "The registered parser/format plugin manifests (yaml, json, xml).",
@@ -2742,6 +2800,386 @@
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/source-plugins": {
+            "get": {
+                "description": "The registered external-source provider manifests (git, vault, ...) with the config fields each needs.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "List source plugins",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources": {
+            "get": {
+                "description": "Every external source defined for this application, with how many parameters are mapped to each.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "List configured sources",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Define an external source (its kind must match a registered plugin). Non-secret connection details only; credentials are resolved server-side.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Add a source",
+                "parameters": [
+                    {
+                        "description": "{name, kind, secret?, config}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/incoming": {
+            "get": {
+                "description": "For every parameter mapped to a source, the upstream value that differs from the repository's current value. Reads the cached snapshot (fetching lazily when empty).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Incoming source changes",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/incoming/accept": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage selected incoming source values into the draft change request (as normal cell edits). Secret values stage as their reference. Submit the draft to publish.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Accept incoming changes",
+                "parameters": [
+                    {
+                        "description": "{changes:[{paramId,instance}], author?}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/refresh": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Re-fetch every configured source and update the cached snapshots the incoming-changes view reads.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Refresh sources",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Patch a source's name, secret flag or connection config.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Update a source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "{name?, secret?, config?}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Remove an external source. Parameters mapped to it keep their reference until re-mapped or cleared.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Delete a source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/{id}/browse": {
+            "get": {
+                "description": "List the immediate children (folders, config files, secret keys) under a path within a source.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "Browse a source",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Path within the source (blank for the root)",
+                        "name": "path",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/sources/{id}/contents": {
+            "get": {
+                "description": "Fetch the key/value pairs a source exposes right now (secret values masked). Refreshes the cached snapshot.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sources"
+                ],
+                "summary": "View source contents",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Source id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "Bad Gateway",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
                         }
                     }
                 }
@@ -3726,6 +4164,14 @@
                 "secret": {
                     "type": "boolean"
                 },
+                "source": {
+                    "description": "Source, when set, maps this parameter to a key in an external source\n(see .configer/sources.yaml). The source's value is never applied\nsilently: it surfaces as an \"incoming change\" the reviewer accepts into a\ndraft, so the write-back model stays intact (a repo file value is only\nchanged by a reviewed commit). Analogous to Derived, but the value comes\nfrom another system (another Git repo, a secret store) instead of another\nparameter.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/model.SourceRef"
+                        }
+                    ]
+                },
                 "type": {
                     "$ref": "#/definitions/model.ParamType"
                 },
@@ -3751,6 +4197,20 @@
                 "ScopeInstance",
                 "ScopeGlobal"
             ]
+        },
+        "model.SourceRef": {
+            "type": "object",
+            "properties": {
+                "instance": {
+                    "type": "string"
+                },
+                "key": {
+                    "type": "string"
+                },
+                "sourceId": {
+                    "type": "string"
+                }
+            }
         },
         "model.Validation": {
             "type": "object",

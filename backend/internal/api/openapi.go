@@ -63,9 +63,13 @@ package api
 // @tag.description            Scan/import settings and reconcile external Git commits.
 // @tag.name                   Plugins & validation
 // @tag.description            Registered format plugins and the validation-rule library.
+// @tag.name                   Sources
+// @tag.description            External parameter sources: define sources, map parameters, and review incoming changes.
 // @tag.name                   Platform
 // @tag.description            Authentication, per-application roles, and the audit trail.
 //
 // openAPIInfo exists only to anchor the general API annotations above; swag
 // reads them from this file (the --generalInfo target).
+//
+//nolint:unused // documentation anchor for swag; never called.
 func openAPIInfo() {}

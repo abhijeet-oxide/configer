@@ -608,6 +608,17 @@ definitions:
         $ref: '#/definitions/model.Scope'
       secret:
         type: boolean
+      source:
+        allOf:
+        - $ref: '#/definitions/model.SourceRef'
+        description: |-
+          Source, when set, maps this parameter to a key in an external source
+          (see .configer/sources.yaml). The source's value is never applied
+          silently: it surfaces as an "incoming change" the reviewer accepts into a
+          draft, so the write-back model stays intact (a repo file value is only
+          changed by a reviewed commit). Analogous to Derived, but the value comes
+          from another system (another Git repo, a secret store) instead of another
+          parameter.
       type:
         $ref: '#/definitions/model.ParamType'
       validation:
@@ -627,6 +638,15 @@ definitions:
     x-enum-varnames:
     - ScopeInstance
     - ScopeGlobal
+  model.SourceRef:
+    properties:
+      instance:
+        type: string
+      key:
+        type: string
+      sourceId:
+        type: string
+    type: object
   model.Validation:
     properties:
       enum:
@@ -2026,6 +2046,44 @@ paths:
       summary: Parameter value timeline
       tags:
       - Grid & parameters
+  /api/parameters/{id}/source:
+    post:
+      consumes:
+      - application/json
+      description: Point a managed parameter at a key in an external source, or clear
+        the mapping (send null / {"clear":true}).
+      parameters:
+      - description: Parameter id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{sourceId, key, instance?} or {clear:true}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Map a parameter to a source
+      tags:
+      - Sources
   /api/parameters/retire-file:
     post:
       consumes:
@@ -2547,6 +2605,262 @@ paths:
       summary: Global search
       tags:
       - Workspace
+  /api/source-plugins:
+    get:
+      description: The registered external-source provider manifests (git, vault,
+        ...) with the config fields each needs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List source plugins
+      tags:
+      - Sources
+  /api/sources:
+    get:
+      description: Every external source defined for this application, with how many
+        parameters are mapped to each.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List configured sources
+      tags:
+      - Sources
+    post:
+      consumes:
+      - application/json
+      description: Define an external source (its kind must match a registered plugin).
+        Non-secret connection details only; credentials are resolved server-side.
+      parameters:
+      - description: '{name, kind, secret?, config}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Add a source
+      tags:
+      - Sources
+  /api/sources/{id}:
+    delete:
+      description: Remove an external source. Parameters mapped to it keep their reference
+        until re-mapped or cleared.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Delete a source
+      tags:
+      - Sources
+    put:
+      consumes:
+      - application/json
+      description: Patch a source's name, secret flag or connection config.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{name?, secret?, config?}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Update a source
+      tags:
+      - Sources
+  /api/sources/{id}/browse:
+    get:
+      description: List the immediate children (folders, config files, secret keys)
+        under a path within a source.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Path within the source (blank for the root)
+        in: query
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Browse a source
+      tags:
+      - Sources
+  /api/sources/{id}/contents:
+    get:
+      description: Fetch the key/value pairs a source exposes right now (secret values
+        masked). Refreshes the cached snapshot.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: View source contents
+      tags:
+      - Sources
+  /api/sources/incoming:
+    get:
+      description: For every parameter mapped to a source, the upstream value that
+        differs from the repository's current value. Reads the cached snapshot (fetching
+        lazily when empty).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Incoming source changes
+      tags:
+      - Sources
+  /api/sources/incoming/accept:
+    post:
+      consumes:
+      - application/json
+      description: Stage selected incoming source values into the draft change request
+        (as normal cell edits). Secret values stage as their reference. Submit the
+        draft to publish.
+      parameters:
+      - description: '{changes:[{paramId,instance}], author?}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Accept incoming changes
+      tags:
+      - Sources
+  /api/sources/refresh:
+    post:
+      description: Re-fetch every configured source and update the cached snapshots
+        the incoming-changes view reads.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Refresh sources
+      tags:
+      - Sources
   /api/validation/presets:
     get:
       description: The predefined validation-rule library (port, cidr, ipv4, ...)

@@ -153,10 +153,10 @@ func (v vaultSource) get(ctx context.Context, url, token string, out any) error 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusForbidden || resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("Vault denied access (check VAULT_TOKEN and policy)")
+		return fmt.Errorf("access denied by Vault (check VAULT_TOKEN and policy)")
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("Vault returned status %d", resp.StatusCode)
+		return fmt.Errorf("unexpected status %d from Vault", resp.StatusCode)
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
 }

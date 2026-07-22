@@ -171,6 +171,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/submit", s.submitChange)
 	mux.HandleFunc("POST /api/changes/{id}/approve", s.approveChange)
 	mux.HandleFunc("POST /api/changes/{id}/merge", s.mergeChange)
+	mux.HandleFunc("POST /api/changes/{id}/revert", s.revertChange)
 	mux.HandleFunc("POST /api/changes/{id}/reject", s.rejectChange)
 	mux.HandleFunc("POST /api/changes/{id}/comments", s.addChangeComment)
 	mux.HandleFunc("PUT /api/changes/{id}/reviewers", s.setChangeReviewers)

@@ -16,6 +16,7 @@ import {
   LinkOutlined,
   BranchesOutlined,
   SendOutlined,
+  UndoOutlined,
 } from "../icons";
 import UserAvatar from "./UserAvatar";
 import { useEffect, useMemo, useState } from "react";
@@ -235,6 +236,20 @@ export default function ApprovalsView() {
     },
     onError: (e: Error) => message.error(e.message),
   });
+  const revert = useMutation({
+    mutationFn: (id: number) => api.revertChange(id),
+    onSuccess: (res) => {
+      if (res.applied === 0) {
+        message.warning("Nothing could be reverted automatically from this change.");
+        return;
+      }
+      const skipped = res.skipped.length ? ` (${res.skipped.length} item(s) skipped)` : "";
+      message.success(`Reverse of ${res.applied} edit(s) staged as a draft to review and publish${skipped}.`);
+      qc.invalidateQueries();
+      setSection("config");
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   // First load: match the workspace layout instead of flashing the empty
   // "all caught up" state before the data has arrived.
@@ -415,13 +430,15 @@ export default function ApprovalsView() {
                 </div>
               </div>
 
-              {decidable && (
+              {(decidable || selected.state === "published") && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-line pt-3">
-                  <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>
-                    <Button danger icon={<CloseCircleOutlined />} loading={reject.isPending}>
-                      Reject
-                    </Button>
-                  </Popconfirm>
+                  {decidable && (
+                    <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>
+                      <Button danger icon={<CloseCircleOutlined />} loading={reject.isPending}>
+                        Reject
+                      </Button>
+                    </Popconfirm>
+                  )}
                   {selected.state === "under_review" && (
                     <>
                       <Button
@@ -453,6 +470,20 @@ export default function ApprovalsView() {
                       <Button type="primary" icon={<CheckCircleOutlined />} loading={merge.isPending}>
                         Publish to Git
                       </Button>
+                    </Popconfirm>
+                  )}
+                  {selected.state === "published" && (
+                    <Popconfirm
+                      title={`Revert CR-${selected.id}?`}
+                      description="Its edits are staged in reverse as a new draft you review and publish - nothing changes on Git until then."
+                      okText="Stage revert"
+                      onConfirm={() => revert.mutate(selected.id)}
+                    >
+                      <Tooltip title="Roll this change back by staging the opposite edits as a new draft">
+                        <Button danger icon={<UndoOutlined />} loading={revert.isPending}>
+                          Revert
+                        </Button>
+                      </Tooltip>
                     </Popconfirm>
                   )}
                 </div>

@@ -736,6 +736,52 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/{id}/revert": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage the inverse of a change request's edits into the current draft so publishing it rolls the change back. Value, file and add-instance edits invert; retiring an instance is skipped (its files are gone). Returns the draft id, how many items were staged, and any skipped items.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Revert a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id to revert",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id or nothing to revert",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes/{id}/reviewers": {
             "put": {
                 "security": [
@@ -4091,6 +4137,10 @@ const docTemplateconfiger = `{
                 "email",
                 "url",
                 "mac",
+                "cpu",
+                "memory",
+                "duration",
+                "percentage",
                 "list"
             ],
             "x-enum-varnames": [
@@ -4107,6 +4157,10 @@ const docTemplateconfiger = `{
                 "TypeEmail",
                 "TypeURL",
                 "TypeMAC",
+                "TypeCPU",
+                "TypeMemory",
+                "TypeDuration",
+                "TypePercentage",
                 "TypeList"
             ]
         },
@@ -4218,6 +4272,13 @@ const docTemplateconfiger = `{
         "model.Validation": {
             "type": "object",
             "properties": {
+                "atLeast": {
+                    "description": "AtLeast / AtMost name another parameter (by id) whose effective value at\nthe same instance bounds this one: a resource limit must be AtLeast its\nrequest, a request AtMost its limit. The comparison is quantity-aware\n(CPU millicores, memory bytes, otherwise numeric), so \"1\" \u003e= \"500m\" and\n\"1Gi\" \u003e= \"512Mi\" compare correctly. Enforced on write when the related\nparameter can be resolved.",
+                    "type": "string"
+                },
+                "atMost": {
+                    "type": "string"
+                },
                 "enum": {
                     "type": "array",
                     "items": {

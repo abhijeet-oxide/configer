@@ -67,6 +67,19 @@ func resolveAuthor(r *http.Request, fallback string) string {
 // operator, named to match the frontend's identity ("Local user").
 const singleUserAuthor = "Local user"
 
+// draftOwner identifies whose draft a request touches. Drafts are scoped per
+// owner so two people editing at once never share one pending changeset. The
+// owner is the real actor - the authenticated session user, or the single local
+// operator when login is disabled - and deliberately NOT the request body's
+// author field, which is attribution only. That distinction matters in
+// single-user mode, where every request maps to the one local operator (a
+// consistent, shared draft) regardless of the name a request carries, while
+// each logged-in user still gets an isolated draft. Like author(), it records
+// the actor into the request's audit holder.
+func draftOwner(r *http.Request) string {
+	return author(r, "")
+}
+
 // identity resolves the git author for a UI-made commit: the authenticated
 // session user (the identity behind the Git approval) with their real email,
 // falling back to a GitHub noreply address for OAuth users without a public

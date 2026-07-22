@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -80,14 +81,26 @@ func (s *Store) save() error {
 	return os.Rename(tmpName, s.path)
 }
 
-// Draft returns the current draft CR, creating one if none exists.
+// draftFor returns the author's open draft, or nil. Caller holds s.mu. Drafts
+// are scoped by author so two people editing at once never share one pending
+// changeset - each accumulates their own, and Submit ships only that author's
+// edits under that author's name. In single-user mode there is one author
+// ("Local user") and therefore a single shared draft, exactly as before.
+func (s *Store) draftFor(author string) *change.ChangeRequest {
+	for _, cr := range s.data.CRs {
+		if cr.State == change.StateDraft && strings.EqualFold(cr.Author, author) {
+			return cr
+		}
+	}
+	return nil
+}
+
+// Draft returns the author's draft CR, creating one if none exists.
 func (s *Store) Draft(author, targetBranch string) (*change.ChangeRequest, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, cr := range s.data.CRs {
-		if cr.State == change.StateDraft {
-			return cr, nil
-		}
+	if cr := s.draftFor(author); cr != nil {
+		return cr, nil
 	}
 	s.data.Seq++
 	cr := &change.ChangeRequest{
@@ -107,16 +120,11 @@ func (s *Store) Draft(author, targetBranch string) (*change.ChangeRequest, error
 	return cr, s.save()
 }
 
-// CurrentDraft returns the draft CR or nil (no lazy creation).
-func (s *Store) CurrentDraft() *change.ChangeRequest {
+// CurrentDraft returns the author's draft CR or nil (no lazy creation).
+func (s *Store) CurrentDraft(author string) *change.ChangeRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, cr := range s.data.CRs {
-		if cr.State == change.StateDraft {
-			return cr
-		}
-	}
-	return nil
+	return s.draftFor(author)
 }
 
 // Get returns the CR with the given id.

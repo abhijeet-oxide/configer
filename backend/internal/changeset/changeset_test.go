@@ -354,7 +354,7 @@ func TestPreviewShowsByteLevelDiff(t *testing.T) {
 	}
 
 	// Preview must not commit or branch: the draft stays the current draft.
-	if d := svc.Store.CurrentDraft(); d == nil || d.ID != cr.ID {
+	if d := svc.Store.CurrentDraft("alice"); d == nil || d.ID != cr.ID {
 		t.Errorf("preview disturbed the draft state")
 	}
 }
@@ -366,10 +366,10 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 	// Draft rejection deletes it.
 	cr, _ := svc.Store.Draft("bob", "main")
 	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
-	if _, err := svc.Reject(ctx, cr.ID); err != nil {
+	if _, err := svc.Reject(ctx, cr.ID, "", ""); err != nil {
 		t.Fatal(err)
 	}
-	if svc.Store.CurrentDraft() != nil {
+	if svc.Store.CurrentDraft("bob") != nil {
 		t.Error("draft should be deleted after reject")
 	}
 
@@ -380,12 +380,103 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rej, err := svc.Reject(ctx, sub.ID)
+	rej, err := svc.Reject(ctx, sub.ID, "bob", "not now")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rej.State != change.StateRejected {
 		t.Fatalf("state = %s, want rejected", rej.State)
+	}
+}
+
+// Under a shared-deployment policy the author cannot approve their own change
+// (separation of duties), and nothing publishes without a recorded approval.
+func TestGovernancePolicy(t *testing.T) {
+	_, _, svc := fixture(t)
+	svc.Policy = Policy{RequireApproval: true, RequireSeparateApprover: true, MinApprovals: 1}
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("alice@example.com", "main")
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	sub, err := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Publishing an unapproved change is refused.
+	if _, err := svc.Merge(ctx, sub.ID); err == nil {
+		t.Error("expected merge of an unapproved change to be refused")
+	}
+	// The author cannot approve their own change.
+	if _, err := svc.Approve(ctx, sub.ID, "alice@example.com"); err == nil {
+		t.Error("expected self-approval to be refused (separation of duties)")
+	}
+	// A separate approver signs off, then publish succeeds.
+	appr, err := svc.Approve(ctx, sub.ID, "bob@example.com")
+	if err != nil {
+		t.Fatalf("separate approver rejected: %v", err)
+	}
+	if appr.State != change.StateApproved {
+		t.Fatalf("state = %s, want approved", appr.State)
+	}
+	if !appr.HasApprovalFrom("bob@example.com") {
+		t.Error("approval not recorded on the change request")
+	}
+	if _, err := svc.Merge(ctx, sub.ID); err != nil {
+		t.Fatalf("merge of an approved change failed: %v", err)
+	}
+}
+
+// Two distinct approvals are required before the change is considered approved.
+func TestMinApprovals(t *testing.T) {
+	_, _, svc := fixture(t)
+	svc.Policy = Policy{RequireApproval: true, MinApprovals: 2}
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("alice@example.com", "main")
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	sub, _ := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
+
+	first, err := svc.Approve(ctx, sub.ID, "bob@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.State != change.StateUnderReview {
+		t.Fatalf("after one of two approvals state = %s, want still under_review", first.State)
+	}
+	// The same approver cannot supply the second approval.
+	if _, err := svc.Approve(ctx, sub.ID, "bob@example.com"); err == nil {
+		t.Error("expected a duplicate approval to be refused")
+	}
+	second, err := svc.Approve(ctx, sub.ID, "carol@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.State != change.StateApproved {
+		t.Fatalf("after two approvals state = %s, want approved", second.State)
+	}
+}
+
+// A value changed on the base branch after an edit was staged must not be
+// silently clobbered: submit refuses with a conflict so the drift surfaces.
+func TestSubmitDetectsStaleValue(t *testing.T) {
+	workDir, _, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("alice", "main")
+	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
+
+	// Someone else changes the same value directly on main after staging.
+	writeFile(t, filepath.Join(workDir, "instances", "staging", "values.yaml"),
+		"# Staging values. Hand-maintained comment.\napp:\n  port: 7000 # the listener\n  name: demo\nunmanaged: keep-me\n")
+	sh(t, workDir, "git", "commit", "-am", "ops changed the port directly")
+
+	_, err := svc.Submit(ctx, cr.ID, "Bump staging port", "", "alice", "", "", repobackend.Author{})
+	if err == nil {
+		t.Fatal("expected a conflict submitting against a value that drifted on Git")
+	}
+	if !strings.Contains(err.Error(), "changed it on Git") {
+		t.Errorf("error should explain the drift, got: %v", err)
 	}
 }
 

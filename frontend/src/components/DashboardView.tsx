@@ -276,13 +276,17 @@ export default function DashboardView({ grid }: { grid: Grid }) {
         {/* The four operational numbers, each clickable to its source. */}
         <StaggerItem className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <StatTile
-            label="Configuration health"
+            label="Schema validation"
             value={
               <span style={{ color: invalid ? "var(--c-danger)" : "var(--c-ok)", fontSize: "var(--fs-16)" }}>
-                {invalid === 0 ? "All settings valid" : `${invalid} to fix`}
+                {invalid === 0 ? "All values schema-valid" : `${invalid} to fix`}
               </span>
             }
-            sub={invalid === 0 ? "No issues found" : "Open the editor on the first problem"}
+            sub={
+              invalid === 0
+                ? "Types and rules pass - not a deployment safety check"
+                : "Open the editor on the first problem"
+            }
             icon={
               invalid === 0 ? (
                 <CheckCircleFilled style={{ color: "var(--c-ok)" }} />

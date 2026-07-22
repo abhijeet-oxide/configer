@@ -318,7 +318,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		committed = string(b)
 	}
 	var items []change.Item
-	if d := s.Store.CurrentDraft(); d != nil {
+	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
 		items = d.Items
 	}
 	old, err := applyDraftToFile(p, inst, req.Path, committed, items)
@@ -403,7 +403,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return

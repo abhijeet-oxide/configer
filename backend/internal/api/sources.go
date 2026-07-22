@@ -458,7 +458,7 @@ func (s *Server) acceptIncoming(w http.ResponseWriter, r *http.Request) {
 
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
-	draft, err := s.Store.Draft(author(r, req.Author), s.branch())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -492,7 +492,7 @@ func (s *Server) acceptIncoming(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d := s.Store.CurrentDraft()
+	d := s.Store.CurrentDraft(draftOwner(r))
 	pending, changeID := 0, draft.ID
 	if d != nil {
 		pending, changeID = len(d.Items), d.ID

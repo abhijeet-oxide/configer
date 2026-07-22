@@ -207,7 +207,7 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Drop any pending draft items for the retired parameter.
-	if draft := s.Store.CurrentDraft(); draft != nil {
+	if draft := s.Store.CurrentDraft(draftOwner(r)); draft != nil {
 		_, _ = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 			kept := cr.Items[:0]
 			for _, it := range cr.Items {

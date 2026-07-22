@@ -123,7 +123,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
               ? "Showing only invalid cells; click to show everything again"
               : invalid
                 ? `${invalid} edited value(s) fail validation; click to show only invalid cells`
-                : "All edited values are valid"
+                : "All edited values pass schema validation (not a deployment safety check)"
           }
         >
           <span
@@ -135,7 +135,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
             onClick={() => setFilters({ invalidOnly: !invalidOnly })}
           >
             {invalidOnly ? <FilterFilled /> : invalid ? <WarningFilled /> : <CheckCircleFilled />}
-            {invalidOnly ? `only invalid (${invalid})` : invalid ? `${invalid} invalid` : "valid"}
+            {invalidOnly ? `only invalid (${invalid})` : invalid ? `${invalid} invalid` : "schema valid"}
           </span>
         </Tooltip>
       </div>

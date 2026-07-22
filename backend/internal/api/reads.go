@@ -72,7 +72,7 @@ func (s *Server) locate(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
 // @Router      /api/project [get]
-func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) projectInfo(w http.ResponseWriter, r *http.Request) {
 	// A connected-but-uninitialized repository is a first-class state: the
 	// UI routes it to onboarding instead of an error page.
 	if !s.initialized() {
@@ -84,7 +84,7 @@ func (s *Server) projectInfo(w http.ResponseWriter, _ *http.Request) {
 		})
 		return
 	}
-	p, draft, err := s.loadWithDraft()
+	p, draft, err := s.loadWithDraft(draftOwner(r))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -131,8 +131,8 @@ type gridResponse struct {
 	TotalRows int    `json:"totalRows,omitempty"`
 }
 
-func (s *Server) grid(w http.ResponseWriter, _ *http.Request) {
-	p, draft, err := s.loadWithDraft()
+func (s *Server) grid(w http.ResponseWriter, r *http.Request) {
+	p, draft, err := s.loadWithDraft(draftOwner(r))
 	if err != nil {
 		writeErr(w, err)
 		return
@@ -217,7 +217,7 @@ func (s *Server) compare(w http.ResponseWriter, r *http.Request) {
 
 	// No refs: compare within the current project (includes pending edits).
 	if leftRef == "" && rightRef == "" {
-		p, _, err := s.loadWithDraft()
+		p, _, err := s.loadWithDraft(draftOwner(r))
 		if err != nil {
 			writeErr(w, err)
 			return
@@ -516,7 +516,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 	} else if q.Get("draft") == "false" {
 		p, err = s.load()
 	} else {
-		p, draft, err = s.loadWithDraft()
+		p, draft, err = s.loadWithDraft(draftOwner(r))
 	}
 	if err != nil {
 		writeErr(w, err)

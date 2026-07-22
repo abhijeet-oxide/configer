@@ -1,0 +1,29 @@
+# Cell site cluster-eu-west-01
+site:
+  id: cluster-eu-west-01
+  region: cluster-eu-west
+  namespace: ran-cluster-eu-west-01
+cell:
+  band: n78
+  earfcn: 640000
+  pci: 301
+  tac: 300
+  txPowerDbm: 37
+  bandwidthMhz: 20
+  duplexMode: TDD
+  enabled: true
+transport:
+  gateway: 10.52.0.1
+  vlan: 100
+  mtu: 1500
+  qos:
+    dscp: 46
+    shapingMbps: 1000
+timing:
+  source: gnss
+  holdoverMinutes: 60
+  ptpDomain: 24
+neighbors:
+  - 10.50.0.1
+  - 10.50.0.2
+  - 10.50.0.3

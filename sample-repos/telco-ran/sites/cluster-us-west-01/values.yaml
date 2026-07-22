@@ -1,0 +1,29 @@
+# Cell site cluster-us-west-01
+site:
+  id: cluster-us-west-01
+  region: cluster-us-west
+  namespace: ran-cluster-us-west-01
+cell:
+  band: n77
+  earfcn: 630000
+  pci: 201
+  tac: 200
+  txPowerDbm: 40
+  bandwidthMhz: 20
+  duplexMode: TDD
+  enabled: true
+transport:
+  gateway: 10.51.0.1
+  vlan: 100
+  mtu: 9000
+  qos:
+    dscp: 46
+    shapingMbps: 1000
+timing:
+  source: gnss
+  holdoverMinutes: 60
+  ptpDomain: 24
+neighbors:
+  - 10.50.0.1
+  - 10.50.0.2
+  - 10.50.0.3

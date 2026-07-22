@@ -1,0 +1,18 @@
+apiVersion: networking.example.com/v1
+kind: NetworkProfile
+metadata:
+  name: edge-network
+spec:
+  region: us-west # kpt-set: ${region}
+  replicas: 3 # kpt-set: ${replicas}
+  routing:
+    asn: 65002 # kpt-set: ${asn}
+    subnet: 10.20.0.0/16 # kpt-set: ${subnet}
+    gateway: 10.20.0.1 # kpt-set: ${gateway}
+  mtu: 1500
+  bgp:
+    enabled: true
+    holdTime: 90
+  dns:
+    - 10.0.0.53
+    - 10.0.1.53

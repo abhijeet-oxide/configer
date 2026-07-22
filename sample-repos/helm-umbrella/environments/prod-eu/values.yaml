@@ -1,0 +1,22 @@
+# prod-eu overrides. Mirrors prod-us with EU host and GDPR retention.
+replicaCount: 4
+
+image:
+  tag: "2.8.0"
+
+service:
+  type: LoadBalancer
+  port: 8080
+
+ingress:
+  enabled: true
+  host: eu.platform.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 4
+  maxReplicas: 16
+  targetCPUUtilizationPercentage: 70
+
+logging:
+  level: warn

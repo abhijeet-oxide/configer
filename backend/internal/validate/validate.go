@@ -193,6 +193,9 @@ func Coerce(t model.ParamType, v any) (any, error) {
 
 // checkType verifies that v is representable as the declared type.
 func checkType(t model.ParamType, v any) Result {
+	if r, handled := checkQuantityType(t, v); handled {
+		return r
+	}
 	switch t {
 	case model.TypeInteger, model.TypeNumber, model.TypeBoolean:
 		if _, err := Coerce(t, v); err != nil {

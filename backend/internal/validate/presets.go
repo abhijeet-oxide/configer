@@ -85,6 +85,24 @@ var presets = []PresetRule{
 		Example:     "30s",
 		Pattern:     `^\d+(ms|s|m|h|d)$`,
 	},
+	{
+		ID: "cpu", Name: "Kubernetes CPU quantity",
+		Description: "CPU in cores or millicores; must be positive.",
+		Example:     "500m",
+		Pattern:     `^\d+(\.\d+)?m?$`,
+	},
+	{
+		ID: "memory", Name: "Kubernetes memory quantity",
+		Description: "Memory/storage as a binary or decimal SI byte amount; must be positive.",
+		Example:     "256Mi",
+		Pattern:     `^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$`,
+	},
+	{
+		ID: "percentage", Name: "Percentage",
+		Description: "Whole or fractional percentage with a trailing %.",
+		Example:     "75%",
+		Pattern:     `^\d+(\.\d+)?%$`,
+	},
 }
 
 // Presets returns the predefined rule library.

@@ -1,0 +1,29 @@
+# Cell site cluster-us-east-01
+site:
+  id: cluster-us-east-01
+  region: cluster-us-east
+  namespace: ran-cluster-us-east-01
+cell:
+  band: n78
+  earfcn: 640000
+  pci: 101
+  tac: 100
+  txPowerDbm: 40
+  bandwidthMhz: 20
+  duplexMode: TDD
+  enabled: true
+transport:
+  gateway: 10.50.0.1
+  vlan: 100
+  mtu: 9000
+  qos:
+    dscp: 46
+    shapingMbps: 1000
+timing:
+  source: gnss
+  holdoverMinutes: 60
+  ptpDomain: 24
+neighbors:
+  - 10.50.0.1
+  - 10.50.0.2
+  - 10.50.0.3

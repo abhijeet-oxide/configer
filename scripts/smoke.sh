@@ -38,6 +38,20 @@ code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/values" \
   -d '{"instance":"prod-us-east","paramId":"gateway-address","value":"999.1.1.1","author":"smoke"}')
 [ "$code" = "422" ] || fail "invalid value returned $code, want 422"
 
+echo "== a CPU limit below its request is rejected (cross-field rule)"
+# prod-us-east requests 500m; a 100m limit is below it and must be refused.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/values" \
+  -d '{"instance":"prod-us-east","paramId":"res-limit-cpu","value":"100m","author":"smoke"}')
+[ "$code" = "422" ] || fail "cpu limit below request returned $code, want 422"
+# A malformed CPU quantity is refused by the type itself.
+code=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/values" \
+  -d '{"instance":"prod-us-east","paramId":"res-limit-cpu","value":"lots","author":"smoke"}')
+[ "$code" = "422" ] || fail "malformed cpu quantity returned $code, want 422"
+# A valid limit at or above the request is accepted.
+curl -sf -X PUT "$BASE/values" \
+  -d '{"instance":"prod-us-east","paramId":"res-limit-cpu","value":"1500m","author":"smoke"}' >/dev/null \
+  || fail "valid cpu limit 1500m was rejected"
+
 echo "== stage cell edit + dedup edit + global edit"
 curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"datastore-port","value":5533,"author":"smoke"}' >/dev/null
 curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"namespace","value":"telco-prod-smoke","author":"smoke"}' >/dev/null

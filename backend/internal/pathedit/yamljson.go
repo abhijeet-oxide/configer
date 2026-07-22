@@ -1,8 +1,10 @@
 package pathedit
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -19,11 +21,58 @@ func getTree(doc []byte, path string) (any, bool, error) {
 	if len(doc) == 0 {
 		return nil, false, nil
 	}
+	if idx, rest, multi := DocIndex(path); multi {
+		docs, err := decodeDocs(doc)
+		if err != nil {
+			return nil, false, err
+		}
+		if idx >= len(docs) {
+			return nil, false, nil
+		}
+		return getTreeFromRoot(docs[idx], rest)
+	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(doc, &root); err != nil {
 		return nil, false, err
 	}
 	return getTreeFromRoot(&root, path)
+}
+
+// decodeDocs decodes every YAML document in a stream (files with "---"
+// separators) into its own node tree, in order. It backs multi-document reads
+// and edits; a single-document file yields a one-element slice.
+func decodeDocs(doc []byte) ([]*yaml.Node, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(doc))
+	var out []*yaml.Node
+	for {
+		var n yaml.Node
+		err := dec.Decode(&n)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &n)
+	}
+	return out, nil
+}
+
+// encodeDocs re-serializes a multi-document stream, emitting "---" separators
+// between documents and preserving each document's comments and style.
+func encodeDocs(docs []*yaml.Node, indent int) (string, error) {
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(indent)
+	for _, d := range docs {
+		if err := enc.Encode(d); err != nil {
+			return "", err
+		}
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 // getTreeFromRoot reads path from an already-parsed yaml.Node (the cached-doc
@@ -82,6 +131,25 @@ func removeTree(doc []byte, path, format string) (string, error) {
 }
 
 func editTree(doc []byte, path string, value any, remove bool, format string) (string, error) {
+	// A path carrying a document selector ("[1]$.spec.port") edits one document
+	// inside a multi-document YAML stream: decode all documents, mutate the
+	// addressed one, and re-emit the whole stream so the untouched documents
+	// (and every comment) survive byte-for-byte. JSON files are never
+	// multi-document, so this applies to YAML only.
+	if idx, rest, multi := DocIndex(path); multi && format != "json" {
+		return editMultiDoc(doc, idx, rest, value, remove)
+	}
+	// Fast path for the overwhelmingly common edit: replacing an existing scalar
+	// value with another scalar. Splice the new token into the original bytes and
+	// leave every other line untouched, so blank lines, comments and spacing
+	// survive exactly. Re-encoding the whole node tree (below) is correct but
+	// lets yaml.v3 rewrite blank lines - dropping bare ones, adding others - so
+	// it is reserved for structural changes (new keys, removals, list resizes).
+	if !remove && format == "yaml" {
+		if out, ok := setScalarInPlace(doc, path, value); ok {
+			return out, nil
+		}
+	}
 	segs, err := ParsePath(path)
 	if err != nil {
 		return "", err
@@ -124,6 +192,181 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// editMultiDoc applies one path edit to the idx-th document of a YAML stream
+// and re-emits the whole stream. The rest path has already had its document
+// selector stripped.
+func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (string, error) {
+	segs, err := ParsePath(rest)
+	if err != nil {
+		return "", err
+	}
+	docs, err := decodeDocs(doc)
+	if err != nil {
+		return "", err
+	}
+	if idx >= len(docs) {
+		return "", fmt.Errorf("document index %d out of range (stream has %d)", idx, len(docs))
+	}
+	top := ensureDocRoot(docs[idx])
+	if remove {
+		removeAt(top, segs)
+	} else {
+		valNode := &yaml.Node{}
+		if err := valNode.Encode(value); err != nil {
+			return "", err
+		}
+		if err := setAt(top, segs, valNode); err != nil {
+			return "", err
+		}
+	}
+	return encodeDocs(docs, detectIndent(doc))
+}
+
+// setScalarInPlace replaces an existing single-line scalar at path with a new
+// scalar value by editing only that value's bytes on its own line. It returns
+// ok=false (so the caller falls back to a full re-encode) whenever the edit is
+// not a plain scalar-for-scalar swap: the path is missing, the target is a
+// mapping/sequence/alias, the scalar spans multiple lines or uses a block style
+// (|, >), or the new value is not a scalar. This is what keeps a one-value edit
+// a one-line diff.
+func setScalarInPlace(doc []byte, path string, value any) (string, bool) {
+	if len(doc) == 0 {
+		return "", false
+	}
+	// The new value must itself be a scalar; lists and maps are structural.
+	switch value.(type) {
+	case nil, []any, map[string]any, map[any]any:
+		return "", false
+	}
+
+	var root yaml.Node
+	if err := yaml.Unmarshal(doc, &root); err != nil {
+		return "", false
+	}
+	segs, err := ParsePath(path)
+	if err != nil {
+		return "", false
+	}
+	cur := docRoot(&root)
+	if cur == nil {
+		return "", false
+	}
+	for _, seg := range segs {
+		cur = descend(cur, seg)
+		if cur == nil {
+			return "", false
+		}
+	}
+	if cur.Kind != yaml.ScalarNode || cur.Line <= 0 || cur.Column <= 0 {
+		return "", false
+	}
+	// Block scalars (|, >) and any value carrying a newline span lines; splicing
+	// a single line would corrupt them.
+	if cur.Style == yaml.LiteralStyle || cur.Style == yaml.FoldedStyle || strings.Contains(cur.Value, "\n") {
+		return "", false
+	}
+
+	// yaml.v3 counts lines from 1 and does not include a trailing empty segment;
+	// split so line indices line up with node.Line.
+	lines := strings.Split(string(doc), "\n")
+	li := cur.Line - 1
+	if li < 0 || li >= len(lines) {
+		return "", false
+	}
+	line := lines[li]
+	col0 := cur.Column - 1
+	end, ok := scalarTokenExtent(line, col0, cur.Style)
+	if !ok {
+		return "", false
+	}
+	token, ok := renderScalarToken(value, cur.Style)
+	if !ok {
+		return "", false
+	}
+	lines[li] = line[:col0] + token + line[end:]
+	return strings.Join(lines, "\n"), true
+}
+
+// scalarTokenExtent returns the byte index just past the scalar token that
+// starts at col0 in line, honoring the node's quoting style. For a plain scalar
+// the token ends at an inline " #" comment or end of line (trailing spaces
+// excluded, so they and the comment are preserved verbatim).
+func scalarTokenExtent(line string, col0 int, style yaml.Style) (int, bool) {
+	if col0 < 0 || col0 > len(line) {
+		return 0, false
+	}
+	switch style {
+	case yaml.DoubleQuotedStyle:
+		if col0 >= len(line) || line[col0] != '"' {
+			return 0, false
+		}
+		for i := col0 + 1; i < len(line); i++ {
+			if line[i] == '\\' {
+				i++
+				continue
+			}
+			if line[i] == '"' {
+				return i + 1, true
+			}
+		}
+		return 0, false
+	case yaml.SingleQuotedStyle:
+		if col0 >= len(line) || line[col0] != '\'' {
+			return 0, false
+		}
+		for i := col0 + 1; i < len(line); i++ {
+			if line[i] == '\'' {
+				if i+1 < len(line) && line[i+1] == '\'' {
+					i++
+					continue
+				}
+				return i + 1, true
+			}
+		}
+		return 0, false
+	default: // plain
+		rest := line[col0:]
+		cut := len(rest)
+		for i := 0; i < len(rest); i++ {
+			if rest[i] == '#' && i > 0 && (rest[i-1] == ' ' || rest[i-1] == '\t') {
+				cut = i
+				break
+			}
+		}
+		val := strings.TrimRight(rest[:cut], " \t")
+		return col0 + len(val), true
+	}
+}
+
+// renderScalarToken encodes value as a single YAML scalar token, preserving the
+// existing node's quoting style for strings so a quoted value stays quoted (and
+// a string that looks like a number is never silently unquoted into one).
+func renderScalarToken(value any, style yaml.Style) (string, bool) {
+	n := &yaml.Node{}
+	if err := n.Encode(value); err != nil {
+		return "", false
+	}
+	if n.Kind != yaml.ScalarNode {
+		return "", false
+	}
+	if _, isStr := value.(string); isStr && (style == yaml.DoubleQuotedStyle || style == yaml.SingleQuotedStyle) {
+		n.Style = style
+	}
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	if err := enc.Encode(n); err != nil {
+		return "", false
+	}
+	if err := enc.Close(); err != nil {
+		return "", false
+	}
+	tok := strings.TrimRight(b.String(), "\n")
+	if strings.Contains(tok, "\n") { // encoded to a multi-line form; not safe to splice
+		return "", false
+	}
+	return tok, true
 }
 
 // EditDoc parses a YAML document, hands the root mapping node to fn for a

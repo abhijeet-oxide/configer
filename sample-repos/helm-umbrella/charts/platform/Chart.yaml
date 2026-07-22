@@ -1,0 +1,13 @@
+apiVersion: v2
+name: platform
+description: Umbrella chart for the demo platform
+type: application
+version: 3.4.1
+appVersion: "2.8.0"
+dependencies:
+  - name: postgresql
+    version: 13.2.24
+    repository: https://charts.example.com
+  - name: redis
+    version: 18.6.1
+    repository: https://charts.example.com

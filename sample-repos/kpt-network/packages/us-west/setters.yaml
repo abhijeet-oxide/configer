@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: setters
+data:
+  region: us-west
+  replicas: "3"

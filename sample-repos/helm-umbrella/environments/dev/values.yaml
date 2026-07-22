@@ -1,0 +1,15 @@
+# dev overrides. Small footprint, verbose logging, ingress off.
+replicaCount: 1
+
+image:
+  tag: "2.9.0-rc3"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+autoscaling:
+  enabled: false
+
+logging:
+  level: debug

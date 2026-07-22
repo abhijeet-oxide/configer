@@ -23,6 +23,33 @@ func TestYAMLExtract(t *testing.T) {
 	}
 }
 
+// A file bundling several YAML documents ("---") must yield candidates from
+// EVERY document, each tagged with its 0-based document selector so identically
+// named fields in sibling documents stay distinct.
+func TestYAMLExtractMultiDoc(t *testing.T) {
+	content := []byte("kind: ConfigMap\ndata:\n  level: info\n---\nkind: Service\nspec:\n  port: 8080\n")
+	got, err := YAMLParser{}.Extract("bundle.yaml", content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byPath := map[string]any{}
+	name := map[string]string{}
+	for _, c := range got {
+		byPath[c.Path] = c.Value
+		name[c.Path] = c.Name
+	}
+	if byPath["[0]$.data.level"] != "info" {
+		t.Errorf("doc0 level missing: %v", byPath)
+	}
+	if _, ok := byPath["[1]$.spec.port"]; !ok {
+		t.Errorf("doc1 port missing (multi-doc dropped?): %v", byPath)
+	}
+	// The display name drops the document selector.
+	if name["[1]$.spec.port"] != "spec.port" {
+		t.Errorf("name = %q, want spec.port", name["[1]$.spec.port"])
+	}
+}
+
 func TestXMLExtract(t *testing.T) {
 	content := []byte(`<network><tls minVersion="1.2"><cipher>AES</cipher></tls></network>`)
 	got, err := XMLParser{}.Extract("network.xml", content)

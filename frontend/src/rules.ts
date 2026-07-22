@@ -48,6 +48,7 @@ export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
 // backend so the editors can flag a bad entry before it is ever sent.
 export const FORMAT_TYPES = new Set([
   "ipv4", "ipv6", "cidr", "port", "hostname", "email", "url", "mac", "integer", "number",
+  "cpu", "memory", "duration", "percentage",
 ]);
 
 // Friendly label for a type, including a list's element type: list<ipv4>.
@@ -62,6 +63,11 @@ const IPV6_RE =
 const HOSTNAME_RE = /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$/i;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
+// Kubernetes-style operational quantities, mirrored from the backend.
+const CPU_RE = /^\d+(\.\d+)?m?$/;
+const MEMORY_RE = /^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$/;
+const DURATION_RE = /^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$/;
+const PERCENT_RE = /^\d+(\.\d+)?%$/;
 
 function isCIDR(v: string): boolean {
   const [addr, bits, ...rest] = v.split("/");
@@ -100,6 +106,18 @@ export function validateTyped(value: string, type?: string): string | null {
     case "mac": return MAC_RE.test(v) ? null : "Needs a valid MAC address, e.g. 00:1a:2b:3c:4d:5e";
     case "integer": return Number.isInteger(Number(v)) ? null : "Needs a whole number";
     case "number": return Number.isNaN(Number(v)) ? "Needs a number" : null;
+    case "cpu":
+      if (!CPU_RE.test(v)) return "Needs a CPU quantity, e.g. 500m or 2";
+      return Number(v.replace("m", "")) > 0 ? null : "CPU must be greater than zero";
+    case "memory":
+      if (!MEMORY_RE.test(v)) return "Needs a memory quantity, e.g. 256Mi or 1Gi";
+      return parseFloat(v) > 0 ? null : "Memory must be greater than zero";
+    case "duration": return DURATION_RE.test(v) ? null : "Needs a duration with a unit, e.g. 30s or 5m";
+    case "percentage": {
+      if (!PERCENT_RE.test(v)) return "Needs a percentage, e.g. 75%";
+      const n = parseFloat(v);
+      return n >= 0 && n <= 100 ? null : "Percentage must be between 0% and 100%";
+    }
     default: return null;
   }
 }

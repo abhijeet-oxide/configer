@@ -40,7 +40,9 @@ func Get(doc []byte, format, path string) (any, bool, error) {
 // turns thousands of repeated parses into one per file. Get is read-only and
 // safe to call repeatedly; a Document must not be shared across writes.
 type Document struct {
-	yaml  *yaml.Node
+	// yamls holds every document in the stream (files with "---" separators
+	// carry more than one); a path's document selector picks among them.
+	yamls []*yaml.Node
 	xml   *etree.Document
 	empty bool
 }
@@ -58,11 +60,21 @@ func Parse(doc []byte, format string) (*Document, error) {
 		}
 		return &Document{xml: d}, nil
 	}
-	var root yaml.Node
-	if err := yaml.Unmarshal(doc, &root); err != nil {
+	docs, err := decodeDocs(doc)
+	if err != nil {
 		return nil, err
 	}
-	return &Document{yaml: &root}, nil
+	return &Document{yamls: docs}, nil
+}
+
+// yamlDoc returns the node tree for the document a path selects (index 0 when
+// the path carries no selector), plus the path with the selector stripped.
+func (d *Document) yamlDoc(path string) (*yaml.Node, string, bool) {
+	idx, rest, _ := DocIndex(path)
+	if idx >= len(d.yamls) {
+		return nil, rest, false
+	}
+	return d.yamls[idx], rest, true
 }
 
 // Get reads the value at path from an already-parsed Document.
@@ -73,17 +85,25 @@ func (d *Document) Get(path string) (any, bool, error) {
 	if d.xml != nil {
 		return getXMLFromDoc(d.xml, path)
 	}
-	return getTreeFromRoot(d.yaml, path)
+	root, rest, ok := d.yamlDoc(path)
+	if !ok {
+		return nil, false, nil
+	}
+	return getTreeFromRoot(root, rest)
 }
 
 // Line returns the 1-based source line of the value at path from a parsed
 // Document. It supports YAML and JSON (which share the node tree); XML has no
 // per-node line and returns false. Used to jump straight to where a value lives.
 func (d *Document) Line(path string) (int, bool) {
-	if d == nil || d.empty || d.yaml == nil {
+	if d == nil || d.empty || len(d.yamls) == 0 {
 		return 0, false
 	}
-	return lineFromRoot(d.yaml, path)
+	root, rest, ok := d.yamlDoc(path)
+	if !ok {
+		return 0, false
+	}
+	return lineFromRoot(root, rest)
 }
 
 // Line is the one-shot form: parse doc and return the value's source line.

@@ -330,3 +330,48 @@ parameters:
     bindings:
       - { file: "{folder}/values.yaml", path: $.application.components.api.image, format: yaml }
     validation: { required: true }
+
+  # --- Resources (Kubernetes quantities) -----------------------------------
+  # CPU and memory are typed as Kubernetes quantities: they validate the format
+  # AND that the amount is positive. A limit may not fall below its request, and
+  # a request may not exceed its limit (atLeast/atMost cross-parameter rules).
+  - id: res-request-cpu
+    name: resources.requests.cpu
+    displayName: CPU request
+    description: Guaranteed CPU (cores or millicores).
+    category: Resources
+    type: cpu
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.resources.default.requests.cpu, format: yaml }
+    validation: { required: true, atMost: res-limit-cpu }
+  - id: res-limit-cpu
+    name: resources.limits.cpu
+    displayName: CPU limit
+    description: Maximum CPU. Must be at least the CPU request.
+    category: Resources
+    type: cpu
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.resources.default.limits.cpu, format: yaml }
+    validation: { required: true, atLeast: res-request-cpu }
+  - id: res-request-memory
+    name: resources.requests.memory
+    displayName: Memory request
+    description: Guaranteed memory (e.g. 256Mi, 1Gi).
+    category: Resources
+    type: memory
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.resources.default.requests.memory, format: yaml }
+    validation: { required: true, atMost: res-limit-memory }
+  - id: res-limit-memory
+    name: resources.limits.memory
+    displayName: Memory limit
+    description: Maximum memory. Must be at least the memory request.
+    category: Resources
+    type: memory
+    scope: instance
+    bindings:
+      - { file: "{folder}/values.yaml", path: $.resources.default.limits.memory, format: yaml }
+    validation: { required: true, atLeast: res-request-memory }

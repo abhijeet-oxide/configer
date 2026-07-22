@@ -15,7 +15,15 @@ make test           # go test ./... + tsc --noEmit
 make lint           # go vet + golangci-lint + eslint
 make build          # backend binary + frontend dist
 ./scripts/smoke.sh  # end-to-end: onboard fixture, edit, submit, assert branch diff
+make functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
 ```
+
+`sample-repos/` is a corpus of realistic GitOps repos (Helm umbrella, kustomize
+base+overlays, kpt packages, raw multi-cluster K8s, telco RAN) with no
+`.configer/`; `make functional-test` onboards each and asserts detection,
+dedup, envelope filtering, schema validation and write-back, plus a synthetic
+large-fleet scale check. The Go side is build-tagged (`go test -tags functional
+./internal/discovery/...`); the API side drives `POST /api/discover` from Node.
 
 Backend alone: `cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer`.
 Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
@@ -135,7 +143,11 @@ parameters:
   - id: net-admin-port          # slug, unique
     name: network.admin.port    # dotted logical name
     category: Networking/IP     # "/" nests the tree
-    type: integer               # string|integer|number|boolean|enum|ipv4|cidr|list
+    type: integer               # string|integer|number|boolean|enum|ipv4|ipv6|cidr|
+                                #   hostname|port|email|url|mac|cpu|memory|duration|
+                                #   percentage|list  (cpu/memory validate positivity)
+    # validation may also carry atLeast/atMost: <paramId> for cross-field rules
+    # (a resource limit must be at least its request, and vice versa).
     scope: instance             # instance | global (lives in a shared file)
     bindings:
       - { file: "{folder}/values.yaml", path: $.network.admin.port, format: yaml }

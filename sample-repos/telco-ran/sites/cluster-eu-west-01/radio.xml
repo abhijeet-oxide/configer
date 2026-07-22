@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<radio-unit xmlns="urn:acme:params:xml:ns:yang:acme-ran"
+            xmlns:ptp="urn:ietf:params:xml:ns:yang:ietf-ptp"
+            site="cluster-eu-west-01">
+  <admin-state>unlocked</admin-state>
+  <carriers>
+    <carrier>
+      <name>c1</name>
+      <arfcn>640000</arfcn>
+      <tx-power-dbm>37</tx-power-dbm>
+      <bandwidth-mhz>20</bandwidth-mhz>
+    </carrier>
+  </carriers>
+  <ptp:ptp>
+    <ptp:domain>24</ptp:domain>
+    <ptp:priority1>128</ptp:priority1>
+  </ptp:ptp>
+  <fronthaul>
+    <vlan>100</vlan>
+    <mtu>1500</mtu>
+    <cu-plane-mtu>1500</cu-plane-mtu>
+  </fronthaul>
+</radio-unit>

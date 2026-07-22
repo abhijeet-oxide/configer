@@ -42,44 +42,41 @@ func (c schemaCache) load(root, rel string) map[string]any {
 }
 
 // attachSchema fills p.Validation (and refines p.Type) from a schema file
-// covering the parameter's first binding, when one exists.
+// covering one of the parameter's bindings, when one exists.
 func attachSchema(root string, cache schemaCache, p *model.Parameter, instances []model.Instance) {
-	// JSON Schema does not describe XML documents: use the parameter's first
-	// YAML/JSON binding (a deduplicated parameter may lead with an XML one).
-	var b model.Binding
-	found := false
-	for _, cand := range p.Bindings {
-		if cand.Format != "xml" {
-			b, found = cand, true
-			break
+	// JSON Schema does not describe XML documents. Try EVERY YAML/JSON binding,
+	// not just the first: a Helm-style parameter leads with its instance-layer
+	// override (environments/<env>/values.yaml) but its schema commonly ships
+	// next to the CHART DEFAULTS on the base binding (charts/.../values.yaml,
+	// values.schema.json). Checking the base binding too means those tunables
+	// pick up their validation instead of silently getting none.
+	for _, b := range p.Bindings {
+		if b.Format == "xml" {
+			continue
 		}
-	}
-	if !found {
-		return
-	}
-	// A templated binding may find its schema in ANY instance's folder (teams
-	// often keep one schema next to one canonical instance).
-	concretes := []string{b.File}
-	if strings.Contains(b.File, "{") {
-		concretes = concretes[:0]
-		for _, inst := range instances {
-			concretes = append(concretes, b.ForInstance(inst).File)
+		// A templated binding may find its schema in ANY instance's folder
+		// (teams often keep one schema next to one canonical instance).
+		concretes := []string{b.File}
+		if strings.Contains(b.File, "{") {
+			concretes = concretes[:0]
+			for _, inst := range instances {
+				concretes = append(concretes, b.ForInstance(inst).File)
+			}
 		}
-	}
-
-	for _, concrete := range concretes {
-		for _, schemaRel := range schemaCandidates(concrete) {
-			schema := cache.load(root, schemaRel)
-			if schema == nil {
-				continue
+		for _, concrete := range concretes {
+			for _, schemaRel := range schemaCandidates(concrete) {
+				schema := cache.load(root, schemaRel)
+				if schema == nil {
+					continue
+				}
+				node, required := lookupSchema(schema, b.Path)
+				if node == nil {
+					continue
+				}
+				applySchema(p, node, required)
+				p.Validation.SchemaRef = schemaRel
+				return
 			}
-			node, required := lookupSchema(schema, b.Path)
-			if node == nil {
-				continue
-			}
-			applySchema(p, node, required)
-			p.Validation.SchemaRef = schemaRel
-			return
 		}
 	}
 }

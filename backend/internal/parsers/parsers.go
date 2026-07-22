@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 )
 
@@ -41,6 +42,11 @@ func inferType(v any) model.ParamType {
 // nameFromPath derives a dotted human name from a JSONPath-like path by
 // dropping the leading "$." and array indices.
 func nameFromPath(path string) string {
+	// Drop a leading multi-document selector ("[1]$.spec.port" -> "spec.port")
+	// so the display name is the logical setting, not the document position.
+	if _, rest, ok := pathedit.DocIndex(path); ok {
+		path = rest
+	}
 	s := strings.TrimPrefix(path, "$.")
 	// remove [n] array indices for the display name
 	var b strings.Builder

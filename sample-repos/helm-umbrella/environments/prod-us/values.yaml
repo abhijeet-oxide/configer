@@ -1,0 +1,30 @@
+# prod-us overrides. Full scale, autoscaling on, LB ingress.
+replicaCount: 6
+
+image:
+  tag: "2.8.0"
+
+service:
+  type: LoadBalancer
+  port: 8080
+
+ingress:
+  enabled: true
+  host: us.platform.example.com
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+autoscaling:
+  enabled: true
+  minReplicas: 6
+  maxReplicas: 24
+  targetCPUUtilizationPercentage: 70
+
+logging:
+  level: warn

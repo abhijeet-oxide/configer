@@ -59,6 +59,10 @@ test: ## Run backend tests + frontend typecheck
 	cd $(BACKEND) && go test ./...
 	cd $(FRONTEND) && npx tsc --noEmit
 
+.PHONY: functional-test
+functional-test: ## Scanner functional + scale tests over sample-repos/ (backend + API)
+	./scripts/functional-test.sh
+
 .PHONY: lint
 lint: ## go vet + ESLint + TypeScript typecheck + no em-dashes
 	./scripts/no-emdash.sh

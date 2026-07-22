@@ -1,8 +1,10 @@
 package pathedit
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -19,11 +21,58 @@ func getTree(doc []byte, path string) (any, bool, error) {
 	if len(doc) == 0 {
 		return nil, false, nil
 	}
+	if idx, rest, multi := DocIndex(path); multi {
+		docs, err := decodeDocs(doc)
+		if err != nil {
+			return nil, false, err
+		}
+		if idx >= len(docs) {
+			return nil, false, nil
+		}
+		return getTreeFromRoot(docs[idx], rest)
+	}
 	var root yaml.Node
 	if err := yaml.Unmarshal(doc, &root); err != nil {
 		return nil, false, err
 	}
 	return getTreeFromRoot(&root, path)
+}
+
+// decodeDocs decodes every YAML document in a stream (files with "---"
+// separators) into its own node tree, in order. It backs multi-document reads
+// and edits; a single-document file yields a one-element slice.
+func decodeDocs(doc []byte) ([]*yaml.Node, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(doc))
+	var out []*yaml.Node
+	for {
+		var n yaml.Node
+		err := dec.Decode(&n)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, &n)
+	}
+	return out, nil
+}
+
+// encodeDocs re-serializes a multi-document stream, emitting "---" separators
+// between documents and preserving each document's comments and style.
+func encodeDocs(docs []*yaml.Node, indent int) (string, error) {
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(indent)
+	for _, d := range docs {
+		if err := enc.Encode(d); err != nil {
+			return "", err
+		}
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
+	}
+	return b.String(), nil
 }
 
 // getTreeFromRoot reads path from an already-parsed yaml.Node (the cached-doc
@@ -82,6 +131,14 @@ func removeTree(doc []byte, path, format string) (string, error) {
 }
 
 func editTree(doc []byte, path string, value any, remove bool, format string) (string, error) {
+	// A path carrying a document selector ("[1]$.spec.port") edits one document
+	// inside a multi-document YAML stream: decode all documents, mutate the
+	// addressed one, and re-emit the whole stream so the untouched documents
+	// (and every comment) survive byte-for-byte. JSON files are never
+	// multi-document, so this applies to YAML only.
+	if idx, rest, multi := DocIndex(path); multi && format != "json" {
+		return editMultiDoc(doc, idx, rest, value, remove)
+	}
 	segs, err := ParsePath(path)
 	if err != nil {
 		return "", err
@@ -124,6 +181,36 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 		return "", err
 	}
 	return b.String(), nil
+}
+
+// editMultiDoc applies one path edit to the idx-th document of a YAML stream
+// and re-emits the whole stream. The rest path has already had its document
+// selector stripped.
+func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (string, error) {
+	segs, err := ParsePath(rest)
+	if err != nil {
+		return "", err
+	}
+	docs, err := decodeDocs(doc)
+	if err != nil {
+		return "", err
+	}
+	if idx >= len(docs) {
+		return "", fmt.Errorf("document index %d out of range (stream has %d)", idx, len(docs))
+	}
+	top := ensureDocRoot(docs[idx])
+	if remove {
+		removeAt(top, segs)
+	} else {
+		valNode := &yaml.Node{}
+		if err := valNode.Encode(value); err != nil {
+			return "", err
+		}
+		if err := setAt(top, segs, valNode); err != nil {
+			return "", err
+		}
+	}
+	return encodeDocs(docs, detectIndent(doc))
 }
 
 // EditDoc parses a YAML document, hands the root mapping node to fn for a

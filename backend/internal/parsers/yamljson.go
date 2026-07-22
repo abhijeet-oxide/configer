@@ -1,8 +1,10 @@
 package parsers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
@@ -31,16 +33,48 @@ func (YAMLParser) Detect(path string, _ []byte) bool {
 func (YAMLParser) Extract(file string, content []byte) ([]plugin.Candidate, error) {
 	// Decode into a yaml.Node so every scalar carries its source line, which
 	// the onboarding UI shows beside each value. A plain any-decode loses that.
-	var doc yaml.Node
-	if err := yaml.Unmarshal(content, &doc); err != nil {
-		return nil, err
+	//
+	// A single file may hold SEVERAL YAML documents separated by "---" (the
+	// Kubernetes norm: one manifest file bundling a Deployment, Service and
+	// ConfigMap). Decode every document in the stream, not just the first, or
+	// each file after the first "---" is silently dropped. When a stream holds
+	// more than one document, each document's paths are prefixed with its
+	// 0-based index ("[0]$.spec…", "[1]$.spec…") so identically named fields in
+	// sibling documents stay distinct instead of colliding.
+	dec := yaml.NewDecoder(bytes.NewReader(content))
+	var docs []*yaml.Node
+	for {
+		var doc yaml.Node
+		err := dec.Decode(&doc)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// Preserve the original single-document behavior: a parse error is
+			// reported (and, for the first document, discovery skips the file).
+			if len(docs) == 0 {
+				return nil, err
+			}
+			break
+		}
+		root := &doc
+		if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+			root = root.Content[0]
+		}
+		if root.Kind == 0 {
+			continue // an empty document (e.g. trailing "---")
+		}
+		docs = append(docs, root)
 	}
+
 	var out []plugin.Candidate
-	root := &doc
-	if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
-		root = root.Content[0]
+	for i, root := range docs {
+		prefix := "$"
+		if len(docs) > 1 {
+			prefix = fmt.Sprintf("[%d]$", i)
+		}
+		flattenNode(root, prefix, file, &out)
 	}
-	flattenNode(root, "$", file, &out)
 	return out, nil
 }
 

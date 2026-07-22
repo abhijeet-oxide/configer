@@ -1,0 +1,21 @@
+# staging overrides. Production-like, one replica fewer.
+replicaCount: 2
+
+image:
+  tag: "2.9.0-rc3"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  host: staging.platform.example.com
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+
+logging:
+  level: info

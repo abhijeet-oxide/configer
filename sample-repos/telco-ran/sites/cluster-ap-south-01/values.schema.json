@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "cell": {
+      "type": "object",
+      "required": ["band", "earfcn", "pci"],
+      "properties": {
+        "band": { "type": "string", "enum": ["n77", "n78", "n79", "n41", "n1"] },
+        "earfcn": { "type": "integer", "minimum": 0, "maximum": 3279165 },
+        "pci": { "type": "integer", "minimum": 0, "maximum": 1007 },
+        "tac": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "txPowerDbm": { "type": "integer", "minimum": -30, "maximum": 46 },
+        "bandwidthMhz": { "type": "integer", "enum": [5, 10, 15, 20, 40, 50, 100] },
+        "duplexMode": { "type": "string", "enum": ["FDD", "TDD"] }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "properties": {
+        "gateway": { "type": "string", "format": "ipv4" },
+        "vlan": { "type": "integer", "minimum": 1, "maximum": 4094 },
+        "mtu": { "type": "integer", "minimum": 1280, "maximum": 9216 }
+      }
+    }
+  }
+}

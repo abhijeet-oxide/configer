@@ -1,0 +1,13 @@
+# Platform-wide RAN settings shared by every cell site.
+platform:
+  vendor: acme-ran
+  releaseTrain: R23.09
+  orchestrator: smo.core.example.com
+  timezone: UTC
+  security:
+    mtls: true
+    caBundle: /etc/ran/ca.pem
+oam:
+  collector: oam.core.example.com
+  metricsPort: 9100
+  logLevel: info

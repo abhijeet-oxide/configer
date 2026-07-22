@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  namespace: us-west-2
+  labels:
+    app: checkout
+    env: production
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: checkout
+  template:
+    metadata:
+      labels:
+        app: checkout
+    spec:
+      containers:
+        - name: checkout
+          image: registry.example.com/shop/checkout:3.2.1
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LOG_LEVEL
+              value: warn
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+status:
+  readyReplicas: 6
+  observedGeneration: 4

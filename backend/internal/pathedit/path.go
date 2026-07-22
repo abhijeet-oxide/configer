@@ -16,10 +16,36 @@ type Seg struct {
 	SelVal string // selector value for [k=v]
 }
 
+// DocIndex splits an optional leading document selector from a YAML/JSON path.
+// A single file may hold several YAML documents separated by "---" (the
+// Kubernetes norm); a path targets the Nth document with a leading "[N]" before
+// the "$" (e.g. "[1]$.spec.port"). It returns the 0-based document index (0
+// when no selector is present), the remaining path, and whether a selector was
+// found. This is the ONE place the multi-document path syntax is defined, so
+// the parser, discovery and the edit engine all agree on it.
+func DocIndex(path string) (idx int, rest string, ok bool) {
+	if len(path) < 2 || path[0] != '[' {
+		return 0, path, false
+	}
+	end := strings.IndexByte(path, ']')
+	if end < 2 {
+		return 0, path, false
+	}
+	n, err := strconv.Atoi(path[1:end])
+	if err != nil || n < 0 {
+		return 0, path, false
+	}
+	return n, path[end+1:], true
+}
+
 // ParsePath turns a dotted path ("$.a.b", "servers[2]", "rules[name=ssh].port")
-// into segments. The leading "$." / "$" is optional. XML paths use XPath and
-// are not parsed here.
+// into segments. The leading "$." / "$" is optional. A leading document
+// selector ("[N]$…") is stripped first. XML paths use XPath and are not parsed
+// here.
 func ParsePath(path string) ([]Seg, error) {
+	if _, rest, ok := DocIndex(path); ok {
+		path = rest
+	}
 	s := strings.TrimPrefix(path, "$.")
 	s = strings.TrimPrefix(s, "$")
 	s = strings.TrimPrefix(s, ".")

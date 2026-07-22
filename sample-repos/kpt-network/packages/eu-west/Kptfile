@@ -1,0 +1,10 @@
+apiVersion: kpt.dev/v1
+kind: Kptfile
+metadata:
+  name: eu-west
+info:
+  description: Network package for eu-west
+pipeline:
+  mutators:
+    - image: gcr.io/kpt-fn/apply-setters:v0.2.0
+      configPath: setters.yaml

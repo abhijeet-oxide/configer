@@ -1,0 +1,29 @@
+# Cell site cluster-ap-south-01
+site:
+  id: cluster-ap-south-01
+  region: cluster-ap-south
+  namespace: ran-cluster-ap-south-01
+cell:
+  band: n41
+  earfcn: 600000
+  pci: 401
+  tac: 400
+  txPowerDbm: 43
+  bandwidthMhz: 20
+  duplexMode: TDD
+  enabled: true
+transport:
+  gateway: 10.53.0.1
+  vlan: 100
+  mtu: 1500
+  qos:
+    dscp: 46
+    shapingMbps: 1000
+timing:
+  source: gnss
+  holdoverMinutes: 60
+  ptpDomain: 24
+neighbors:
+  - 10.50.0.1
+  - 10.50.0.2
+  - 10.50.0.3

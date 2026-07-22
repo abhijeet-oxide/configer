@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: web-config
+data:
+  LOG_LEVEL: info
+  FEATURE_SEARCH: "true"
+  MAX_UPLOAD_MB: "25"
+  CACHE_TTL_SECONDS: "300"

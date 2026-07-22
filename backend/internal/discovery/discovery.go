@@ -16,6 +16,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/layout"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 )
@@ -387,12 +388,27 @@ func settersFor(root, file string) map[string]string {
 }
 
 // skipFile drops files that describe structure rather than configuration:
-// schemas, kustomization manifests, and Kptfiles are tooling plumbing, not
-// settings anyone tunes per instance.
+// schemas, kustomization manifests, Kptfiles, and Helm chart plumbing are
+// tooling metadata, not settings anyone tunes per instance. Helm templates
+// under templates/ are Go-templated manifests (rendered, not edited), so the
+// whole directory is skipped; the chart's values.yaml is kept - it holds the
+// tunable defaults.
 func skipFile(file string) bool {
-	base := strings.ToLower(file[strings.LastIndex(file, "/")+1:])
+	lower := strings.ToLower(file)
+	// Anything inside a Helm templates/ or crds/ directory is generated or
+	// schema material, never a tuned value.
+	for _, seg := range []string{"/templates/", "/crds/"} {
+		if strings.Contains(lower, seg) {
+			return true
+		}
+	}
+	if strings.HasPrefix(lower, "templates/") || strings.HasPrefix(lower, "crds/") {
+		return true
+	}
+	base := lower[strings.LastIndex(lower, "/")+1:]
 	switch base {
-	case "kustomization.yaml", "kustomization.yml", "kptfile":
+	case "kustomization.yaml", "kustomization.yml", "kptfile",
+		"chart.yaml", "chart.lock":
 		return true
 	}
 	return strings.HasSuffix(base, ".schema.json")
@@ -401,11 +417,21 @@ func skipFile(file string) bool {
 // structuralKey drops the top-level Kubernetes identity fields present in
 // almost any KRM document, regardless of whether the file is a full manifest.
 func structuralKey(path string) bool {
-	switch path {
+	switch stripDoc(path) {
 	case "$.apiVersion", "$.kind":
 		return true
 	}
 	return false
+}
+
+// stripDoc removes a leading multi-document selector ("[1]$.spec" -> "$.spec")
+// so the structural/envelope checks compare against canonical paths regardless
+// of which document in a stream a candidate came from.
+func stripDoc(path string) string {
+	if _, rest, ok := pathedit.DocIndex(path); ok {
+		return rest
+	}
+	return path
 }
 
 // k8sManifest reports whether a scanned file is a Kubernetes manifest: it has
@@ -414,7 +440,7 @@ func structuralKey(path string) bool {
 func k8sManifest(cands []candidate) bool {
 	var hasAPI, hasKind bool
 	for _, c := range cands {
-		switch c.Path {
+		switch stripDoc(c.Path) {
 		case "$.apiVersion":
 			hasAPI = true
 		case "$.kind":
@@ -438,6 +464,7 @@ var k8sEnvelopePrefixes = []string{
 // a manifest file - the resource's identity and bookkeeping - rather than a
 // value someone tunes per instance.
 func k8sStructural(path string) bool {
+	path = stripDoc(path)
 	if path == "$.apiVersion" || path == "$.kind" {
 		return true
 	}

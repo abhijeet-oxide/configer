@@ -151,10 +151,12 @@ func ApplyDraft(g *Grid, items []change.Item) {
 	}
 
 	for i := range g.Rows {
-		id := g.Rows[i].Param.ID
+		param := g.Rows[i].Param
+		id := param.ID
 		for name, c := range g.Rows[i].Cells {
+			touched := false
 			if it, ok := instItems[key{id, name}]; ok {
-				c.Pending = true
+				c.Pending, touched = true, true
 				if it.Act() == change.ActionSet {
 					c.Value, c.Set, c.Source = it.New, true, model.LayerInstance
 				} else {
@@ -162,11 +164,23 @@ func ApplyDraft(g *Grid, items []change.Item) {
 				}
 			}
 			if it, ok := globalItems[id]; ok && c.Source != model.LayerInstance {
-				c.Pending = true
+				c.Pending, touched = true, true
 				if it.Act() == change.ActionSet {
 					c.Value, c.Set, c.Source = it.New, true, model.LayerBase
 				} else {
 					c.Value, c.Set = nil, false
+				}
+			}
+			// Re-validate against the previewed value. Without this the cell would
+			// display the staged value while Valid/Message still reflect the
+			// pre-draft value, so a valid edit could show as invalid (and vice
+			// versa). Mirrors the validity rule in Build.
+			if touched {
+				if c.State == StateNotApplicable || !c.Set {
+					c.Valid, c.Message = true, ""
+				} else {
+					vr := validate.Value(param, c.Value)
+					c.Valid, c.Message = vr.Valid, vr.Message
 				}
 			}
 			g.Rows[i].Cells[name] = c

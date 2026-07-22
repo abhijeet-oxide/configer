@@ -187,3 +187,45 @@ func TestCategoryTree(t *testing.T) {
 		t.Errorf("Net count=%d children=%d, want 2/2", net.Count, len(net.Children))
 	}
 }
+
+// A pending edit must be re-validated against the STAGED value, not the value
+// on Git. Regression test for the bug where the grid showed a staged value but
+// reported validity computed from the pre-draft value (a valid edit rendered as
+// invalid, and vice versa).
+func TestApplyDraftRevalidates(t *testing.T) {
+	root := t.TempDir()
+	full := filepath.Join(root, "instances/new/values.yaml")
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// Committed value is an invalid hostname; the staged edit fixes it.
+	if err := os.WriteFile(full, []byte("h: bad_host\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := &project.Project{
+		Root: root,
+		App:  model.Application{Name: "t"},
+		Catalog: model.Catalog{Parameters: []model.Parameter{
+			{ID: "h", Name: "h", Type: model.TypeString, VersionIntroduced: "v1.0.0",
+				Validation: model.Validation{Preset: "hostname"},
+				Bindings:   []model.Binding{{File: "{folder}/values.yaml", Path: "$.h", Format: "yaml"}}},
+		}},
+		Registry: model.InstanceRegistry{Instances: []model.Instance{
+			{Name: "new", Folder: "instances/new", SoftwareVersion: "v1.0.0"},
+		}},
+	}
+	g := Build(p)
+	if c := g.Rows[0].Cells["new"]; c.Valid {
+		t.Fatalf("committed bad_host should be invalid before draft")
+	}
+	ApplyDraft(&g, []change.Item{
+		{ParamID: "h", Instance: "new", Action: change.ActionSet, New: "app.example.com"},
+	})
+	c := g.Rows[0].Cells["new"]
+	if c.Value != "app.example.com" {
+		t.Fatalf("value = %v, want staged app.example.com", c.Value)
+	}
+	if !c.Valid || c.Message != "" {
+		t.Errorf("staged valid hostname should be valid, got valid=%v msg=%q", c.Valid, c.Message)
+	}
+}

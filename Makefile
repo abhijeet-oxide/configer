@@ -15,9 +15,16 @@ help: ## Show this help
 		| awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}'
 
 .PHONY: install
-install: ## Install all dependencies (Go modules + npm)
+install: ## Install all dependencies (Go modules + npm) + the git hooks
 	cd $(BACKEND) && go mod download
 	cd $(FRONTEND) && npm install
+	@$(MAKE) --no-print-directory hooks
+
+.PHONY: hooks
+hooks: ## Point git at the repository's versioned hooks (scripts/hooks)
+	@git config core.hooksPath scripts/hooks
+	@chmod +x scripts/hooks/* 2>/dev/null || true
+	@echo "git hooks: scripts/hooks (pre-commit keeps the OpenAPI spec in sync)"
 
 .PHONY: dev
 dev: ## Run backend (:8080) + frontend (:5173) together; Ctrl-C stops both
@@ -43,7 +50,14 @@ docs: ## Regenerate the OpenAPI spec from handler annotations
 docs-check: ## Fail if the committed OpenAPI spec is stale (CI drift guard)
 	cd $(BACKEND) && go generate ./internal/api
 	@if ! git diff --quiet -- $(BACKEND)/internal/api/docs; then \
-		echo "OpenAPI spec is out of date. Run 'make docs' and commit the result." >&2; \
+		echo "" >&2; \
+		echo "The committed OpenAPI spec no longer matches the handler annotations." >&2; \
+		echo "It is generated AND committed (the backend serves it at /api/docs), so it" >&2; \
+		echo "has to travel with the code that changed." >&2; \
+		echo "" >&2; \
+		echo "  Fix:      make docs && git add backend/internal/api/docs" >&2; \
+		echo "  Prevent:  make hooks   # regenerates it for you on every commit" >&2; \
+		echo "" >&2; \
 		git --no-pager diff --stat -- $(BACKEND)/internal/api/docs >&2; \
 		exit 1; \
 	fi

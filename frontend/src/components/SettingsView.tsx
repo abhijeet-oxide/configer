@@ -267,7 +267,8 @@ export default function SettingsView() {
           )}
           {!identity.authEnabled && (
             <div style={{ fontSize: "var(--fs-12)", color: "var(--text-3)", marginTop: 8 }}>
-              To add teammates with separate roles, configure GitHub sign-in on the deployment.
+              Sign-in is not set up here, so this Configer runs as a single user. An administrator
+              can connect GitHub to add teammates with their own roles.
             </div>
           )}
           </div>

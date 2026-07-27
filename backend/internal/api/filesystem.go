@@ -60,6 +60,14 @@ func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
 	if !h.requireAdmin(w, r) {
 		return
 	}
+	// The UI hides this source on a hosted deployment; the server refuses it
+	// there too, so hiding a control is never the only thing standing between a
+	// remote browser and a directory listing of the host.
+	if !localFoldersEnabled(r, h.Environment) {
+		writeError(w, r, http.StatusForbidden, CodeForbidden,
+			"browsing folders is only available when Configer runs on your own machine")
+		return
+	}
 	path := strings.TrimSpace(r.URL.Query().Get("path"))
 	if path == "" {
 		if home, err := os.UserHomeDir(); err == nil {

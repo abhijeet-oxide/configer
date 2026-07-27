@@ -117,7 +117,12 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	if authSvc.Enabled() {
 		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
 	} else {
-		slog.Info("auth disabled: single-user mode", slog.String("store", platform.Dialect()))
+		// Say WHY, at startup, in the log: "sign-in is not configured" is the
+		// one message an operator needs to act on, and hunting for it in the UI
+		// (where end users must never see it) is the wrong place to look.
+		slog.Info("auth disabled: single-user mode",
+			slog.String("store", platform.Dialect()),
+			slog.String("reason", authSvc.ConfigProblem()))
 	}
 	if len(reg.List()) == 0 && seed != "" {
 		if st, serr := os.Stat(seed); serr == nil && st.IsDir() {
@@ -331,6 +336,9 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/github/branches", h.githubBranches)
 	// Local-folder picker for the New Application flow (localhost mode).
 	mux.HandleFunc("GET /api/fs/browse", h.browseFolders)
+	// What this deployment supports, so the UI never offers a workflow that
+	// cannot succeed here (see capabilities.go).
+	mux.HandleFunc("GET /api/capabilities", h.capabilities)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/search", h.search)
 	mux.HandleFunc("GET /api/repos", h.list)

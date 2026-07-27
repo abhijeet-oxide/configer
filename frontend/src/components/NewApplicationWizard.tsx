@@ -30,6 +30,7 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitHubRepo, type RepoSummary } from "../api";
+import { useCapabilities } from "../deployment";
 import { relTime } from "./DashboardView";
 import { InlineNotice, Stepper } from "./ui";
 import { InlineListSkeleton } from "./Skeletons";
@@ -70,6 +71,13 @@ export default function NewApplicationWizard({
   const [name, setName] = useState("");
 
   const statusQ = useQuery({ queryKey: ["github-status"], queryFn: api.githubStatus, enabled: open });
+  const caps = useCapabilities();
+  // "Local folder" browses the SERVER's filesystem. On a hosted deployment that
+  // is a machine the user has never seen, so the choice is not offered - and
+  // with only one source left there is nothing to choose: the dialog opens
+  // straight on it instead of asking a question with one answer.
+  const soleSource: Source | null = caps.localFolders ? null : "git";
+  const chosen = source ?? soleSource;
 
   const reset = () => {
     setSource(null);
@@ -103,20 +111,19 @@ export default function NewApplicationWizard({
     setStep(1);
   };
 
-  // The step strip mirrors the chosen path; before a choice it shows the
-  // common shape (source → set up → create).
+  // The step strip mirrors the path actually being walked. With one source
+  // there is no Source step to show, so the strip starts at Repository.
+  const sourceStep = soleSource === null ? [{ label: "Source", icon: <FolderOpenOutlined /> }] : [];
   const stepItems =
-    source === "local"
-      ? [
-          { label: "Source", icon: <FolderOpenOutlined /> },
-          { label: "Create", icon: <ThunderboltOutlined /> },
-        ]
+    chosen === "local"
+      ? [...sourceStep, { label: "Create", icon: <ThunderboltOutlined /> }]
       : [
-          { label: "Source", icon: <FolderOpenOutlined /> },
+          ...sourceStep,
           { label: "Repository", icon: <GithubOutlined /> },
           { label: "Create", icon: <ThunderboltOutlined /> },
         ];
-  const currentStep = source === null ? 0 : source === "local" ? 1 : 1 + step;
+  const currentStep =
+    (chosen === null ? 0 : chosen === "local" ? 1 : 1 + step) - (soleSource === null ? 0 : 1);
 
   return (
     <Modal
@@ -131,8 +138,9 @@ export default function NewApplicationWizard({
       destroyOnHidden
     >
       <Typography.Paragraph type="secondary" className="wizard-intro" style={{ marginTop: 4 }}>
-        An application manages the configuration in one Git repository, remote or a folder on this
-        machine. Configer scans it for settings; no changes are made until you confirm.
+        An application manages the configuration in one Git repository
+        {caps.localFolders ? ", remote or a folder on this machine" : ""}. Configer scans it for
+        settings; no changes are made until you confirm.
       </Typography.Paragraph>
       <div className="wizard-steps mb-5 mt-2 rounded-card-lg bg-surface-2 px-4 py-3">
         <Stepper current={currentStep} steps={stepItems} />
@@ -141,9 +149,9 @@ export default function NewApplicationWizard({
           dropped on short and narrow screens, where the content sets the height
           and the dialog body scrolls. */}
       <div className="wizard-body">
-        {source === null && <SourceStep onPick={setSource} />}
+        {chosen === null && <SourceStep onPick={setSource} />}
 
-        {source === "local" && (
+        {chosen === "local" && (
           <LocalFolderStep
             onBack={() => setSource(null)}
             onDone={(r) => {
@@ -153,7 +161,7 @@ export default function NewApplicationWizard({
           />
         )}
 
-        {source === "git" && step === 0 &&
+        {chosen === "git" && step === 0 &&
           (manual ? (
             <>
               <ConnectForm compact onDone={(r) => { reset(); onCreated(r); }} />
@@ -167,10 +175,10 @@ export default function NewApplicationWizard({
               status={statusQ.data}
               onPick={pickRepo}
               onManual={() => setManual(true)}
-              onBack={() => setSource(null)}
+              onBack={soleSource === null ? () => setSource(null) : undefined}
             />
           ))}
-        {source === "git" && step === 1 && repo && (
+        {chosen === "git" && step === 1 && repo && (
           <FinishStep
             repo={repo}
             branch={branch}
@@ -510,7 +518,8 @@ function RepoStep({
   status?: { available: boolean; source: string; login?: string; signInEnabled: boolean };
   onPick: (r: GitHubRepo) => void;
   onManual: () => void;
-  onBack: () => void;
+  /** absent when this deployment offers only one source: there is nowhere back to */
+  onBack?: () => void;
 }) {
   const [q, setQ] = useState("");
   const reposQ = useQuery({
@@ -533,10 +542,41 @@ function RepoStep({
 
   if (loading) return <InlineListSkeleton rows={5} />;
 
+  // Two different situations wear the same "we cannot list your repositories"
+  // shape, and they need different pages. If signing in is possible, invite it.
+  // If GitHub was never connected to this deployment, DON'T offer a button that
+  // cannot work: say the integration is unavailable in the user's own terms -
+  // no OAuth, no environment variables, nothing they cannot act on - and lead
+  // with the path that does work here.
   if (!status?.available) {
+    if (!status?.signInEnabled) {
+      return (
+        <div style={{ textAlign: "center", padding: "20px 12px" }}>
+          <BranchesOutlined className="choice-card-icon" style={{ opacity: 0.6 }} />
+          <Typography.Title level={5} style={{ marginTop: 14 }}>
+            Add a repository by its address
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" style={{ maxWidth: 460, margin: "0 auto 18px" }}>
+            GitHub integration is not available on this deployment, so repositories are added by
+            their Git address instead. An administrator can connect GitHub to let you browse and
+            pick from your repositories.
+          </Typography.Paragraph>
+          <Button type="primary" size="large" icon={<BranchesOutlined />} onClick={onManual}>
+            Add by Git address
+          </Button>
+          {onBack && (
+            <div style={{ marginTop: 14 }}>
+              <Button type="link" size="small" onClick={onBack}>
+                <ArrowLeftOutlined /> Back to choosing a source
+              </Button>
+            </div>
+          )}
+        </div>
+      );
+    }
     return (
       <div style={{ textAlign: "center", padding: "20px 12px" }}>
-        <GithubOutlined style={{ fontSize: 44, opacity: 0.6 }} />
+        <GithubOutlined className="choice-card-icon" style={{ opacity: 0.6 }} />
         <Typography.Title level={5} style={{ marginTop: 14 }}>
           Connect your GitHub account
         </Typography.Title>
@@ -545,31 +585,26 @@ function RepoStep({
           organizations' - so creating an application is a couple of clicks, with no URLs or
           tokens to paste.
         </Typography.Paragraph>
-        {status?.signInEnabled ? (
-          <Button
-            type="primary"
-            size="large"
-            icon={<GithubOutlined />}
-            href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
-          >
-            Continue with GitHub
-          </Button>
-        ) : (
-          <InlineNotice className="mx-auto max-w-[520px] text-start">
-            GitHub sign-in is not configured on this deployment. You can still connect a repository
-            manually below.
-          </InlineNotice>
-        )}
+        <Button
+          type="primary"
+          size="large"
+          icon={<GithubOutlined />}
+          href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+        >
+          Continue with GitHub
+        </Button>
         <div style={{ marginTop: 14 }}>
           <Button type="link" onClick={onManual}>
             Connect manually (git URL)
           </Button>
         </div>
-        <div style={{ marginTop: 4 }}>
-          <Button type="link" size="small" onClick={onBack}>
-            <ArrowLeftOutlined /> Back to choosing a source
-          </Button>
-        </div>
+        {onBack && (
+          <div style={{ marginTop: 4 }}>
+            <Button type="link" size="small" onClick={onBack}>
+              <ArrowLeftOutlined /> Back to choosing a source
+            </Button>
+          </div>
+        )}
       </div>
     );
   }
@@ -773,8 +808,9 @@ function FinishStep({
 
 // ---- manual fallback ---------------------------------------------------------
 
-// ConnectForm is the manual path (a git URL or a path on the server) - also
-// used by the import wizard's connect step.
+// ConnectForm is the manual path (a Git address, or a path on the server where
+// that is meaningful) - also used by the import wizard's connect step. It needs
+// no integration at all, which is why it stays available on every deployment.
 export function ConnectForm({
   onDone,
   compact,
@@ -784,6 +820,7 @@ export function ConnectForm({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const caps = useCapabilities();
   const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
   const connect = useMutation({
     mutationFn: async (v: { url: string; name: string; branch?: string; token?: string }) => {
@@ -811,7 +848,14 @@ export function ConnectForm({
       <Form.Item
         name="url"
         label="Repository"
-        rules={[{ required: true, message: "Give a git URL or a path on the server" }]}
+        rules={[
+          {
+            required: true,
+            message: caps.localFolders
+              ? "Give a Git address or a folder on this machine"
+              : "Give the repository's Git address",
+          },
+        ]}
         extra={compact ? undefined : "The Git repository whose configuration this application manages."}
       >
         <Input placeholder="https://github.com/acme/network-config.git" className="mono" />

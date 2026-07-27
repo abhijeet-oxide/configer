@@ -1788,3 +1788,18 @@ body {
     font-size: 26px;
   }
 }
+
+/* The one technical detail the boot screen ever shows: the address that failed,
+   when the address itself is the problem. Monospaced, quiet, and wrapping, so a
+   long URL can be read and copied without breaking the card. */
+.boot-card-detail {
+  max-width: 100%;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}

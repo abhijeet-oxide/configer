@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
@@ -7,9 +8,19 @@ import brand from "./plugins/vite-plugin-brand";
 // origin during development. Point VITE_API_PROXY_TARGET at a remote backend to
 // develop the UI against a shared environment.
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "");
+  // .env.example lives at the REPOSITORY ROOT and documents both halves of the
+  // configuration, so the root file has to be read here too - loading only
+  // frontend/.env would silently ignore the very file the docs tell people to
+  // write. A frontend/.env still wins, so a per-package override works.
+  const root = path.resolve(process.cwd(), "..");
+  const env = { ...loadEnv(mode, root, ""), ...loadEnv(mode, process.cwd(), "") };
   const target = env.VITE_API_PROXY_TARGET || "http://localhost:8080";
   return {
+    // Vite only exposes variables it loaded from its own envDir, so hand the
+    // build the ones that came from the root file explicitly.
+    define: {
+      "import.meta.env.VITE_API_BASE_URL": JSON.stringify(env.VITE_API_BASE_URL ?? ""),
+    },
     plugins: [react(), tailwindcss(), brand()],
     build: {
       rollupOptions: {

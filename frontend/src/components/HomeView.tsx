@@ -11,6 +11,7 @@ import { HomeAppCard } from "./AppCard";
 import NewApplicationWizard from "./NewApplicationWizard";
 import { STEP_HANDOFF } from "./ImportWizard";
 import { WorkspaceSkeleton } from "./Skeletons";
+import { sourceNoun, useCapabilities } from "../deployment";
 
 // HomeView is the operational start page. It answers, in order, the only three
 // questions someone has when they open Configer: can I pick up where I left
@@ -25,6 +26,7 @@ function greeting(name?: string): string {
 }
 
 export default function HomeView() {
+  const caps = useCapabilities();
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -78,7 +80,7 @@ export default function HomeView() {
             <EmptyState
               icon={<AppstoreOutlined />}
               title="Connect your first application"
-              hint="Connect a Git repository or local folder to begin managing its configuration."
+              hint={`Connect a ${sourceNoun(caps)} to begin managing its configuration.`}
               actionLabel="New application"
               onAction={() => setWizardOpen(true)}
             />

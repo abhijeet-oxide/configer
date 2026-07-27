@@ -15,8 +15,11 @@ import {
 // ------------------------------------------------------------------ routing
 // Sections that belong to ONE application (rendered as tabs on the
 // Configuration page). "overview" is the default tab and has no URL slug.
+// Audit is deliberately NOT here: the trail spans the whole workspace (who did
+// what, across every application), so it is a global level with its own /audit
+// URL, not a tab that forces an application to be selected first.
 const APP_SECTIONS_SET = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "sources", "import", "audit",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "sources", "import",
 ]);
 // Section <-> URL slug. Overview is intentionally absent: it is the default
 // tab, so its path is just /application/<id> with no suffix.
@@ -30,7 +33,6 @@ const SECTION_TO_SLUG: Record<string, string> = {
   drift: "repository-changes",
   sources: "sources",
   import: "import",
-  audit: "audit",
 };
 const SLUG_TO_SECTION: Record<string, string> = Object.fromEntries(
   Object.entries(SECTION_TO_SLUG).map(([s, slug]) => [slug, s]),
@@ -60,12 +62,15 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
   // alias so old links keep resolving).
   if (segs[0] === "applications" || segs[0] === "overview")
     return { repoId: null, section: "workspace", param, inst };
-  // Workspace-wide approvals inbox.
-  if (segs[0] === "approvals") return { repoId: null, section: "inbox", param, inst };
+  // The workspace-wide inbox: everything waiting for someone. Its URL says
+  // "inbox" like the page does; "/approvals" is the old address, kept so
+  // existing links still resolve.
+  if (segs[0] === "inbox" || segs[0] === "approvals") return { repoId: null, section: "inbox", param, inst };
   // Workspace-wide instances estate.
   if (segs[0] === "instances") return { repoId: null, section: "estate", param, inst };
-  // Workspace-wide change history and repository list.
+  // Workspace-wide change history, audit trail and repository list.
   if (segs[0] === "changes") return { repoId: null, section: "changelog", param, inst };
+  if (segs[0] === "audit") return { repoId: null, section: "audit", param, inst };
   if (segs[0] === "repositories") return { repoId: null, section: "repos", param, inst };
   // The operational start page; the root path canonicalizes here.
   return { repoId: null, section: "home", param, inst };
@@ -77,9 +82,10 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
 // URLs are path-based and human-readable so any view is shareable:
 //   /home                        the operational start page (root canonicalizes here)
 //   /applications                the applications collection (alias: /overview)
-//   /approvals                   workspace-wide approvals inbox
+//   /inbox                       workspace-wide inbox (alias: /approvals)
 //   /instances                   workspace-wide instances estate
 //   /changes                     workspace-wide change history
+//   /audit                       workspace-wide audit trail
 //   /repositories                workspace-wide repository list
 //   /application/<id>            one application, Overview (the default tab)
 //   /application/<id>/<tab>      a specific tab (editor, files, compare, ...)
@@ -405,9 +411,10 @@ function pathFor(s: UIState): string {
   if (section === "plugins") return `/plugins${qs}`;
   if (section === "settings") return `/settings${qs}`;
   if (section === "home") return `/home${qs}`;
-  if (section === "inbox") return `/approvals${qs}`;
+  if (section === "inbox") return `/inbox${qs}`;
   if (section === "estate") return `/instances${qs}`;
   if (section === "changelog") return `/changes${qs}`;
+  if (section === "audit") return `/audit${qs}`;
   if (section === "repos") return `/repositories${qs}`;
   // Collection level: the application never appears in the URL.
   if (section === "workspace" || !s.repoId) return `/applications${qs}`;

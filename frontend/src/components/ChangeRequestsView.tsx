@@ -18,7 +18,8 @@ import {
   RightOutlined,
 } from "../icons";
 import { EditOutlined } from "../icons";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
@@ -50,7 +51,7 @@ export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { setSection, setReviewCr } = useUI();
-  const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
 
   const invalidate = () => qc.invalidateQueries();
 

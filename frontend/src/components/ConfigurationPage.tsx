@@ -1,7 +1,7 @@
 import { Dropdown, Badge } from "antd";
 import { useMemo } from "react";
 import { DownOutlined } from "../icons";
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding } from "../api";
 import { useUI } from "../store";
 import { useElementSize } from "../hooks";
@@ -13,7 +13,9 @@ import { useElementSize } from "../hooks";
 // `section`, so deep links and browser history keep working; this is chrome,
 // not a router.
 
-/** Sections that live under the Configuration page (vs. workspace level). */
+/** Sections that live under the Configuration page (vs. workspace level).
+ *  Audit is not one of them: the trail spans every application, so it is a
+ *  workspace-level view with its own /audit address. */
 export const APP_SECTIONS = new Set([
   "overview",
   "config",
@@ -27,7 +29,6 @@ export const APP_SECTIONS = new Set([
   "drift",
   "sources",
   "import",
-  "audit",
 ]);
 
 // All application tabs, in display AND priority order: earlier tabs win space,
@@ -44,7 +45,6 @@ const ALL_TABS: { key: string; label: string }[] = [
   { key: "approvals", label: "Approvals" },
   { key: "drift", label: "Repository changes" },
   { key: "sources", label: "Sources" },
-  { key: "audit", label: "Audit" },
   { key: "import", label: "Import settings" },
 ];
 
@@ -81,11 +81,11 @@ export default function ConfigurationPage({
   children: React.ReactNode;
 }) {
   const { setSection } = useUI();
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
-  const incomingQ = useQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const incoming = incomingQ.data?.changes?.length ?? 0;

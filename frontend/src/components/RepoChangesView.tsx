@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Card,
   Empty,
@@ -25,12 +24,14 @@ import {
   HistoryOutlined,
 } from "../icons";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Finding } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
 import { InSyncArt, StatePanel } from "./illustrations";
 import UserAvatar from "./UserAvatar";
+import { InlineNotice } from "./ui";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
 // outside Configer: new config files, edits, deletions, renames and new
@@ -115,7 +116,7 @@ export default function RepoChangesView() {
   const { setSection, setImportFocus, selectParam } = useUI();
   const [filter, setFilter] = useState<DriftFilter>(null);
 
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000 });
+  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000 });
   const data = findingsQ.data;
   const findings = data?.findings ?? [];
   const managedCount = findings.filter(isManagedDrift).length;
@@ -126,7 +127,7 @@ export default function RepoChangesView() {
         ? findings.filter((f) => f.type === filter)
         : findings;
   // Latest commits fill the all-clear state, proving the watch is live.
-  const historyQ = useQuery({
+  const historyQ = useRepoQuery({
     queryKey: ["history", 8],
     queryFn: () => api.history(8),
     enabled: !findingsQ.isLoading && findings.length === 0,
@@ -224,12 +225,9 @@ export default function RepoChangesView() {
       </div>
 
       {findingsQ.isError && (
-        <Alert
-          type="warning"
-          showIcon
-          message="Repository changes can't be checked right now."
-          description="The service will keep retrying automatically."
-        />
+        <InlineNotice tone="warn">
+          Repository changes can&rsquo;t be checked right now - retrying automatically.
+        </InlineNotice>
       )}
 
       {!findingsQ.isError && findings.length === 0 && (

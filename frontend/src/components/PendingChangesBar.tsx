@@ -7,7 +7,8 @@
 // status strip - it starts collapsed by default, so it never obscures the work.
 import { useState } from "react";
 import { Button, Popconfirm, Tooltip, App as AntApp } from "antd";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { PullRequestOutlined, DeleteOutlined, DownOutlined } from "../icons";
 import { api } from "../api";
 import { useUI } from "../store";
@@ -21,7 +22,7 @@ export default function PendingChangesBar() {
   // choice this session, which overrides the default until they navigate.
   const [collapsed, setCollapsed] = useState<boolean | null>(null);
 
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const draft = draftQ.data?.draft;
   const pending = draft?.items?.length ?? 0;
 

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "./repoQuery";
 import { api, type ChangeRequest } from "./api";
 import { useUI } from "./store";
 
@@ -54,8 +55,8 @@ export function crEvents(crs: ChangeRequest[]): ActivityItem[] {
 
 export function useActivity(limit = 8): { items: ActivityItem[]; loading: boolean } {
   const repoId = useUI((s) => s.repoId);
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const historyQ = useQuery({ queryKey: ["history"], queryFn: () => api.history(20), staleTime: 30_000 });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const historyQ = useRepoQuery({ queryKey: ["history"], queryFn: () => api.history(20), staleTime: 30_000 });
   const auditQ = useQuery({
     queryKey: ["audit", repoId],
     queryFn: () => api.audit({ repo: repoId ?? undefined, limit: 30 }),

@@ -26,7 +26,8 @@ import {
   LoadingOutlined,
 } from "../icons";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import {
   api,
   type Grid,
@@ -131,7 +132,7 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
   // arriving from another view keeps its context.
   const instance = selectedInstance ?? "";
 
-  const timelineQ = useQuery({
+  const timelineQ = useRepoQuery({
     queryKey: ["timeline", instance],
     queryFn: () => api.timeline({ instance: instance || undefined, limit: 20 }),
   });
@@ -424,7 +425,7 @@ function SnapshotDetail({
   onOpenDraft: () => void;
 }) {
   const { token } = antdTheme.useToken();
-  const detailQ = useQuery({
+  const detailQ = useRepoQuery({
     queryKey: ["timeline-snapshot", sha, instance],
     queryFn: () => api.timelineSnapshot(sha, { instance: instance || undefined, limit: 20 }),
   });

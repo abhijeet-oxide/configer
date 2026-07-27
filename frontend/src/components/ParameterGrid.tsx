@@ -40,7 +40,8 @@ import { EmptyState } from "./ui";
 import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import {
   api,
   type Cell,
@@ -523,8 +524,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
   const qc = useQueryClient();
-  const presetsQ = useQuery({ queryKey: ["presets"], queryFn: api.presets });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   // key: `${paramId}|${instance}` of the cell currently in edit mode
   const [editing, setEditing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);

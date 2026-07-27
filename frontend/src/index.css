@@ -1587,3 +1587,204 @@ body {
 .editor-statusbar .anticon {
   vertical-align: -0.12em;
 }
+
+/* ------------------------------------------------------------- boot screen */
+
+/* The app's first paint: shown while the service is being probed, and as the
+   page the app falls back to when the service cannot be reached at all. Same
+   canvas, same card, same mark as everywhere else, so an outage looks like part
+   of the product rather than a browser error. */
+.boot-screen {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--canvas);
+  color: var(--text);
+}
+.boot-splash {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.boot-progress {
+  width: 132px;
+  height: 3px;
+  border-radius: 2px;
+  overflow: hidden;
+  background: var(--surface-2);
+  position: relative;
+}
+.boot-progress::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  border-radius: 2px;
+  background: var(--brand);
+  animation: boot-slide 1.15s var(--ease, ease-in-out) infinite;
+}
+@keyframes boot-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-progress::after {
+    animation-duration: 2.6s;
+  }
+}
+.boot-card {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 28px 26px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--el-overlay);
+}
+.boot-card-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.boot-card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 6px 0 2px;
+}
+@media (max-width: 480px) {
+  .boot-card {
+    padding: 22px 16px 18px;
+  }
+}
+
+/* --------------------------------------------------------- small screens */
+
+/* Dialogs on a phone: Ant Design puts the chosen width on .ant-modal as an
+   inline style, so the cap has to win over it. A dialog then uses the full
+   width it can, sits near the top edge, and scrolls its own body instead of
+   pushing its buttons off-screen. */
+@media (max-width: 640px) {
+  .ant-modal {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px auto !important;
+    top: 8px !important;
+    padding-bottom: 8px;
+  }
+  .ant-modal .ant-modal-content {
+    padding: 16px 14px;
+  }
+  .ant-modal .ant-modal-body {
+    max-height: calc(100dvh - 150px);
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  /* Footer buttons share the row rather than crowding one corner. */
+  .ant-modal .ant-modal-footer {
+    display: flex;
+    gap: 8px;
+  }
+  .ant-modal .ant-modal-footer > .ant-btn {
+    flex: 1;
+    margin-inline-start: 0 !important;
+  }
+  /* A side drawer at phone width is a sheet, not a sliver. */
+  .ant-drawer-right .ant-drawer-content-wrapper,
+  .ant-drawer-left .ant-drawer-content-wrapper {
+    width: min(100vw, 420px) !important;
+  }
+}
+
+/* The floor that keeps a multi-step dialog from resizing between steps. It is a
+   floor, not a fixed height, so on a short screen the content decides. */
+.wizard-body {
+  min-height: 380px;
+  display: flex;
+  flex-direction: column;
+}
+@media (max-width: 640px), (max-height: 720px) {
+  .wizard-body {
+    min-height: 0;
+  }
+}
+
+/* Card rows inside dialogs (pick a source, pick a mode): side by side when
+   there is room, stacked when there isn't. */
+.choice-row {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.choice-row > * {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/* A wizard step's action row: Back on the left, the primary action on the
+   right, pinned to the bottom of the step. On a phone the pair stacks (primary
+   first, so the thumb lands on it) and each button takes the full width. */
+.wizard-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: auto;
+  padding-top: 16px;
+}
+@media (max-width: 640px) {
+  .wizard-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .wizard-actions > .ant-btn {
+    width: 100%;
+  }
+}
+
+/* A page-top banner is a status line, not a panel: one row, tight padding, and
+   it never grows taller than the message it carries. */
+.slim-banner.ant-alert {
+  padding-block: 5px;
+  padding-inline: 14px;
+  font-size: var(--fs-12, 12.5px);
+  line-height: 1.45;
+  align-items: center;
+}
+.slim-banner.ant-alert .ant-alert-message {
+  font-size: inherit;
+}
+
+/* A dialog wizard on a phone: the same content, spending less of a short screen
+   on framing. The lead paragraph shrinks, the step strip loses its padding
+   band, and the big choice glyphs come down to a size that still reads as an
+   icon without pushing the choices below the fold. */
+.choice-card-icon {
+  font-size: 40px;
+}
+@media (max-width: 640px) {
+  .wizard-intro.ant-typography {
+    font-size: var(--fs-12);
+    margin-bottom: 10px;
+  }
+  .wizard-steps {
+    margin-bottom: 14px;
+    padding: 8px 10px;
+  }
+  .choice-card-icon {
+    font-size: 26px;
+  }
+}

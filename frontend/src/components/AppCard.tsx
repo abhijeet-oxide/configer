@@ -1,4 +1,4 @@
-import { Alert, Button, Dropdown, Space, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Space, Tooltip, Typography } from "antd";
 import {
   BranchesOutlined,
   ClusterOutlined,
@@ -11,7 +11,7 @@ import {
   StarFilled,
 } from "../icons";
 import type { RepoSummary } from "../api";
-import { StatusPill } from "./ui";
+import { InlineNotice, StatusPill } from "./ui";
 import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
 
@@ -163,14 +163,9 @@ export default function AppCard({
       </div>
 
       {r.error ? (
-        <Alert type="error" showIcon message={r.error} />
+        <InlineNotice tone="danger">{r.error}</InlineNotice>
       ) : r.needsSetup ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="Not set up yet"
-          description="Configer hasn't scanned this repository into an application. Open it to finish setup."
-        />
+        <InlineNotice tone="warn">Not set up yet - open it to finish setup.</InlineNotice>
       ) : (
         <>
           <Space size={6} wrap>

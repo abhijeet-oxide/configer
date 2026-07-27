@@ -2,7 +2,7 @@
 // read fresh from the host. It renders nothing for pure-git deployments or a
 // change with no hosted pull request, so it is safe to drop beside any CR row.
 import { Tag, Tooltip } from "antd";
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api } from "../api";
 import { CheckCircleOutlined, CloseCircleOutlined, SyncOutlined } from "../icons";
 
@@ -27,7 +27,7 @@ function checkTag(checks: string) {
 }
 
 export default function PrChecksBadge({ changeId, hasPr }: { changeId: number; hasPr: boolean }) {
-  const q = useQuery({
+  const q = useRepoQuery({
     queryKey: ["pr-status", changeId],
     queryFn: () => api.prStatus(changeId),
     enabled: hasPr,

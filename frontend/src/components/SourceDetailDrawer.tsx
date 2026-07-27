@@ -1,6 +1,7 @@
 import { Drawer, Tabs, Table, Tag, Button, Typography, Breadcrumb, List, Space, Descriptions, App as AntApp } from "antd";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Source } from "../api";
 import { LinkOutlined, FolderOutlined, FileOutlined, CheckOutlined } from "../icons";
 import MapSourceModal from "./MapSourceModal";
@@ -74,7 +75,7 @@ export default function SourceDetailDrawer({
 }
 
 function ContentsTab({ source, onMap }: { source: Source; onMap: (key: string) => void }) {
-  const q = useQuery({
+  const q = useRepoQuery({
     queryKey: ["sources", source.id, "contents"],
     queryFn: () => api.sourceContents(source.id),
     retry: false,
@@ -114,7 +115,7 @@ function BrowseTab({ source }: { source: Source }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const [path, setPath] = useState("");
-  const q = useQuery({
+  const q = useRepoQuery({
     queryKey: ["sources", source.id, "browse", path],
     queryFn: () => api.browseSource(source.id, path),
     retry: false,

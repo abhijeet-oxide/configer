@@ -5,7 +5,7 @@
 // with the real bytes, not a value-level summary.
 import { Suspense, lazy, useMemo, useState } from "react";
 import { Empty, Segmented, Spin, Tag, Typography } from "antd";
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type FilePreview } from "../api";
 import { useUI } from "../store";
 
@@ -19,7 +19,7 @@ function statusColor(status: FilePreview["status"]): string {
 
 export default function ChangePreview({ changeId }: { changeId: number }) {
   const mode = useUI((s) => s.mode);
-  const previewQ = useQuery({
+  const previewQ = useRepoQuery({
     queryKey: ["change-preview", changeId],
     queryFn: () => api.previewChange(changeId),
     staleTime: 0,

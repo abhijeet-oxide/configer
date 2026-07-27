@@ -1,6 +1,7 @@
 import { Modal, Form, Input, Card, Typography, Tag, Space, App as AntApp } from "antd";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type SourcePlugin } from "../api";
 import { sourceIcon, sourceHex } from "./sourceVisual";
 
@@ -14,7 +15,7 @@ export default function AddSourceModal({ open, onClose }: { open: boolean; onClo
   const [form] = Form.useForm();
   const [picked, setPicked] = useState<SourcePlugin | null>(null);
 
-  const pluginsQ = useQuery({ queryKey: ["source-plugins"], queryFn: api.sourcePlugins, enabled: open });
+  const pluginsQ = useRepoQuery({ queryKey: ["source-plugins"], queryFn: api.sourcePlugins, enabled: open });
 
   const create = useMutation({
     mutationFn: (v: { name: string; config: Record<string, string> }) =>

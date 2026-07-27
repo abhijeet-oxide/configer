@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { Card, List, Tag, Typography } from "antd";
 import { ApiOutlined } from "../icons";
 import { api } from "../api";
@@ -15,7 +15,7 @@ const kindColor: Record<string, string> = {
 // Plugins view: lists the registered extension points (parsers, transposers,
 // etc.) to make the plug-and-play architecture visible and configurable.
 export default function PluginsView() {
-  const q = useQuery({ queryKey: ["plugins"], queryFn: api.plugins });
+  const q = useRepoQuery({ queryKey: ["plugins"], queryFn: api.plugins });
   if (q.isLoading) return <PluginsSkeleton />;
   return (
     <div style={{ padding: 24, overflow: "auto", height: "100%" }}>

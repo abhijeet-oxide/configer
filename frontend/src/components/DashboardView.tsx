@@ -13,6 +13,7 @@ import {
 import UserAvatar from "./UserAvatar";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Grid } from "../api";
 import { useActivity } from "../activity";
 import { useUI } from "../store";
@@ -115,10 +116,10 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const { setSection, setFilters, selectParam, selectInstance, setJump, repoId, setRepo } = useUI();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
-  const findingsQ = useQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
+  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const activity = useActivity(6);
   const [deleteOpen, setDeleteOpen] = useState(false);

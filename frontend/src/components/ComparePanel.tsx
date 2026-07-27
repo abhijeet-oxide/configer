@@ -1,6 +1,6 @@
 import { Select, Segmented, Space, Table, Input } from "antd";
 import { SwapOutlined, SearchOutlined, ArrowRightOutlined, BranchesOutlined, DiffOutlined } from "../icons";
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { useMemo, useState } from "react";
 import { api, type DiffChange, type Grid } from "../api";
 import { DiffMiniBar } from "./charts";
@@ -54,13 +54,13 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
     setMode(v);
   };
 
-  const refsQ = useQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
+  const refsQ = useRepoQuery({ queryKey: ["refs"], queryFn: api.refs, staleTime: 60_000 });
 
   const sameSide = left === right && leftRef === rightRef;
   // The parameter diff understands real refs; the committed pseudo-ref only
   // exists for file mode, so parameters treat it as the working tree.
   const paramRef = (r: string) => (r === COMMITTED ? WORKING : r);
-  const q = useQuery({
+  const q = useRepoQuery({
     queryKey: ["compare", left, paramRef(leftRef), right, paramRef(rightRef)],
     queryFn: () => api.compare(left, right, { leftRef: paramRef(leftRef), rightRef: paramRef(rightRef) }),
     enabled: !!left && !!right && !sameSide && mode === "parameters",

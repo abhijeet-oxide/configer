@@ -3,6 +3,7 @@ import { SearchOutlined } from "../icons";
 import { Kbd } from "./ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api } from "../api";
 import { useUI } from "../store";
 import {
@@ -28,7 +29,7 @@ import {
 // The sections that belong to one application (mirrors the store's routing set);
 // used to decide whether "this application" search is available.
 const APP_SECTIONS = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "audit",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import",
 ]);
 
 const TYPE_LABEL: Record<SearchHit["type"], string> = {
@@ -96,8 +97,8 @@ export default function SearchPalette() {
   // The data providers search over - all from the shared react-query cache, so
   // opening the palette does not trigger fetches when a view already loaded it.
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, enabled: open, staleTime: 30_000 });
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, enabled: open && mode === "app" && !!repoId });
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, enabled: open && mode === "app" && !!repoId });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, enabled: open && mode === "app" && !!repoId });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, enabled: open && mode === "app" && !!repoId });
 
   const nav: Nav = useMemo(
     () => ({

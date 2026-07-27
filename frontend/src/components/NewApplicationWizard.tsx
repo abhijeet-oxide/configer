@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Empty,
   Form,
@@ -32,7 +31,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { relTime } from "./DashboardView";
-import { Stepper } from "./ui";
+import { InlineNotice, Stepper } from "./ui";
 import { InlineListSkeleton } from "./Skeletons";
 
 // NewApplicationWizard is the seamless "New application" flow. It opens on a
@@ -131,15 +130,17 @@ export default function NewApplicationWizard({
       width={720}
       destroyOnHidden
     >
-      <Typography.Paragraph type="secondary" style={{ marginTop: 4 }}>
+      <Typography.Paragraph type="secondary" className="wizard-intro" style={{ marginTop: 4 }}>
         An application manages the configuration in one Git repository, remote or a folder on this
         machine. Configer scans it for settings; no changes are made until you confirm.
       </Typography.Paragraph>
-      <div className="mb-5 mt-2 rounded-card-lg bg-surface-2 px-4 py-3">
+      <div className="wizard-steps mb-5 mt-2 rounded-card-lg bg-surface-2 px-4 py-3">
         <Stepper current={currentStep} steps={stepItems} />
       </div>
-      {/* fixed floor so the dialog chrome and buttons never jump between steps */}
-      <div style={{ minHeight: 380, display: "flex", flexDirection: "column" }}>
+      {/* A floor so the dialog chrome and buttons never jump between steps -
+          dropped on short and narrow screens, where the content sets the height
+          and the dialog body scrolls. */}
+      <div className="wizard-body">
         {source === null && <SourceStep onPick={setSource} />}
 
         {source === "local" && (
@@ -191,10 +192,9 @@ export default function NewApplicationWizard({
 // Two big, equal choices - where does the configuration live?
 function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
   const card: React.CSSProperties = {
-    flex: 1,
     border: "1px solid rgba(127,137,160,0.28)",
     borderRadius: 12,
-    padding: "28px 22px",
+    padding: "22px 18px",
     cursor: "pointer",
     textAlign: "center",
     display: "flex",
@@ -207,9 +207,9 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
       <Typography.Text strong style={{ fontSize: 15, textAlign: "center" }}>
         Where does the configuration live?
       </Typography.Text>
-      <div style={{ display: "flex", gap: 14 }}>
+      <div className="choice-row">
         <div className="card-clickable" style={card} onClick={() => onPick("git")} role="button" tabIndex={0}>
-          <GithubOutlined style={{ fontSize: 40, opacity: 0.75 }} />
+          <GithubOutlined className="choice-card-icon" style={{ opacity: 0.75 }} />
           <Typography.Text strong style={{ fontSize: 14.5 }}>
             Git repository
           </Typography.Text>
@@ -222,7 +222,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
           </Button>
         </div>
         <div className="card-clickable" style={card} onClick={() => onPick("local")} role="button" tabIndex={0}>
-          <HddOutlined style={{ fontSize: 40, opacity: 0.75 }} />
+          <HddOutlined className="choice-card-icon" style={{ opacity: 0.75 }} />
           <Typography.Text strong style={{ fontSize: 14.5 }}>
             Local folder
           </Typography.Text>
@@ -297,7 +297,7 @@ function LocalFolderStep({
             gap: 10,
           }}
         >
-          <FolderOpenOutlined style={{ fontSize: 40, opacity: 0.7 }} />
+          <FolderOpenOutlined className="choice-card-icon" style={{ opacity: 0.7 }} />
           <Typography.Text strong style={{ fontSize: 14.5 }}>
             Click to select a local directory
           </Typography.Text>
@@ -346,7 +346,7 @@ function LocalFolderStep({
         then scans it and shows the configuration files it found, so you choose what to manage.
       </Typography.Text>
 
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
+      <div className="wizard-actions">
         <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={connect.isPending}>
           Source
         </Button>
@@ -438,12 +438,9 @@ function FolderPickerModal({
         }}
       >
         {listQ.isError ? (
-          <Alert
-            type="warning"
-            showIcon
-            style={{ margin: 12 }}
-            message="This folder can't be opened"
-            description={(listQ.error as Error).message}
+          <InlineNotice
+            tone="warn"
+            className="m-3"
             action={
               listing?.parent ? (
                 <Button size="small" onClick={() => listing?.parent && setCwd(listing.parent)}>
@@ -451,7 +448,9 @@ function FolderPickerModal({
                 </Button>
               ) : undefined
             }
-          />
+          >
+            This folder can&rsquo;t be opened: {(listQ.error as Error).message}
+          </InlineNotice>
         ) : listQ.isLoading ? (
           <InlineListSkeleton rows={6} />
         ) : (listing?.folders.length ?? 0) === 0 ? (
@@ -556,13 +555,10 @@ function RepoStep({
             Continue with GitHub
           </Button>
         ) : (
-          <Alert
-            type="info"
-            showIcon
-            style={{ textAlign: "start", maxWidth: 520, margin: "0 auto" }}
-            message="GitHub sign-in is not configured on this deployment"
-            description="An administrator can enable it (GITHUB_OAUTH_CLIENT_ID) or set a server-wide GitHub token. You can still connect a repository manually below."
-          />
+          <InlineNotice className="mx-auto max-w-[520px] text-start">
+            GitHub sign-in is not configured on this deployment. You can still connect a repository
+            manually below.
+          </InlineNotice>
         )}
         <div style={{ marginTop: 14 }}>
           <Button type="link" onClick={onManual}>
@@ -580,10 +576,13 @@ function RepoStep({
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+      {/* The "who am I searching as" note wraps under the box rather than
+          squeezing it on a narrow screen. */}
+      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         <Input
           allowClear
           autoFocus
+          style={{ flex: "1 1 220px", minWidth: 0 }}
           prefix={<SearchOutlined />}
           placeholder="Search your repositories and organizations…"
           value={q}
@@ -600,17 +599,16 @@ function RepoStep({
         </Typography.Text>
       </div>
       {reposQ.isError ? (
-        <Alert
-          type="warning"
-          showIcon
-          message="Couldn't list your repositories"
-          description={(reposQ.error as Error).message}
+        <InlineNotice
+          tone="warn"
           action={
             <Button size="small" onClick={() => reposQ.refetch()}>
               Try again
             </Button>
           }
-        />
+        >
+          Couldn&rsquo;t list your repositories: {(reposQ.error as Error).message}
+        </InlineNotice>
       ) : reposQ.isLoading ? (
         <InlineListSkeleton rows={6} />
       ) : repos.length === 0 ? (
@@ -706,17 +704,16 @@ function FinishStep({
           extra="Configer reads and writes on this branch; every edit still goes through review."
         >
           {branchesQ.isError ? (
-            <Alert
-              type="warning"
-              showIcon
-              message="Couldn't list branches"
-              description={(branchesQ.error as Error).message}
+            <InlineNotice
+              tone="warn"
               action={
                 <Button size="small" onClick={() => branchesQ.refetch()}>
                   Try again
                 </Button>
               }
-            />
+            >
+              Couldn&rsquo;t list branches: {(branchesQ.error as Error).message}
+            </InlineNotice>
           ) : (
             <Select
               size="large"
@@ -755,7 +752,7 @@ function FinishStep({
         <FileSearchOutlined /> After creating, Configer scans this branch and shows the
         configuration files it found, so you choose what to manage.
       </Typography.Text>
-      <div style={{ display: "flex", justifyContent: "space-between", marginTop: "auto", paddingTop: 16 }}>
+      <div className="wizard-actions">
         <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={creating}>
           Repository
         </Button>

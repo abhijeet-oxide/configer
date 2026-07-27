@@ -10,7 +10,8 @@ import {
   CloudServerOutlined,
 } from "../icons";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Grid } from "../api";
 import { useUI } from "../store";
 import SourceControlPanel from "./SourceControlPanel";
@@ -35,8 +36,8 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
   const { filters, setFilters } = useUI();
   const [scmOpen, setScmOpen] = useState(false);
 
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const st = statusQ.data;
   const draft = draftQ.data?.draft;
   const changes = draft?.items?.length ?? 0;

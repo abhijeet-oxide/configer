@@ -523,6 +523,16 @@ export interface Meta {
   branch?: string;
 }
 
+// The liveness answer. It carries the same deployment identity as Meta, but
+// needs no application connected, so it is what the boot check and every
+// workspace-level surface identify the deployment from.
+export interface Health {
+  status: string;
+  name?: string;
+  version?: string;
+  environment?: string;
+}
+
 // One repository event detected between the acknowledged commit and HEAD.
 export interface Finding {
   type: "new_file" | "file_changed" | "file_deleted" | "file_renamed" | "new_folder";
@@ -822,8 +832,17 @@ export class ApiError extends Error {
   get isValidation() { return this.status === 422; }
   get isRateLimited() { return this.status === 429; }
   get isServer() { return this.status >= 500; }
+  /**
+   * No application is connected to this deployment. Not a fault: it is the
+   * ordinary state of a fresh (or emptied) workspace, so the UI shows an empty
+   * state rather than an error, and never retries.
+   */
+  get isNoRepository() { return this.code === "no_repository"; }
   /** true for failures a retry could plausibly fix (network/5xx/429) */
-  get isRetryable() { return this.status === 429 || this.status >= 500; }
+  get isRetryable() {
+    if (this.isNoRepository) return false; // connecting an application fixes it, not a retry
+    return this.status === 429 || this.status >= 500;
+  }
 }
 
 /** The request took too long and was aborted client-side. */
@@ -961,7 +980,7 @@ export const catalogRev = () => lastCatalogRev;
 
 export const api = {
   // --- workspace level (not repo-scoped) ---
-  health: () => get<{ status: string }>("/health"),
+  health: (opts?: { timeoutMs?: number }) => get<Health>("/health", opts),
   me: () => get<AuthState>("/auth/me"),
   logout: () => send<{ ok: boolean }>("POST", "/auth/logout"),
   myRole: (repoId: string) => get<MyRole>(`/repos/${encodeURIComponent(repoId)}/role`),

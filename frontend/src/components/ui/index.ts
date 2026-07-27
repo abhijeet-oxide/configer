@@ -9,6 +9,8 @@ export { default as AttentionCard } from "./AttentionCard";
 export type { AttentionSeverity } from "./AttentionCard";
 export { default as Toolbar } from "./Toolbar";
 export { default as EmptyState } from "./EmptyState";
+export { default as InlineNotice } from "./InlineNotice";
+export type { NoticeTone } from "./InlineNotice";
 export { default as LoadingStage } from "./LoadingStage";
 export { default as AppContextChips, MonoChip } from "./AppContextChips";
 export { FadeIn, Stagger, StaggerItem } from "./motion";

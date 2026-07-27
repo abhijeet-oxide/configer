@@ -1,5 +1,4 @@
 import {
-  Alert,
   App as AntApp,
   Input,
   Modal,
@@ -10,10 +9,12 @@ import {
 } from "antd";
 import { SearchOutlined, LinkOutlined } from "../icons";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, primaryBinding, type Grid, type Parameter, type ScanCandidate } from "../api";
 import { fmtValue } from "../rules";
 import FileExplorer from "./FileExplorer";
+import { InlineNotice } from "./ui";
 
 // PathPicker is the interactive attach flow: the user never hunts for a
 // JSONPath or XPath. Pick a configuration file, see the settings it contains
@@ -34,7 +35,7 @@ export default function PathPicker({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const scanQ = useQuery({
+  const scanQ = useRepoQuery({
     queryKey: ["scan-picker"],
     queryFn: api.scan,
     enabled: open,
@@ -147,17 +148,11 @@ export default function PathPicker({
             onChange={(e) => setQ(e.target.value)}
           />
           {!isDesign && (
-            <Alert
-              type="info"
-              showIcon
-              style={{ marginBottom: 10 }}
-              message={
-                <>
-                  Currently attached to <span className="mono">{primaryBinding(param).file}</span> at{" "}
-                  <span className="mono">{primaryBinding(param).path}</span>. Selecting a new spot re-points it.
-                </>
-              }
-            />
+            <InlineNotice className="mb-2.5">
+              Currently attached to <span className="mono">{primaryBinding(param).file}</span> at{" "}
+              <span className="mono">{primaryBinding(param).path}</span>. Selecting a new spot
+              re-points it.
+            </InlineNotice>
           )}
           <Table<ScanCandidate>
         size="small"

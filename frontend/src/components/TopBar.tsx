@@ -12,6 +12,7 @@ import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined
 import { toggleThemeWithReveal } from "../themeTransition";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSearchOpen } from "../search";
@@ -27,9 +28,9 @@ import MembersModal from "./MembersModal";
 // (the rail's profile card); this bar keeps only the quick dark-mode toggle.
 
 // The application-scoped sections and their human tab labels, for the
-// breadcrumb (Applications / <name> / <tab>).
+// breadcrumb (Home / Applications / <name> / <tab>).
 const APP_BREADCRUMB_SECTIONS = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "audit",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "import", "sources", "timeline",
 ]);
 const TAB_LABELS: Record<string, string> = {
   overview: "Overview",
@@ -41,8 +42,23 @@ const TAB_LABELS: Record<string, string> = {
   approvals: "Approvals",
   instances: "Instances",
   drift: "Repository changes",
+  sources: "Sources",
+  timeline: "Timeline",
   import: "Import settings",
+};
+
+// The workspace-level sections and the name each one goes by. Every one of them
+// sits directly under Home, so the trail always starts somewhere clickable and
+// the user is never left looking at a single dead word.
+const GLOBAL_LABELS: Record<string, string> = {
+  workspace: "Applications",
+  inbox: "Inbox",
+  estate: "Instances",
+  changelog: "Changes",
   audit: "Audit",
+  repos: "Repositories",
+  settings: "Settings",
+  plugins: "Plugins",
 };
 
 function ellipsis(maxWidth: number): React.CSSProperties {
@@ -61,7 +77,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   const switchRepo = useSwitchRepo();
   const openSearch = useSearchOpen((s) => s.openSearch);
 
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
   const activeRepo = repos.find((r) => r.id === repoId);
@@ -81,22 +97,26 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
       <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
         <Breadcrumb
           items={[
-            // The first crumb names the global level: Home is quiet (no
-            // breadcrumb noise on the start page), Approvals names itself,
-            // everything else roots at Applications.
+            // Every trail starts at Home: on the start page it is the only
+            // crumb (so the bar is never empty), everywhere else it is the way
+            // back out. Each crumb except the last one is a link.
+            {
+              title:
+                section === "home" ? (
+                  <span>Home</span>
+                ) : (
+                  <a onClick={() => setSection("home")} style={{ cursor: "pointer" }}>
+                    Home
+                  </a>
+                ),
+            },
+            // The workspace level this view belongs to. Inside an application
+            // that is Applications (a link back to the collection); on a global
+            // page it is that page's own name.
             ...(section === "home"
               ? []
-              : section === "inbox"
-                ? [{ title: <span>Inbox</span> }]
-                : section === "estate"
-                ? [{ title: <span>Instances</span> }]
-                : section === "changelog"
-                ? [{ title: <span>Changes</span> }]
-                : section === "repos"
-                ? [{ title: <span>Repositories</span> }]
-                : section === "settings"
-                ? [{ title: <span>Settings</span> }]
-                : [
+              : inApp
+                ? [
                     {
                       title: (
                         <a onClick={() => setSection("workspace")} style={{ cursor: "pointer" }}>
@@ -104,7 +124,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                         </a>
                       ),
                     },
-                  ]),
+                  ]
+                : [{ title: <span>{GLOBAL_LABELS[section] ?? section}</span> }]),
             // Inside an application: its name (a link back to the Overview tab,
             // the default) with a switcher, then the current tab.
             ...(inApp

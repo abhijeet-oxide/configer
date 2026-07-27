@@ -10,7 +10,8 @@ import {
   ExclamationCircleOutlined,
 } from "../icons";
 import { useMemo } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, type Grid } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
@@ -42,8 +43,8 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   const qc = useQueryClient();
   const { selectParam } = useUI();
 
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   const st = statusQ.data;
 

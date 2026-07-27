@@ -326,6 +326,26 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/capabilities": {
+            "get": {
+                "description": "Which New Application sources and integrations this deployment supports (local folder browsing, GitHub sign-in, GitHub browsing, manual Git URL). The UI offers only what will work here, instead of presenting options that cannot succeed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Deployment capabilities",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.Capabilities"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes": {
             "get": {
                 "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `.",
@@ -1249,7 +1269,7 @@ const docTemplateconfiger = `{
         },
         "/api/health": {
             "get": {
-                "description": "Returns 200 while the process is up. ` + "`" + `/api/healthz` + "`" + ` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
+                "description": "Returns 200 while the process is up, with the deployment identity (name, version, environment). ` + "`" + `/api/healthz` + "`" + ` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
                 "produces": [
                     "application/json"
                 ],
@@ -1269,7 +1289,7 @@ const docTemplateconfiger = `{
         },
         "/api/healthz": {
             "get": {
-                "description": "Returns 200 while the process is up. ` + "`" + `/api/healthz` + "`" + ` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
+                "description": "Returns 200 while the process is up, with the deployment identity (name, version, environment). ` + "`" + `/api/healthz` + "`" + ` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).",
                 "produces": [
                     "application/json"
                 ],
@@ -2782,6 +2802,57 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/restore": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Stage the edits that bring a scope back to how it looked at a git ref into the current draft (nothing touches Git until it is published). ` + "`" + `scope` + "`" + ` is \"all\", \"instance\" (needs ` + "`" + `instance` + "`" + `) or \"parameter\" (needs ` + "`" + `paramId` + "`" + `, plus ` + "`" + `instance` + "`" + ` unless ` + "`" + `global` + "`" + `). Only value edits are restored; a parameter with no value at the ref has its instance override dropped. Returns the draft id, how many cells were staged, and any skipped notes.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Restore configuration to a snapshot",
+                "parameters": [
+                    {
+                        "description": "ref, scope, instance?, paramId?, global?",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing ref or unknown scope",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown ref, instance or parameter",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/scan": {
             "post": {
                 "description": "Read-only ingest scan: detect config files and extract candidate parameters. Nothing is written; use import to promote candidates.",
@@ -3237,6 +3308,101 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/timeline": {
+            "get": {
+                "description": "The application's configuration history as a list of snapshots, newest first. Each entry is classified (` + "`" + `version` + "`" + ` upgrade, ` + "`" + `structural` + "`" + ` instance add/retire, ` + "`" + `config` + "`" + ` value change) and carries change counts, the instances it touched and any version moves. ` + "`" + `?instance=` + "`" + ` narrows the timeline to one instance's own story. Each snapshot is compared against the previous snapshot IN THE SAME SCOPE. ` + "`" + `supported` + "`" + ` is false on backends that cannot serve a log.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Configuration timeline",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Narrow the timeline to one instance",
+                        "name": "instance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Max snapshots (1-40, default 15)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/timeline/snapshot": {
+            "get": {
+                "description": "Every parameter that changed at one snapshot, with its before and after value, plus any version or instance-identity moves. The comparison baseline is the previous snapshot in the same scope, so ` + "`" + `?instance=` + "`" + ` must match the timeline the snapshot was read from. Feed ` + "`" + `sha` + "`" + ` to POST /api/restore to bring any scope back to this point.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Open one timeline snapshot",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Snapshot commit sha",
+                        "name": "sha",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Scope the comparison to one instance",
+                        "name": "instance",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "How far back to look for the baseline (1-40, default 15)",
+                        "name": "limit",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "sha is required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown snapshot",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/validation/presets": {
             "get": {
                 "description": "The predefined validation-rule library (port, cidr, ipv4, ...) available to attach to parameters.",
@@ -3472,6 +3638,31 @@ const docTemplateconfiger = `{
                     "description": "RequestID correlates this response with the access log and the\nX-Request-ID header, so an operator can find the exact request.",
                     "type": "string",
                     "example": "3f9a1c2b7e5d0a84"
+                }
+            }
+        },
+        "api.Capabilities": {
+            "type": "object",
+            "properties": {
+                "githubBrowse": {
+                    "description": "GitHubBrowse: a GitHub credential is available right now (the signed-in\nuser's, or a deployment-wide token), so the repository picker can list.",
+                    "type": "boolean"
+                },
+                "githubSignIn": {
+                    "description": "GitHubSignIn: GitHub OAuth is configured, so a user can sign in and\nbrowse their own repositories.",
+                    "type": "boolean"
+                },
+                "hosted": {
+                    "description": "Hosted: this deployment is served to browsers elsewhere (as opposed to\nrunning on the user's own machine). Display only.",
+                    "type": "boolean"
+                },
+                "localFolders": {
+                    "description": "LocalFolders: the \"Local folder\" source is meaningful here, i.e. the\nbrowser and the server share a filesystem.",
+                    "type": "boolean"
+                },
+                "manualGitUrl": {
+                    "description": "ManualGitURL: connecting a repository by its Git URL. Always available -\nit is the fallback that needs no integration at all.",
+                    "type": "boolean"
                 }
             }
         },

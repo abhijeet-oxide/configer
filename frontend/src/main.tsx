@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
+import BootGate from './components/BootGate'
 import { useUI } from './store'
 import { buildTheme } from './theme'
 import { ApiError, UNAUTHORIZED_EVENT } from './api'
@@ -39,7 +40,10 @@ const queryClient = new QueryClient({
   // here to avoid duplicate popups.
   queryCache: new QueryCache({
     onError: (err, query) => {
-      if (query.state.data === undefined) notifyError(err);
+      // The service probe owns its own presentation (the boot screen and the
+      // connection banner), so a failed probe must not also raise a popup.
+      if (query.queryKey[0] === 'health') return
+      if (query.state.data === undefined) notifyError(err)
     },
   }),
 })
@@ -79,7 +83,10 @@ function ThemeRoot() {
     >
       <AntApp>
         <GlobalFeedback />
-        <App />
+        {/* Nothing renders until we know the service is there: see BootGate. */}
+        <BootGate>
+          <App />
+        </BootGate>
       </AntApp>
     </ConfigProvider>
   )

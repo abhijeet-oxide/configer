@@ -9,5 +9,12 @@
 // that runs `envsubst`).
 window.__CONFIGER__ = {
   // Base URL the SPA calls. Leave undefined to use the same-origin "/api".
+  //
+  // Every endpoint is mounted under /api on the backend, so this must END at
+  // that prefix. A bare origin is accepted and gets "/api" appended for you:
+  //   "https://api.configer.example.com"      -> https://api.configer.example.com/api
+  //   "https://api.configer.example.com/api"  -> used as given
+  // A value that names any other path is used exactly as written, so a backend
+  // behind a custom prefix ("https://host/configer/api") still works.
   // apiBaseUrl: "https://api.configer.example.com/api",
 };

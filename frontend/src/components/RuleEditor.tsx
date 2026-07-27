@@ -10,7 +10,8 @@ import {
 } from "antd";
 import { SaveOutlined } from "../icons";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Parameter, type Validation } from "../api";
 
 // RuleEditor lets users define a parameter's data type and validation rules:
@@ -41,7 +42,7 @@ export default function RuleEditor({ param }: { param: Parameter }) {
 function Editor({ param }: { param: Parameter }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const presetsQ = useQuery({ queryKey: ["presets"], queryFn: api.presets });
+  const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
 
   const [type, setType] = useState(param.type);
   const [v, setV] = useState<Validation>({ ...(param.validation ?? {}) });

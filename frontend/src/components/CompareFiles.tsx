@@ -1,5 +1,5 @@
 import { lazy, Suspense, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { Segmented } from "antd";
 import { api, sameContent, type Grid } from "../api";
 import { useUI } from "../store";
@@ -26,7 +26,7 @@ interface SideSpec {
 }
 
 function useRendered(side: SideSpec) {
-  return useQuery({
+  return useRepoQuery({
     queryKey: ["render-cmp", side.instance, side.ref],
     queryFn: () =>
       side.ref === COMMITTED

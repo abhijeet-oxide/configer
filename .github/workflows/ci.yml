@@ -19,9 +19,22 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Vet
         run: go vet ./...
+      # The spec is generated from the handler annotations AND committed (the
+      # backend serves it at /api/docs), so it has to travel with the code. The
+      # pre-commit hook (`make hooks`, run by `make install`) regenerates it
+      # automatically; this is the safety net for a commit made without it, and
+      # it uploads the corrected files so the fix is a download away rather than
+      # a local re-run.
       - name: OpenAPI spec is in sync with the code
+        id: docs
         working-directory: .
         run: make docs-check
+      - name: Upload the regenerated OpenAPI spec
+        if: failure() && steps.docs.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec-regenerated
+          path: backend/internal/api/docs/
       - name: Lint
         # golangci-lint v2 (the .golangci.yml is v2 schema). The binary must be
         # built with Go >= the module's target (go 1.25.0), so pin a v2.5.x

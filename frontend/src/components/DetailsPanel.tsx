@@ -1,7 +1,8 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
 import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
@@ -309,7 +310,7 @@ function DetailsTab({
 function IdlePanel({ grid }: { grid: Grid }) {
   const { setFilters, selectParam, setJump } = useUI();
   const qc = useQueryClient();
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const draftItems = (draftQ.data?.draft?.items ?? []).filter((it) => !it.action || it.action === "set");
   const allDraftItems = draftQ.data?.draft?.items ?? [];
 
@@ -606,7 +607,7 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
 // catalog default (base value).
 function ParamHistoryTab({ paramId }: { paramId: string }) {
   const { selectedInstance } = useUI();
-  const q = useQuery({
+  const q = useRepoQuery({
     queryKey: ["paramHistory", paramId, selectedInstance],
     queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
   });

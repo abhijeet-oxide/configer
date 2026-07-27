@@ -1,21 +1,29 @@
-import { Layout, Result, Drawer, Button, Alert, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Result, Drawer, Button, Alert, Avatar, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
+  AppstoreOutlined,
   HomeOutlined,
+  InboxOutlined,
   TableOutlined,
-  PullRequestOutlined,
-  CheckCircleOutlined,
   CloudSyncOutlined,
   LeftOutlined,
   RightOutlined,
+  SunOutlined,
+  MoonOutlined,
 } from "./icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, type Grid as GridData, type Meta } from "./api";
 import { useConn, loadSnapshot, drainQueue, requeue, OfflineError, type QueuedEdit } from "./offline";
+import { useRepoQuery } from "./repoQuery";
+import { useDeployment, useHealth } from "./deployment";
 import { useUI } from "./store";
+import { useIdentity } from "./identity";
+import { theme as brand } from "./theme.config";
+import { toggleThemeWithReveal } from "./themeTransition";
 import NavRail from "./components/NavRail";
+import BrandMark from "./components/BrandMark";
 import TopBar from "./components/TopBar";
 import SearchPalette from "./components/SearchPalette";
 import PendingChangesBar from "./components/PendingChangesBar";
@@ -64,20 +72,27 @@ function ResizeHandleV() {
   return <PanelResizeHandle className="rrp-handle rrp-handle-v" />;
 }
 
-// ConnectionBanner keeps a temporary service outage non-disruptive: users see
-// what is happening in plain words and keep working from the local snapshot.
+// ConnectionBanner keeps a temporary service outage non-disruptive: one calm
+// line at the top of the page says what is happening, and the user keeps
+// working from the local snapshot. A whole paragraph of reassurance would take
+// more of the screen than the problem deserves.
 function ConnectionBanner() {
   const { online, queued, syncing } = useConn();
   if (!online) {
     return (
       <Alert
         banner
+        className="slim-banner"
         type="warning"
         showIcon
-        message="Configer can't reach its service right now."
-        description={`You're viewing the last saved snapshot. ${
-          queued > 0 ? `${queued} edit(s) are safely stored on this device and ` : "Any edits you make are stored on this device and "
-        }will sync automatically when the connection returns.`}
+        message={
+          <>
+            Offline - showing the last saved snapshot.{" "}
+            {queued > 0
+              ? `${queued} edit(s) are stored on this device and sync when the connection returns.`
+              : "Edits are stored on this device and sync when the connection returns."}
+          </>
+        }
       />
     );
   }
@@ -85,6 +100,7 @@ function ConnectionBanner() {
     return (
       <Alert
         banner
+        className="slim-banner"
         type="info"
         showIcon
         icon={<CloudSyncOutlined spin />}
@@ -153,12 +169,14 @@ export default function App() {
     togglePanel,
     editorFocus,
     setEditorFocus,
+    mode,
   } = useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   const wide = screens.lg !== false; // >= 992px: three-panel layout
   const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const online = useConn((s) => s.online);
+  const deployment = useDeployment();
   // Whether the selected repository carries a Configer application at all: a
   // connected-but-uninitialized repo routes into the onboarding wizard.
   const projectQ = useQuery({
@@ -179,9 +197,11 @@ export default function App() {
     enabled: projectQ.data?.initialized === true,
     refetchInterval: online ? false : 10_000,
   });
-  // lightweight heartbeat: keeps probing while unreachable so recovery is automatic
-  useQuery({ queryKey: ["health"], queryFn: api.health, refetchInterval: 8_000, retry: false });
-  const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
+  // Lightweight heartbeat: keeps probing while unreachable so recovery is
+  // automatic. The same probe gated the boot (see BootGate), so it is already
+  // warm here.
+  useHealth();
+  const metaQ = useRepoQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
   const qc = useQueryClient();
 
@@ -192,7 +212,13 @@ export default function App() {
     const repos = wsQ.data?.repos;
     if (!repos) return;
     if (repos.length === 0) {
-      if (repoId) setRepo(null);
+      // The last application was disconnected: drop the selection and every
+      // cached read that belonged to it, so nothing repo-scoped is left to
+      // render (or to refetch) against a workspace that has no application.
+      if (repoId) {
+        setRepo(null);
+        qc.clear();
+      }
       setSection("workspace");
       return;
     }
@@ -429,11 +455,11 @@ export default function App() {
         <div style={{ paddingTop: 48 }}>
           <StatePanel
             art={<OfflineArt />}
-            title="Can't reach the Configer service"
+            title={`Can't reach the ${deployment.name} service`}
             subtitle={
               <>
-                {meta
-                  ? `The ${meta.environment} deployment (${meta.name} ${meta.version}) isn't responding right now.`
+                {deployment.environment
+                  ? `The ${deployment.environment} deployment (${deployment.name} ${deployment.version}) isn't responding right now.`
                   : "The service isn't responding right now."}{" "}
                 It may be restarting or briefly under maintenance. This page keeps retrying on its own;
                 your work is never lost, and any saved edits on this device sync once it's back.
@@ -459,7 +485,6 @@ export default function App() {
     if (section === "instances") return <InstancesView grid={grid} />;
     if (section === "files") return <FilesView />;
     if (section === "sources") return <SourcesView />;
-    if (section === "audit") return <AuditView />;
     return editorLayout();
   }
 
@@ -494,6 +519,14 @@ export default function App() {
           <ChangesOverview />
         </div>
       );
+    // The audit trail spans every application: who did what, across the whole
+    // workspace, so it belongs here and needs no application selected.
+    if (section === "audit")
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <AuditView />
+        </div>
+      );
     if (section === "repos")
       return (
         <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
@@ -502,6 +535,15 @@ export default function App() {
       );
     // Personal settings: a global level, independent of any repository.
     if (section === "settings") return <SettingsView />;
+    // Everything below belongs to ONE application, so it needs one. A fresh or
+    // emptied workspace has none - an ordinary state, not a failure - so show
+    // the collection, which invites the user to connect their first.
+    if (!repoId)
+      return (
+        <div style={{ height: "100%", ...panelBg }}>
+          <WorkspaceView />
+        </div>
+      );
     // Hold every application-level view until we actually know whether this
     // repo carries a Configer application. Rendering the editor (or the tab
     // strip, which fires its own draft/grid/sources queries) before projectInfo
@@ -538,12 +580,15 @@ export default function App() {
   }
 
   // Phone tier: single column with a bottom tab bar, no side rail, no tabs row.
+  // The bar mirrors the desktop rail's levels (Home, Applications, Inbox) plus
+  // the one app-level surface worth a thumb - the parameters - so moving
+  // between the two form factors needs no relearning.
   if (phone) {
     const tabs = [
-      { key: "home", icon: <HomeOutlined />, label: "Home" },
-      { key: "config", icon: <TableOutlined />, label: "Parameters" },
-      { key: "changes", icon: <PullRequestOutlined />, label: "Changes" },
-      { key: "approvals", icon: <CheckCircleOutlined />, label: "Approvals" },
+      { key: "home", icon: <HomeOutlined />, label: "Home", on: ["home"] },
+      { key: "workspace", icon: <AppstoreOutlined />, label: "Apps", on: ["workspace", "overview"] },
+      { key: "config", icon: <TableOutlined />, label: "Parameters", on: ["config", "files", "instances", "compare"] },
+      { key: "inbox", icon: <InboxOutlined />, label: "Inbox", on: ["inbox", "approvals", "changes", "drafts", "changelog"] },
     ];
     return (
       <Layout style={{ height: "100vh" }}>
@@ -553,18 +598,36 @@ export default function App() {
             borderBottom: border, background: token.colorBgContainer, flexShrink: 0,
           }}
         >
-          <div className="logo-tile">C</div>
-          <b>{grid?.project ?? meta?.project ?? "Configer"}</b>
+          {/* The same mark the rail shows: the identity must not change with
+              the window size. */}
+          <BrandMark />
+          <b style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {grid?.project ?? meta?.project ?? brand.appName}
+          </b>
+          <div style={{ flex: 1 }} />
+          <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+            <Button
+              size="small"
+              type="text"
+              aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
+              onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+            />
+          </Tooltip>
+          {/* Profile and every personal preference, one tap away - the phone's
+              stand-in for the rail's profile card. */}
+          <MobileProfileButton />
         </div>
         <OfflineReplay />
         <ConnectionBanner />
         <Content style={{ overflow: "hidden", minHeight: 0 }}>{body()}</Content>
         <WelcomeTour />
+        <GlobalNewApplication />
         <div className="mobile-tabbar" style={{ background: token.colorBgContainer }}>
           {tabs.map((t) => (
             <button
               key={t.key}
-              className={section === t.key ? "active" : ""}
+              className={t.on.includes(section) ? "active" : ""}
               onClick={() => setSection(t.key)}
             >
               {t.icon}
@@ -696,6 +759,39 @@ function CollapsibleSide({
       <div style={{ flex: 1, minWidth: 0, height: "100%" }}>{children}</div>
       {side === "left" && gutter}
     </div>
+  );
+}
+
+// MobileProfileButton is the phone's profile entry: the signed-in person's
+// avatar (or the local operator's initials) opening the Settings page, where
+// identity and every personal preference live. Signed out on a multi-user
+// deployment it becomes the sign-in entry, exactly like the rail's card.
+function MobileProfileButton() {
+  const setSection = useUI((s) => s.setSection);
+  const id = useIdentity();
+  if (id.loading) return null;
+  if (id.authEnabled && !id.signedIn) {
+    return (
+      <Button
+        size="small"
+        type="primary"
+        href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+      >
+        Sign in
+      </Button>
+    );
+  }
+  const initials = (id.displayName || "?").slice(0, 2).toUpperCase();
+  return (
+    <Avatar
+      size={28}
+      src={id.user?.avatarUrl || undefined}
+      onClick={() => setSection("settings")}
+      style={{ background: "var(--brand)", flexShrink: 0, cursor: "pointer" }}
+      aria-label={`${id.displayName} - open settings`}
+    >
+      {initials}
+    </Avatar>
   );
 }
 

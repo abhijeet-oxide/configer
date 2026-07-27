@@ -11,7 +11,8 @@ import {
 import { PullRequestOutlined, WarningFilled } from "../icons";
 import { useRef, useState } from "react";
 import type { InputRef } from "antd";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type ChangeItem, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable } from "./ChangeItemsTable";
@@ -30,7 +31,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
 
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const items = draftQ.data?.draft?.items ?? [];
   const pending = items.length;
   const prodTouched = items.some(

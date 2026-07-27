@@ -13,6 +13,7 @@ import AppCard from "./AppCard";
 import AppDetailsDrawer from "./AppDetailsDrawer";
 import EditApplicationModal from "./EditApplicationModal";
 import NewApplicationWizard from "./NewApplicationWizard";
+import { sourceNoun, useCapabilities } from "../deployment";
 
 // WorkspaceView is the applications collection: every configuration you
 // manage as a card. Clicking a card goes straight into the application;
@@ -30,6 +31,7 @@ function loadFavs(): string[] {
 }
 
 export default function WorkspaceView() {
+  const caps = useCapabilities();
   const { message } = AntApp.useApp();
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
@@ -116,7 +118,7 @@ export default function WorkspaceView() {
           <EmptyState
             icon={<AppstoreOutlined />}
             title="Connect your first application"
-            hint="Connect a Git repository or local folder to begin managing its configuration."
+            hint={`Connect a ${sourceNoun(caps)} to begin managing its configuration.`}
             actionLabel="New application"
             onAction={() => setWizardOpen(true)}
           />
@@ -148,7 +150,7 @@ export default function WorkspaceView() {
             >
               <PlusOutlined style={{ fontSize: 26, color: "var(--brand)" }} />
               <div className="mt-2 font-medium text-brand">New application</div>
-              <div className="text-xs text-ink-3">From a Git repository or a local folder</div>
+              <div className="text-xs text-ink-3">From {sourceNoun(caps)}</div>
             </div>
           </div>
 

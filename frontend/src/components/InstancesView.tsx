@@ -7,7 +7,8 @@ import {
 } from "../icons";
 import { useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { useUI } from "../store";
 import { ENV_PRESETS } from "../theme";
@@ -73,7 +74,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     setCompare(name, other);
     setSection("compare");
   };
-  const regQ = useQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
+  const regQ = useRepoQuery({ queryKey: ["instances"], queryFn: api.instanceRegistry });
   // The committed registry plus any instance staged in the current draft: a
   // freshly added instance lives in the grid with status "draft" before it is
   // written to the registry, so without this it would show as a column in

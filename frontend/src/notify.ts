@@ -25,6 +25,8 @@ export function describeError(err: unknown): { title: string; detail: string; re
         requestId: err.requestId,
       };
     if (err.isConflict) return { title: "This changed since you loaded it", detail: err.message, requestId: err.requestId };
+    if (err.isNoRepository)
+      return { title: "No application is connected yet", detail: "Add an application to start managing its configuration." };
     if (err.status === 502 || err.status === 504)
       return { title: "A downstream service did not respond", detail: err.message, requestId: err.requestId };
     if (err.isServer) return { title: "Something went wrong on the server", detail: err.message, requestId: err.requestId };
@@ -42,6 +44,9 @@ export function describeError(err: unknown): { title: string; detail: string; re
 // banner, so neither should raise a transient toast on top.
 export function shouldToast(err: unknown): boolean {
   if (err instanceof ApiError && err.isUnauthorized) return false;
+  // "No application is connected" is a state, not a failure: the workspace
+  // shows its own empty state and invites the user to connect one.
+  if (err instanceof ApiError && err.isNoRepository) return false;
   if (err instanceof OfflineError) return false;
   return true;
 }

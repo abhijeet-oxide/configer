@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useRepoQuery } from "../../repoQuery";
 import { Tooltip } from "antd";
 import { BranchesOutlined, ClusterOutlined } from "../../icons";
 import { api } from "../../api";
@@ -50,13 +51,13 @@ export function MonoChip({ icon, children, title }: { icon?: React.ReactNode; ch
 export default function AppContextChips({ showDraft = true }: { showDraft?: boolean }) {
   const repoId = useUI((s) => s.repoId);
   const setSection = useUI((s) => s.setSection);
-  const statusQ = useQuery({
+  const statusQ = useRepoQuery({
     queryKey: ["repo-status"],
     queryFn: api.repoStatus,
     refetchInterval: 30_000,
     enabled: !!repoId,
   });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, enabled: !!repoId && showDraft });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, enabled: !!repoId && showDraft });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
   const st = statusQ.data;

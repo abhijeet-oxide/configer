@@ -29,7 +29,11 @@ func TestBrowseFolders(t *testing.T) {
 
 	h := &Hub{}
 	rec := httptest.NewRecorder()
-	h.browseFolders(rec, httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+root, nil))
+	// The picker only exists when the browser is on the server's own machine,
+	// so the request has to look like that (see capabilities.go).
+	r := httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+root, nil)
+	r.RemoteAddr = "127.0.0.1:54321"
+	h.browseFolders(rec, r)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status %d: %s", rec.Code, rec.Body.String())
 	}
@@ -72,7 +76,9 @@ func TestBrowseFolders(t *testing.T) {
 
 	// A non-existent path is a clean 400, not a panic.
 	rec = httptest.NewRecorder()
-	h.browseFolders(rec, httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+filepath.Join(root, "nope"), nil))
+	missing := httptest.NewRequest(http.MethodGet, "/api/fs/browse?path="+filepath.Join(root, "nope"), nil)
+	missing.RemoteAddr = "127.0.0.1:54321"
+	h.browseFolders(rec, missing)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("missing path status = %d, want 400", rec.Code)
 	}

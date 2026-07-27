@@ -66,7 +66,30 @@ type Service struct {
 }
 
 // Enabled reports whether OAuth login is configured.
-func (s *Service) Enabled() bool { return s != nil && s.ClientID != "" && s.Store != nil }
+// Enabled reports whether GitHub sign-in can actually complete. Both halves of
+// the OAuth credential are required: with only the client id, the login link
+// would render and then fail at the token exchange, which is worse than not
+// offering it at all.
+func (s *Service) Enabled() bool {
+	return s != nil && s.ClientID != "" && s.ClientSecret != "" && s.Store != nil
+}
+
+// ConfigProblem names, for the deployment log, what is missing when sign-in is
+// off despite someone having started to configure it. It is never shown to an
+// end user - the UI says only that the integration is unavailable.
+func (s *Service) ConfigProblem() string {
+	switch {
+	case s == nil || s.Store == nil:
+		return "the platform database is unavailable"
+	case s.ClientID == "" && s.ClientSecret == "":
+		return "GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET are not set"
+	case s.ClientSecret == "":
+		return "GITHUB_OAUTH_CLIENT_SECRET is not set (the client id alone cannot complete a login)"
+	case s.ClientID == "":
+		return "GITHUB_OAUTH_CLIENT_ID is not set"
+	}
+	return ""
+}
 
 func (s *Service) apiBase() string {
 	if s.APIBase != "" {

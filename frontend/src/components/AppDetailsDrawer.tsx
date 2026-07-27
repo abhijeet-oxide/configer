@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Drawer,
   Empty,
@@ -32,6 +31,7 @@ import { StateTag } from "./CrSteps";
 import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
+import { InlineNotice } from "./ui";
 
 // AppDetailsDrawer is the quick-glance side panel for one application: the
 // card on the Applications page stays lightweight, and everything deeper -
@@ -159,14 +159,12 @@ export default function AppDetailsDrawer({
       </div>
 
       {r.error ? (
-        <Alert type="error" showIcon message="This application is unavailable" description={r.error} />
+        <InlineNotice tone="danger">This application is unavailable: {r.error}</InlineNotice>
       ) : r.needsSetup ? (
-        <Alert
-          type="info"
-          showIcon
-          message="Not set up yet"
-          description="This repository is connected but hasn't been scanned into a Configer application. Finish setup to detect its instances and settings."
-        />
+        <InlineNotice>
+          Connected, but not scanned into an application yet. Finish setup to detect its instances
+          and settings.
+        </InlineNotice>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {appQ.data?.description && (

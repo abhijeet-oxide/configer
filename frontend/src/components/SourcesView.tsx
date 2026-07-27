@@ -12,7 +12,8 @@ import {
   App as AntApp,
 } from "antd";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Source, type IncomingChange } from "../api";
 import { PlusOutlined, ReloadOutlined, LinkOutlined, DeleteOutlined, CheckOutlined, EyeOutlined } from "../icons";
 import { sourceIcon, sourceHex } from "./sourceVisual";
@@ -35,9 +36,9 @@ export default function SourcesView() {
   const [detail, setDetail] = useState<Source | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  const sourcesQ = useQuery({ queryKey: ["sources"], queryFn: api.sources });
-  const incomingQ = useQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, retry: false });
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
+  const sourcesQ = useRepoQuery({ queryKey: ["sources"], queryFn: api.sources });
+  const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, retry: false });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
 
   const params = useMemo(() => (gridQ.data?.rows ?? []).map((r) => ({ id: r.param.id, name: r.param.name })), [gridQ.data]);
   const instances = useMemo(() => (gridQ.data?.instances ?? []).map((i) => ({ name: i.name })), [gridQ.data]);

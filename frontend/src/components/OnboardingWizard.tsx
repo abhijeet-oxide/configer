@@ -1,5 +1,4 @@
 import {
-  Alert,
   App as AntApp,
   AutoComplete,
   Badge,
@@ -28,11 +27,12 @@ import {
   TableOutlined,
 } from "../icons";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
-import { Stepper } from "./ui";
+import { InlineNotice, Stepper } from "./ui";
 import FileExplorer from "./FileExplorer";
 import InitProgress from "./InitProgress";
 import { OfflineArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
@@ -222,7 +222,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const [paramQ, setParamQ] = useState("");
   const [treeCollapsed, setTreeCollapsed] = useState(false);
 
-  const discoverQ = useQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
+  const discoverQ = useRepoQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
   const d = discoverQ.data;
 
   const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
@@ -384,13 +384,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
       {step === 0 && (
         <>
-          <Alert
-            type="info"
-            showIcon
-            message={`Detected layout: ${layoutLabels[d.detection.layout] ?? d.detection.layout}`}
-            description={d.detection.note}
-            style={{ marginBottom: 16 }}
-          />
+          <InlineNotice className="mb-4">
+            Detected layout: <b>{layoutLabels[d.detection.layout] ?? d.detection.layout}</b>
+            {d.detection.note ? ` - ${d.detection.note}` : ""}
+          </InlineNotice>
           <Form layout="vertical" style={{ maxWidth: 480 }}>
             <Form.Item label="Application name" required>
               <Input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="e.g. telco-platform" />
@@ -405,12 +402,11 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             </Form.Item>
           </Form>
           {insts.length === 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              message="No instances were found"
-              description="Configer looks for one folder per instance (instances/, environments/, overlays/, kpt packages). Add such a structure to the repository, or connect a different branch."
-            />
+            <InlineNotice tone="warn">
+              No instances were found. Configer looks for one folder per instance (instances/,
+              environments/, overlays/, kpt packages) - add such a structure, or connect a different
+              branch.
+            </InlineNotice>
           )}
         </>
       )}
@@ -467,13 +463,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               },
             ]}
           />
-          <Alert
-            type="info"
-            showIcon
-            style={{ marginTop: 12 }}
-            message="You can add more instances any time"
-            description="Once the application is set up, create, clone or retire instances from the Instances tab (Manage instances) - no need to get them all here."
-          />
+          <InlineNotice tone="neutral" className="mt-3">
+            You can create, clone or retire instances any time from the Instances tab - no need to
+            get them all here.
+          </InlineNotice>
         </>
       )}
 

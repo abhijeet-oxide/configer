@@ -117,7 +117,12 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	if authSvc.Enabled() {
 		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
 	} else {
-		slog.Info("auth disabled: single-user mode", slog.String("store", platform.Dialect()))
+		// Say WHY, at startup, in the log: "sign-in is not configured" is the
+		// one message an operator needs to act on, and hunting for it in the UI
+		// (where end users must never see it) is the wrong place to look.
+		slog.Info("auth disabled: single-user mode",
+			slog.String("store", platform.Dialect()),
+			slog.String("reason", authSvc.ConfigProblem()))
 	}
 	if len(reg.List()) == 0 && seed != "" {
 		if st, serr := os.Stat(seed); serr == nil && st.IsDir() {
@@ -331,6 +336,9 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/github/branches", h.githubBranches)
 	// Local-folder picker for the New Application flow (localhost mode).
 	mux.HandleFunc("GET /api/fs/browse", h.browseFolders)
+	// What this deployment supports, so the UI never offers a workflow that
+	// cannot succeed here (see capabilities.go).
+	mux.HandleFunc("GET /api/capabilities", h.capabilities)
 	mux.HandleFunc("GET /api/workspace", h.list)
 	mux.HandleFunc("GET /api/search", h.search)
 	mux.HandleFunc("GET /api/repos", h.list)
@@ -361,17 +369,25 @@ func (h *Hub) log() *slog.Logger {
 	return slog.Default()
 }
 
-// health is the liveness probe.
+// health is the liveness probe. It also identifies the deployment (name,
+// version, environment) so a client can name what it is talking to before -
+// and without - any application being connected; /api/meta carries the same
+// identity but is repo-scoped.
 //
 // @Summary     Liveness probe
-// @Description Returns 200 while the process is up. `/api/healthz` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).
+// @Description Returns 200 while the process is up, with the deployment identity (name, version, environment). `/api/healthz` is an alias. Used as a liveness check by load balancers and orchestrators; it does not check dependencies (see readiness).
 // @Tags        Health
 // @Produce     json
 // @Success     200 {object} StatusResponse
 // @Router      /api/health [get]
 // @Router      /api/healthz [get]
 func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "version": h.Version})
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":      "ok",
+		"name":        "Configer",
+		"version":     h.Version,
+		"environment": h.Environment,
+	})
 }
 
 // ready reports 200 only when a repository is available to serve, otherwise 503.
@@ -432,8 +448,11 @@ func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 func (h *Hub) legacy(w http.ResponseWriter, r *http.Request) {
 	hd := h.defaultHandler()
 	if hd == nil {
-		writeJSON(w, http.StatusServiceUnavailable,
-			map[string]string{"error": "no repository is connected yet; connect one via POST /api/repos"})
+		// Not a fault: a fresh (or emptied) deployment simply has no application
+		// to answer for. The stable code lets a client render an empty state
+		// instead of an error.
+		writeError(w, r, http.StatusServiceUnavailable, CodeNoRepository,
+			"no application is connected yet")
 		return
 	}
 	// The unscoped routes serve the default repository: same enforcement.

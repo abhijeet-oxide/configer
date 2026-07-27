@@ -23,6 +23,7 @@ import {
 import UserAvatar from "./UserAvatar";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type ChangeImpact, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
@@ -216,8 +217,8 @@ export default function ApprovalsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { reviewCrId, setReviewCr, repoId, setSection } = useUI();
-  const q = useQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
-  const draftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const [filter, setFilter] = useState<StateFilter>("waiting");
   const [selId, setSelId] = useState<number | null>(null);
   const [reqNote, setReqNote] = useState<string | null>(null);

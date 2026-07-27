@@ -1,6 +1,7 @@
 import { Modal, Select, Form, Typography, Tag, App as AntApp } from "antd";
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, type Source } from "../api";
 
 // MapSourceModal links a managed parameter to a key in an external source. It
@@ -44,7 +45,7 @@ export default function MapSourceModal({
   }, [open, preParamId, preSourceId, preKey]);
 
   // Fetch the chosen source's keys so the mapping targets a real value.
-  const contentsQ = useQuery({
+  const contentsQ = useRepoQuery({
     queryKey: ["sources", sourceId, "contents"],
     queryFn: () => api.sourceContents(sourceId as string),
     enabled: open && !!sourceId && !preKey,

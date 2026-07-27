@@ -523,6 +523,30 @@ export interface Meta {
   branch?: string;
 }
 
+// The liveness answer. It carries the same deployment identity as Meta, but
+// needs no application connected, so it is what the boot check and every
+// workspace-level surface identify the deployment from.
+export interface Health {
+  status: string;
+  name?: string;
+  version?: string;
+  environment?: string;
+}
+
+/**
+ * What this deployment can actually do. The UI offers only workflows that will
+ * succeed here rather than presenting options that cannot: "Local folder"
+ * browses the SERVER's filesystem, which is the user's own machine when
+ * Configer runs there and somebody else's container when it is hosted.
+ */
+export interface Capabilities {
+  localFolders: boolean;
+  githubSignIn: boolean;
+  githubBrowse: boolean;
+  manualGitUrl: boolean;
+  hosted: boolean;
+}
+
 // One repository event detected between the acknowledged commit and HEAD.
 export interface Finding {
   type: "new_file" | "file_changed" | "file_deleted" | "file_renamed" | "new_folder";
@@ -768,15 +792,51 @@ const rp = (path: string) => (activeRepo ? `/repos/${encodeURIComponent(activeRe
 // configuration is never shown while another is selected.
 export const snapKey = (key: string) => `${activeRepo ?? "default"}:${key}`;
 
+/**
+ * normalizeApiBase turns whatever an operator configured into a base the client
+ * can append "/health", "/workspace" … to.
+ *
+ * Every endpoint this app calls is mounted under `/api` on the backend, so the
+ * base has to END at that prefix. The natural thing to paste, though, is the
+ * API service's origin - `https://configer-api.onrender.com` - and that sends
+ * every call to `/health` instead of `/api/health`: a deployment that answers
+ * every request with 404 while looking perfectly configured. So a bare origin
+ * gets the `/api` prefix it meant.
+ *
+ * A value that already names a path is left alone (minus a trailing slash), so
+ * a backend mounted behind `https://host/configer/api` - or any other prefix -
+ * keeps working exactly as written.
+ */
+export function normalizeApiBase(raw: string | undefined | null): string {
+  const value = (raw ?? "").trim();
+  if (!value) return "/api";
+  const base = value.replace(/\/+$/, "");
+  if (!base) return "/api";
+  // Relative values ("/api", "/configer/api") are already paths: use as given.
+  if (base.startsWith("/")) return base;
+  try {
+    const url = new URL(base);
+    // Bare origin: the operator gave us the host, not the API path.
+    if (url.pathname === "" || url.pathname === "/") return `${url.origin}/api`;
+  } catch {
+    // Not parseable as a URL: pass it through rather than guessing.
+  }
+  return base;
+}
+
 // API base URL, resolved once. Precedence: a runtime override injected before
 // the app boots (window.__CONFIGER__.apiBaseUrl, editable without a rebuild via
 // public/config.js) > the build-time VITE_API_BASE_URL > the same-origin "/api"
 // (nginx/Vite proxy it to the backend). This lets a static SPA point at a
 // separate API host, and lets ops repoint it without rebuilding.
-const API_BASE =
+const API_BASE = normalizeApiBase(
   (typeof window !== "undefined" && window.__CONFIGER__?.apiBaseUrl) ||
-  import.meta.env.VITE_API_BASE_URL ||
-  "/api";
+    import.meta.env.VITE_API_BASE_URL,
+);
+
+/** Where this build is actually calling the API. Shown when a probe fails, so
+ *  a misconfigured address is visible instead of guessed at. */
+export const apiBaseUrl = () => API_BASE;
 
 /** One field-level validation failure from the backend's error envelope. */
 export interface FieldError {
@@ -822,8 +882,17 @@ export class ApiError extends Error {
   get isValidation() { return this.status === 422; }
   get isRateLimited() { return this.status === 429; }
   get isServer() { return this.status >= 500; }
+  /**
+   * No application is connected to this deployment. Not a fault: it is the
+   * ordinary state of a fresh (or emptied) workspace, so the UI shows an empty
+   * state rather than an error, and never retries.
+   */
+  get isNoRepository() { return this.code === "no_repository"; }
   /** true for failures a retry could plausibly fix (network/5xx/429) */
-  get isRetryable() { return this.status === 429 || this.status >= 500; }
+  get isRetryable() {
+    if (this.isNoRepository) return false; // connecting an application fixes it, not a retry
+    return this.status === 429 || this.status >= 500;
+  }
 }
 
 /** The request took too long and was aborted client-side. */
@@ -961,7 +1030,8 @@ export const catalogRev = () => lastCatalogRev;
 
 export const api = {
   // --- workspace level (not repo-scoped) ---
-  health: () => get<{ status: string }>("/health"),
+  health: (opts?: { timeoutMs?: number }) => get<Health>("/health", opts),
+  capabilities: () => get<Capabilities>("/capabilities"),
   me: () => get<AuthState>("/auth/me"),
   logout: () => send<{ ok: boolean }>("POST", "/auth/logout"),
   myRole: (repoId: string) => get<MyRole>(`/repos/${encodeURIComponent(repoId)}/role`),

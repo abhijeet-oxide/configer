@@ -9,7 +9,7 @@ operation (draft → branch → commit → PR → merge).
 ## Commands
 
 ```bash
-make install        # go modules + npm (first time)
+make install        # go modules + npm + git hooks (first time)
 make dev            # backend :8080 (serves ./sample-repo) + frontend :5173
 make test           # go test ./... + tsc --noEmit
 make lint           # go vet + golangci-lint + eslint
@@ -17,6 +17,12 @@ make build          # backend binary + frontend dist
 ./scripts/smoke.sh  # end-to-end: onboard fixture, edit, submit, assert branch diff
 make functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
 ```
+
+`make install` also points `core.hooksPath` at `scripts/hooks`, whose
+pre-commit regenerates the OpenAPI spec whenever `backend/internal/api/*.go`
+changes and stages it in the same commit - the spec is generated AND committed
+(the backend serves it at `/api/docs`), so it must travel with the code. CI
+keeps `make docs-check` as the safety net and uploads the corrected files.
 
 `sample-repos/` is a corpus of realistic GitOps repos (Helm umbrella, kustomize
 base+overlays, kpt packages, raw multi-cluster K8s, telco RAN) with no
@@ -115,6 +121,29 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `InstancesView`, `SourceControlPanel`/`SubmitChangesButton` (the draft),
 `ComparePanel`, `WorkspaceView`.
 
+Two levels, and the difference is load-bearing. WORKSPACE-level views (Home,
+Applications, Inbox, Audit, Instances estate, Settings) need no application and
+have their own paths (`/home`, `/applications`, `/inbox`, `/audit`, …).
+APPLICATION-level views are tabs of `ConfigurationPage` under
+`/application/<id>/<tab>`. A view reads its data accordingly:
+
+- `useRepoQuery` (`repoQuery.ts`) for ANYTHING repo-scoped - it gates the read
+  on an active application, so an empty workspace never polls (or errors) for
+  data that cannot exist. Plain `useQuery` is only for workspace-level reads.
+- `deployment.ts` (`useHealth`/`useDeployment`) for the service's own identity;
+  `/api/meta` carries the same fields but is repo-scoped, so it is unusable
+  with no application connected.
+- `BootGate` (`main.tsx`) probes the service before ANY view renders: a branded
+  splash while checking, an on-brand service-unavailable page (auto-retrying)
+  when it cannot be reached, the app once it answers.
+- `useCapabilities` (`deployment.ts`, backed by `GET /api/capabilities`) for
+  anything a deployment may not support. Offer only what will work here: local
+  folder browsing reads the SERVER's filesystem, so it exists on a developer's
+  own machine and nowhere else. Never render a control the deployment cannot
+  honor, and never explain the gap in terms of environment variables - the UI
+  says the integration is unavailable and points at an administrator; the
+  startup log says which variable is missing.
+
 ## Conventions
 
 - **Glossary (use everywhere):** Application, Instance, Parameter, Binding,
@@ -125,6 +154,14 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
   wins (`api.author(r, fallback)`).
 - Errors to users are plain words, never git jargon; every write path
   validates first and returns 422 with the parameter named.
+- A missing precondition is a STATE, not an error: no application connected
+  (`no_repository`), nothing recorded yet, no instances found. Show the empty
+  state that says what to do next; never a red toast.
+- One sentence gets `InlineNotice` (one line, control height), not an `Alert`
+  block. Reserve `Alert` for the rare message that truly needs a paragraph.
+- Every screen works down to 375px: dialogs cap to the viewport, card rows
+  wrap, and the phone tier keeps the same brand mark, profile entry and
+  navigation levels as the desktop rail.
 - Tests: golden-style (exact expected file bytes) for anything that edits
   files; fixtures under `backend/internal/layout/testdata/` cover all three
   layouts; `api/platform_test.go` is the role-enforcement matrix.

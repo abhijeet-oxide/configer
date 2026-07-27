@@ -70,7 +70,7 @@ func testHub(t *testing.T) (*Hub, http.Handler) {
 	t.Cleanup(func() { _ = hub.Close() })
 
 	// Force-enable auth (no real GitHub round-trip in tests).
-	hub.auth = &auth.Service{ClientID: "test-client", Store: hub.platform}
+	hub.auth = &auth.Service{ClientID: "test-client", ClientSecret: "test-secret", Store: hub.platform}
 	ctx := context.Background()
 	users := []struct {
 		login string

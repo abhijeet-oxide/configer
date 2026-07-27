@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# Keep the committed OpenAPI spec in step with the handlers that describe it.
+#
+# The spec under backend/internal/api/docs is GENERATED from the @Summary /
+# @Router annotations on the handlers, and it is committed because the backend
+# serves it (/api/openapi.json, /api/docs). That combination has exactly one
+# failure mode: someone edits a handler, forgets `make docs`, and finds out from
+# a red CI run minutes later. Regenerating here removes the step from human
+# memory entirely - if the annotations changed, the spec is rebuilt and staged
+# alongside them, in the same commit.
+#
+# Installed by `make hooks` (which `make install` runs) via core.hooksPath.
+# Skip it for one commit with:  SKIP_DOCS_HOOK=1 git commit ...
+set -euo pipefail
+
+if [ "${SKIP_DOCS_HOOK:-}" = "1" ]; then
+  exit 0
+fi
+
+ROOT="$(git rev-parse --show-toplevel)"
+DOCS="backend/internal/api/docs"
+
+# Only Go changes under the API package can move the spec; every other commit
+# pays nothing.
+staged_api_go="$(git diff --cached --name-only --diff-filter=ACMR \
+  -- 'backend/internal/api/*.go' | grep -v "^${DOCS}/" || true)"
+if [ -z "$staged_api_go" ]; then
+  exit 0
+fi
+
+if ! command -v go >/dev/null 2>&1; then
+  echo "pre-commit: go is not on PATH; skipping the OpenAPI spec refresh." >&2
+  exit 0
+fi
+
+echo "pre-commit: API handlers changed - regenerating the OpenAPI spec…"
+if ! (cd "$ROOT/backend" && go generate ./internal/api >/dev/null 2>&1); then
+  echo "pre-commit: could not regenerate the OpenAPI spec. Run 'make docs' to see why." >&2
+  exit 1
+fi
+
+if ! git diff --quiet -- "$DOCS"; then
+  git add -- "$DOCS"
+  echo "pre-commit: OpenAPI spec refreshed and staged with this commit."
+fi

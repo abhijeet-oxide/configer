@@ -12,6 +12,7 @@ import {
 import { api } from "../api";
 import { useUI } from "../store";
 import { useIdentity } from "../identity";
+import { useDeployment } from "../deployment";
 import { useTimeSettings } from "../timefmt";
 import { envHex } from "../theme";
 import { zoneOffsetLabel } from "../settings";
@@ -110,12 +111,12 @@ export default function SettingsView() {
   const identity = useIdentity();
   const { repoId, setSection, setWelcomeOpen } = useUI();
   const qc = useQueryClient();
-  const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const [membersOpen, setMembersOpen] = useState(false);
   const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.invalidateQueries() });
 
-  const meta = metaQ.data;
+  const deployment = useDeployment();
+  const meta = deployment.reachable ? deployment : null;
   const activeApp = wsQ.data?.repos.find((r) => r.id === repoId);
   const roleExplains = ROLE_EXPLANATION[identity.roleLabel] ?? "";
 
@@ -266,7 +267,8 @@ export default function SettingsView() {
           )}
           {!identity.authEnabled && (
             <div style={{ fontSize: "var(--fs-12)", color: "var(--text-3)", marginTop: 8 }}>
-              To add teammates with separate roles, configure GitHub sign-in on the deployment.
+              Sign-in is not set up here, so this Configer runs as a single user. An administrator
+              can connect GitHub to add teammates with their own roles.
             </div>
           )}
           </div>

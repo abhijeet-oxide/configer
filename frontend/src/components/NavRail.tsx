@@ -14,6 +14,8 @@ import { envHex } from "../theme";
 import { theme as brand } from "../theme.config";
 import { useUI } from "../store";
 import { useIdentity } from "../identity";
+import { useDeployment } from "../deployment";
+import BrandMark from "./BrandMark";
 
 // The navigation rail: the product's one piece of dark chrome, and the ONLY
 // organization-scope navigator. It holds just what crosses applications:
@@ -47,6 +49,8 @@ function railKey(section: string): string {
     case "approvals":
     case "inbox":
       return "inbox";
+    case "audit":
+      return "audit";
     case "plugins":
     case "settings":
       return "profile";
@@ -114,7 +118,9 @@ export default function NavRail({
     { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
     { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
     { key: "inbox", label: "Inbox", icon: <InboxOutlined />, section: "inbox", badge: awaiting },
-    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit", needsApp: true },
+    // The trail spans every application, so it stands at the workspace level
+    // alongside the others - it never needs one selected.
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit" },
   ];
 
   return (
@@ -128,13 +134,7 @@ export default function NavRail({
           justifyContent: collapsed ? "center" : "flex-start",
         }}
       >
-        {brand.logo.src ? (
-          <img className="logo-tile" src={brand.logo.src} alt={brand.appName} />
-        ) : brand.logo.svg ? (
-          <span className="logo-tile" dangerouslySetInnerHTML={{ __html: brand.logo.svg }} />
-        ) : (
-          <div className="logo-tile">{brand.logo.text ?? brand.appName.charAt(0)}</div>
-        )}
+        <BrandMark />
         {!collapsed && (
           <div style={{ lineHeight: 1.1, minWidth: 0 }}>
             <Typography.Text strong style={{ color: "var(--nav-fg-active)" }}>
@@ -240,13 +240,12 @@ function ProfileCard({ collapsed, active }: { collapsed: boolean; active: boolea
   );
 }
 
-// AuditList shows who did what, newest first, across the workspace.
 // DeploymentChip identifies this installation (version + environment) so
-// support conversations and screenshots are unambiguous.
+// support conversations and screenshots are unambiguous. It reads the service's
+// own identity, so it is present on a workspace with no applications too.
 function DeploymentChip() {
-  const metaQ = useQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
-  const m = metaQ.data;
-  if (!m) return null;
+  const m = useDeployment();
+  if (!m.reachable) return null;
   return (
     <div
       style={{

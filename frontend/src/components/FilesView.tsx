@@ -19,7 +19,8 @@ import {
   LinkOutlined,
 } from "../icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { api, sameContent, ALL_INSTANCES } from "../api";
 import { useUI } from "../store";
@@ -60,8 +61,8 @@ export default function FilesView() {
   const setJump = useUI((s) => s.setJump);
   const selectInstance = useUI((s) => s.selectInstance);
   const fileFocus = useUI((s) => s.fileFocus);
-  const projectQ = useQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid });
+  const projectQ = useRepoQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid });
   // Default to "All instances": every instance's files at once, so a linked
   // parameter always resolves to its file (a single-instance filter would hide
   // files that instance does not own and leave the link highlighting nothing).
@@ -118,13 +119,13 @@ export default function FilesView() {
       folders.find((f) => path === f.folder || path.startsWith(f.folder + "/"))?.name;
   }, [gridQ.data]);
 
-  const draftQ = useQuery({
+  const draftQ = useRepoQuery({
     queryKey: ["files-draft", instance],
     queryFn: () => api.render(instance!),
     enabled: !!instance,
     refetchInterval: 15_000,
   });
-  const committedQ = useQuery({
+  const committedQ = useRepoQuery({
     queryKey: ["files-committed", instance],
     queryFn: () => api.render(instance!, { draft: false }),
     // A pending instance has no committed files yet; skip the fetch (it would
@@ -300,11 +301,11 @@ export default function FilesView() {
     setSection("config");
   };
 
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 30_000 });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 30_000 });
   // The same draft the editor's status bar shows: staging any change makes
   // the review branch appear here immediately, so both workspaces tell one
   // consistent Git story.
-  const crDraftQ = useQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const crDraftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const crDraft = crDraftQ.data?.draft;
   const draftItems = crDraft?.items?.length ?? 0;
 

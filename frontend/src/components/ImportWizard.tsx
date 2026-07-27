@@ -1,5 +1,4 @@
 import {
-  Alert,
   AutoComplete,
   Button,
   Card,
@@ -34,6 +33,7 @@ import {
 } from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
@@ -42,7 +42,7 @@ import { useSwitchRepo } from "../useSwitchRepo";
 import NewApplicationWizard from "./NewApplicationWizard";
 import FileExplorer from "./FileExplorer";
 import { InSyncArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
-import { Stepper } from "./ui";
+import { InlineNotice, Stepper } from "./ui";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -162,7 +162,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
   // callbacks all see the same value.
   const focusRef = useRef<string | null>(null);
   const autoScanStarted = useRef(false);
-  const statusQ = useQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 60_000 });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 60_000 });
 
   // Parameters already in the catalog are recognized by (file, path) so the
   // wizard never proposes importing something twice.
@@ -336,13 +336,9 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
           }
         >
           {doneInfo.skipped.length > 0 && (
-            <Alert
-              type="warning"
-              showIcon
-              style={{ marginTop: 8, textAlign: "left" }}
-              message={`${doneInfo.skipped.length} entr(ies) could not be imported`}
-              description={doneInfo.skipped.join(", ")}
-            />
+            <InlineNotice tone="warn" className="mt-2 text-left">
+              {doneInfo.skipped.length} entr(ies) could not be imported: {doneInfo.skipped.join(", ")}
+            </InlineNotice>
           )}
         </StatePanel>
       </div>
@@ -1002,21 +998,12 @@ function ReviewStep({
           { title: "File", width: 220, render: (_, d) => <span className="mono" style={{ fontSize: 11, opacity: 0.6 }}>{d.cand.file}</span> },
         ]}
       />
-      <Alert
-        type="info"
-        showIcon
-        style={{ marginBottom: 16 }}
-        message="What happens when you initialize"
-        description={
-          <>
-            One commit is made on the current Git branch{branch ? <> (<code>{branch}</code>)</> : null}, adding
-            these parameters to the Configer catalog
-            {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
-            Your existing configuration files keep their values; from now on you edit them per
-            system in Parameters, with validation and review built in.
-          </>
-        }
-      />
+      <InlineNotice className="mb-4">
+        One commit is made on the current Git branch{branch ? <> (<code>{branch}</code>)</> : null},
+        adding these parameters to the Configer catalog
+        {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
+        Your existing configuration files keep their values.
+      </InlineNotice>
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={importing}>
           Back

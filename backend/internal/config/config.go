@@ -35,6 +35,11 @@ type Config struct {
 
 	// Flags holds boolean feature flags parsed from CONFIGER_FLAG_<NAME>=true.
 	Flags Flags
+
+	// EnvFile is the .env that supplied any of the above ("" when none was
+	// found). Logged at startup so "my .env is being ignored" is answerable by
+	// reading the first line of the log.
+	EnvFile string
 }
 
 // Flags is a small env-driven feature-flag set. For anything richer (targeting,
@@ -44,9 +49,13 @@ type Flags map[string]bool
 // Enabled reports whether a named flag is on. Names are lower-cased.
 func (f Flags) Enabled(name string) bool { return f[strings.ToLower(name)] }
 
-// Load reads configuration from the environment, applying defaults.
+// Load reads configuration from the environment, applying defaults. A `.env`
+// at (or above) the working directory fills in anything the environment does
+// not already set - see dotenv.go for why that direction matters.
 func Load() Config {
+	envFile := loadDotEnv()
 	c := Config{
+		EnvFile:      envFile,
 		Addr:         env("CONFIGER_ADDR", ":8080"),
 		DataDir:      env("CONFIGER_DATA", "./configer-data"),
 		Repo:         env("CONFIGER_REPO", "../sample-repo"),
@@ -77,6 +86,7 @@ func (c Config) LogValue() slog.Value {
 		slog.String("logLevel", c.LogLevel.String()),
 		slog.String("logFormat", c.LogFormat),
 		slog.Any("flags", c.enabledFlags()),
+		slog.String("envFile", c.EnvFile),
 	)
 }
 

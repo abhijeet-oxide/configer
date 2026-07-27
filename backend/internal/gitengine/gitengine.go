@@ -24,8 +24,30 @@ type Repo struct {
 	Email string
 }
 
+// git runs one git command in dir. Every git invocation in Configer funnels
+// through here, so the flags below apply everywhere by construction.
+//
+// safe.directory is the one that needs explaining. Git refuses to operate on a
+// repository owned by a different user ("detected dubious ownership"), which is
+// the normal case in a container: the image runs unprivileged while the mounted
+// working tree carries the host user's ownership. The protection exists so you
+// do not accidentally execute config or hooks from someone else's checkout -
+// but this repository is not "someone else's": an operator mounted it and named
+// it as the one to manage. Declaring exactly that path trusted is the narrow
+// way to say so. The alternatives are worse: `chown -R` rewrites the user's own
+// files to a magic uid, and a global `safe.directory=*` trusts every repository
+// on the machine rather than the one we were pointed at.
 func (r *Repo) git(dir string, args ...string) (string, error) {
-	full := append([]string{"-c", "user.name=" + r.Name, "-c", "user.email=" + r.Email}, args...)
+	full := append([]string{
+		"-c", "user.name=" + r.Name,
+		"-c", "user.email=" + r.Email,
+		"-c", "safe.directory=" + dir,
+	}, args...)
+	// A worktree's operations run from the worktree directory but resolve
+	// through the primary repository, so both ends have to be trusted.
+	if r.Dir != "" && r.Dir != dir {
+		full = append([]string{"-c", "safe.directory=" + r.Dir}, full...)
+	}
 	cmd := exec.Command("git", full...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

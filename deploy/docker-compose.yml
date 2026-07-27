@@ -36,14 +36,31 @@ services:
       # CONFIGER_DEFAULT_ROLE: editor
     volumes:
       # Read-write: Configer commits edits into the repo's real files
-      # (write-back-native model). The backend image runs as uid 10001, so the
-      # mounted tree must be writable by it - for this bundled demo run once:
+      # (write-back-native model), so this mount must be WRITABLE by the
+      # container's user (uid 10001). Git OWNERSHIP no longer matters - Configer
+      # marks the repositories it manages as trusted instead of requiring the
+      # tree to be chowned - but write access is inherent to what the product
+      # does, and a tree it cannot write to is reported as unavailable at
+      # startup (with a plain-language reason) rather than failing at the first
+      # edit. For this bundled demo, run once:
       #   sudo chown -R 10001:10001 ../sample-repo
       - ../sample-repo:/repo
+      # Server-side state: the workspace registry, the platform database and
+      # clones of connected repositories. Without this volume every new
+      # container starts with an empty workspace.
+      - configer-data:/var/lib/configer
     ports:
       - "8080:8080"
+    # Wait for the database to be READY, not merely started: the short
+    # `depends_on: [postgres]` form only waits for the container to exist, so a
+    # cold `docker compose up` raced Postgres and the backend exited 1 with a
+    # connection-refused error before the database finished initializing.
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    # A restart still covers anything the healthcheck cannot (a database
+    # restart under the running stack, for instance).
+    restart: unless-stopped
     healthcheck:
       # The binary probes its own /api/health; no curl needed in the image.
       test: ["CMD", "configer", "-healthcheck"]
@@ -58,6 +75,7 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    restart: unless-stopped
     # The unprivileged nginx image listens on 8080 as a non-root user.
     ports:
       - "8088:8080"
@@ -88,3 +106,4 @@ services:
 
 volumes:
   pgdata:
+  configer-data:

@@ -14,6 +14,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -108,6 +109,15 @@ func New(repoPath string) (*Server, error) {
 		return nil, err
 	}
 
+	// Configer is write-back-native: it edits the repository's OWN files and
+	// keeps change-request state beside them. A tree it cannot write to cannot
+	// be managed, so find out now, in one sentence, instead of at the first edit
+	// - where it used to surface as "mkdir /repo/.git/configer: permission
+	// denied" from somewhere deep in a save.
+	if err := ensureRepoWritable(repoPath); err != nil {
+		return nil, err
+	}
+
 	store, err := crstore.New(filepath.Join(repoPath, ".git", "configer", "state.json"))
 	if err != nil {
 		return nil, err
@@ -133,6 +143,39 @@ func New(repoPath string) (*Server, error) {
 
 	backend := repobackend.NewLocal(repo, prov)
 	return NewWithBackend(reg, backend, store), nil
+}
+
+// ensureRepoWritable checks that Configer can write to the repository it was
+// asked to manage, creating the directory its change-request state lives in.
+// The returned message is the one a user sees next to the application, so it
+// says what is wrong in plain words; the log line carries the detail an
+// operator needs (the path and the account that could not write to it).
+func ensureRepoWritable(repoPath string) error {
+	stateDir := filepath.Join(repoPath, ".git", "configer")
+	err := os.MkdirAll(stateDir, 0o755)
+	if err == nil {
+		// MkdirAll succeeds on a directory that ALREADY exists, whatever its
+		// permissions - so on its own it happily passes a tree left behind by a
+		// previous run under a different account, and the repository looks
+		// healthy right up until the first edit. Only a real write proves it.
+		var probe *os.File
+		probe, err = os.CreateTemp(stateDir, ".writable-*")
+		if err == nil {
+			name := probe.Name()
+			_ = probe.Close()
+			_ = os.Remove(name)
+		}
+	}
+	if err != nil {
+		slog.Error("repository is not writable by the service account",
+			slog.String("path", repoPath),
+			slog.Int("uid", os.Getuid()),
+			slog.Any("error", err))
+		return errors.New("this repository's folder is read-only for Configer, " +
+			"so changes could not be saved back to it. Give the account Configer " +
+			"runs as write access to the folder and reconnect it")
+	}
+	return nil
 }
 
 // NewWithBackend assembles a Server around a prepared backend and store (the

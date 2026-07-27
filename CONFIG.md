@@ -167,7 +167,28 @@ services:
       CONFIGER_ADDR: :8080
       CONFIGER_ENV: production
       DATABASE_URL: postgres://configer:configer@postgres:5432/configer
+    volumes:
+      - /path/to/your/repo:/repo      # must be writable by uid 10001
+      - configer-data:/var/lib/configer
 ```
+
+**Two mounts, two different jobs.**
+
+`/repo` is the repository Configer manages. Configer is write-back-native - it
+commits into the repository's own files - so this mount **must be writable by
+the container's user (uid 10001)**. It does *not* need to be owned by that uid:
+Configer marks the repositories it manages as trusted, so git's "dubious
+ownership" refusal never applies and you are not asked to chown your own files.
+A tree that cannot be written is reported as unavailable at startup, with a
+plain-language reason, rather than failing at the first edit.
+
+`/var/lib/configer` is server-side state: the workspace registry, the platform
+database when it is SQLite, and clones of connected repositories. It is
+`CONFIGER_DATA` in the image. Without a volume here, every new container starts
+with an empty workspace.
+
+The backend waits for the database to be *healthy*, not merely started, so a
+cold `docker compose up` cannot race Postgres.
 
 ### Production (High-Security)
 

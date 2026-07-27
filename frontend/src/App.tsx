@@ -39,6 +39,7 @@ import ImportWizard from "./components/ImportWizard";
 import InstancesView from "./components/InstancesView";
 import OnboardingWizard from "./components/OnboardingWizard";
 import RepoChangesView from "./components/RepoChangesView";
+import EvolutionTimeline from "./components/EvolutionTimeline";
 import SourcesView from "./components/SourcesView";
 import WorkspaceView from "./components/WorkspaceView";
 import HomeView from "./components/HomeView";
@@ -409,7 +410,8 @@ export default function App() {
       // state-aware skeletons: mirror the exact layout the user is waiting for
       if (section === "overview") return <OverviewSkeleton />;
       if (section === "approvals") return <ApprovalsSkeleton />;
-      if (section === "changes" || section === "drafts" || section === "instances") return <TableSkeleton />;
+      if (section === "changes" || section === "drafts" || section === "instances" || section === "timeline")
+        return <TableSkeleton />;
       if (section === "compare") return <CompareSkeleton />;
       if (section === "drift" || section === "import" || section === "sources") return <ListSkeleton />;
       if (section === "files")
@@ -453,6 +455,7 @@ export default function App() {
     if (section === "approvals") return <ApprovalsView />;
     if (section === "changes" || section === "drafts") return <ChangeRequestsView />;
     if (section === "compare") return <ComparePanel grid={grid} />;
+    if (section === "timeline") return <EvolutionTimeline grid={grid} />;
     if (section === "instances") return <InstancesView grid={grid} />;
     if (section === "files") return <FilesView />;
     if (section === "sources") return <SourcesView />;

@@ -361,9 +361,31 @@ func cellLogPaths(p *project.Project, id, instance string) []string {
 	return paths
 }
 
+// repoOrder ranks recent commits by the repository's OWN log order (newest
+// first), so a union of per-path logs can be restored to true git order.
+//
+// Commit dates cannot do this job: two commits made in the same second compare
+// equal (routine for scripted or bulk changes), and an ISO-8601 date carries a
+// timezone offset, so comparing the strings orders commits from different
+// offsets wrongly. Either way a "previous snapshot" can come out newer than the
+// one it is supposed to precede, which silently reverses a diff.
+//
+// A sha outside the ranking window is left unranked and falls back to date
+// order, which is the best available answer that deep into history.
+func (s *Server) repoOrder(depth int) map[string]int {
+	rank := make(map[string]int)
+	commits, err := s.Backend.Log(context.Background(), "", depth)
+	if err != nil {
+		return rank
+	}
+	for i, c := range commits {
+		rank[c.SHA] = i
+	}
+	return rank
+}
+
 // logUnion merges the commit logs of several paths into one list, newest first,
-// deduplicated by SHA and capped at limit. Commit.Date is ISO-8601, so a string
-// comparison orders it correctly.
+// deduplicated by SHA and capped at limit, in true repository order.
 func (s *Server) logUnion(paths []string, limit int) ([]repobackend.Commit, error) {
 	seen := map[string]bool{}
 	var all []repobackend.Commit
@@ -379,11 +401,43 @@ func (s *Server) logUnion(paths []string, limit int) ([]repobackend.Commit, erro
 			}
 		}
 	}
-	sort.SliceStable(all, func(i, j int) bool { return all[i].Date > all[j].Date })
+	// Rank against a window comfortably deeper than the union itself, so
+	// commits that are recent for one path but older overall still order right.
+	orderCommits(all, s.repoOrder(rankDepth(limit)))
 	if len(all) > limit {
 		all = all[:limit]
 	}
 	return all, nil
+}
+
+// rankDepth is how far back to read the repository log when ranking a union of
+// per-path logs: deep enough that everything in the union is usually covered,
+// bounded so it stays one cheap call.
+func rankDepth(limit int) int {
+	depth := limit * 25
+	if depth < 200 {
+		depth = 200
+	}
+	if depth > 2000 {
+		depth = 2000
+	}
+	return depth
+}
+
+// orderCommits sorts commits newest-first using the repository's own ordering,
+// falling back to the ISO date only for commits outside the ranking window.
+func orderCommits(all []repobackend.Commit, rank map[string]int) {
+	sort.SliceStable(all, func(i, j int) bool {
+		ri, iok := rank[all[i].SHA]
+		rj, jok := rank[all[j].SHA]
+		if iok && jok {
+			return ri < rj // both known: true git order
+		}
+		if iok != jok {
+			return iok // a ranked commit is newer than an unranked one
+		}
+		return all[i].Date > all[j].Date
+	})
 }
 
 // parameterHistory walks recent commits to a cell's backing files and resolves

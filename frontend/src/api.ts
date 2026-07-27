@@ -361,6 +361,70 @@ export interface ParamHistoryEntry extends Commit {
   changed: boolean;
 }
 
+// --- Configuration timeline: how the configuration evolved, as snapshots ---
+
+/** What a snapshot did, at a glance. A version move outranks value edits. */
+export type SnapshotKind = "version" | "structural" | "config" | "none";
+
+/** An instance's software version moving at a snapshot. */
+export interface VersionMove {
+  instance: string;
+  from: string;
+  to: string;
+}
+
+/** An instance appearing or being retired at a snapshot. */
+export interface InstanceMove {
+  instance: string;
+  action: "added" | "removed";
+}
+
+/** One parameter cell's before/after across a snapshot boundary. */
+export interface CellChange {
+  paramId: string;
+  name: string;
+  /** empty for a shared/global value */
+  instance?: string;
+  before: string;
+  after: string;
+  status: "added" | "removed" | "modified";
+}
+
+export interface ChangeSummary {
+  added: number;
+  removed: number;
+  modified: number;
+  total: number;
+}
+
+/** One dot on the timeline. */
+export interface TimelineEntry extends Commit {
+  /** the snapshot this one is compared against ("" for the oldest in view) */
+  previous?: string;
+  kind: SnapshotKind;
+  summary: ChangeSummary;
+  instances?: string[] | null;
+  versions?: VersionMove[] | null;
+  structure?: InstanceMove[] | null;
+}
+
+/** One snapshot opened up: every parameter that changed at it. */
+export interface SnapshotDetail {
+  commit: Commit;
+  previous: string;
+  kind: SnapshotKind;
+  summary: ChangeSummary;
+  instances?: string[] | null;
+  versions?: VersionMove[] | null;
+  structure?: InstanceMove[] | null;
+  changes: CellChange[] | null;
+  instance: string;
+  supported: boolean;
+}
+
+/** What a restore touches: the whole app, one instance, or one cell. */
+export type RestoreScope = "all" | "instance" | "parameter";
+
 // Git-liveness snapshot: the managed tree vs its origin remote.
 export interface RepoStatus {
   branch: string;
@@ -1010,6 +1074,44 @@ export const api = {
       supported: boolean;
     }>(rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`));
   },
+  // The configuration timeline: snapshots of how the configuration evolved.
+  // `instance` narrows the story to one instance; omitted, it covers the whole
+  // application.
+  timeline: (opts?: { instance?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.instance) qs.set("instance", opts.instance);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return get<{
+      scope: string;
+      instance: string;
+      snapshots: TimelineEntry[] | null;
+      supported: boolean;
+    }>(rp(`/timeline${suffix}`));
+  },
+  // One snapshot opened up. The instance must match the timeline it was read
+  // from, so the comparison baseline is the same.
+  timelineSnapshot: (sha: string, opts?: { instance?: string; limit?: number }) => {
+    const qs = new URLSearchParams({ sha });
+    if (opts?.instance) qs.set("instance", opts.instance);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    return get<SnapshotDetail>(rp(`/timeline/snapshot?${qs.toString()}`));
+  },
+  // Stage the edits that bring a scope back to a snapshot. Nothing touches Git
+  // until the resulting draft is submitted and published, so a restore is
+  // reviewed like any other change.
+  restore: (p: {
+    ref: string;
+    scope: RestoreScope;
+    instance?: string;
+    paramId?: string;
+    global?: boolean;
+  }) =>
+    send<{ draftId: number; applied: number; skipped: string[]; ref: string; scope: string }>(
+      "POST",
+      rp("/restore"),
+      { ...p, author: "Local user" },
+    ),
   plugins: () => get<PluginManifest[]>(rp("/plugins")),
   // External parameter sources.
   sourcePlugins: () => get<SourcePlugin[]>(rp("/source-plugins")),

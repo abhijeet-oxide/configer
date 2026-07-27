@@ -246,6 +246,8 @@ func humanizeAction(method, path string) string {
 		if method == http.MethodPost {
 			return "Staged a draft change"
 		}
+	case "restore":
+		return "Staged a restore to an earlier snapshot"
 	case "import":
 		return "Imported settings"
 	case "init":

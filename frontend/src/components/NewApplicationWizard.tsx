@@ -35,6 +35,7 @@ import { useDebounced } from "../hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { useCapabilities } from "../deployment";
+import { newAppReturnTo, useUI, type NewAppSource } from "../store";
 import { relTime } from "./DashboardView";
 import { InlineNotice, Stepper } from "./ui";
 import { loginHref } from "./SignInView";
@@ -56,7 +57,7 @@ import { InlineListSkeleton } from "./Skeletons";
 // GitHub. The step body has a fixed minimum height so the dialog never jumps
 // between steps.
 
-type Source = "git" | "local";
+type Source = NewAppSource;
 
 export default function NewApplicationWizard({
   open,
@@ -69,7 +70,11 @@ export default function NewApplicationWizard({
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const [source, setSource] = useState<Source | null>(null);
+  // The chosen source lives in the URL (?new=git), not in this component:
+  // "Continue with GitHub" navigates the whole page to GitHub and back, and
+  // anything held here would be gone by the time the user returns.
+  const source = useUI((s) => s.newAppSource);
+  const setSource = useUI((s) => s.setNewAppSource);
   const [step, setStep] = useState(0); // within the Git path: 0 pick repo, 1 finish
   const [manual, setManual] = useState(false);
   const [repo, setRepo] = useState<GitHubRepo | null>(null);
@@ -87,7 +92,9 @@ export default function NewApplicationWizard({
   // with only one source left there is nothing to choose: the dialog opens
   // straight on it instead of asking a question with one answer.
   const soleSource: Source | null = caps.localFolders ? null : "git";
-  const chosen = source ?? soleSource;
+  // A link can name a source this deployment does not have (?new=local on a
+  // hosted install): fall back rather than open a step that cannot work.
+  const chosen = source === "local" && !caps.localFolders ? soleSource : (source ?? soleSource);
 
   const reset = () => {
     setSource(null);
@@ -664,7 +671,10 @@ function RepoStep({
           type="primary"
           size="large"
           icon={<GithubOutlined />}
-          href={loginHref()}
+          // Come back to THIS step, not to the page underneath: signing in
+          // navigates away entirely, and a user who returns to a closed dialog
+          // has to start the flow over.
+          href={loginHref(newAppReturnTo("git"))}
         >
           Continue with GitHub
         </Button>
@@ -812,7 +822,7 @@ function RepoStep({
         <InlineNotice
           tone="info"
           action={
-            <Button size="small" href={loginHref()}>
+            <Button size="small" href={loginHref(newAppReturnTo("git"))}>
               Reconnect
             </Button>
           }

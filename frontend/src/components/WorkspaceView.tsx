@@ -7,12 +7,10 @@ import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { attentionOf } from "../attention";
 import { WorkspaceSkeleton } from "./Skeletons";
-import { STEP_HANDOFF } from "./ImportWizard";
 import { PageHeader, SectionCard, AttentionCard, EmptyState } from "./ui";
 import AppCard from "./AppCard";
 import AppDetailsDrawer from "./AppDetailsDrawer";
 import EditApplicationModal from "./EditApplicationModal";
-import NewApplicationWizard from "./NewApplicationWizard";
 import { sourceNoun, useCapabilities } from "../deployment";
 
 // WorkspaceView is the applications collection: every configuration you
@@ -33,10 +31,9 @@ function loadFavs(): string[] {
 export default function WorkspaceView() {
   const caps = useCapabilities();
   const { message } = AntApp.useApp();
-  const { repoId, setSection } = useUI();
+  const { repoId, setSection, openNewApp } = useUI();
   const switchRepo = useSwitchRepo();
   const qc = useQueryClient();
-  const [wizardOpen, setWizardOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [favs, setFavs] = useState<string[]>(loadFavs);
@@ -103,7 +100,7 @@ export default function WorkspaceView() {
         title="Applications"
         description="The applications you manage. Select one to open it."
         actions={
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setWizardOpen(true)}>
+          <Button type="primary" icon={<PlusOutlined />} onClick={() => openNewApp()}>
             New application
           </Button>
         }
@@ -120,7 +117,7 @@ export default function WorkspaceView() {
             title="Connect your first application"
             hint={`Connect a ${sourceNoun(caps)} to begin managing its configuration.`}
             actionLabel="New application"
-            onAction={() => setWizardOpen(true)}
+            onAction={() => openNewApp()}
           />
         </SectionCard>
       ) : (
@@ -145,7 +142,7 @@ export default function WorkspaceView() {
             ))}
             <div
               className="card-clickable flex min-h-[170px] cursor-pointer flex-col items-center justify-center rounded-card border border-dashed border-line-strong bg-surface/60 text-center text-ink-2"
-              onClick={() => setWizardOpen(true)}
+              onClick={() => openNewApp()}
               role="button"
             >
               <PlusOutlined style={{ fontSize: 26, color: "var(--brand)" }} />
@@ -185,19 +182,6 @@ export default function WorkspaceView() {
 
       {editId && <EditApplicationModal open repoId={editId} onClose={() => setEditId(null)} />}
 
-      <NewApplicationWizard
-        open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        onCreated={(r) => {
-          setWizardOpen(false);
-          // Creating an application flows straight into the scan/import step,
-          // so the repository is parsed and its settings offered for
-          // management right away.
-          sessionStorage.setItem(STEP_HANDOFF, "1");
-          switchRepo(r.id);
-          setSection("import");
-        }}
-      />
     </div>
   );
 }

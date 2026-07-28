@@ -39,7 +39,6 @@ import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import PasteImportModal from "./PasteImportModal";
 import { useSwitchRepo } from "../useSwitchRepo";
-import NewApplicationWizard from "./NewApplicationWizard";
 import FileExplorer from "./FileExplorer";
 import { InSyncArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 import { InlineNotice, Stepper } from "./ui";
@@ -423,7 +422,7 @@ export default function ImportWizard({ grid }: { grid: Grid }) {
 // ---- step 0: connect / choose the repository ----------------------------------
 
 function ConnectStep({ onNext }: { onNext: () => void }) {
-  const { repoId } = useUI();
+  const { repoId, openNewApp } = useUI();
   const switchRepo = useSwitchRepo();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 15_000 });
   // Only applications that are actually connected: one still connecting (or
@@ -431,7 +430,6 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
   // single failed connection into an error per application per refresh.
   const repos = readyRepos(wsQ.data?.repos);
   const [choice, setChoice] = useState<string | null>(null);
-  const [wizardOpen, setWizardOpen] = useState(false);
   const selectedId = choice ?? repoId ?? repos[0]?.id ?? null;
   const selected = repos.find((r) => r.id === selectedId);
 
@@ -497,7 +495,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           just opens it; on creation we flow straight into the scan step. */}
       <Card
         hoverable
-        onClick={() => setWizardOpen(true)}
+        onClick={() => openNewApp(undefined, true)}
         style={{ flex: "1 1 380px", minWidth: 340, borderStyle: "dashed" }}
         styles={{
           body: {
@@ -512,15 +510,6 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           Connect a GitHub repository; it is scanned here immediately afterwards.
         </Typography.Text>
       </Card>
-      <NewApplicationWizard
-        open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        onCreated={(r) => {
-          setWizardOpen(false);
-          sessionStorage.setItem(STEP_HANDOFF, "1");
-          switchRepo(r.id);
-        }}
-      />
     </div>
   );
 }

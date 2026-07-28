@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 )
 
 // A previous attempt (or a server stopped mid-clone) can leave a working copy
@@ -366,5 +369,127 @@ func TestCloneTimeoutIsBoundedAndTunable(t *testing.T) {
 	t.Setenv("CONFIGER_CLONE_MINUTES", "nonsense")
 	if d := cloneTimeout(); d != 30*time.Minute {
 		t.Fatalf("with a bad value = %v, want the default", d)
+	}
+}
+
+// The regression the report caught: staging handed git a folder that already
+// existed, and cloning a repository with NO COMMITS into an existing folder
+// leaves git nothing to check out - it writes no .git at all. What arrived was
+// an empty folder indistinguishable from a plain directory, which the open path
+// then tried to turn into a repository, failing on "nothing to commit". Git
+// gets a path of its own now, and an empty repository is named as such.
+func TestAnEmptyRepositoryIsRecognizedNotMisread(t *testing.T) {
+	hub, handler := testHub(t)
+	defer waitForConnects(t, hub)
+
+	bare := filepath.Join(t.TempDir(), "empty.git")
+	run := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	run("init", "-q", "--bare", "-b", "main", bare)
+
+	id := connectOnce(t, handler, "file://"+bare, "flux cd")
+	waitForConnects(t, hub)
+
+	if _, ok := hub.registry.Get(id); ok {
+		t.Fatal("a repository with no commits should not become an application")
+	}
+	hub.mu.Lock()
+	c := hub.connecting[id]
+	hub.mu.Unlock()
+	if c == nil || c.Status != "error" {
+		t.Fatal("connecting an empty repository should report a failure")
+	}
+	if !strings.Contains(c.Error, "no commits yet") {
+		t.Errorf("the message should say the repository is empty, got %q", c.Error)
+	}
+	// Above all it must not read as Configer's own git plumbing failing.
+	if strings.Contains(c.Error, "nothing to commit") || strings.Contains(c.Error, "git add") {
+		t.Errorf("git's own wording leaked to the user: %q", c.Error)
+	}
+}
+
+// And a repository that DOES have commits still arrives with its history: the
+// staging path must hand git somewhere of its own, not a folder that exists.
+func TestAStagedCloneKeepsItsGitDirectory(t *testing.T) {
+	hub, handler := testHub(t)
+	defer waitForConnects(t, hub)
+	source := hub.registry.List()[0].Path
+
+	id := connectOnce(t, handler, "file://"+source, "copy with history")
+	waitForConnects(t, hub)
+
+	e, ok := hub.registry.Get(id)
+	if !ok {
+		hub.mu.Lock()
+		c := hub.connecting[id]
+		hub.mu.Unlock()
+		msg := ""
+		if c != nil {
+			msg = c.Error
+		}
+		t.Fatalf("the repository was not connected: %s", msg)
+	}
+	if _, err := os.Stat(filepath.Join(e.Path, ".git")); err != nil {
+		t.Error("the copy arrived without its history")
+	}
+	if !gitengine.HasCommits(e.Path) {
+		t.Error("the copy has no commits")
+	}
+	// Staging leaves nothing behind, parent included.
+	entries, _ := os.ReadDir(filepath.Join(hub.dataDir, "repos"))
+	for _, ent := range entries {
+		if strings.HasPrefix(ent.Name(), incomingPrefix) {
+			t.Errorf("staging folder left behind: %s", ent.Name())
+		}
+	}
+}
+
+// Two things that look identical from the outside and are opposites: a
+// repository with nothing in it yet, and Configer failing to copy a repository
+// that is perfectly fine. Calling the second one "empty" tells the user their
+// work is missing, which is both wrong and alarming - the report that caught
+// this had a repository full of manifests.
+func TestABrokenCopyIsNotReportedAsAnEmptyRepository(t *testing.T) {
+	// A copy with no repository data in it: whatever the cause, it is ours.
+	broken := t.TempDir()
+	if gitengine.IsRepo(broken) {
+		t.Fatal("fixture is not what the test needs")
+	}
+	if _, err := NewExisting(broken); err == nil {
+		t.Fatal("a copy with no repository data must not be turned into a new repository")
+	} else if strings.Contains(err.Error(), "nothing to commit") {
+		t.Errorf("the copy was initialized instead of refused: %q", err)
+	}
+
+	// A folder someone pointed Configer at, on the other hand, is allowed to
+	// become one - that is the whole point of opening a folder in place.
+	if _, err := New(t.TempDir()); err != nil && strings.Contains(err.Error(), "nothing to commit") {
+		t.Skip("an empty folder cannot be initialized on this platform")
+	}
+}
+
+// And the two are told apart before either is reported.
+func TestEmptyRepositoryAndBrokenCopyAreDistinguished(t *testing.T) {
+	run := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	// A real repository with no commits: .git present, no history.
+	empty := t.TempDir()
+	run(empty, "init", "-q", "-b", "main", empty)
+	if !gitengine.IsRepo(empty) || gitengine.HasCommits(empty) {
+		t.Fatal("fixture should be a repository with no commits")
+	}
+	// A copy that never arrived: no .git at all.
+	broken := t.TempDir()
+	if gitengine.IsRepo(broken) {
+		t.Fatal("fixture should have no repository data")
 	}
 }

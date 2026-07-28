@@ -180,7 +180,14 @@ func (h *Hub) open(e workspace.Entry) error {
 			}
 		}
 		var err error
-		if s, err = New(e.Path); err != nil {
+		// A folder opened in place may legitimately not be a repository yet
+		// (Configer initializes one); a copy Configer fetched must already be.
+		if e.Local {
+			s, err = New(e.Path)
+		} else {
+			s, err = NewExisting(e.Path)
+		}
+		if err != nil {
 			return err
 		}
 	}

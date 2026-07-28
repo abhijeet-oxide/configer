@@ -127,7 +127,12 @@ export default function NewApplicationWizard({
     // A failure clears the half-connected entry (see api.connectApplication),
     // so a retry starts clean instead of colliding with the last attempt.
     mutationFn: () =>
-      api.connectApplication({ url: repo!.url, name: name.trim() || repo!.name, branch }),
+      api.connectApplication(
+        { url: repo!.url, name: name.trim() || repo!.name, branch },
+        // Each wait-poll is a fresh portfolio; giving it to the cache keeps the
+        // page behind the dialog current without fetching the same bytes again.
+        (ws) => qc.setQueryData(["workspace"], ws),
+      ),
     onMutate: () => setFailure(null),
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created. Scanning the repository…`);
@@ -136,8 +141,9 @@ export default function NewApplicationWizard({
       onCreated(r);
     },
     onError: (e: Error) => {
+      // No invalidation: the wait already refreshed the portfolio on every
+      // poll, and asking again here is the same bytes for the third time.
       setFailure(describeOutcome(e));
-      qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
 
@@ -310,7 +316,8 @@ function LocalFolderStep({
 
   const connect = useMutation({
     // Name is derived server-side from the folder; nothing to enter here.
-    mutationFn: (path: string) => api.connectApplication({ url: path }),
+    mutationFn: (path: string) =>
+      api.connectApplication({ url: path }, (ws) => qc.setQueryData(["workspace"], ws)),
     onMutate: () => setFailure(null),
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created from the local folder. Scanning it…`);
@@ -318,8 +325,9 @@ function LocalFolderStep({
       onDone(r);
     },
     onError: (e: Error) => {
+      // No invalidation: the wait already refreshed the portfolio on every
+      // poll, and asking again here is the same bytes for the third time.
       setFailure(describeOutcome(e));
-      qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
 
@@ -567,6 +575,9 @@ function RepoStep({
   onBack?: () => void;
 }) {
   const [q, setQ] = useState("");
+  // Set once the browser has been sent to GitHub, so the button that sent it
+  // stops looking unpressed while the navigation happens.
+  const [leaving, setLeaving] = useState(false);
   const reposQ = useQuery({
     queryKey: ["github-repos"],
     queryFn: api.githubRepos,
@@ -690,8 +701,13 @@ function RepoStep({
           // navigates away entirely, and a user who returns to a closed dialog
           // has to start the flow over.
           href={loginHref(newAppReturnTo("git"))}
+          // Leaving for GitHub takes a moment and the page shows nothing while
+          // it happens, so the button says it is going rather than looking
+          // unpressed. It stays a link: middle-click and copy still work.
+          loading={leaving}
+          onClick={() => setLeaving(true)}
         >
-          Continue with GitHub
+          {leaving ? "Taking you to GitHub…" : "Continue with GitHub"}
         </Button>
         <div style={{ marginTop: 14 }}>
           <Button type="link" onClick={onManual}>
@@ -907,7 +923,11 @@ function FinishStep({
     queryFn: () => api.githubBranches(repo.fullName),
     staleTime: 60_000,
   });
+  // The picker already knows the repository's default branch, so show it at
+  // once instead of an empty box that fills itself in a second later. The list
+  // only widens the choice; it does not decide what the answer starts as.
   const chosen = branch ?? branchesQ.data?.default ?? repo.defaultBranch;
+  const options = branchesQ.data?.branches ?? (chosen ? [chosen] : []);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
@@ -937,16 +957,16 @@ function FinishStep({
               showSearch
               style={{ width: "100%" }}
               loading={branchesQ.isLoading}
-              value={branchesQ.isLoading ? undefined : chosen}
+              value={chosen}
               placeholder="Choose a branch"
               onChange={(v) => setBranch(v)}
-              suffixIcon={<BranchesOutlined />}
-              options={(branchesQ.data?.branches ?? []).map((b) => ({
+              suffixIcon={branchesQ.isLoading ? <LoadingOutlined /> : <BranchesOutlined />}
+              options={options.map((b) => ({
                 value: b,
                 label: (
                   <span className="mono">
                     {b}
-                    {b === branchesQ.data?.default ? "  (default)" : ""}
+                    {b === (branchesQ.data?.default ?? repo.defaultBranch) ? "  (default)" : ""}
                   </span>
                 ),
               }))}
@@ -1013,7 +1033,7 @@ export function ConnectForm({
   const [failure, setFailure] = useState<Outcome | null>(null);
   const connect = useMutation({
     mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) =>
-      api.connectApplication(v),
+      api.connectApplication(v, (ws) => qc.setQueryData(["workspace"], ws)),
     onMutate: () => setFailure(null),
     onSuccess: (r) => {
       const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
@@ -1023,8 +1043,9 @@ export function ConnectForm({
       onDone(r);
     },
     onError: (e: Error) => {
+      // No invalidation: the wait already refreshed the portfolio on every
+      // poll, and asking again here is the same bytes for the third time.
       setFailure(describeOutcome(e));
-      qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
   return (

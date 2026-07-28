@@ -213,12 +213,33 @@ func (h *Hub) connectWorker(sp connectSpec) {
 			h.failConnecting(sp.id, friendlyConnectError(what, stageCopy, cerr))
 			return
 		}
+		// Removing the staging PARENT takes the copy with it, whether or not
+		// the copy has already been moved out of it.
+		defer func() { _ = os.RemoveAll(filepath.Dir(staged)) }()
 		if h.dismissed(sp.id) {
-			_ = os.RemoveAll(staged)
+			return
+		}
+		// Check what actually arrived, and be exact about whose problem it is.
+		// These two look identical from the outside and are opposites: one is a
+		// repository with nothing in it yet, the other is Configer failing to
+		// copy a repository that is perfectly fine. Reporting the first when it
+		// is the second tells the user their work is missing, which is both
+		// wrong and alarming.
+		if !gitengine.IsRepo(staged) {
+			slog.Error("the copy has no repository data in it",
+				slog.String("id", sp.id), slog.String("origin", what),
+				slog.String("dir", staged), slog.Any("contents", dirNames(staged)))
+			h.failConnecting(sp.id, "Configer could not make a usable copy of "+what+". "+internalFaultTail)
+			return
+		}
+		if !gitengine.HasCommits(staged) {
+			// A repository created and never pushed to: nothing to read,
+			// nothing to branch from, nothing to write back against.
+			h.failConnecting(sp.id, what+" has no commits yet, so there is no configuration to manage."+
+				" Push at least one file to it, then add it here")
 			return
 		}
 		if perr := h.placeClone(what, staged, dir); perr != nil {
-			_ = os.RemoveAll(staged)
 			h.failConnecting(sp.id, perr.Error())
 			return
 		}
@@ -316,16 +337,22 @@ func (h *Hub) cloneToStaging(sp connectSpec) (string, error) {
 		if err := os.MkdirAll(base, 0o755); err != nil {
 			return "", err
 		}
-		tmp, err := os.MkdirTemp(base, incomingPrefix+sp.id+"-")
+		// The staging PARENT is what carries the unique name; git is given a
+		// path inside it that does not exist yet. That distinction is not
+		// cosmetic: cloning a repository with no commits into a folder that
+		// already exists leaves git nothing to check out and it writes no .git
+		// at all, so what arrives is an empty folder that later code cannot
+		// tell from a plain directory. Handing git a path of its own restores
+		// the behaviour every other clone in the world gets.
+		parent, err := os.MkdirTemp(base, incomingPrefix+sp.id+"-")
 		if err != nil {
 			return "", err
 		}
+		tmp := filepath.Join(parent, "repo")
 		ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout())
 		defer cancel()
-		// git clones happily into an existing EMPTY folder, which is what
-		// MkdirTemp just made and what nothing else has a name for.
 		if _, cerr := gitengine.CloneContext(ctx, sp.url, tmp, sp.branch, token, gitName, gitEmail); cerr != nil {
-			_ = os.RemoveAll(tmp)
+			_ = os.RemoveAll(parent)
 			return "", cerr
 		}
 		return tmp, nil
@@ -529,6 +556,23 @@ func friendlyConnectError(what string, stage connectStage, err error) string {
 		return head + " The reason given was: " + reason
 	}
 	return head + " " + internalFaultTail
+}
+
+// dirNames lists what is in a directory, for a log line that has to explain
+// why a copy could not be used.
+func dirNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{"unreadable: " + err.Error()}
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	if len(out) == 0 {
+		return []string{"(empty)"}
+	}
+	return out
 }
 
 // dismissed reports whether the user gave up on this connection while it was

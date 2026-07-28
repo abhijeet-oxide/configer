@@ -15,8 +15,15 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 )
 
+// sh runs a command in dir. Raw git calls carry their own identity: production
+// git always goes through gitengine, which supplies one, so a test that shells
+// out directly must too - otherwise the suite only passes on a machine that
+// happens to have a global user.name (a CI runner has none).
 func sh(t *testing.T, dir string, name string, args ...string) string {
 	t.Helper()
+	if name == "git" {
+		args = append([]string{"-c", "user.name=t", "-c", "user.email=t@t"}, args...)
+	}
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()

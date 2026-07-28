@@ -82,6 +82,13 @@ type Hub struct {
 // directory, that directory is registered in place (CONFIGER_REPO keeps its
 // meaning as the bootstrap repository).
 func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
+	// Everything derived from here ends up in a registry entry, a git argument
+	// or a log line, and a relative path is wrong in all three: it depends on
+	// where the service happened to be started, and git resolves it a second
+	// time against its own working directory. Settle it once, at the door.
+	if a, aerr := filepath.Abs(dataDir); aerr == nil {
+		dataDir = a
+	}
 	reg, err := workspace.Load(dataDir)
 	if err != nil {
 		return nil, err

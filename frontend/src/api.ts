@@ -1180,20 +1180,33 @@ export const api = {
   // waitForRepoReady polls the portfolio until the given repository leaves the
   // "connecting" state, resolving with its summary when ready or throwing an
   // ApiError when the background connection failed or timed out.
-  waitForRepoReady: async (id: string, opts?: { timeoutMs?: number; intervalMs?: number }): Promise<RepoSummary> => {
+  waitForRepoReady: async (
+    id: string,
+    opts?: { timeoutMs?: number; onPoll?: (ws: Workspace) => void },
+  ): Promise<RepoSummary> => {
     // Long enough for a large repository on a slow link. Past it the wait ends,
     // but the connection does not: see connectApplication.
     const deadline = Date.now() + (opts?.timeoutMs ?? 300_000);
-    const interval = opts?.intervalMs ?? 1500;
+    // Backing off matters here. A local repository is ready almost at once, so
+    // the first checks are quick; a large one takes minutes, and asking every
+    // second and a half for all of them is a request every 1.5s for five
+    // minutes to learn a single boolean. Quick at first, calm once it is clear
+    // this will take a while.
+    let wait = 600;
     for (;;) {
       const ws = await get<Workspace>("/workspace");
+      // Every poll is a fresh portfolio: handing it to the cache keeps the
+      // page behind the dialog current without a second request for the same
+      // bytes, which is where most of the duplication came from.
+      opts?.onPoll?.(ws);
       const repo = ws.repos.find((r) => r.id === id);
       if (repo && repo.status === "error") {
         throw new ApiError({ status: 422, code: "connect_failed", message: repo.error || "connecting the repository failed" });
       }
       if (repo && repo.status !== "connecting") return repo;
       if (Date.now() > deadline) throw new StillConnectingError(id);
-      await new Promise((r) => setTimeout(r, interval));
+      await new Promise((r) => setTimeout(r, wait));
+      wait = Math.min(Math.round(wait * 1.4), 4000);
     }
   },
   // connectApplication is the whole "create an application" step: start the
@@ -1206,16 +1219,19 @@ export const api = {
   // out from under a git clone that is still writing, and the next attempt then
   // collides with the one still running: one slow repository became an error on
   // every try after it.
-  connectApplication: async (p: {
-    url: string;
-    name?: string;
-    branch?: string;
-    token?: string;
-    mode?: "remote";
-  }): Promise<RepoSummary> => {
+  connectApplication: async (
+    p: {
+      url: string;
+      name?: string;
+      branch?: string;
+      token?: string;
+      mode?: "remote";
+    },
+    onPoll?: (ws: Workspace) => void,
+  ): Promise<RepoSummary> => {
     const started = await api.connectRepo(p);
     try {
-      return await api.waitForRepoReady(started.id);
+      return await api.waitForRepoReady(started.id, { onPoll });
     } catch (err) {
       if (err instanceof StillConnectingError) throw err;
       try {

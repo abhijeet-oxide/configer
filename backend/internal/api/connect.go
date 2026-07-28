@@ -213,12 +213,22 @@ func (h *Hub) connectWorker(sp connectSpec) {
 			h.failConnecting(sp.id, friendlyConnectError(what, stageCopy, cerr))
 			return
 		}
+		// Removing the staging PARENT takes the copy with it, whether or not
+		// the copy has already been moved out of it.
+		defer func() { _ = os.RemoveAll(filepath.Dir(staged)) }()
 		if h.dismissed(sp.id) {
-			_ = os.RemoveAll(staged)
+			return
+		}
+		// A repository with no commits clones fine and then has nothing in it:
+		// nothing to read, nothing to branch from, nothing to write back
+		// against. Better to say so than to connect an application that cannot
+		// do anything and leave the user to work out why.
+		if !gitengine.HasCommits(staged) {
+			h.failConnecting(sp.id, what+" has no commits yet, so there is no configuration to manage."+
+				" Push at least one file to it, then add it here")
 			return
 		}
 		if perr := h.placeClone(what, staged, dir); perr != nil {
-			_ = os.RemoveAll(staged)
 			h.failConnecting(sp.id, perr.Error())
 			return
 		}
@@ -316,16 +326,22 @@ func (h *Hub) cloneToStaging(sp connectSpec) (string, error) {
 		if err := os.MkdirAll(base, 0o755); err != nil {
 			return "", err
 		}
-		tmp, err := os.MkdirTemp(base, incomingPrefix+sp.id+"-")
+		// The staging PARENT is what carries the unique name; git is given a
+		// path inside it that does not exist yet. That distinction is not
+		// cosmetic: cloning a repository with no commits into a folder that
+		// already exists leaves git nothing to check out and it writes no .git
+		// at all, so what arrives is an empty folder that later code cannot
+		// tell from a plain directory. Handing git a path of its own restores
+		// the behaviour every other clone in the world gets.
+		parent, err := os.MkdirTemp(base, incomingPrefix+sp.id+"-")
 		if err != nil {
 			return "", err
 		}
+		tmp := filepath.Join(parent, "repo")
 		ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout())
 		defer cancel()
-		// git clones happily into an existing EMPTY folder, which is what
-		// MkdirTemp just made and what nothing else has a name for.
 		if _, cerr := gitengine.CloneContext(ctx, sp.url, tmp, sp.branch, token, gitName, gitEmail); cerr != nil {
-			_ = os.RemoveAll(tmp)
+			_ = os.RemoveAll(parent)
 			return "", cerr
 		}
 		return tmp, nil

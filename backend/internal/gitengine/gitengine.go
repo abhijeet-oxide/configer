@@ -133,6 +133,16 @@ func CloneContext(ctx context.Context, url, dir, branch, token, name, email stri
 	return r, nil
 }
 
+// HasCommits reports whether a repository has any history yet. A repository
+// created and never pushed to clones successfully and looks like a working
+// tree, but there is nothing in it to read, nothing to branch from and nothing
+// to write back against.
+func HasCommits(dir string) bool {
+	r := &Repo{Dir: dir}
+	_, err := r.git(dir, "rev-parse", "--verify", "HEAD")
+	return err == nil
+}
+
 // AuthURL injects a token into an https remote URL ("" token or non-https
 // URLs pass through unchanged).
 func AuthURL(url, token string) string {

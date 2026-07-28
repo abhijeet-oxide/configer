@@ -17,6 +17,7 @@ import { api, type ChangeItem, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable } from "./ChangeItemsTable";
 import ChangePreview from "./ChangePreview";
+import { useIdentity } from "../identity";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
 // the global header): pending-edit badge, review-before-submit modal with
@@ -24,6 +25,9 @@ import ChangePreview from "./ChangePreview";
 
 export default function SubmitChangesButton({ instances }: { instances?: Instance[] }) {
   const { message } = AntApp.useApp();
+  // Submitting is a change. A viewer can never have a draft to submit, so the
+  // action is absent rather than present-and-disabled.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const { setSection, selectParam } = useUI();
   const [open, setOpen] = useState(false);
@@ -61,6 +65,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     },
     onError: (e: Error) => message.error(e.message),
   });
+
+  if (!canEdit) return null;
 
   return (
     <>

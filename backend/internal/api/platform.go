@@ -472,6 +472,30 @@ func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request, what string) 
 	return true
 }
 
+// requireAppLifecycle gates a change to an application's PLACE in the workspace
+// (renaming it, disconnecting it) rather than to its configuration. These
+// endpoints sit outside the per-repository dispatch, so they never passed
+// through authorize: any signed-in user - a viewer included - could rename or
+// remove an application everyone else depends on. They now need the same
+// capability as publishing, the most consequential per-application right.
+func (h *Hub) requireAppLifecycle(w http.ResponseWriter, r *http.Request, repoID, what string) bool {
+	if !h.auth.Enabled() {
+		return true
+	}
+	u, ok := auth.UserFrom(r.Context())
+	if !ok {
+		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
+		return false
+	}
+	have := h.effectiveRole(r, repoID, u)
+	if roleRank(have) < roleRank(store.RoleApprover) {
+		writeError(w, r, http.StatusForbidden, CodeForbidden,
+			"your access to this application is "+roleLabel(have)+"; only an approver can "+what)
+		return false
+	}
+	return true
+}
+
 // auditLog serves the newest audit entries. The trail spans every application
 // and names who did what, so it is admin-only.
 // auditLog serves the newest audit entries.

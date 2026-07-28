@@ -903,6 +903,9 @@ func connectingSummary(c *connecting) RepoSummary {
 // @Router      /api/repos/{id} [patch]
 func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.requireAppLifecycle(w, r, id, "rename this application") {
+		return
+	}
 	var req struct {
 		Name string `json:"name"`
 	}
@@ -944,6 +947,9 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 // @Router      /api/repos/{id} [delete]
 func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.requireAppLifecycle(w, r, id, "disconnect this application") {
+		return
+	}
 	// Dismiss a still-connecting or failed background entry (it is not in the
 	// registry yet). Deleting a partial clone directory frees the disk.
 	h.mu.Lock()

@@ -10,6 +10,7 @@ import {
   RightOutlined,
   SunOutlined,
   MoonOutlined,
+  EyeOutlined,
 } from "./icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -57,6 +58,7 @@ import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
 import { loginHref } from "./components/SignInView";
 import EditorStatusBar from "./components/EditorStatusBar";
+import { EmptyState } from "./components/ui";
 import { NotFoundArt, OfflineArt, ServiceDownArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
@@ -178,6 +180,10 @@ export default function App() {
   const wide = screens.lg !== false; // >= 992px: three-panel layout
   const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const online = useConn((s) => s.online);
+  // What this person may do in the ACTIVE application. Editor-only sections
+  // answer with a read-only state instead of their flow, so a deep link cannot
+  // walk around a hidden tab.
+  const { canEdit } = useIdentity();
   const deployment = useDeployment();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
   // The selected application's portfolio entry, and whether it can be read at
@@ -512,7 +518,21 @@ export default function App() {
     }
 
     if (section === "overview") return <DashboardView grid={grid} />;
-    if (section === "import") return <ImportWizard grid={grid} />;
+    // Importing brings new parameters under management, so it is an editor
+    // flow. Its tab is hidden for a viewer; this is the deep link answering
+    // too, with the state rather than a wizard whose last step would be refused.
+    if (section === "import")
+      return canEdit ? (
+        <ImportWizard grid={grid} />
+      ) : (
+        <div className="flex h-full items-center justify-center p-6">
+          <EmptyState
+            icon={<EyeOutlined />}
+            title="You have view access to this application"
+            hint="Importing settings brings new parameters under management, which is a change. You can read the configuration, its files and its history; an administrator grants edit access."
+          />
+        </div>
+      );
     if (section === "drift") return <RepoChangesView />;
     if (section === "approvals") return <ApprovalsView />;
     if (section === "changes" || section === "drafts") return <ChangeRequestsView />;

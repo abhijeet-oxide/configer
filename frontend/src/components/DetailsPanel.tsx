@@ -9,6 +9,7 @@ import { useUI } from "../store";
 import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
 import { relTime } from "./DashboardView";
+import { useIdentity } from "../identity";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
 // value summary across instances. One overall Edit button turns every major
@@ -695,6 +696,9 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
 
 export default function DetailsPanel({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
+  // The inspector reads a parameter for everyone; editing its metadata,
+  // attaching bindings and retiring it are editor actions.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const { selectedParamId, selectParam } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
@@ -731,18 +735,20 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
             {bindingsOf(p).length === 0 && <Tag color="purple">design</Tag>}
           </div>
         </div>
-        <Button
-          size="small"
-          type={editing ? "primary" : "text"}
-          icon={<EditOutlined />}
-          onClick={() => {
-            setTab("details");
-            setEditing(true);
-          }}
-          style={{ flexShrink: 0 }}
-        >
-          Edit
-        </Button>
+        {canEdit && (
+          <Button
+            size="small"
+            type={editing ? "primary" : "text"}
+            icon={<EditOutlined />}
+            onClick={() => {
+              setTab("details");
+              setEditing(true);
+            }}
+            style={{ flexShrink: 0 }}
+          >
+            Edit
+          </Button>
+        )}
       </div>
       <Divider style={{ margin: "10px 0" }} />
       <Tabs

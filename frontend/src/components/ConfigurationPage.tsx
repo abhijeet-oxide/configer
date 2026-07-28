@@ -5,6 +5,7 @@ import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding } from "../api";
 import { useUI } from "../store";
 import { useElementSize } from "../hooks";
+import { useIdentity } from "../identity";
 
 // ConfigurationPage is the single home of everything about ONE application: a
 // quiet underline tab row over the active view. Every tab is a peer and shows
@@ -81,6 +82,7 @@ export default function ConfigurationPage({
   children: React.ReactNode;
 }) {
   const { setSection } = useUI();
+  const { canEdit } = useIdentity();
   const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
   const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
@@ -136,15 +138,19 @@ export default function ConfigurationPage({
   // shows. The active tab is always kept visible even if it would otherwise
   // fold, so the current view never hides behind More.
   const { visible, overflow } = useMemo(() => {
+    // Importing settings brings new parameters under management: a change, so
+    // the whole tab is absent for someone with view access rather than opening
+    // on a wizard whose last step will be refused.
+    const tabs = canEdit ? ALL_TABS : ALL_TABS.filter((t) => t.key !== "import");
     const est = (t: { key: string; label: string }) => t.label.length * 7.5 + 30 + (pillOf(t.key) > 0 ? 22 : 0);
     const avail = barW || 100000;
-    const total = ALL_TABS.reduce((s, t) => s + est(t), 0);
-    if (total <= avail) return { visible: ALL_TABS, overflow: [] as typeof ALL_TABS };
+    const total = tabs.reduce((s, t) => s + est(t), 0);
+    if (total <= avail) return { visible: tabs, overflow: [] as typeof ALL_TABS };
     const MORE_W = 84;
     const vis: typeof ALL_TABS = [];
     const of: typeof ALL_TABS = [];
     let used = 0;
-    for (const t of ALL_TABS) {
+    for (const t of tabs) {
       const w = est(t);
       if (used + w <= avail - MORE_W) {
         vis.push(t);
@@ -158,7 +164,7 @@ export default function ConfigurationPage({
     }
     return { visible: vis, overflow: of };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barW, active, draftItems, awaiting, findings, incoming]);
+  }, [barW, active, canEdit, draftItems, awaiting, findings, incoming]);
 
   const moreActive = overflow.find((m) => m.key === active);
   // Attention still living inside the folded set surfaces on the More button.

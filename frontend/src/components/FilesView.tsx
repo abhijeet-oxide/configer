@@ -29,6 +29,7 @@ import { FilesSkeleton } from "./Skeletons";
 import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
 import { languageFor } from "../monacoLang";
 import FileExplorer from "./FileExplorer";
+import { useIdentity } from "../identity";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
 
@@ -53,6 +54,9 @@ const TREE_KEY = "configer.filesTreeOpen";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
+  // File mode is a write surface: the editor stages into the draft. A viewer
+  // gets the same files, read-only - no typing, no save, no "add to managed".
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const mode = useUI((s) => s.mode);
   const setSection = useUI((s) => s.setSection);
@@ -424,11 +428,13 @@ export default function FilesView() {
               {managed.has(current.path) ? (
                 <StatusPill tone="ok">Managed</StatusPill>
               ) : (
-                <Tooltip title="Not managed yet; add it to scan for settings">
-                  <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
-                    Add to managed
-                  </Button>
-                </Tooltip>
+                canEdit && (
+                  <Tooltip title="Not managed yet; add it to scan for settings">
+                    <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
+                      Add to managed
+                    </Button>
+                  </Tooltip>
+                )
               )}
               {createdFiles.has(current.path) && (
                 <Tooltip title="New file: it will be created on the feature branch when you submit">
@@ -474,16 +480,18 @@ export default function FilesView() {
               >
                 Compare
               </Button>
-              <Button
-                size="small"
-                type="primary"
-                icon={<SaveOutlined />}
-                disabled={dirty === null}
-                loading={save.isPending}
-                onClick={() => dirty !== null && save.mutate(dirty)}
-              >
-                Save to draft
-              </Button>
+              {canEdit && (
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  disabled={dirty === null}
+                  loading={save.isPending}
+                  onClick={() => dirty !== null && save.mutate(dirty)}
+                >
+                  Save to draft
+                </Button>
+              )}
               <Dropdown
                 trigger={["click"]}
                 menu={{
@@ -611,7 +619,7 @@ export default function FilesView() {
                       content={dirty ?? current.content}
                       original={createdFiles.has(current.path) ? undefined : committed}
                       dark={mode === "dark"}
-                      editable
+                      editable={canEdit}
                       revealLine={reveal}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
                       onSave={(v) => save.mutate(v)}

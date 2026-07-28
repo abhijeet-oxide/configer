@@ -239,3 +239,49 @@ func TestHumanizeAction(t *testing.T) {
 		}
 	}
 }
+
+// TestAppLifecycleIsApproverGated covers the workspace-level endpoints that sit
+// OUTSIDE the per-repository dispatch, so they never passed through authorize:
+// renaming and disconnecting an application. A viewer (and a plain editor) must
+// not be able to rename an application everyone shares, or remove it outright.
+func TestAppLifecycleIsApproverGated(t *testing.T) {
+	hub, h := testHub(t)
+	repoID := hub.registry.List()[0].ID
+	ctx := context.Background()
+
+	// eddy starts as an editor (testHub grants that): enough to change values,
+	// never enough to rename or disconnect.
+	for _, c := range []struct{ method, path, body string }{
+		{"PATCH", "/api/repos/" + repoID, `{"name":"renamed"}`},
+		{"DELETE", "/api/repos/" + repoID, ""},
+	} {
+		if w := call(t, h, c.method, c.path, "tok-editor", c.body); w.Code != http.StatusForbidden {
+			t.Errorf("editor %s %s = %d, want 403: %s", c.method, c.path, w.Code, w.Body.String())
+		}
+	}
+	// A viewer is refused the same way.
+	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleViewer}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "tok-editor", ""); w.Code != http.StatusForbidden {
+		t.Errorf("viewer disconnect = %d, want 403", w.Code)
+	}
+	// Anonymous callers never get in.
+	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous disconnect = %d, want 401", w.Code)
+	}
+	// The application is still there: nothing above took effect.
+	if len(hub.registry.List()) != 1 {
+		t.Fatalf("repository was removed by a caller that should have been refused")
+	}
+	// An approver may rename, and a deployment admin may disconnect.
+	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleApprover}); err != nil {
+		t.Fatal(err)
+	}
+	if w := call(t, h, "PATCH", "/api/repos/"+repoID, "tok-editor", `{"name":"renamed"}`); w.Code != http.StatusOK {
+		t.Errorf("approver rename = %d: %s", w.Code, w.Body.String())
+	}
+	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "tok-admin", ""); w.Code != http.StatusOK {
+		t.Errorf("admin disconnect = %d: %s", w.Code, w.Body.String())
+	}
+}

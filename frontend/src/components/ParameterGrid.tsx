@@ -66,6 +66,7 @@ import {
 } from "./grid/cells";
 import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
 import { envHex } from "../theme";
+import { useIdentity } from "../identity";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
@@ -77,6 +78,8 @@ function EditableCell({
   allInstances,
   presets,
   pendingItem,
+  canEdit,
+  revertible,
   editing,
   onStartEdit,
   onCancel,
@@ -95,6 +98,10 @@ function EditableCell({
   allInstances: string[];
   presets?: PresetRule[];
   pendingItem?: ChangeItem;
+  /** this person may change configuration in this application */
+  canEdit: boolean;
+  /** a draft item exists for THIS cell, so undoing it means something */
+  revertible: boolean;
   editing: boolean;
   onStartEdit: () => void;
   onCancel: () => void;
@@ -111,6 +118,11 @@ function EditableCell({
 }) {
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
+  // A cell is editable when the PARAMETER allows it (not n/a, not deprecated,
+  // not a template expression) AND this person may change configuration here.
+  // Everything below keys off this one value, so a viewer gets a grid that
+  // simply has no edit affordances rather than controls that fail on use.
+  const editable = canEdit && cell.editable;
 
   if (editing) {
     if (param.type === "list") {
@@ -133,20 +145,22 @@ function EditableCell({
     return <StringEditor initial={cell.value} rules={rules} onCommit={onCommit} onCancel={onCancel} />;
   }
 
-  // Right-click menu: structural actions beyond plain value edits.
+  // Right-click menu: structural actions beyond plain value edits. Everything
+  // that would write is gated on `editable`; finding occurrences and opening the
+  // file are reads, so they stay for a viewer.
   const menuItems = [
-    ...(cell.pending ? [{ key: "undo", label: "Undo pending change" }] : []),
-    ...(cell.editable ? [{ key: "edit", label: "Edit value" }] : []),
-    ...(cell.editable && cell.source === "instance"
+    ...(canEdit && revertible ? [{ key: "undo", label: "Undo pending change" }] : []),
+    ...(editable ? [{ key: "edit", label: "Edit value" }] : []),
+    ...(editable && cell.source === "instance"
       ? [{ key: "reset", label: "Reset to inherited (remove from this instance's files)" }]
       : []),
-    ...(cell.editable && cell.set
+    ...(editable && cell.set
       ? [{ key: "exclude", label: "Remove from this instance (delete the key)" }]
       : []),
-    ...(cell.set && cell.value != null && allInstances.length > 1
+    ...(canEdit && cell.set && cell.value != null && allInstances.length > 1
       ? [{ key: "bulkset", label: "Set on other instances…" }]
       : []),
-    ...(cell.set && allInstances.length > 1
+    ...(canEdit && cell.set && allInstances.length > 1
       ? [{
           key: "copy",
           label: "Copy value to one…",
@@ -159,7 +173,9 @@ function EditableCell({
       ? [
           { type: "divider" as const },
           { key: "find", label: `Find occurrences of "${fmtValue(cell.value)}"` },
-          { key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` },
+          ...(canEdit
+            ? [{ key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` }]
+            : []),
         ]
       : []),
     ...(cell.file && onOpenFile
@@ -173,7 +189,11 @@ function EditableCell({
   // A pending cell carries its own one-click undo, so reverting never requires
   // discovering the right-click menu: the affordance is visible on the change
   // itself (with the full undo/reset menu still a right-click away).
-  const undoBtn = cell.pending ? (
+  // Undo is offered only where there IS a change of this cell's own to undo.
+  // A cell in a staged instance's column is marked pending by the preview, but
+  // the pending thing is the whole instance - a per-cell undo there sent a
+  // request that matched no draft item and silently did nothing.
+  const undoBtn = canEdit && revertible ? (
     <Tooltip title="Undo this change">
       <span
         role="button"
@@ -190,7 +210,7 @@ function EditableCell({
   ) : null;
 
   const body =
-    param.type === "boolean" && cell.editable && cell.set ? (
+    param.type === "boolean" && editable && cell.set ? (
       <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined} style={{ display: "inline-flex", alignItems: "center" }}>
         <Switch size="small" checked={!!cell.value} onChange={(v) => onCommit(v)} />
         <SourceBadge cell={cell} />
@@ -198,17 +218,19 @@ function EditableCell({
       </span>
     ) : (
       <div
-        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined, display: "flex", alignItems: "center" }}
+        style={{ minHeight: 20, cursor: editable ? "text" : undefined, display: "flex", alignItems: "center" }}
         title={
           cell.templated
             ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."
-            : cell.editable && !cell.pending
+            : // A staged cell carries its own richer hover (before → after, plus
+              // the same invitation), so the native hint would double up.
+              editable && !pendingItem
               ? "Double-click to edit · right-click for actions"
               : undefined
         }
-        onDoubleClick={cell.editable ? onStartEdit : undefined}
+        onDoubleClick={editable ? onStartEdit : undefined}
       >
-        <CellView cell={cell} pendingItem={pendingItem} />
+        <CellView cell={cell} pendingItem={pendingItem} editable={editable} />
         {undoBtn}
       </div>
     );
@@ -466,7 +488,13 @@ function BulkSetModal({
   );
 }
 
-function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) => void) {
+function instanceHeader(
+  inst: Instance,
+  onResizeStart?: (e: React.MouseEvent) => void,
+  /** the column exists only in the draft: staged to be added, or to be retired */
+  staged?: "added" | "retiring",
+  onDropStaged?: () => void,
+) {
   return (
     <div style={{ lineHeight: 1.25, position: "relative" }}>
       <Space size={5}>
@@ -481,13 +509,59 @@ function instanceHeader(inst: Instance, onResizeStart?: (e: React.MouseEvent) =>
         />
         <span>{inst.name}</span>
       </Space>
-      <div
-        style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}
-        title={inst.versionName && inst.versionName !== inst.softwareVersion ? `Version ${inst.softwareVersion}` : undefined}
-      >
-        {inst.versionName || inst.softwareVersion}
-        {inst.region ? ` · ${inst.region}` : ""}
-      </div>
+      {/* A whole column that exists only in the draft says so ONCE, here, and
+          carries the one action that undoes it. Its cells cannot: they have no
+          change of their own behind them. It sits on the metadata line, left
+          aligned, so it never lands under the column's resize strip. */}
+      {staged ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 1 }}>
+          <Tooltip
+            title={
+              staged === "added"
+                ? "This instance is staged in your draft: it is not on Git yet. Its values come from the instance it was cloned from, and become real when the change is published."
+                : "This instance is staged for retirement in your draft; it is still on Git until the change is published."
+            }
+          >
+            <Tag
+              color={staged === "added" ? "gold" : "red"}
+              style={{ fontSize: 10, lineHeight: "15px", marginInlineEnd: 0 }}
+            >
+              {staged === "added" ? "new" : "retiring"}
+            </Tag>
+          </Tooltip>
+          {onDropStaged && (
+            <Tooltip
+              title={
+                staged === "added"
+                  ? "Discard this staged instance and its column"
+                  : "Keep this instance (undo the staged retirement)"
+              }
+            >
+              <span
+                role="button"
+                aria-label={
+                  staged === "added" ? "Discard this staged instance" : "Undo the staged retirement"
+                }
+                className="cell-undo-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDropStaged();
+                }}
+              >
+                <UndoOutlined />
+              </span>
+            </Tooltip>
+          )}
+        </div>
+      ) : (
+        <div
+          style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}
+          title={inst.versionName && inst.versionName !== inst.softwareVersion ? `Version ${inst.softwareVersion}` : undefined}
+        >
+          {inst.versionName || inst.softwareVersion}
+          {inst.region ? ` · ${inst.region}` : ""}
+        </div>
+      )}
       {onResizeStart && (
         // A thin drag strip on the column's right edge. Dragging resizes the
         // column; the pointer-events guard keeps the header's select-column
@@ -524,6 +598,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   };
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
+  // What this person may do here. A viewer gets the grid without a single edit
+  // affordance: no inline editors, no write actions in the cell menu, no
+  // Add parameter, no Find & Replace. The service enforces the same rule, but
+  // being refused after typing a value is not a permission model - it is a
+  // trap, so the UI never offers what it knows will be refused.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -732,6 +812,19 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     }
     return m;
   }, [draftQ.data]);
+  // Instances that exist only in the draft (staged add) or are staged for
+  // removal. Their columns are previewed wholesale by the service, so their
+  // cells carry `pending` without any per-cell change behind them - which is
+  // why nothing here may offer a per-cell undo for them.
+  const pendingInstances = useMemo(() => {
+    const m = new Map<string, "added" | "retiring">();
+    for (const it of draftQ.data?.draft?.items ?? []) {
+      if (it.action === "add-instance") m.set(it.instance, "added");
+      else if (it.action === "remove-instance") m.set(it.instance, "retiring");
+    }
+    return m;
+  }, [draftQ.data]);
+
   const isAdded = (it: ChangeItem) =>
     (it.old == null || it.old === "") && (!it.action || it.action === "set");
   const isRemoved = (it: ChangeItem) =>
@@ -1051,7 +1144,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     const instCols: ColumnsType<Row> = visibleInstances.map((inst) => ({
       title: viewInstance
         ? "Value"
-        : instanceHeader(inst, startResize(inst.name, instWidths[inst.name] ?? 150)),
+        : instanceHeader(
+            inst,
+            startResize(inst.name, instWidths[inst.name] ?? 150),
+            pendingInstances.get(inst.name),
+            canEdit && pendingInstances.has(inst.name)
+              ? () => revert.mutate({ paramId: "", instance: inst.name })
+              : undefined,
+          ),
       key: inst.name,
       width: instWidths[inst.name] ?? 150,
       // Excel-like value filter per instance column: distinct effective
@@ -1078,6 +1178,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       onCell: (r: Row) => ({
         className:
           (selectedInstance === inst.name ? "col-selected" : "") +
+          // A staged change highlights the whole CELL, spreadsheet-style, so the
+          // value inside stays an ordinary value (see .cell-changed in the
+          // stylesheet). Cells of an instance that is itself staged are excluded:
+          // the pending thing there is the instance, and washing 400 cells amber
+          // says the opposite of what the column header already says once.
+          (r.cells[inst.name]?.pending && !pendingInstances.has(inst.name)
+            ? r.cells[inst.name]?.valid === false
+              ? " cell-changed cell-changed-bad"
+              : " cell-changed"
+            : "") +
           (flash?.kind === "cell" && flash.id === r.param.id && flash.inst === inst.name
             ? " cell-flash"
             : "") +
@@ -1110,6 +1220,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             allInstances={instanceNames}
             presets={presetsQ.data}
             pendingItem={pendingItem}
+            canEdit={canEdit}
+            revertible={!!pendingItem}
             editing={editing === key}
             onStartEdit={() => setEditing(key)}
             onCancel={() => setEditing(null)}
@@ -1193,7 +1305,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -1275,7 +1387,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (e.key === "Enter" || e.key === "F2") {
         e.preventDefault();
         const cell = rows[rowIdx].cells[active.inst];
-        if (cell?.editable) setEditing(`${active.param}|${active.inst}`);
+        if (canEdit && cell?.editable) setEditing(`${active.param}|${active.inst}`);
         return;
       }
       let nr = rowIdx;
@@ -1508,7 +1620,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               // it reappears here first so it is never unreachable when narrow.
               ...(foldedColumns ? [{ key: "columns", icon: <TableOutlined />, label: "Manage columns…" }] : []),
               ...(anyFolded ? [{ type: "divider" as const }] : []),
-              { key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" },
+              // Find & replace stages edits across the grid, so it is an
+              // editor's tool; searching (the toolbar box) stays for everyone.
+              ...(canEdit
+                ? [{ key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" }]
+                : []),
               { key: "legend", icon: <QuestionCircleOutlined />, label: "Legend: what the marks mean" },
               { type: "divider" as const },
               { key: "invalidOnly", label: <Checkbox checked={filters.invalidOnly}>Only invalid</Checkbox> },
@@ -1550,10 +1666,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Dropdown>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Add parameter and full-screen focus are first-class, always-visible
-            actions rather than buried in the overflow menu. */}
-        <Tooltip title="Add parameter">
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
-        </Tooltip>
+            actions rather than buried in the overflow menu. Adding a parameter
+            is a change, so a viewer does not get the button at all. */}
+        {canEdit && (
+          <Tooltip title="Add parameter">
+            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
+          </Tooltip>
+        )}
         <Tooltip title={editorFocus ? "Exit full screen (Esc)" : "Full screen: just the configuration"}>
           <Button
             size="small"
@@ -1686,9 +1805,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <EmptyState
                   icon={<PlusOutlined />}
                   title="No parameters yet"
-                  hint="Add a parameter, or import settings from your repository files to bring them under management."
-                  actionLabel="Add parameter"
-                  onAction={() => setAddOpen(true)}
+                  hint={
+                    canEdit
+                      ? "Add a parameter, or import settings from your repository files to bring them under management."
+                      : "Nothing is under management here yet. Someone with edit access can bring settings in from the repository's files."
+                  }
+                  actionLabel={canEdit ? "Add parameter" : undefined}
+                  onAction={canEdit ? () => setAddOpen(true) : undefined}
                 />
               ) : (
                 <EmptyState

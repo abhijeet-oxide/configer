@@ -41,6 +41,7 @@ import { relTime } from "./DashboardView";
 import { StatePanel, InSyncArt } from "./illustrations";
 import UserAvatar from "./UserAvatar";
 import { TableSkeleton } from "./Skeletons";
+import { useIdentity } from "../identity";
 
 // EvolutionTimeline shows how this application's configuration EVOLVED, as a
 // column of snapshots a user can read, open up and roll back to.
@@ -269,6 +270,9 @@ function SnapshotRow({
   onOpenDraft: () => void;
 }) {
   const { token } = antdTheme.useToken();
+  // Reading the history is for everyone; restoring stages a draft, so it is an
+  // editor action.
+  const { canEdit } = useIdentity();
   const meta = kindMeta[entry.kind] ?? kindMeta.none;
   const scope: RestoreScope = instance ? "instance" : "all";
   const scopeWords = instance ? `instance ${instance}` : "every instance";
@@ -372,6 +376,7 @@ function SnapshotRow({
           </div>
 
           {/* Going back to this exact state, at the current scope. */}
+          {canEdit && (
           <div onClick={(e) => e.stopPropagation()}>
             <Popconfirm
               title={`Restore ${instance || "the whole application"} to this point?`}
@@ -391,6 +396,7 @@ function SnapshotRow({
               </Tooltip>
             </Popconfirm>
           </div>
+          )}
         </div>
 
         {expanded && (
@@ -425,6 +431,9 @@ function SnapshotDetail({
   onOpenDraft: () => void;
 }) {
   const { token } = antdTheme.useToken();
+  // Every "undo" below stages a draft, so all of them need edit access; the
+  // snapshot itself reads for anyone.
+  const { canEdit } = useIdentity();
   const detailQ = useRepoQuery({
     queryKey: ["timeline-snapshot", sha, instance],
     queryFn: () => api.timelineSnapshot(sha, { instance: instance || undefined, limit: 20 }),
@@ -468,7 +477,7 @@ function SnapshotDetail({
 
   // Undoing means going back to the state BEFORE this snapshot. Without a
   // predecessor in view there is nothing to go back to.
-  const canUndo = previous !== "";
+  const canUndo = canEdit && previous !== "";
 
   return (
     <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${token.colorBorderSecondary}` }}>

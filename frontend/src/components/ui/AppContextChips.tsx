@@ -1,8 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRepoQuery } from "../../repoQuery";
 import { Tooltip } from "antd";
-import { BranchesOutlined, ClusterOutlined } from "../../icons";
+import { BranchesOutlined, ClusterOutlined, EyeOutlined } from "../../icons";
 import { api } from "../../api";
+import { useIdentity } from "../../identity";
 import { useUI } from "../../store";
 import { StatusPill, type PillTone } from "./StatusPill";
 
@@ -60,6 +61,10 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, enabled: !!repoId && showDraft });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
+  // Access is part of the application context, like the branch: someone with
+  // view access sees no edit affordances anywhere, and this is the one place
+  // that says why - once, quietly, rather than a banner on every screen.
+  const { canEdit, authEnabled, loading } = useIdentity();
   const st = statusQ.data;
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);
   const pending = draftQ.data?.draft?.items?.length ?? 0;
@@ -96,6 +101,15 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
           <ClusterOutlined style={{ fontSize: 11 }} />
           {repo.instances} instance{repo.instances === 1 ? "" : "s"}
         </span>
+      )}
+      {authEnabled && !loading && !canEdit && (
+        <Tooltip title="You can read this application's configuration and its history. Changing a value, submitting for review or publishing needs edit access - an administrator grants it.">
+          <span style={{ display: "inline-flex" }}>
+            <StatusPill tone="neutral" icon={<EyeOutlined style={{ fontSize: 11 }} />}>
+              View only
+            </StatusPill>
+          </span>
+        </Tooltip>
       )}
       {showDraft && pending > 0 && (
         <span onClick={() => setSection("config")} style={{ cursor: "pointer", display: "inline-flex" }}>

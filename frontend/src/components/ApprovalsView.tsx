@@ -32,6 +32,7 @@ import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState, MonoChip, FadeIn } from "./ui";
 import { EmptyArt, InboxZeroArt } from "./illustrations";
+import { useIdentity } from "../identity";
 
 // ApprovalsView is the review workspace: state tabs over a compact queue
 // table, and the selected change request in full underneath: its changes,
@@ -215,6 +216,10 @@ function ImpactBanner({ impact }: { impact?: ChangeImpact }) {
 
 export default function ApprovalsView() {
   const { message } = AntApp.useApp();
+  // Reviewing is a read for everyone; deciding is not. Rejecting and asking for
+  // changes need editor, signing off and publishing need approver - the same
+  // split the service enforces (api.requiredRole).
+  const { canEdit, canApprove } = useIdentity();
   const qc = useQueryClient();
   const { reviewCrId, setReviewCr, repoId, setSection } = useUI();
   const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
@@ -297,7 +302,8 @@ export default function ApprovalsView() {
   // "all caught up" state before the data has arrived.
   if (q.isLoading) return <ApprovalsSkeleton />;
 
-  const decidable = selected && (selected.state === "under_review" || selected.state === "approved");
+  const decidable =
+    canEdit && selected && (selected.state === "under_review" || selected.state === "approved");
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-auto bg-canvas px-6 py-5">
@@ -475,7 +481,7 @@ export default function ApprovalsView() {
                 </div>
               </div>
 
-              {(decidable || selected.state === "published") && (
+              {(decidable || (canEdit && selected.state === "published")) && (
                 <div className="mt-3 flex justify-end gap-2 border-t border-line pt-3">
                   {decidable && (
                     <Popconfirm title="Reject this change request?" onConfirm={() => reject.mutate(selected.id)}>
@@ -484,7 +490,7 @@ export default function ApprovalsView() {
                       </Button>
                     </Popconfirm>
                   )}
-                  {selected.state === "under_review" && (
+                  {decidable && selected.state === "under_review" && (
                     <>
                       <Button
                         icon={<SendOutlined />}
@@ -493,19 +499,21 @@ export default function ApprovalsView() {
                       >
                         Request changes
                       </Button>
-                      <Tooltip title="Sign off without publishing; publish is a separate step">
-                        <Button
-                          type="primary"
-                          icon={<CheckCircleOutlined />}
-                          loading={approve.isPending}
-                          onClick={() => approve.mutate(selected.id)}
-                        >
-                          Approve
-                        </Button>
-                      </Tooltip>
+                      {canApprove && (
+                        <Tooltip title="Sign off without publishing; publish is a separate step">
+                          <Button
+                            type="primary"
+                            icon={<CheckCircleOutlined />}
+                            loading={approve.isPending}
+                            onClick={() => approve.mutate(selected.id)}
+                          >
+                            Approve
+                          </Button>
+                        </Tooltip>
+                      )}
                     </>
                   )}
-                  {selected.state === "approved" && (
+                  {canApprove && selected.state === "approved" && (
                     <Popconfirm
                       title={`Publish these changes to ${selected.targetBranch}?`}
                       description="They will become the live configuration."

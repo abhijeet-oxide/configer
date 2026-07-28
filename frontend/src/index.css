@@ -204,22 +204,17 @@ body {
 /* pending: a soft amber well with a solid left accent bar and a small
    static marker dot. A calm fill (no pulsing) so a screen full of edits
    reads instantly without flickering. */
+/* A changed cell must still read as the VALUE it now holds. Wrapping the value
+   in a tinted, rounded, padded box with a trailing dot turned it into a chip:
+   it broke the column's alignment, made the number look like a label rather
+   than something you can type over, and read as "this cell is now an object"
+   instead of "this value changed". So the highlight moved OFF the value and
+   ONTO the cell (like the keyboard cursor and the save pulse below), where a
+   spreadsheet puts it: the value keeps its ordinary monospace type and simply
+   takes the pending color. */
 .cell-pending {
-  background: var(--c-pending-bg);
-  box-shadow: inset 2px 0 0 var(--c-pending);
-  border-radius: 3px;
-  padding: 0 5px 0 6px;
-  position: relative;
-}
-.cell-pending::after {
-  content: "";
-  display: inline-block;
-  width: 5px;
-  height: 5px;
-  margin-left: 6px;
-  border-radius: 50%;
-  background: var(--c-pending);
-  vertical-align: middle;
+  color: var(--c-pending);
+  font-weight: 600;
 }
 /* The inline undo on a pending cell: a quiet counter-clockwise arrow that sits
    just after the value and lights up on hover. Always present on a changed
@@ -246,8 +241,7 @@ body {
 /* An invalid value keeps its red identity even while edited: the red well
    dominates, and the left accent stays red rather than amber. */
 .cell-invalid.cell-pending {
-  background: var(--c-danger-bg);
-  box-shadow: inset 2px 0 0 var(--c-danger);
+  color: var(--c-danger);
 }
 /* excluded: hatched wash, clearly "nothing here on purpose" */
 .cell-excluded {
@@ -1441,6 +1435,19 @@ body {
 }
 .param-grid .ant-table-cell.cell-saved {
   animation: cellSaved 0.9s ease-out;
+}
+
+/* The changed-cell wash: a soft amber field with a left accent bar, on the CELL
+   rather than around the value (see .cell-pending). background-image beats
+   antd's own cell background the same way the column selection does, so it
+   survives hover and the fixed left columns. */
+.param-grid .ant-table-cell.cell-changed {
+  background-image: linear-gradient(var(--c-pending-bg), var(--c-pending-bg)) !important;
+  box-shadow: inset 2px 0 0 var(--c-pending);
+}
+.param-grid .ant-table-cell.cell-changed-bad {
+  background-image: linear-gradient(var(--c-danger-bg), var(--c-danger-bg)) !important;
+  box-shadow: inset 2px 0 0 var(--c-danger);
 }
 
 /* The keyboard-navigation cursor: a crisp ring on the active cell. */

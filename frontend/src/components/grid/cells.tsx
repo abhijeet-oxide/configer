@@ -2,7 +2,8 @@ import { Tag, Tooltip, Input, InputNumber, Select, Popover, Button, Space, Typog
 import { CheckCircleFilled } from "../../icons";
 import { useRef, useState } from "react";
 import type { Cell, ChangeItem } from "../../api";
-import { validateString, validateTyped, fmtValue, type Rules } from "../../rules";
+import { validateNumber, validateString, validateTyped, fmtValue, type Rules } from "../../rules";
+import { semantic } from "../../theme";
 
 // Cell rendering and the typed inline editors for the parameter grid. Split
 // out of ParameterGrid so the grid file stays about layout and data flow.
@@ -133,49 +134,68 @@ export function NumberEditor({
   onCommit: (v: number) => void;
   onCancel: () => void;
 }) {
-  const [val, setVal] = useState<number | null>(() => {
-    const n = Number(initial);
-    return Number.isFinite(n) ? n : null;
-  });
+  const start = initialNumber(initial);
+  const [val, setVal] = useState<number | null>(start);
   const done = useRef(false);
-  // Commit whatever is visible in the input (not just React state) so the
-  // value the user sees is exactly what is validated and saved.
-  const finish = (raw?: string) => {
+  const err = validateNumber(val ?? "", rules, integer);
+  // tryFinish commits when valid+changed. An out-of-range or fractional entry
+  // is never rewritten to fit: Enter keeps the editor open with the rule
+  // showing, and closing (blur) discards it, exactly like the string editor.
+  const tryFinish = (raw: string | undefined, closing: boolean) => {
     if (done.current) return;
+    // Commit whatever is visible in the input (not just React state) so the
+    // value the user sees is exactly what is validated and saved.
     let v = val;
-    if (raw != null && raw.trim() !== "") {
-      const parsed = Number(raw);
-      if (Number.isFinite(parsed)) v = parsed;
+    if (raw != null) {
+      const t = raw.trim();
+      v = t === "" ? null : Number.isFinite(Number(t)) ? Number(t) : val;
+    }
+    if (v == null || v === start) {
+      done.current = true;
+      return onCancel();
+    }
+    if (validateNumber(v, rules, integer)) {
+      if (closing) {
+        done.current = true;
+        onCancel();
+      }
+      return; // invalid: nothing is staged, the message stays on screen
     }
     done.current = true;
-    if (v == null) return onCancel();
-    if (integer) v = Math.round(v);
-    // clamp to the effective min/max so an out-of-range entry cannot commit
-    if (rules.min != null && v < rules.min) v = rules.min;
-    if (rules.max != null && v > rules.max) v = rules.max;
-    if (v === Number(initial)) return onCancel();
     onCommit(v);
   };
   return (
-    <InputNumber
-      size="small"
-      autoFocus
-      style={{ width: "100%" }}
-      min={rules.min}
-      max={rules.max}
-      precision={integer ? 0 : undefined}
-      value={val}
-      onChange={setVal}
-      onPressEnter={(e) => finish((e.target as HTMLInputElement).value)}
-      onBlur={(e) => finish((e.target as HTMLInputElement).value)}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") {
-          done.current = true;
-          onCancel();
-        }
-      }}
-    />
+    <Tooltip open={!!err} title={err} color={semantic.danger}>
+      <InputNumber
+        size="small"
+        autoFocus
+        style={{ width: "100%" }}
+        status={err ? "error" : undefined}
+        // No min/max/precision props on purpose: those make the input silently
+        // rewrite an out-of-range or fractional entry to the nearest allowed
+        // value, which reads as the editor changing what was typed. The same
+        // limits are enforced by validateNumber, which explains the rule.
+        value={val}
+        onChange={setVal}
+        onPressEnter={(e) => tryFinish((e.target as HTMLInputElement).value, false)}
+        onBlur={(e) => tryFinish(e.target.value, true)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") {
+            done.current = true;
+            onCancel();
+          }
+        }}
+      />
+    </Tooltip>
   );
+}
+
+// initialNumber is a cell's committed value as a number, or null when the cell
+// carries nothing numeric (absent, empty, or a non-numeric value).
+function initialNumber(initial: unknown): number | null {
+  if (initial == null || initial === "") return null;
+  const n = Number(initial);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function StringEditor({
@@ -208,7 +228,7 @@ export function StringEditor({
     }
   };
   return (
-    <Tooltip open={!!err} title={err} color="#cf1322">
+    <Tooltip open={!!err} title={err} color={semantic.danger}>
       <Input
         size="small"
         autoFocus
@@ -217,7 +237,7 @@ export function StringEditor({
         status={err ? "error" : undefined}
         suffix={
           changed && !err ? (
-            <CheckCircleFilled style={{ color: "#52c41a" }} />
+            <CheckCircleFilled style={{ color: semantic.ok }} />
           ) : (
             <span />
           )

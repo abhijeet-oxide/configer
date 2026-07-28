@@ -64,6 +64,7 @@ import {
   scopeColor,
   scopeExplain,
 } from "./grid/cells";
+import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
 import { envHex } from "../theme";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
@@ -656,23 +657,32 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const { ref: bodyRef, width: bodyW, height: bodyH } = useElementSize<HTMLDivElement>();
 
   const save = useMutation({
-    mutationFn: (p: { instance: string; paramId: string; value?: unknown; action?: "set" | "reset" | "exclude"; scope?: "global" }) =>
-      api.setValue(p),
-    onSuccess: (_data, vars) => {
+    mutationFn: (p: ValueEdit) => api.setValue(p),
+    // The edit is staged in the caches before the request goes out, so the cell
+    // shows its new value on the next frame instead of after a write round trip
+    // plus a full grid refetch. The invalidations below reconcile it.
+    onMutate: async (vars) => {
+      const snapshot = await stageEdit(qc, vars);
+      flashSaved(vars.paramId, vars.scope === "global" ? "" : vars.instance);
+      return snapshot;
+    },
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["grid"] });
       qc.invalidateQueries({ queryKey: ["draft"] });
       qc.invalidateQueries({ queryKey: ["changes"] });
       qc.invalidateQueries({ queryKey: ["render"] });
-      flashSaved(vars.paramId, vars.scope === "global" ? "" : vars.instance);
     },
-    onError: (e: Error, vars) => {
+    onError: (e: Error, vars, snapshot) => {
       if (e instanceof OfflineError) {
-        // Service unreachable: keep the edit on this device; it syncs
-        // automatically when the connection returns.
+        // Service unreachable: keep the edit on this device (and on screen, as
+        // the message promises); it syncs when the connection returns.
         enqueueEdit(vars);
         message.info("Saved on this device; it will sync when the service is reachable again.");
         return;
       }
+      // Rejected: put the cell back exactly as it was, so the grid never shows
+      // a value the service refused.
+      if (snapshot) unstageEdit(qc, snapshot);
       message.error(`Rejected: ${e.message}`);
     },
   });

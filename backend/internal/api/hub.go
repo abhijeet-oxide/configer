@@ -669,6 +669,14 @@ func (h *Hub) search(w http.ResponseWriter, r *http.Request) {
 // @Security    CookieSession
 // @Router      /api/repos [post]
 func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
+	// Connecting a repository puts it in front of everyone who uses this
+	// deployment (and, for a private one, spends the server's credential doing
+	// it), so it needs a signed-in caller. Like rename and disconnect, this
+	// endpoint sits outside the per-repository dispatch and so never passed
+	// through authorize - it accepted anonymous callers outright.
+	if !h.requireUser(w, r) {
+		return
+	}
 	var req struct {
 		URL    string `json:"url"`
 		Name   string `json:"name"`
@@ -719,9 +727,14 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	h.mu.Unlock()
 	h.auditHub(r, id, "Connecting repository "+name, "POST /repos")
 
+	owner := ""
+	if u, ok := auth.UserFrom(r.Context()); ok {
+		owner = u.Login
+	}
 	go h.connectWorker(connectSpec{
 		id: id, name: name, url: req.URL, branch: req.Branch, token: req.Token,
 		mode: req.Mode, isDir: isDir, autoToken: autoToken, addedAt: c.AddedAt,
+		owner: owner,
 	})
 	writeJSON(w, http.StatusAccepted, connectingSummary(c))
 }
@@ -750,6 +763,12 @@ type connectSpec struct {
 	id, name, url, branch, token, mode string
 	isDir, autoToken                   bool
 	addedAt                            time.Time
+	// owner is the login that asked for this application. Connecting one and
+	// then having only view access to it is not a permission model - it is a
+	// dead end, and the one every new deployment walked into: the default role
+	// is viewer (rightly, for everyone else), so the person who set the
+	// application up could not edit it, submit anything, or even see why.
+	owner string
 }
 
 // connectWorker performs the slow clone/open off the request path, then
@@ -808,6 +827,18 @@ func (h *Hub) connectWorker(sp connectSpec) {
 	h.mu.Lock()
 	delete(h.connecting, sp.id)
 	h.mu.Unlock()
+	// Whoever connected it owns it: approver on their own application, so they
+	// can edit, review and publish without an administrator having to grant
+	// them access to something they just created. Everyone else still starts at
+	// the deployment default (viewer), so this grants nothing to anybody else.
+	if sp.owner != "" && h.platform != nil && h.auth.Enabled() {
+		if err := h.platform.SetMember(context.Background(), store.Member{
+			Repo: e.ID, Login: sp.owner, Role: store.RoleApprover,
+		}); err != nil {
+			slog.Warn("could not record the connecting user as the application's approver",
+				slog.String("id", e.ID), slog.String("login", sp.owner), slog.Any("error", err))
+		}
+	}
 	h.enqueueReindex(e.ID)
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
 }

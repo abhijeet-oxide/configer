@@ -113,13 +113,22 @@ func AuthURL(url, token string) string {
 }
 
 var (
-	credRe  = regexp.MustCompile(`^(https?://)[^/@\s]+@`)
+	credRe    = regexp.MustCompile(`^(https?://)[^/@\s]+@`)
+	anyCredRe = regexp.MustCompile(`(https?://)[^/@\s]+@`)
 	tokenRe = regexp.MustCompile(`^https?://[^/:@\s]*:([^/@\s]+)@`)
 )
 
 // Redact strips embedded credentials from a remote URL for display.
 func Redact(url string) string {
 	return credRe.ReplaceAllString(url, "$1")
+}
+
+// RedactAll strips embedded credentials from every URL inside a block of free
+// text. Redact anchors at the start because it is given one URL; git's own
+// error output quotes URLs mid-sentence, and a credential is no less exposed
+// for being in the middle of one.
+func RedactAll(text string) string {
+	return anyCredRe.ReplaceAllString(text, "$1")
 }
 
 // TokenFromURL extracts an embedded credential from an https remote URL

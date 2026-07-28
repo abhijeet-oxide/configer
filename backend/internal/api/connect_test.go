@@ -53,22 +53,30 @@ func TestPrepareCloneDirKeepsConnected(t *testing.T) {
 func TestFriendlyConnectError(t *testing.T) {
 	const repo = "https://github.com/acme/ran-config"
 	cases := map[string]string{
-		"clone x: fatal: destination path 'x' already exists and is not an empty directory": "fault on the Configer side",
-		"clone x: fatal: Authentication failed for 'https://x/y'":                           "private repository",
-		"clone x: fatal: could not read Password for 'https://github.com': terminal prompts disabled": "private repository",
-		"clone x: fatal: Remote branch nope not found in upstream origin":                   "branch",
-		"clone x: fatal: could not resolve host: github.com":                                "could not reach",
-		"clone x: remote: Repository not found":                                             "could not be found",
+		"clone x: fatal: destination path 'x' already exists and is not an empty directory":            "fault on the Configer side",
+		"clone x: fatal: Authentication failed for 'https://x/y'":                                      "private repository",
+		"clone x: fatal: could not read Password for 'https://github.com': terminal prompts disabled":  "private repository",
+		"clone x: fatal: Remote branch nope not found in upstream origin":                              "branch",
+		"clone x: fatal: could not resolve host: github.com":                                           "could not reach",
+		"clone x: remote: Repository not found":                                                        "could not be found",
+		// A company proxy or an inspected connection: Configer's own calls to
+		// GitHub follow the machine's proxy settings and Git does not, so the
+		// repository picker works while the copy fails. Saying only "could not
+		// be connected" leaves the user staring at a list that just worked.
+		"clone x: fatal: unable to access 'https://github.com/a/b': SSL certificate problem: unable to get local issuer certificate": "proxy",
+		"clone x: fatal: unable to access 'https://github.com/a/b': The requested URL returned error: 407":                           "proxy",
+		"clone x: fatal: unable to access 'https://github.com/a/b': Failed to connect to github.com port 443":                        "could not reach",
+		"clone x: exec: \"git\": executable file not found in $PATH":                                                                "Git is not installed",
 	}
 	for in, want := range cases {
-		got := friendlyConnectError(repo, errString(in))
+		got := friendlyConnectError(repo, stageCopy, errString(in))
 		if !strings.Contains(got, want) {
 			t.Errorf("friendlyConnectError(%q) = %q, want it to mention %q", in, got, want)
 		}
 		if !strings.Contains(got, repo) {
 			t.Errorf("the message should name the repository: %q", got)
 		}
-		for _, jargon := range []string{"fatal:", "clone", "git ", "directory", "folder"} {
+		for _, jargon := range []string{"fatal:", "clone", "directory", "folder"} {
 			if strings.Contains(strings.ToLower(got), jargon) {
 				t.Errorf("%q leaked to the user: %q", jargon, got)
 			}
@@ -77,9 +85,45 @@ func TestFriendlyConnectError(t *testing.T) {
 	// "Please try again, it has been cleared" is advice, and advice that does
 	// not work is worse than none: a collision on Configer's side is not the
 	// user's to retry away, and nothing of theirs was cleared.
-	got := friendlyConnectError(repo, errString("fatal: destination path 'x' already exists and is not an empty directory"))
+	got := friendlyConnectError(repo, stageCopy, errString("fatal: destination path 'x' already exists and is not an empty directory"))
 	if strings.Contains(got, "has been cleared") {
 		t.Errorf("the message should not claim the user's attempt left something behind: %q", got)
+	}
+}
+
+// A failure nobody anticipated must still be worth reading. Pointing at a log
+// the user often cannot open costs them a round trip to learn anything at all,
+// so the last line says which half of the job broke and quotes the one line git
+// gave - marked as the underlying report, not as advice.
+func TestUnrecognizedFailuresSayWhichHalfBrokeAndWhy(t *testing.T) {
+	const repo = "https://github.com/acme/ran-config"
+	raw := errString("clone https://x/y: git clone https://x/y /data/repos/.incoming-y-1: exit status 128: " +
+		"Cloning into '/data/repos/.incoming-y-1'...\nfatal: the remote end hung up unexpectedly")
+
+	copyErr := friendlyConnectError(repo, stageCopy, raw)
+	if !strings.Contains(copyErr, "the remote end hung up unexpectedly") {
+		t.Errorf("the reason git gave should survive: %q", copyErr)
+	}
+	for _, noise := range []string{"exit status", "Cloning into", "fatal:", ".incoming-"} {
+		if strings.Contains(copyErr, noise) {
+			t.Errorf("%q should not reach the user: %q", noise, copyErr)
+		}
+	}
+	readErr := friendlyConnectError(repo, stageRead, raw)
+	if copyErr == readErr {
+		t.Error("copying and reading must not produce the same sentence")
+	}
+	if !strings.Contains(readErr, "could not read it") {
+		t.Errorf("a read failure should say so: %q", readErr)
+	}
+}
+
+// The quoted reason never carries a credential, whatever git echoed back.
+func TestQuotedReasonHasNoCredential(t *testing.T) {
+	got := gitReason("git clone: exit status 128: fatal: could not read Password for " +
+		"'https://x-access-token:ghp_supersecret@github.com': terminal prompts disabled")
+	if strings.Contains(got, "ghp_supersecret") {
+		t.Fatalf("a credential leaked into the message: %q", got)
 	}
 }
 

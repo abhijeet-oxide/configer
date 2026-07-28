@@ -69,7 +69,13 @@ export function shouldToast(err: unknown): boolean {
 export function sentence(text?: string): string {
   const t = (text ?? "").trim();
   if (!t) return "";
-  const head = t.charAt(0).toUpperCase() + t.slice(1);
+  // A message can open with something that is a NAME, not a word: a repository
+  // address, a file path, a branch. Capitalizing those corrupts them -
+  // "Https://github.com/acme/flux-cd" is not the address anybody typed - so the
+  // first character is only touched when the first word reads as prose.
+  const first = t.split(/\s/, 1)[0];
+  const isName = /[:/\\]/.test(first) || /^[^\s]+\.[^\s]/.test(first);
+  const head = isName ? t : t.charAt(0).toUpperCase() + t.slice(1);
   return /[.!?]$/.test(head) ? head : head + ".";
 }
 

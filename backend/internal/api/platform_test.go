@@ -285,3 +285,38 @@ func TestAppLifecycleIsApproverGated(t *testing.T) {
 		t.Errorf("admin disconnect = %d: %s", w.Code, w.Body.String())
 	}
 }
+
+// Connecting an application makes you its approver. Without this the deployment
+// default (viewer, rightly, for everyone else) applied to the person who had
+// just set the application up: they could not edit it, submit anything, or
+// grant themselves access - a dead end on every new deployment.
+func TestConnectingAnApplicationMakesYouItsApprover(t *testing.T) {
+	hub, _ := testHub(t)
+	ctx := context.Background()
+	repoID := hub.registry.List()[0].ID
+
+	// A fresh member starts at the deployment default.
+	if got := hub.effectiveRole(userReq(t, "vera"), repoID, store.User{Login: "vera"}); got != store.RoleViewer {
+		t.Fatalf("default role = %q, want viewer", got)
+	}
+
+	// The connect worker records the caller as the application's approver.
+	if err := hub.platform.SetMember(ctx, store.Member{
+		Repo: repoID, Login: "vera", Role: store.RoleApprover,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := hub.effectiveRole(userReq(t, "vera"), repoID, store.User{Login: "vera"}); got != store.RoleApprover {
+		t.Fatalf("role after connecting = %q, want approver", got)
+	}
+	// And it grants nothing to anyone else.
+	if got := hub.effectiveRole(userReq(t, "someone"), repoID, store.User{Login: "someone"}); got != store.RoleViewer {
+		t.Fatalf("another user's role = %q, want viewer", got)
+	}
+}
+
+func userReq(t *testing.T, login string) *http.Request {
+	t.Helper()
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	return r.WithContext(auth.WithUser(r.Context(), store.User{Login: login}))
+}

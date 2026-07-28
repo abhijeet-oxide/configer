@@ -1038,7 +1038,20 @@ async function snapGet<T>(path: string, snapKey: string): Promise<T> {
 // whose role was just downgraded, or a keyboard path nobody gated still cannot
 // send a write. It is deliberately NOT a security boundary - the service is -
 // it is what keeps "view only" honest in the interface.
+//
+// It applies to REPOSITORY-SCOPED writes only, because that is the only thing
+// the role describes. Signing out, connecting a new application, managing the
+// workspace: none of those belong to an application, and gating them on one
+// application's role locked people out of the product - out of creating their
+// first application, and out of signing out again.
 let writesAllowed = true;
+
+/** Whether a path is scoped to one application, and therefore governed by the
+ *  caller's role in it. Everything else (auth, the workspace, the deployment)
+ *  is not. */
+function repoScoped(path: string): boolean {
+  return path.startsWith("/repos/");
+}
 
 /** Publish what the signed-in person may do. Called by the identity layer;
  *  `true` while the deployment has no login (single-user mode). */
@@ -1057,7 +1070,7 @@ function forbiddenWrite(): ApiError {
 }
 
 async function send<T>(method: string, path: string, body?: unknown, opts?: ReqOpts): Promise<T> {
-  if (!writesAllowed) throw forbiddenWrite();
+  if (!writesAllowed && repoScoped(path)) throw forbiddenWrite();
   const res = await request(
     path,
     {

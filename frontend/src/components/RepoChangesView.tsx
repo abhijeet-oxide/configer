@@ -32,6 +32,7 @@ import { relTime } from "./DashboardView";
 import { InSyncArt, StatePanel } from "./illustrations";
 import UserAvatar from "./UserAvatar";
 import { InlineNotice } from "./ui";
+import { useIdentity } from "../identity";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
 // outside Configer: new config files, edits, deletions, renames and new
@@ -112,6 +113,9 @@ type DriftFilter = Finding["type"] | "managed" | null;
 
 export default function RepoChangesView() {
   const { message } = AntApp.useApp();
+  // Reading what changed outside Configer is for everyone; acting on a finding
+  // (import, retire, mark as seen) writes.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const { setSection, setImportFocus, selectParam } = useUI();
   const [filter, setFilter] = useState<DriftFilter>(null);
@@ -175,7 +179,7 @@ export default function RepoChangesView() {
           <Button icon={<ReloadOutlined />} loading={findingsQ.isFetching} onClick={() => findingsQ.refetch()}>
             Check now
           </Button>
-          {findings.length > 0 && (
+          {canEdit && findings.length > 0 && (
             <Popconfirm
               title="Mark everything as seen?"
               description="The list clears; future commits will appear as new items."
@@ -333,6 +337,7 @@ function FindingCard({
   retiring: boolean;
   onViewParam: (paramId: string) => void;
 }) {
+  const { canEdit } = useIdentity();
   const m = findingMeta[f.type];
   return (
     <Card size="small" styles={{ body: { padding: 14 } }}>
@@ -382,17 +387,17 @@ function FindingCard({
           )}
         </div>
         <div style={{ flexShrink: 0, marginLeft: "auto" }}>
-          {f.type === "new_file" && (
+          {canEdit && f.type === "new_file" && (
             <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
               Import settings
             </Button>
           )}
-          {f.type === "new_folder" && (
+          {canEdit && f.type === "new_folder" && (
             <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
               Scan this folder
             </Button>
           )}
-          {f.type === "file_deleted" && (
+          {canEdit && f.type === "file_deleted" && (
             <Popconfirm
               title={`Retire ${f.params?.length ?? 0} parameter(s)?`}
               description="They are removed from the catalog with one reviewable commit on Git. Restore the file instead if the deletion was a mistake."

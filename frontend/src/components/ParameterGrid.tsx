@@ -66,6 +66,7 @@ import {
 } from "./grid/cells";
 import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
 import { envHex } from "../theme";
+import { useIdentity } from "../identity";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
@@ -77,6 +78,7 @@ function EditableCell({
   allInstances,
   presets,
   pendingItem,
+  canEdit,
   editing,
   onStartEdit,
   onCancel,
@@ -95,6 +97,8 @@ function EditableCell({
   allInstances: string[];
   presets?: PresetRule[];
   pendingItem?: ChangeItem;
+  /** this person may change configuration in this application */
+  canEdit: boolean;
   editing: boolean;
   onStartEdit: () => void;
   onCancel: () => void;
@@ -111,6 +115,11 @@ function EditableCell({
 }) {
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
+  // A cell is editable when the PARAMETER allows it (not n/a, not deprecated,
+  // not a template expression) AND this person may change configuration here.
+  // Everything below keys off this one value, so a viewer gets a grid that
+  // simply has no edit affordances rather than controls that fail on use.
+  const editable = canEdit && cell.editable;
 
   if (editing) {
     if (param.type === "list") {
@@ -133,20 +142,22 @@ function EditableCell({
     return <StringEditor initial={cell.value} rules={rules} onCommit={onCommit} onCancel={onCancel} />;
   }
 
-  // Right-click menu: structural actions beyond plain value edits.
+  // Right-click menu: structural actions beyond plain value edits. Everything
+  // that would write is gated on `editable`; finding occurrences and opening the
+  // file are reads, so they stay for a viewer.
   const menuItems = [
-    ...(cell.pending ? [{ key: "undo", label: "Undo pending change" }] : []),
-    ...(cell.editable ? [{ key: "edit", label: "Edit value" }] : []),
-    ...(cell.editable && cell.source === "instance"
+    ...(canEdit && cell.pending ? [{ key: "undo", label: "Undo pending change" }] : []),
+    ...(editable ? [{ key: "edit", label: "Edit value" }] : []),
+    ...(editable && cell.source === "instance"
       ? [{ key: "reset", label: "Reset to inherited (remove from this instance's files)" }]
       : []),
-    ...(cell.editable && cell.set
+    ...(editable && cell.set
       ? [{ key: "exclude", label: "Remove from this instance (delete the key)" }]
       : []),
-    ...(cell.set && cell.value != null && allInstances.length > 1
+    ...(canEdit && cell.set && cell.value != null && allInstances.length > 1
       ? [{ key: "bulkset", label: "Set on other instances…" }]
       : []),
-    ...(cell.set && allInstances.length > 1
+    ...(canEdit && cell.set && allInstances.length > 1
       ? [{
           key: "copy",
           label: "Copy value to one…",
@@ -159,7 +170,9 @@ function EditableCell({
       ? [
           { type: "divider" as const },
           { key: "find", label: `Find occurrences of "${fmtValue(cell.value)}"` },
-          { key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` },
+          ...(canEdit
+            ? [{ key: "replace", label: `Replace occurrences of "${fmtValue(cell.value)}"…` }]
+            : []),
         ]
       : []),
     ...(cell.file && onOpenFile
@@ -173,7 +186,7 @@ function EditableCell({
   // A pending cell carries its own one-click undo, so reverting never requires
   // discovering the right-click menu: the affordance is visible on the change
   // itself (with the full undo/reset menu still a right-click away).
-  const undoBtn = cell.pending ? (
+  const undoBtn = canEdit && cell.pending ? (
     <Tooltip title="Undo this change">
       <span
         role="button"
@@ -190,7 +203,7 @@ function EditableCell({
   ) : null;
 
   const body =
-    param.type === "boolean" && cell.editable && cell.set ? (
+    param.type === "boolean" && editable && cell.set ? (
       <span onClick={(e) => e.stopPropagation()} className={cell.state === "new" ? "cell-new" : undefined} style={{ display: "inline-flex", alignItems: "center" }}>
         <Switch size="small" checked={!!cell.value} onChange={(v) => onCommit(v)} />
         <SourceBadge cell={cell} />
@@ -198,15 +211,15 @@ function EditableCell({
       </span>
     ) : (
       <div
-        style={{ minHeight: 20, cursor: cell.editable ? "text" : undefined, display: "flex", alignItems: "center" }}
+        style={{ minHeight: 20, cursor: editable ? "text" : undefined, display: "flex", alignItems: "center" }}
         title={
           cell.templated
             ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."
-            : cell.editable && !cell.pending
+            : editable && !cell.pending
               ? "Double-click to edit · right-click for actions"
               : undefined
         }
-        onDoubleClick={cell.editable ? onStartEdit : undefined}
+        onDoubleClick={editable ? onStartEdit : undefined}
       >
         <CellView cell={cell} pendingItem={pendingItem} />
         {undoBtn}
@@ -524,6 +537,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   };
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
+  // What this person may do here. A viewer gets the grid without a single edit
+  // affordance: no inline editors, no write actions in the cell menu, no
+  // Add parameter, no Find & Replace. The service enforces the same rule, but
+  // being refused after typing a value is not a permission model - it is a
+  // trap, so the UI never offers what it knows will be refused.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -1110,6 +1129,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             allInstances={instanceNames}
             presets={presetsQ.data}
             pendingItem={pendingItem}
+            canEdit={canEdit}
             editing={editing === key}
             onStartEdit={() => setEditing(key)}
             onCancel={() => setEditing(null)}
@@ -1275,7 +1295,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (e.key === "Enter" || e.key === "F2") {
         e.preventDefault();
         const cell = rows[rowIdx].cells[active.inst];
-        if (cell?.editable) setEditing(`${active.param}|${active.inst}`);
+        if (canEdit && cell?.editable) setEditing(`${active.param}|${active.inst}`);
         return;
       }
       let nr = rowIdx;
@@ -1508,7 +1528,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               // it reappears here first so it is never unreachable when narrow.
               ...(foldedColumns ? [{ key: "columns", icon: <TableOutlined />, label: "Manage columns…" }] : []),
               ...(anyFolded ? [{ type: "divider" as const }] : []),
-              { key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" },
+              // Find & replace stages edits across the grid, so it is an
+              // editor's tool; searching (the toolbar box) stays for everyone.
+              ...(canEdit
+                ? [{ key: "findreplace", icon: <SwapOutlined />, label: "Find & replace values…" }]
+                : []),
               { key: "legend", icon: <QuestionCircleOutlined />, label: "Legend: what the marks mean" },
               { type: "divider" as const },
               { key: "invalidOnly", label: <Checkbox checked={filters.invalidOnly}>Only invalid</Checkbox> },
@@ -1550,10 +1574,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Dropdown>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Add parameter and full-screen focus are first-class, always-visible
-            actions rather than buried in the overflow menu. */}
-        <Tooltip title="Add parameter">
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
-        </Tooltip>
+            actions rather than buried in the overflow menu. Adding a parameter
+            is a change, so a viewer does not get the button at all. */}
+        {canEdit && (
+          <Tooltip title="Add parameter">
+            <Button size="small" icon={<PlusOutlined />} onClick={() => setAddOpen(true)} aria-label="Add parameter" style={{ flexShrink: 0 }} />
+          </Tooltip>
+        )}
         <Tooltip title={editorFocus ? "Exit full screen (Esc)" : "Full screen: just the configuration"}>
           <Button
             size="small"
@@ -1686,9 +1713,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 <EmptyState
                   icon={<PlusOutlined />}
                   title="No parameters yet"
-                  hint="Add a parameter, or import settings from your repository files to bring them under management."
-                  actionLabel="Add parameter"
-                  onAction={() => setAddOpen(true)}
+                  hint={
+                    canEdit
+                      ? "Add a parameter, or import settings from your repository files to bring them under management."
+                      : "Nothing is under management here yet. Someone with edit access can bring settings in from the repository's files."
+                  }
+                  actionLabel={canEdit ? "Add parameter" : undefined}
+                  onAction={canEdit ? () => setAddOpen(true) : undefined}
                 />
               ) : (
                 <EmptyState

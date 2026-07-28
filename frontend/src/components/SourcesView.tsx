@@ -21,6 +21,7 @@ import AddSourceModal from "./AddSourceModal";
 import MapSourceModal from "./MapSourceModal";
 import SourceDetailDrawer from "./SourceDetailDrawer";
 import { useUI } from "../store";
+import { useIdentity } from "../identity";
 
 // SourcesView is the application's "Sources" tab: the external systems that
 // feed parameter values (another Git repo, a secret store), the values they
@@ -29,6 +30,10 @@ import { useUI } from "../store";
 // change stages an ordinary edit that is submitted like any other.
 export default function SourcesView() {
   const { message } = AntApp.useApp();
+  // Sources are configuration: defining one, mapping a parameter to it and
+  // refetching upstream values all write. A viewer sees what is configured and
+  // what is arriving, and accepts nothing.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const setSection = useUI((s) => s.setSection);
   const [adding, setAdding] = useState(false);
@@ -84,17 +89,19 @@ export default function SourcesView() {
             Pull parameter values from outside this repository and review them before they land.
           </Typography.Text>
         </div>
-        <Space>
-          <Button icon={<ReloadOutlined />} loading={refresh.isPending} onClick={() => refresh.mutate()}>
-            Refresh
-          </Button>
-          <Button icon={<LinkOutlined />} disabled={!sources.length} onClick={() => setMapping(true)}>
-            Map parameter
-          </Button>
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(true)}>
-            Add source
-          </Button>
-        </Space>
+        {canEdit && (
+          <Space>
+            <Button icon={<ReloadOutlined />} loading={refresh.isPending} onClick={() => refresh.mutate()}>
+              Refresh
+            </Button>
+            <Button icon={<LinkOutlined />} disabled={!sources.length} onClick={() => setMapping(true)}>
+              Map parameter
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(true)}>
+              Add source
+            </Button>
+          </Space>
+        )}
       </div>
 
       {/* Incoming changes: the reviewer's queue. Only meaningful once at least
@@ -190,11 +197,17 @@ export default function SourcesView() {
       {sources.length === 0 ? (
         <Empty
           image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description="No sources yet. Add one to pull values from another repository or a secret store."
+          description={
+            canEdit
+              ? "No sources yet. Add one to pull values from another repository or a secret store."
+              : "No sources are configured for this application."
+          }
         >
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(true)}>
-            Add source
-          </Button>
+          {canEdit && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setAdding(true)}>
+              Add source
+            </Button>
+          )}
         </Empty>
       ) : (
         <List

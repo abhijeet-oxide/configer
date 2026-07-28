@@ -16,6 +16,7 @@ import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, t
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import SubmitChangesButton from "./SubmitChangesButton";
+import { useIdentity } from "../identity";
 
 // SourceControlPanel is the VS Code "Source Control" view, translated for people
 // who never think about Git: the branch the work lands on, the active (still
@@ -39,6 +40,9 @@ interface FileChanges {
 
 export default function SourceControlPanel({ grid }: { grid: Grid }) {
   const { token } = antdTheme.useToken();
+  // Pulling moves the working tree, so it is an editor action; the draft list
+  // below is empty for a viewer, who can never stage anything.
+  const { canEdit } = useIdentity();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { selectParam } = useUI();
@@ -122,18 +126,20 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
             </Tooltip>
           )}
           <div style={{ flex: 1 }} />
-          <Tooltip title={st?.remote ? "Pull the latest from the remote" : "No remote configured"}>
-            <Button
-              size="small"
-              type="text"
-              icon={<CloudDownloadOutlined />}
-              loading={sync.isPending}
-              disabled={!st?.remote}
-              onClick={() => sync.mutate()}
-            >
-              {st ? (st.behind > 0 ? `Pull ${st.behind}` : "Pull") : "Pull"}
-            </Button>
-          </Tooltip>
+          {canEdit && (
+            <Tooltip title={st?.remote ? "Pull the latest from the remote" : "No remote configured"}>
+              <Button
+                size="small"
+                type="text"
+                icon={<CloudDownloadOutlined />}
+                loading={sync.isPending}
+                disabled={!st?.remote}
+                onClick={() => sync.mutate()}
+              >
+                {st ? (st.behind > 0 ? `Pull ${st.behind}` : "Pull") : "Pull"}
+              </Button>
+            </Tooltip>
+          )}
         </div>
         <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
           {st?.upstreamGone ? (

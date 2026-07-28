@@ -16,6 +16,7 @@ import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
 import InstanceTopology from "./InstanceTopology";
 import { EmptyState } from "./ui";
+import { useIdentity } from "../identity";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -56,6 +57,9 @@ interface FormValues {
 
 export default function InstancesView({ grid }: { grid: Grid }) {
   const { message, notification } = AntApp.useApp();
+  // Adding, editing, cloning, archiving and retiring an instance all stage
+  // changes. A viewer sees the estate and can compare, nothing more.
+  const { canEdit } = useIdentity();
   const qc = useQueryClient();
   const { setCompare, setSection, setFileFocus } = useUI();
 
@@ -267,9 +271,11 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               ]}
             />
           )}
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal("add")}>
-            Add instance
-          </Button>
+          {canEdit && (
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal("add")}>
+              Add instance
+            </Button>
+          )}
         </Space>
       </div>
 
@@ -353,35 +359,42 @@ export default function InstancesView({ grid }: { grid: Grid }) {
                   <Tooltip title="Compare this instance with another">
                     <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => compareFrom(i.name)} />
                   </Tooltip>
-                  <Tooltip title="Edit metadata">
-                    <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openModal("edit", i)} />
-                  </Tooltip>
-                  <Tooltip title="Clone this instance (copies its values)">
-                    <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => openModal("clone", i)} />
-                  </Tooltip>
-                  <Tooltip title="Copy values into this instance from another">
-                    <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => setCopyInto({ target: i.name })} />
-                  </Tooltip>
-                  {archived ? (
-                    <Tooltip title="Reactivate">
-                      <Button size="small" type="text" icon={<RollbackOutlined />} loading={setStatus.isPending}
-                        onClick={() => setStatus.mutate({ name: i.name, status: "active" })} />
-                    </Tooltip>
-                  ) : (
-                    <Tooltip title="Archive (removes it from the active grid, keeps it in Git)">
-                      <Button size="small" type="text" icon={<InboxOutlined />} loading={setStatus.isPending}
-                        onClick={() => setStatus.mutate({ name: i.name, status: "archived" })} />
-                    </Tooltip>
+                  {canEdit && (
+                    <>
+                      <Tooltip title="Edit metadata">
+                        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openModal("edit", i)} />
+                      </Tooltip>
+                      <Tooltip title="Clone this instance (copies its values)">
+                        <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => openModal("clone", i)} />
+                      </Tooltip>
+                      <Tooltip title="Copy values into this instance from another">
+                        <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => setCopyInto({ target: i.name })} />
+                      </Tooltip>
+                    </>
                   )}
-                  <Popconfirm
-                    title={`Retire instance "${i.name}"?`}
-                    description="Stages the removal of its folder and registry entry into your draft; nothing happens on Git until the change is submitted and approved."
-                    okText="Stage retirement"
-                    okButtonProps={{ danger: true }}
-                    onConfirm={() => remove.mutate(i.name)}
-                  >
-                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                  </Popconfirm>
+                  {canEdit &&
+                    (archived ? (
+                      <Tooltip title="Reactivate">
+                        <Button size="small" type="text" icon={<RollbackOutlined />} loading={setStatus.isPending}
+                          onClick={() => setStatus.mutate({ name: i.name, status: "active" })} />
+                      </Tooltip>
+                    ) : (
+                      <Tooltip title="Archive (removes it from the active grid, keeps it in Git)">
+                        <Button size="small" type="text" icon={<InboxOutlined />} loading={setStatus.isPending}
+                          onClick={() => setStatus.mutate({ name: i.name, status: "archived" })} />
+                      </Tooltip>
+                    ))}
+                  {canEdit && (
+                    <Popconfirm
+                      title={`Retire instance "${i.name}"?`}
+                      description="Stages the removal of its folder and registry entry into your draft; nothing happens on Git until the change is submitted and approved."
+                      okText="Stage retirement"
+                      okButtonProps={{ danger: true }}
+                      onConfirm={() => remove.mutate(i.name)}
+                    >
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  )}
                 </Space>
               );
             },

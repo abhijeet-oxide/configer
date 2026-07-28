@@ -1026,7 +1026,38 @@ async function snapGet<T>(path: string, snapKey: string): Promise<T> {
   return data;
 }
 
+// --- capability gate ------------------------------------------------------
+// The service is the authority on who may change what, and it enforces the
+// rule on every request. This is the client-side backstop: a person with view
+// access must not be able to START a change, so a write is refused HERE rather
+// than travelling to the service to come back as a red toast over a value the
+// user already typed.
+//
+// The UI hides write affordances from a viewer (see identity.ts's canEdit), and
+// this makes that guarantee whole: a control that slips through, a stale tab
+// whose role was just downgraded, or a keyboard path nobody gated still cannot
+// send a write. It is deliberately NOT a security boundary - the service is -
+// it is what keeps "view only" honest in the interface.
+let writesAllowed = true;
+
+/** Publish what the signed-in person may do. Called by the identity layer;
+ *  `true` while the deployment has no login (single-user mode). */
+export function setWritesAllowed(allowed: boolean) {
+  writesAllowed = allowed;
+}
+
+/** ApiError shaped exactly like the service's own refusal, so every existing
+ *  error path (toasts, field errors, mutation onError) treats it identically. */
+function forbiddenWrite(): ApiError {
+  return new ApiError({
+    status: 403,
+    code: "forbidden",
+    message: "your access to this application is view only; this action needs editor",
+  });
+}
+
 async function send<T>(method: string, path: string, body?: unknown, opts?: ReqOpts): Promise<T> {
+  if (!writesAllowed) throw forbiddenWrite();
   const res = await request(
     path,
     {

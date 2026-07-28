@@ -938,6 +938,18 @@ export class TimeoutError extends Error {
   }
 }
 
+/** A connection that is taking longer than the dialog will wait. NOT a failure:
+ *  the server is still copying the repository and the application appears when
+ *  it is ready. It exists so the UI stops calling a slow clone an error - and
+ *  so nothing tears the half-copied repository down behind the user's back,
+ *  which is what made every retry afterwards fail. */
+export class StillConnectingError extends Error {
+  constructor(public readonly id: string) {
+    super("still connecting");
+    this.name = "StillConnectingError";
+  }
+}
+
 // Default per-request timeout. A request that hangs must never leave the UI
 // spinning forever: it is aborted and surfaced as a TimeoutError the user sees.
 const DEFAULT_TIMEOUT_MS = 30_000;
@@ -1169,7 +1181,9 @@ export const api = {
   // "connecting" state, resolving with its summary when ready or throwing an
   // ApiError when the background connection failed or timed out.
   waitForRepoReady: async (id: string, opts?: { timeoutMs?: number; intervalMs?: number }): Promise<RepoSummary> => {
-    const deadline = Date.now() + (opts?.timeoutMs ?? 120_000);
+    // Long enough for a large repository on a slow link. Past it the wait ends,
+    // but the connection does not: see connectApplication.
+    const deadline = Date.now() + (opts?.timeoutMs ?? 300_000);
     const interval = opts?.intervalMs ?? 1500;
     for (;;) {
       const ws = await get<Workspace>("/workspace");
@@ -1178,7 +1192,7 @@ export const api = {
         throw new ApiError({ status: 422, code: "connect_failed", message: repo.error || "connecting the repository failed" });
       }
       if (repo && repo.status !== "connecting") return repo;
-      if (Date.now() > deadline) throw new TimeoutError();
+      if (Date.now() > deadline) throw new StillConnectingError(id);
       await new Promise((r) => setTimeout(r, interval));
     }
   },
@@ -1187,6 +1201,11 @@ export const api = {
   // application. A FAILED connection leaves nothing behind - the half-connected
   // entry is cleared - so the portfolio never grows a ghost application that
   // answers every read with "not connected" and cannot be opened to be removed.
+  //
+  // A SLOW one is left exactly where it is. Clearing it would pull the folder
+  // out from under a git clone that is still writing, and the next attempt then
+  // collides with the one still running: one slow repository became an error on
+  // every try after it.
   connectApplication: async (p: {
     url: string;
     name?: string;
@@ -1198,6 +1217,7 @@ export const api = {
     try {
       return await api.waitForRepoReady(started.id);
     } catch (err) {
+      if (err instanceof StillConnectingError) throw err;
       try {
         await api.removeRepo(started.id);
       } catch {

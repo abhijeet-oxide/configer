@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A previous attempt (or a server stopped mid-clone) can leave a working copy
@@ -20,7 +21,7 @@ func TestPrepareCloneDirClearsLeftover(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := hub.prepareCloneDir(dir); err != nil {
+	if err := hub.prepareCloneDir("acme/x", dir); err != nil {
 		t.Fatalf("prepareCloneDir: %v", err)
 	}
 	if _, err := os.Stat(dir); !os.IsNotExist(err) {
@@ -33,7 +34,7 @@ func TestPrepareCloneDirClearsLeftover(t *testing.T) {
 func TestPrepareCloneDirKeepsConnected(t *testing.T) {
 	hub, _ := testHub(t)
 	inUse := hub.registry.List()[0].Path
-	err := hub.prepareCloneDir(inUse)
+	err := hub.prepareCloneDir("acme/x", inUse)
 	if err == nil {
 		t.Fatal("a directory in use by a connected application must not be cleared")
 	}
@@ -45,22 +46,40 @@ func TestPrepareCloneDirKeepsConnected(t *testing.T) {
 	}
 }
 
-// Git's own wording never reaches the user.
+// What reaches the user names their repository, says what to do, and never
+// mentions git or Configer's own storage. A folder on the server is not
+// something they can see, cause or clear, so a message about one can only ever
+// be an admission that something broke on this side.
 func TestFriendlyConnectError(t *testing.T) {
+	const repo = "https://github.com/acme/ran-config"
 	cases := map[string]string{
-		"clone https://x/y: fatal: destination path 'x' already exists and is not an empty directory": "previous copy",
-		"clone https://x/y: fatal: Authentication failed for 'https://x/y'":                           "sign in again",
-		"clone https://x/y: fatal: Remote branch nope not found in upstream origin":                   "branch",
-		"clone https://x/y: fatal: could not resolve host: github.com":                                "could not be reached",
+		"clone x: fatal: destination path 'x' already exists and is not an empty directory": "fault on the Configer side",
+		"clone x: fatal: Authentication failed for 'https://x/y'":                           "private repository",
+		"clone x: fatal: could not read Password for 'https://github.com': terminal prompts disabled": "private repository",
+		"clone x: fatal: Remote branch nope not found in upstream origin":                   "branch",
+		"clone x: fatal: could not resolve host: github.com":                                "could not reach",
+		"clone x: remote: Repository not found":                                             "could not be found",
 	}
 	for in, want := range cases {
-		got := friendlyConnectError(errString(in))
+		got := friendlyConnectError(repo, errString(in))
 		if !strings.Contains(got, want) {
 			t.Errorf("friendlyConnectError(%q) = %q, want it to mention %q", in, got, want)
 		}
-		if strings.Contains(got, "fatal:") {
-			t.Errorf("git jargon leaked to the user: %q", got)
+		if !strings.Contains(got, repo) {
+			t.Errorf("the message should name the repository: %q", got)
 		}
+		for _, jargon := range []string{"fatal:", "clone", "git ", "directory", "folder"} {
+			if strings.Contains(strings.ToLower(got), jargon) {
+				t.Errorf("%q leaked to the user: %q", jargon, got)
+			}
+		}
+	}
+	// "Please try again, it has been cleared" is advice, and advice that does
+	// not work is worse than none: a collision on Configer's side is not the
+	// user's to retry away, and nothing of theirs was cleared.
+	got := friendlyConnectError(repo, errString("fatal: destination path 'x' already exists and is not an empty directory"))
+	if strings.Contains(got, "has been cleared") {
+		t.Errorf("the message should not claim the user's attempt left something behind: %q", got)
 	}
 }
 
@@ -88,3 +107,102 @@ func TestUnknownApplicationIsAState(t *testing.T) {
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// The bug this pins down: give up on a slow repository, try again, and the
+// second attempt got the SAME id - which is the same folder on the server. The
+// first attempt's git clone was still writing there, the two fought over it,
+// and the loser reported "a previous copy was still on the server" on every
+// attempt from then on. An id is not free until its worker has finished.
+func TestConnectDoesNotReuseAFolderAWorkerIsStillUsing(t *testing.T) {
+	hub, handler := testHub(t)
+	const url = "https://example.invalid/acme/ran-config.git"
+	// The attempts below really do start background workers; let them finish so
+	// the test does not tear its own data directory down underneath one.
+	defer waitForConnects(t, hub)
+
+	// A clone that is still under way owns "ran-config". Its `connecting` row is
+	// already gone: the user dismissed the wait, which stops the waiting, not
+	// the git process.
+	hub.mu.Lock()
+	hub.cloning["ran-config"] = true
+	hub.mu.Unlock()
+
+	id := connectOnce(t, handler, url, "RAN config")
+	if id == "ran-config" {
+		t.Fatal("the new attempt claimed the folder a running clone is still using")
+	}
+
+	// Once that worker is done the name is free again, so ids stay readable
+	// instead of growing a suffix for every attempt ever made.
+	hub.mu.Lock()
+	delete(hub.cloning, "ran-config")
+	for cid := range hub.connecting {
+		delete(hub.connecting, cid)
+	}
+	for cid := range hub.cloning {
+		delete(hub.cloning, cid)
+	}
+	hub.mu.Unlock()
+	if again := connectOnce(t, handler, url, "RAN config"); again != "ran-config" {
+		t.Errorf("id = %q, want %q back once nothing is using it", again, "ran-config")
+	}
+}
+
+// Dismissing a connection that is still copying must not delete the folder out
+// from under the running clone - that is what turned one slow repository into a
+// failure on every attempt after it. The worker clears up after itself instead.
+func TestDismissingALiveConnectionLeavesItsFolderToTheWorker(t *testing.T) {
+	hub, handler := testHub(t)
+	const id = "slow-repo"
+	dir := filepath.Join(hub.dataDir, "repos", id)
+	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hub.mu.Lock()
+	hub.connecting[id] = &connecting{ID: id, Name: "Slow repo", Status: "connecting"}
+	hub.cloning[id] = true // a clone is under way
+	hub.mu.Unlock()
+
+	if res := call(t, handler, http.MethodDelete, "/api/repos/"+id, "tok-admin", ""); res.Code != http.StatusOK {
+		t.Fatalf("dismiss = %d, want 200", res.Code)
+	}
+	if _, err := os.Stat(dir); err != nil {
+		t.Error("the folder was removed while a clone was still writing to it")
+	}
+	// The worker, finding itself dismissed, is the one that discards the copy.
+	if !hub.dismissed(id) {
+		t.Error("the worker should see that the connection was dismissed")
+	}
+}
+
+// connectOnce starts a connection and returns the id the server chose. The
+// clone itself fails in the background (the host does not exist); this is about
+// which folder the attempt claims, not about the copy succeeding.
+func connectOnce(t *testing.T, h http.Handler, url, name string) string {
+	t.Helper()
+	body, _ := json.Marshal(map[string]string{"url": url, "name": name})
+	res := call(t, h, http.MethodPost, "/api/repos", "tok-admin", string(body))
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("connect = %d: %s", res.Code, res.Body.String())
+	}
+	var out RepoSummary
+	if err := json.Unmarshal(res.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out.ID
+}
+
+// waitForConnects blocks until no connect worker is still running.
+func waitForConnects(t *testing.T, hub *Hub) {
+	t.Helper()
+	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); {
+		hub.mu.Lock()
+		n := len(hub.cloning)
+		hub.mu.Unlock()
+		if n == 0 {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Error("a connect worker never finished")
+}

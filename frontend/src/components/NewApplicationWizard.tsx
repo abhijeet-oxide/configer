@@ -33,7 +33,7 @@ import {
 import { useMemo, useState } from "react";
 import { useDebounced } from "../hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type GitHubRepo, type RepoSummary } from "../api";
+import { api, StillConnectingError, type GitHubRepo, type RepoSummary } from "../api";
 import { useCapabilities } from "../deployment";
 import { newAppReturnTo, useUI, type NewAppSource } from "../store";
 import { relTime } from "./DashboardView";
@@ -59,6 +59,18 @@ import { InlineListSkeleton } from "./Skeletons";
 
 type Source = NewAppSource;
 
+/** What to tell the user after a create attempt: a refusal, or news. */
+type Outcome = { tone: "danger" | "info"; text: string };
+
+/** describeOutcome turns a thrown error into that: still-connecting is news. */
+function describeOutcome(e: Error): Outcome {
+  const d = describeError(e);
+  if (e instanceof StillConnectingError) {
+    return { tone: "info", text: `${sentence(d.title)} ${d.detail ?? ""}`.trim() };
+  }
+  return { tone: "danger", text: sentence(d.title) };
+}
+
 export default function NewApplicationWizard({
   open,
   onClose,
@@ -82,8 +94,11 @@ export default function NewApplicationWizard({
   const [name, setName] = useState("");
   // A failed creation belongs INSIDE the dialog, next to the button that
   // caused it: a toast over a dialog is easy to miss, and leaves the user
-  // looking at a form with no idea whether it worked.
-  const [failure, setFailure] = useState<string | null>(null);
+  // looking at a form with no idea whether it worked. It carries a tone
+  // because not every outcome here is a failure - a repository still being
+  // copied is progress, and colouring it red invites the retry that makes it
+  // worse.
+  const [failure, setFailure] = useState<Outcome | null>(null);
 
   const statusQ = useQuery({ queryKey: ["github-status"], queryFn: api.githubStatus, enabled: open });
   const caps = useCapabilities();
@@ -121,7 +136,7 @@ export default function NewApplicationWizard({
       onCreated(r);
     },
     onError: (e: Error) => {
-      setFailure(sentence(describeError(e).title));
+      setFailure(describeOutcome(e));
       qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
@@ -291,7 +306,7 @@ function LocalFolderStep({
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [picked, setPicked] = useState<PickedFolder | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Outcome | null>(null);
 
   const connect = useMutation({
     // Name is derived server-side from the folder; nothing to enter here.
@@ -302,8 +317,8 @@ function LocalFolderStep({
       qc.invalidateQueries({ queryKey: ["workspace"] });
       onDone(r);
     },
-    onError: (e) => {
-      setFailure(sentence(describeError(e).title));
+    onError: (e: Error) => {
+      setFailure(describeOutcome(e));
       qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
@@ -374,8 +389,8 @@ function LocalFolderStep({
       )}
 
       {failure && (
-        <InlineNotice tone="danger" className="mt-3">
-          {failure}
+        <InlineNotice tone={failure.tone} className="mt-3">
+          {failure.text}
         </InlineNotice>
       )}
       <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
@@ -883,7 +898,7 @@ function FinishStep({
   setName: (n: string) => void;
   creating: boolean;
   /** why the last attempt failed, shown next to the button that caused it */
-  failure: string | null;
+  failure: Outcome | null;
   onBack: () => void;
   onCreate: () => void;
 }) {
@@ -951,7 +966,7 @@ function FinishStep({
         </Form.Item>
       </Form>
       {failure ? (
-        <InlineNotice tone="danger">{failure}</InlineNotice>
+        <InlineNotice tone={failure.tone}>{failure.text}</InlineNotice>
       ) : (
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           <FileSearchOutlined /> After creating, Configer scans this branch and shows the
@@ -967,10 +982,12 @@ function FinishStep({
           size="large"
           icon={<ThunderboltOutlined />}
           loading={creating}
-          disabled={branchesQ.isLoading && !chosen}
+          // Nothing to retry while the server is still copying it: pressing
+          // again would start a second copy of the same repository.
+          disabled={(branchesQ.isLoading && !chosen) || failure?.tone === "info"}
           onClick={onCreate}
         >
-          {failure ? "Try again" : "Create application & scan"}
+          {failure?.tone === "danger" ? "Try again" : "Create application & scan"}
         </Button>
       </div>
     </div>
@@ -993,7 +1010,7 @@ export function ConnectForm({
   const qc = useQueryClient();
   const caps = useCapabilities();
   const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Outcome | null>(null);
   const connect = useMutation({
     mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) =>
       api.connectApplication(v),
@@ -1005,8 +1022,8 @@ export function ConnectForm({
       form.resetFields();
       onDone(r);
     },
-    onError: (e) => {
-      setFailure(sentence(describeError(e).title));
+    onError: (e: Error) => {
+      setFailure(describeOutcome(e));
       qc.invalidateQueries({ queryKey: ["workspace"] });
     },
   });
@@ -1045,13 +1062,19 @@ export function ConnectForm({
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
       </Form.Item>
       {failure && (
-        <InlineNotice tone="danger" className="mb-3">
-          {failure}
+        <InlineNotice tone={failure.tone} className="mb-3">
+          {failure.text}
         </InlineNotice>
       )}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
-        <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-          {failure ? "Try again" : "Create application"}
+        <Button
+          type="primary"
+          htmlType="submit"
+          loading={connect.isPending}
+          disabled={failure?.tone === "info"}
+          icon={<PlusOutlined />}
+        >
+          {failure?.tone === "danger" ? "Try again" : "Create application"}
         </Button>
       </div>
     </Form>

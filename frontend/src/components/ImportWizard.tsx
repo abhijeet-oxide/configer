@@ -36,6 +36,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult, readyRepos } from "../api";
 import { fmtValue } from "../rules";
+import { skippedSummary } from "../skipped";
 import { useUI } from "../store";
 import PasteImportModal from "./PasteImportModal";
 import { useSwitchRepo } from "../useSwitchRepo";
@@ -646,8 +647,11 @@ function ScanStep({
         <Statistic title="New settings found" value={totalNew} valueStyle={{ color: totalNew ? "#1baf7a" : undefined }} />
         <Statistic title="Already managed" value={totalManaged} />
         {(scan.skipped?.length ?? 0) > 0 && (
-          <Tooltip title={scan.skipped!.join(", ")}>
-            <Statistic title="Skipped by ignore rules" value={scan.skipped!.length} />
+          // Not all of these are ignore rules - most are files that declare
+          // themselves generated - and saying so wrongly sends the reader to
+          // look for a rule that does not exist.
+          <Tooltip title={skippedSummary(scan.skipped ?? [])}>
+            <Statistic title="Files passed over" value={scan.skipped!.length} />
           </Tooltip>
         )}
       </Space>

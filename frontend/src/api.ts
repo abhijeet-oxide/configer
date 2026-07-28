@@ -471,7 +471,14 @@ export interface Discovery {
   instances: Instance[];
   parameters: Parameter[];
   sharedFiles?: string[];
-  skipped?: string[];
+  skipped?: SkippedFile[];
+}
+
+/** Why the scan left a file out. A bare path answers the wrong question: what
+ *  someone needs to know is why their file was passed over. */
+export interface SkippedFile {
+  file: string;
+  reason: "generated" | "ignored" | "structural";
 }
 
 // --- platform: identity, roles, audit -------------------------------------
@@ -594,7 +601,7 @@ export interface ScanFile {
 export interface ScanResult {
   root: string;
   files: ScanFile[] | null;
-  skipped: string[] | null;
+  skipped: SkippedFile[] | null;
   total: number;
 }
 

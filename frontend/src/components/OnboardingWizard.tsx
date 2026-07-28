@@ -29,7 +29,8 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
+import { api, bindingsOf, type Binding, type Instance, type Parameter, type SkippedFile } from "../api";
+import { groupSkipped, SKIP_EXPLANATIONS, SKIP_REASONS } from "../skipped";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { InlineNotice, Stepper } from "./ui";
@@ -206,6 +207,37 @@ function LocationsCell({ p }: { p: Parameter }) {
   );
 }
 
+// SkippedFiles names the files the scan passed over and why. It is the answer
+// to the only question an empty proposal raises - "my repository is not empty,
+// what happened to my files?" - which the API had all along and nothing showed.
+function SkippedFiles({ skipped }: { skipped: SkippedFile[] }) {
+  if (skipped.length === 0) return null;
+  return (
+    <div className="rounded-card-lg bg-surface-2 px-4 py-3">
+      <Typography.Text strong style={{ fontSize: 13 }}>
+        {skipped.length} file{skipped.length === 1 ? "" : "s"} passed over
+      </Typography.Text>
+      {groupSkipped(skipped).map((g) => (
+        <div key={g.reason} style={{ marginTop: 10 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {g.files.length} because {SKIP_REASONS[g.reason]}. {SKIP_EXPLANATIONS[g.reason]}
+          </Typography.Text>
+          <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
+            {g.files.slice(0, 8).map((f) => (
+              <li key={f} className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
+                {f}
+              </li>
+            ))}
+            {g.files.length > 8 && (
+              <li style={{ fontSize: 11, color: "var(--text-3)" }}>and {g.files.length - 8} more</li>
+            )}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OnboardingWizard({ projectName }: { projectName: string }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -224,24 +256,29 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
   const discoverQ = useRepoQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
   const d = discoverQ.data;
+  // A list is read as a list wherever it comes from. A scan that found nothing
+  // is an ordinary answer - plenty of repositories hold manifests with no
+  // configuration to manage - and it must not be able to take the page down.
+  const found = useMemo(() => d?.parameters ?? [], [d]);
+  const skipped = useMemo(() => d?.skipped ?? [], [d]);
 
   const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
   // Distinct configuration formats found across every discovered parameter -
   // the "3 formats" part of the discovery summary.
   const discoveredFormats = useMemo(() => {
     const s = new Set<string>();
-    for (const p of d?.parameters ?? []) for (const b of bindingsOf(p)) if (b.format) s.add(b.format);
+    for (const p of found) for (const b of bindingsOf(p)) if (b.format) s.add(b.format);
     return [...s].sort();
-  }, [d]);
+  }, [found]);
   const patchInstance = (name: string, patch: Partial<Instance>) =>
     setInstances(insts.map((i) => (i.name === name ? { ...i, ...patch } : i)));
 
   // Map every parameter to the real files it touches, and the full file set.
   const filesByParam = useMemo(() => {
     const m = new Map<string, string[]>();
-    for (const p of d?.parameters ?? []) m.set(p.id, filesOfParam(p, insts));
+    for (const p of found) m.set(p.id, filesOfParam(p, insts));
     return m;
-  }, [d, insts]);
+  }, [found, insts]);
   const allFiles = useMemo(() => {
     const s = new Set<string>();
     for (const files of filesByParam.values()) for (const f of files) s.add(f);
@@ -262,9 +299,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     return files.some((f) => !uncheckedFiles.has(f));
   };
   const fileIncludedParams = useMemo(
-    () => (d?.parameters ?? []).filter(includedByFiles),
+    () => found.filter(includedByFiles),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [d, uncheckedFiles, filesByParam],
+    [found, uncheckedFiles, filesByParam],
   );
   const chosenParams = useMemo(
     () => fileIncludedParams.filter((p) => !deselected.has(p.id)),
@@ -335,6 +372,41 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     );
   }
 
+  // The scan ran and turned up nothing to manage. That is an answer, not a
+  // failure: a repository can hold plenty of YAML - Flux or Argo manifests,
+  // rendered output, CRDs - without holding SETTINGS that belong in a grid.
+  // Walking someone through four steps over zeros, with Next disabled and no
+  // reason given, tells them none of that.
+  if (found.length === 0) {
+    return (
+      <div style={{ paddingTop: 40 }}>
+        <StatePanel
+          art={<ScanArt />}
+          title="Nothing to manage in this repository yet"
+          subtitle={
+            skipped.length > 0
+              ? "Configer read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below."
+              : "Configer read the files and found no settings it can put in a grid. It looks for configuration values in YAML, JSON or XML - usually one folder per environment or cluster."
+          }
+          actions={
+            <>
+              <Button type="primary" onClick={() => discoverQ.refetch()}>
+                Scan again
+              </Button>
+              <Button onClick={() => setSection("files")}>Browse the files</Button>
+              <Button onClick={() => setSection("workspace")}>Back to Applications</Button>
+            </>
+          }
+        />
+        {/* The reason IS the answer here: without it the page says "nothing
+            found" about a repository the user knows has files in it. */}
+        <div style={{ maxWidth: 720, margin: "8px auto 0" }}>
+          <SkippedFiles skipped={skipped} />
+        </div>
+      </div>
+    );
+  }
+
   const steps = [
     { label: "Layout", icon: <FileSearchOutlined /> },
     { label: "Instances", icon: <ApartmentOutlined /> },
@@ -348,6 +420,18 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       : step === 2
         ? chosenParams.length > 0
         : true;
+  // A disabled button with no reason is a dead end. Say which of its conditions
+  // is not met, in the words of the step the user is looking at.
+  const blockedBecause =
+    canNext
+      ? ""
+      : step === 0
+        ? appName.trim() === ""
+          ? "Give the application a name to continue."
+          : "No instance folders were found, so there is nothing to lay out as columns yet. Configer expects one folder per environment or cluster."
+        : step === 2
+          ? "Select at least one setting to manage."
+          : "";
 
   // --- tree interactions ---
   const treeNeedle = treeQ.trim().toLowerCase();
@@ -373,7 +457,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       {/* The "aha": what the scan turned this repository into, stated once and
           up front - messy files become structured, countable configuration. */}
       <DiscoverySummary
-        parameters={d.parameters.length}
+        parameters={found.length}
         instances={insts.length}
         formats={discoveredFormats}
       />
@@ -712,13 +796,26 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
             {step === 0 ? "Cancel" : "Back"}
           </Button>
-          {step < 3 && (
-            <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Next
-            </Button>
-          )}
+          {step < 3 &&
+            (blockedBecause ? (
+              <Tooltip title={blockedBecause}>
+                <span style={{ display: "inline-flex" }}>
+                  <Button type="primary" disabled>
+                    Next
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button type="primary" onClick={() => setStep(step + 1)}>
+                Next
+              </Button>
+            ))}
         </div>
       )}
+
+      <div style={{ marginTop: 16 }}>
+        <SkippedFiles skipped={skipped} />
+      </div>
 
       <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>
         {chosenParams.length} settings selected across {insts.length} instances

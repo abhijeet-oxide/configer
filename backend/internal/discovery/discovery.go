@@ -22,12 +22,26 @@ import (
 )
 
 // Result is the discovery proposal shown to the user before initializing.
+//
+// Its lists are always lists. A nil slice marshals to JSON `null`, and a client
+// that reasonably expects an array then reads a length off nothing - which is
+// how a repository the scan found nothing in took the whole page down instead
+// of showing an empty proposal. "Found nothing" is a normal answer here: plenty
+// of repositories hold manifests with no configuration Configer can manage.
 type Result struct {
-	Detection   layout.Detection  `json:"detection"`
-	Instances   []model.Instance  `json:"instances"`
-	Parameters  []model.Parameter `json:"parameters"`
-	SharedFiles []string          `json:"sharedFiles,omitempty"`
-	Skipped     []string          `json:"skipped,omitempty"`
+	Detection   layout.Detection     `json:"detection"`
+	Instances   []model.Instance     `json:"instances"`
+	Parameters  []model.Parameter    `json:"parameters"`
+	SharedFiles []string             `json:"sharedFiles,omitempty"`
+	Skipped     []ingest.SkippedFile `json:"skipped,omitempty"`
+}
+
+// nonNil turns a nil slice into an empty one, so it marshals as [] not null.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // Discover scans root and builds the proposal.
@@ -91,7 +105,20 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	sharedSeen := map[string]bool{}
 
 	for _, fr := range scan.Files {
-		if len(fr.Candidates) == 0 || skipFile(fr.File) {
+		// A file dropped here disappeared without a word: it was read, it had
+		// settings in it, and nothing said why none of them arrived. For a Flux
+		// repository that is the file Flux's own docs tell you to customize
+		// (flux-system/kustomization.yaml), so the silence pointed the user at
+		// the one file they must NOT edit.
+		if skipFile(fr.File) {
+			if len(fr.Candidates) > 0 {
+				res.Skipped = append(res.Skipped, ingest.SkippedFile{
+					File: fr.File, Reason: ingest.SkipStructural,
+				})
+			}
+			continue
+		}
+		if len(fr.Candidates) == 0 {
 			continue
 		}
 		// Reference-aware anchors: a candidate reached through a YAML alias
@@ -280,6 +307,11 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	linkResourceConstraints(params)
 
 	res.Parameters = params
+	// Every list leaves as a list, whatever the scan found.
+	res.Parameters = nonNil(res.Parameters)
+	res.Instances = nonNil(res.Instances)
+	res.SharedFiles = nonNil(res.SharedFiles)
+	res.Skipped = nonNil(res.Skipped)
 	return res, nil
 }
 
@@ -453,8 +485,8 @@ func keyListSelectors(cands []candidate) []candidate {
 	}
 
 	// Decide the identity key per prefix, and the per-index selector to use.
-	keyForPrefix := map[string]string{}       // prefix -> identity field
-	selectorForEntry := map[string]string{}   // prefix+"\x00"+idx -> "field=value"
+	keyForPrefix := map[string]string{}     // prefix -> identity field
+	selectorForEntry := map[string]string{} // prefix+"\x00"+idx -> "field=value"
 	for _, prefix := range prefixOrder {
 		entries := byPrefix[prefix]
 		chosen := ""

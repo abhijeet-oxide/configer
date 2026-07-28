@@ -1,6 +1,5 @@
 import { PlusOutlined, AppstoreOutlined, CheckCircleFilled, EditOutlined, ArrowRightOutlined } from "../icons";
 import { Button } from "antd";
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
 import { useUI } from "../store";
@@ -8,8 +7,6 @@ import { useSwitchRepo } from "../useSwitchRepo";
 import { attentionOf } from "../attention";
 import { SectionCard, AttentionCard, EmptyState, Stagger, StaggerItem } from "./ui";
 import { HomeAppCard } from "./AppCard";
-import NewApplicationWizard from "./NewApplicationWizard";
-import { STEP_HANDOFF } from "./ImportWizard";
 import { WorkspaceSkeleton } from "./Skeletons";
 import { sourceNoun, useCapabilities } from "../deployment";
 
@@ -27,9 +24,8 @@ function greeting(name?: string): string {
 
 export default function HomeView() {
   const caps = useCapabilities();
-  const { repoId, setSection } = useUI();
+  const { repoId, setSection, openNewApp } = useUI();
   const switchRepo = useSwitchRepo();
-  const [wizardOpen, setWizardOpen] = useState(false);
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 20_000 });
   const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
 
@@ -82,7 +78,7 @@ export default function HomeView() {
               title="Connect your first application"
               hint={`Connect a ${sourceNoun(caps)} to begin managing its configuration.`}
               actionLabel="New application"
-              onAction={() => setWizardOpen(true)}
+              onAction={() => openNewApp()}
             />
           </SectionCard>
         ) : (
@@ -156,7 +152,7 @@ export default function HomeView() {
               ))}
               <div
                 className="card-clickable flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-card border border-dashed border-line-strong bg-surface/60 text-center text-ink-2"
-                onClick={() => setWizardOpen(true)}
+                onClick={() => openNewApp()}
                 role="button"
               >
                 <PlusOutlined style={{ fontSize: 22, color: "var(--brand)" }} />
@@ -168,16 +164,6 @@ export default function HomeView() {
         )}
       </div>
 
-      <NewApplicationWizard
-        open={wizardOpen}
-        onClose={() => setWizardOpen(false)}
-        onCreated={(r) => {
-          setWizardOpen(false);
-          sessionStorage.setItem(STEP_HANDOFF, "1");
-          switchRepo(r.id);
-          setSection("import");
-        }}
-      />
     </div>
   );
 }

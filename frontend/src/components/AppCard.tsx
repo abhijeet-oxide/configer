@@ -209,8 +209,11 @@ export default function AppCard({
           Reading the repository. This card updates itself when it is ready.
         </InlineNotice>
       ) : r.status === "error" ? (
+        // The message already says what happened and what to do; the Remove
+        // button is right below it, so "remove it and try again" would only
+        // repeat one of them and, when the fix is elsewhere, contradict it.
         <InlineNotice tone="danger">
-          {sentence(r.error) || "This repository could not be connected."} Remove it and try again.
+          {sentence(r.error) || "This repository could not be connected."}
         </InlineNotice>
       ) : r.error ? (
         <InlineNotice tone="danger">{r.error}</InlineNotice>

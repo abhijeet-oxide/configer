@@ -30,11 +30,13 @@ import { SessionExpiredArt, SignedOutArt, WorkspaceArt } from "./illustrations";
 // page, so every page that stands between a person and their work belongs to
 // one family.
 
-/** The one address that starts a login, carrying the page the user is on so the
- *  server can return them to it. The endpoint is provider-agnostic (GitHub
- *  today), so nothing here changes when a deployment adds another. */
-export function loginHref(): string {
-  const here = window.location.pathname + window.location.search;
+/** The one address that starts a login, carrying the page to come back to -
+ *  by default the one the user is on. A caller that is mid-flow passes where it
+ *  wants to resume instead, so signing in returns to the step rather than to
+ *  the page. The endpoint is provider-agnostic (GitHub today), so nothing here
+ *  changes when a deployment adds another. */
+export function loginHref(returnTo?: string): string {
+  const here = returnTo ?? window.location.pathname + window.location.search;
   return `/api/auth/login?return_to=${encodeURIComponent(here)}`;
 }
 

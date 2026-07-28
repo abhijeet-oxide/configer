@@ -100,7 +100,29 @@ const initialParam = parsed0.param;
 const initialInstance = parsed0.inst;
 // The New Application dialog is deep-linkable: ?new=1 opens it on load (and any
 // surface that opens it writes that param), so the modal has a shareable URL.
-const initialNewApp = new URLSearchParams(window.location.search).get("new") === "1";
+// The param also carries WHICH source was chosen (?new=git), because signing in
+// with GitHub is a full page navigation away and back - without it the user
+// returns to a closed dialog and has to start the flow over.
+export type NewAppSource = "git" | "local";
+
+export function parseNewApp(search: string): { open: boolean; source: NewAppSource | null } {
+  const v = new URLSearchParams(search).get("new");
+  if (v === "git" || v === "local") return { open: true, source: v };
+  return { open: v === "1", source: null };
+}
+
+/** The address that reopens the dialog on the step it is on: the current page
+ *  plus the dialog's own parameter. Signing in with GitHub leaves the app
+ *  entirely, and the URL is the only thing that survives that round trip - so
+ *  the return address is built here rather than read back off the location,
+ *  which may not have been rewritten yet. */
+export function newAppReturnTo(source: NewAppSource | null): string {
+  const q = new URLSearchParams(window.location.search);
+  q.set("new", source ?? "1");
+  return `${window.location.pathname}?${q.toString()}`;
+}
+
+const initialNewApp = parseNewApp(window.location.search);
 
 // View preferences persisted across sessions (the "customizable view").
 export interface ViewPrefs {
@@ -230,6 +252,10 @@ interface UIState {
   /** the New Application dialog is open; deep-linked via ?new=1 so it has a
    *  shareable URL and can be triggered from anywhere (the command palette) */
   newAppOpen: boolean;
+  /** which source the dialog is on, once chosen (?new=git). It lives here, not
+   *  in the dialog, so a GitHub sign-in - a navigation away and back - returns
+   *  to the step the user left rather than to the first question. */
+  newAppSource: NewAppSource | null;
   setMode: (m: Mode) => void;
   setThemePref: (p: ThemePref) => void;
   setFontScale: (f: FontScale) => void;
@@ -265,7 +291,11 @@ interface UIState {
   ) => void;
   setReviewCr: (id: number | null) => void;
   setWelcomeOpen: (open: boolean) => void;
-  openNewApp: () => void;
+  /** Open the dialog. `source` preselects a source step; `stay` keeps the
+   *  current section (the import page opens it over itself) instead of rooting
+   *  it at the Applications collection. */
+  openNewApp: (source?: NewAppSource | null, stay?: boolean) => void;
+  setNewAppSource: (source: NewAppSource | null) => void;
   closeNewApp: () => void;
 }
 
@@ -313,7 +343,8 @@ export const useUI = create<UIState>((set) => ({
   fileFocus: null,
   reviewCrId: null,
   welcomeOpen: false,
-  newAppOpen: initialNewApp,
+  newAppOpen: initialNewApp.open,
+  newAppSource: initialNewApp.source,
   // setMode is the quick toggle (top bar): an explicit choice, so it also
   // pins the preference - toggling away from "system" is intentional.
   setMode: (mode) =>
@@ -400,8 +431,14 @@ export const useUI = create<UIState>((set) => ({
   setWelcomeOpen: (welcomeOpen) => set({ welcomeOpen }),
   // Opening roots the backdrop at the Applications collection, so the dialog's
   // URL reads /applications?new=1 - a natural, shareable context.
-  openNewApp: () => set({ newAppOpen: true, section: "workspace" }),
-  closeNewApp: () => set({ newAppOpen: false }),
+  openNewApp: (source, stay) =>
+    set((s) => ({
+      newAppOpen: true,
+      newAppSource: source ?? null,
+      section: stay ? s.section : "workspace",
+    })),
+  setNewAppSource: (newAppSource) => set({ newAppSource }),
+  closeNewApp: () => set({ newAppOpen: false, newAppSource: null }),
 }));
 
 // ------------------------------------------------------------------ URL sync
@@ -415,7 +452,7 @@ function pathFor(s: UIState): string {
   if (s.selectedInstance) q.set("inst", s.selectedInstance);
   // The New Application dialog rides in the URL so it is shareable and reopens
   // on reload; it is a refinement of the current view, not a history stop.
-  if (s.newAppOpen) q.set("new", "1");
+  if (s.newAppOpen) q.set("new", s.newAppSource ?? "1");
   const qs = q.toString() ? `?${q.toString()}` : "";
 
   const section = s.section === "drafts" ? "changes" : s.section;
@@ -475,6 +512,9 @@ window.addEventListener("popstate", () => {
     setApiRepo(repoId);
     if (repoId) localStorage.setItem("configer.repoId", repoId);
   }
-  const newAppOpen = new URLSearchParams(window.location.search).get("new") === "1";
-  useUI.setState({ repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst, newAppOpen });
+  const newApp = parseNewApp(window.location.search);
+  useUI.setState({
+    repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst,
+    newAppOpen: newApp.open, newAppSource: newApp.source,
+  });
 });

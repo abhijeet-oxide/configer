@@ -3,7 +3,7 @@
 // setNotifier with the context instance on mount; until then we fall back to the
 // console so nothing is ever swallowed silently.
 import type { NotificationInstance } from "antd/es/notification/interface";
-import { ApiError, TimeoutError } from "./api";
+import { ApiError, StillConnectingError, TimeoutError } from "./api";
 import { OfflineError } from "./offline";
 import { recordNote } from "./notifications";
 
@@ -35,6 +35,12 @@ export function describeError(err: unknown): { title: string; detail: string; re
     if (err.isServer) return { title: "Something went wrong on the server", detail: err.message, requestId: err.requestId };
     return { title: err.message, detail: "", requestId: err.requestId };
   }
+  if (err instanceof StillConnectingError)
+    return {
+      title: "This repository is big, so copying it is taking a while",
+      detail:
+        "It is still being copied and nothing has gone wrong. You can close this - the application appears in your list on its own when it is ready.",
+    };
   if (err instanceof TimeoutError) return { title: "The request timed out", detail: "The service did not respond in time. Please try again." };
   if (err instanceof OfflineError)
     return { title: "You appear to be offline", detail: "Configer will keep working from the last snapshot and sync when the connection returns." };

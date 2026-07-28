@@ -143,14 +143,20 @@ func (r *Registry) Rename(id, name string) (Entry, bool) {
 	return Entry{}, false
 }
 
-// UniqueID derives an unused registry id from a base slug.
-func (r *Registry) UniqueID(base string) string {
+// UniqueID derives an unused registry id from a base slug. `taken` names ids
+// that are spoken for outside the registry - a connection still in progress -
+// because an id IS a folder on the server: handing the same one to a second
+// attempt puts two clones in one directory, and they destroy each other's work.
+func (r *Registry) UniqueID(base string, taken map[string]bool) string {
 	if base == "" {
 		base = "repo"
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	used := map[string]bool{}
+	for id := range taken {
+		used[id] = true
+	}
 	for _, e := range r.entries {
 		used[e.ID] = true
 	}

@@ -68,6 +68,14 @@ type Hub struct {
 	// (see access.go): authorization runs on every repo-scoped request, so the
 	// mirrored role cannot be a GitHub call each time.
 	gitRoles *gitRoleCache
+
+	// cloning holds the ids whose connect worker is still running. An id names a
+	// FOLDER on the server, so it must not be handed out again while the first
+	// attempt is still writing there - two clones in one directory delete each
+	// other's files and fail with something about Configer's own storage that
+	// the user can neither see nor fix. An entry outlives its `connecting` row:
+	// dismissing a slow connection stops the waiting, not the git process.
+	cloning map[string]bool
 }
 
 // connecting is the transient state of a repository being connected in the
@@ -108,6 +116,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		handlers:    map[string]http.Handler{},
 		errs:        map[string]string{},
 		connecting:  map[string]*connecting{},
+		cloning:     map[string]bool{},
 		gitRoles:    newGitRoleCache(),
 	}
 	// The search index lives in the platform database (SQLite FTS5) with a
@@ -136,7 +145,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 			abs, _ := filepath.Abs(seed)
 			name := workspace.NameFromURL(abs)
 			e := workspace.Entry{
-				ID: reg.UniqueID(workspace.Slug(name)), Name: name,
+				ID: reg.UniqueID(workspace.Slug(name), nil), Name: name,
 				Origin: abs, Path: abs, Local: true, AddedAt: time.Now().UTC(),
 			}
 			if aerr := reg.Add(e); aerr != nil {
@@ -738,7 +747,20 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = workspace.NameFromURL(req.URL)
 	}
-	id := h.registry.UniqueID(workspace.Slug(name))
+	// Reserve an id that no connected application AND no in-flight attempt is
+	// using. Both sets matter: the registry describes what exists, `connecting`
+	// and `cloning` describe what is being made right now, and either one owns
+	// a folder this attempt must not touch.
+	h.mu.Lock()
+	taken := make(map[string]bool, len(h.connecting)+len(h.cloning))
+	for cid := range h.connecting {
+		taken[cid] = true
+	}
+	for cid := range h.cloning {
+		taken[cid] = true
+	}
+	id := h.registry.UniqueID(workspace.Slug(name), taken)
+	h.mu.Unlock()
 
 	// Determine the connection shape and resolve credentials synchronously
 	// (they need the request); the slow clone/open happens in the background.
@@ -754,6 +776,7 @@ func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 		Remote: req.Mode == "remote", AddedAt: time.Now().UTC(), Status: "connecting"}
 	h.mu.Lock()
 	h.connecting[id] = c
+	h.cloning[id] = true
 	h.mu.Unlock()
 	h.auditHub(r, id, "Connecting repository "+name, "POST /repos")
 
@@ -803,7 +826,19 @@ type connectSpec struct {
 
 // connectWorker performs the slow clone/open off the request path, then
 // registers the repository or records the failure on the connecting entry.
+//
+// It owns its folder from the moment the id is reserved until it returns, and
+// it releases the reservation on the way out however it ends - so a retry can
+// reuse the name only once nothing is still writing there.
 func (h *Hub) connectWorker(sp connectSpec) {
+	defer func() {
+		h.mu.Lock()
+		delete(h.cloning, sp.id)
+		h.mu.Unlock()
+	}()
+	// What the repository is called in messages: the address without any
+	// credential, which is what the user typed or picked.
+	what := gitengine.Redact(sp.url)
 	var e workspace.Entry
 	switch {
 	case sp.isDir:
@@ -818,8 +853,11 @@ func (h *Hub) connectWorker(sp connectSpec) {
 		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 		dir := filepath.Join(h.dataDir, "repos", sp.id)
-		if perr := h.prepareCloneDir(dir); perr != nil {
+		if perr := h.prepareCloneDir(what, dir); perr != nil {
 			h.failConnecting(sp.id, perr.Error())
+			return
+		}
+		if h.dismissed(sp.id) {
 			return
 		}
 		if _, cerr := gitengine.Clone(sp.url, dir, sp.branch, sp.token, gitName, gitEmail); cerr != nil {
@@ -835,7 +873,9 @@ func (h *Hub) connectWorker(sp connectSpec) {
 				// Never leave a half-clone behind: it would make the next
 				// attempt fail on a directory the user never created.
 				_ = os.RemoveAll(dir)
-				h.failConnecting(sp.id, friendlyConnectError(cerr))
+				slog.Warn("clone failed", slog.String("id", sp.id),
+					slog.String("origin", what), slog.Any("error", cerr))
+				h.failConnecting(sp.id, friendlyConnectError(what, cerr))
 				return
 			}
 		}
@@ -843,15 +883,29 @@ func (h *Hub) connectWorker(sp connectSpec) {
 			Branch: sp.branch, AddedAt: sp.addedAt}
 	}
 
+	// The user may have given up on a slow clone while it ran. Their decision
+	// stands: clean up what was copied and add nothing, rather than an
+	// application appearing minutes later that nobody asked for any more.
+	if h.dismissed(sp.id) {
+		if !e.Local {
+			_ = os.RemoveAll(e.Path)
+		}
+		slog.Info("connection was dismissed while it ran; discarding the copy",
+			slog.String("id", sp.id), slog.String("origin", what))
+		return
+	}
+
 	if err := h.open(e); err != nil {
 		if !e.Local {
 			_ = os.RemoveAll(e.Path)
 		}
-		h.failConnecting(sp.id, friendlyConnectError(err))
+		slog.Warn("could not open the connected repository", slog.String("id", sp.id),
+			slog.String("origin", what), slog.Any("error", err))
+		h.failConnecting(sp.id, friendlyConnectError(what, err))
 		return
 	}
 	if err := h.registry.Add(e); err != nil {
-		h.failConnecting(sp.id, friendlyConnectError(err))
+		h.failConnecting(sp.id, friendlyConnectError(what, err))
 		return
 	}
 	h.mu.Lock()
@@ -875,55 +929,97 @@ func (h *Hub) connectWorker(sp connectSpec) {
 
 // prepareCloneDir makes sure the working copy directory is free before a clone.
 //
-// The directory is named after the application id, and a previous attempt that
-// failed (or a server that was stopped mid-clone) can leave one behind. Git
-// then refuses with "already exists and is not an empty directory" - a failure
-// about Configer's own scratch space that the user can neither see nor clear.
-// Any directory here that no connected application claims is exactly that
-// leftover, so it is removed; one that IS claimed is left alone and reported.
-func (h *Hub) prepareCloneDir(dir string) error {
+// The directory is named after the application id, and a server stopped
+// mid-clone can leave one behind. Git would then refuse with "already exists
+// and is not an empty directory" - a failure about Configer's own scratch space
+// that the user can neither see nor clear. Any directory here that no connected
+// application claims is exactly that leftover, so it is removed; one that IS
+// claimed is left alone and reported.
+//
+// Ids are reserved against connections still in flight (see connect), so this
+// can no longer collide with an attempt that is still running - which is what
+// made one slow repository fail on every retry after it. Everything it can
+// still refuse for is a fault on this side, and says so.
+func (h *Hub) prepareCloneDir(what, dir string) error {
+	internal := errors.New("Configer could not set up a working copy of " + what +
+		" on the server. This is a fault on the Configer side, not with the repository - wait a moment and try again, and tell an administrator if it keeps happening")
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return errors.New("the folder for this application on the server cannot be read")
+		slog.Warn("cannot read the working copy location", slog.String("dir", dir), slog.Any("error", err))
+		return internal
 	}
 	for _, e := range h.registry.List() {
 		if filepath.Clean(e.Path) == filepath.Clean(dir) {
-			return errors.New("another application on this deployment already uses that folder; rename this one and try again")
+			slog.Warn("working copy location is claimed by a connected application",
+				slog.String("dir", dir), slog.String("id", e.ID))
+			return internal
 		}
 	}
 	slog.Info("removing a leftover working copy before cloning", slog.String("dir", dir))
 	if err := os.RemoveAll(dir); err != nil {
-		return errors.New("a leftover copy of this repository on the server could not be removed")
+		slog.Warn("could not clear a leftover working copy", slog.String("dir", dir), slog.Any("error", err))
+		return internal
 	}
 	return nil
 }
 
 // friendlyConnectError turns a git/clone failure into something the person who
-// pressed the button can act on. The original text still goes to the log; what
-// reaches the UI says what happened and what to do, never git jargon.
-func friendlyConnectError(err error) string {
+// pressed the button can act on: what did not work, and what they can do about
+// it. The original text goes to the log.
+//
+// Two rules. Never git jargon - the user asked for a repository, not for a
+// clone. And never Configer's own storage: a folder on the server is not
+// something they can see, cause or clear, so a message about one is only ever
+// an admission that something broke on this side, never an instruction.
+//
+// `what` names the repository (its address, credential stripped), because
+// "the repository could not be found" is a shrug and "acme/ran-config could not
+// be found" is an answer.
+func friendlyConnectError(what string, err error) string {
+	if what == "" {
+		what = "that repository"
+	}
 	msg := err.Error()
 	low := strings.ToLower(msg)
 	switch {
 	case strings.Contains(low, "already exists and is not an empty directory"),
 		strings.Contains(low, "destination path"):
-		return "a previous copy of this repository was still on the server; it has been cleared, please try again"
+		// Configer prepares its own working folder before cloning, so reaching
+		// here means two attempts collided on this side. Nothing about the
+		// repository is wrong and there is nothing for the user to undo.
+		return "Configer could not set up a working copy of " + what +
+			" on the server. This is a fault on the Configer side, not with the repository - wait a moment and try again, and tell an administrator if it keeps happening"
 	case strings.Contains(low, "authentication failed"), strings.Contains(low, "could not read username"),
+		// Git asks for a password it cannot ask for (no terminal on a server):
+		// the credential Configer had was not accepted, or there was none.
+		strings.Contains(low, "could not read password"), strings.Contains(low, "terminal prompts disabled"),
+		strings.Contains(low, "invalid username or password"), strings.Contains(low, "401"),
 		strings.Contains(low, "403"), strings.Contains(low, "permission denied"):
-		return "the repository could not be opened with the access available; sign in again or use a repository you have access to"
+		return "your GitHub sign-in was not accepted for " + what +
+			". If it is a private repository, check that your account can open it on GitHub, then sign out and in again so Configer picks up the change"
 	case strings.Contains(low, "remote branch"), strings.Contains(low, "not found in upstream origin"):
-		return "that branch does not exist in the repository; pick another branch"
+		return "that branch does not exist in " + what + "; pick another branch"
 	case strings.Contains(low, "repository not found"), strings.Contains(low, "not found"):
-		return "that repository could not be found; check that it still exists and that you have access to it"
+		return what + " could not be found. Check the address, and that your GitHub sign-in can open it" +
+			" - a private repository you have no access to looks exactly like one that does not exist"
 	case strings.Contains(low, "could not resolve host"), strings.Contains(low, "connection refused"),
 		strings.Contains(low, "timed out"), strings.Contains(low, "network"):
-		return "the repository host could not be reached; check the connection and try again"
+		return "the server could not reach " + what + "; check the connection and try again"
 	case strings.Contains(low, "no space left"):
-		return "there is not enough space on the server to copy this repository"
+		return "there is not enough room on the server to copy " + what + "; an administrator needs to free some space"
 	}
-	return "the repository could not be connected: " + msg
+	return what + " could not be connected. The reason is in the server log; tell an administrator if it keeps happening"
+}
+
+// dismissed reports whether the user gave up on this connection while it was
+// still running (DELETE /repos/{id} removes the entry the portfolio polls).
+func (h *Hub) dismissed(id string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	_, still := h.connecting[id]
+	return !still
 }
 
 // failConnecting records a background connection failure so the portfolio shows
@@ -1018,8 +1114,12 @@ func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	if c, isConnecting := h.connecting[id]; isConnecting {
 		delete(h.connecting, id)
+		// A worker may still be copying into that folder. Deleting it underneath
+		// git is how one dismissal turned into a failure on every attempt after
+		// it; the worker sees the entry is gone and clears up after itself.
+		running := h.cloning[id]
 		h.mu.Unlock()
-		if !c.Local {
+		if !c.Local && !running {
 			_ = os.RemoveAll(filepath.Join(h.dataDir, "repos", id))
 		}
 		h.auditHub(r, id, "Dismissed connecting repository "+c.Name, "DELETE /repos/"+id)

@@ -803,6 +803,23 @@ function RepoStep({
           Showing your most recently updated repositories. Search to reach the rest.
         </Typography.Text>
       )}
+      {/* A session granted before Configer asked for organization access stays
+          valid - GitHub does not upgrade a token because the app now wants more
+          - so organizations simply cannot be listed for it. Without this the
+          feature would be permanently off for everyone who was already signed
+          in, and silently so. */}
+      {orgsQ.data?.needsReauth && !searching && (
+        <InlineNotice
+          tone="info"
+          action={
+            <Button size="small" href={loginHref()}>
+              Reconnect
+            </Button>
+          }
+        >
+          Reconnect your GitHub account to see which organizations you belong to.
+        </InlineNotice>
+      )}
       {/* An organization the user belongs to that contributed nothing has not
           approved this app. Without this it is simply absent, and the user is
           left thinking their repositories are missing. */}

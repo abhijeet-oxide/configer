@@ -1134,7 +1134,8 @@ export const api = {
     ),
   /** Organizations the user belongs to, so the picker can name one it can see
    *  no repositories in instead of leaving it invisible. */
-  githubOrgs: () => get<{ orgs: { login: string }[]; grantUrl?: string }>("/github/orgs"),
+  githubOrgs: () =>
+    get<{ orgs: { login: string }[]; grantUrl?: string; needsReauth?: boolean }>("/github/orgs"),
   githubBranches: (fullName: string) =>
     get<{ default: string; branches: string[] }>(`/github/branches?repo=${encodeURIComponent(fullName)}`),
   // connectRepo starts an async connection: the server clones/opens in the

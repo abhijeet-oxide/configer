@@ -291,6 +291,13 @@ func UserFrom(ctx context.Context) (store.User, bool) {
 	return u, ok
 }
 
+// WithUser puts an authenticated user on a context. Middleware does this from
+// the session cookie; it is exported so a test can exercise a signed-in path
+// without standing up a session store.
+func WithUser(ctx context.Context, u store.User) context.Context {
+	return context.WithValue(ctx, userKey, u)
+}
+
 // Middleware resolves the session cookie into a request-context user. It
 // never rejects: endpoints decide their own required role.
 func (s *Service) Middleware(next http.Handler) http.Handler {

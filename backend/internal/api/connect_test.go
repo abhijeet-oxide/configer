@@ -330,3 +330,41 @@ func TestPlacementRefusalNamesTheApplicationInTheWay(t *testing.T) {
 		t.Error("the connected application's working copy was removed")
 	}
 }
+
+// A connection that stalls used to hang for as long as the server ran: the card
+// said "Connecting" forever, and the id it held could never be reused. Running
+// out of time is its own outcome and says so, rather than being reported as
+// whatever git had printed before it was killed.
+func TestAFetchThatRunsOutOfTimeSaysSo(t *testing.T) {
+	const repo = "https://github.com/acme/flux-cd"
+	got := friendlyConnectError(repo, stageCopy, errString(
+		"clone https://x/y: git clone https://x/y /data/repos/.incoming-y-1: context deadline exceeded"))
+	if !strings.Contains(got, "took too long") {
+		t.Errorf("a deadline should read as one: %q", got)
+	}
+	if !strings.Contains(got, repo) {
+		t.Errorf("the message should name the repository: %q", got)
+	}
+	for _, jargon := range []string{"context", "deadline exceeded", ".incoming-"} {
+		if strings.Contains(got, jargon) {
+			t.Errorf("%q leaked to the user: %q", jargon, got)
+		}
+	}
+}
+
+// The cap is generous but present, and a deployment with genuinely huge
+// repositories can raise it without a rebuild.
+func TestCloneTimeoutIsBoundedAndTunable(t *testing.T) {
+	t.Setenv("CONFIGER_CLONE_MINUTES", "")
+	if d := cloneTimeout(); d <= 0 || d > time.Hour {
+		t.Fatalf("default = %v, want a bounded, generous cap", d)
+	}
+	t.Setenv("CONFIGER_CLONE_MINUTES", "90")
+	if d := cloneTimeout(); d != 90*time.Minute {
+		t.Fatalf("tuned = %v, want 90m", d)
+	}
+	t.Setenv("CONFIGER_CLONE_MINUTES", "nonsense")
+	if d := cloneTimeout(); d != 30*time.Minute {
+		t.Fatalf("with a bad value = %v, want the default", d)
+	}
+}

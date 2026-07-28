@@ -6,6 +6,7 @@
 package gitengine
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -38,6 +39,14 @@ type Repo struct {
 // files to a magic uid, and a global `safe.directory=*` trusts every repository
 // on the machine rather than the one we were pointed at.
 func (r *Repo) git(dir string, args ...string) (string, error) {
+	return r.gitCtx(context.Background(), dir, args...)
+}
+
+// gitCtx is git with a deadline. Anything that talks to a remote needs one: a
+// connection that is accepted and then goes quiet leaves git waiting with no
+// limit of its own, and the caller waiting on git. Killing the process is the
+// only way to end that, so the context has to reach the command.
+func (r *Repo) gitCtx(ctx context.Context, dir string, args ...string) (string, error) {
 	full := append([]string{
 		"-c", "user.name=" + r.Name,
 		"-c", "user.email=" + r.Email,
@@ -48,10 +57,17 @@ func (r *Repo) git(dir string, args ...string) (string, error) {
 	if r.Dir != "" && r.Dir != dir {
 		full = append([]string{"-c", "safe.directory=" + r.Dir}, full...)
 	}
-	cmd := exec.Command("git", full...)
+	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
 	out, err := cmd.CombinedOutput()
 	if err != nil {
+		if ctx.Err() != nil {
+			// The process was killed because time ran out, so whatever git
+			// managed to print is not the reason - the reason is that it never
+			// finished. Say that, or the caller reports a truncated transfer as
+			// if the repository were at fault.
+			return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), ctx.Err())
+		}
 		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -83,16 +99,30 @@ func EnsureRepo(dir, name, email string) (*Repo, error) {
 // keep working against private repositories; use Redact before showing the
 // origin URL anywhere.
 func Clone(url, dir, branch, token, name, email string) (*Repo, error) {
+	return CloneContext(context.Background(), url, dir, branch, token, name, email)
+}
+
+// CloneContext is Clone with a deadline, plus git's own stall detector: a
+// transfer that drops under a trickle for a minute is abandoned rather than
+// held open forever. The two cover different failures - a connection that goes
+// quiet mid-transfer, and one that never really starts - and without either, a
+// repository that cannot be fetched shows "Connecting" for as long as the
+// server stays up.
+func CloneContext(ctx context.Context, url, dir, branch, token, name, email string) (*Repo, error) {
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, err
 	}
 	r := &Repo{Dir: dir, Name: name, Email: email}
-	args := []string{"clone"}
+	args := []string{
+		"-c", "http.lowSpeedLimit=1000",
+		"-c", "http.lowSpeedTime=60",
+		"clone",
+	}
 	if branch != "" {
 		args = append(args, "--branch", branch)
 	}
 	args = append(args, AuthURL(url, token), dir)
-	if _, err := r.git(filepath.Dir(dir), args...); err != nil {
+	if _, err := r.gitCtx(ctx, filepath.Dir(dir), args...); err != nil {
 		msg := err.Error()
 		if token != "" {
 			// never leak the credential through the git error text
@@ -115,7 +145,7 @@ func AuthURL(url, token string) string {
 var (
 	credRe    = regexp.MustCompile(`^(https?://)[^/@\s]+@`)
 	anyCredRe = regexp.MustCompile(`(https?://)[^/@\s]+@`)
-	tokenRe = regexp.MustCompile(`^https?://[^/:@\s]*:([^/@\s]+)@`)
+	tokenRe   = regexp.MustCompile(`^https?://[^/:@\s]*:([^/@\s]+)@`)
 )
 
 // Redact strips embedded credentials from a remote URL for display.

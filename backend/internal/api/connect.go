@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -292,6 +293,18 @@ func sweepIncoming(dataDir string) {
 	}
 }
 
+// cloneTimeout caps a single fetch. It is generous - a large repository over a
+// slow link is normal - but it is not absent: without it a connection that
+// stalls leaves the card saying "Connecting" for as long as the server runs,
+// and the id it holds can never be reused. CONFIGER_CLONE_MINUTES tunes it for
+// a deployment with genuinely huge repositories.
+func cloneTimeout() time.Duration {
+	if m, err := strconv.Atoi(strings.TrimSpace(os.Getenv("CONFIGER_CLONE_MINUTES"))); err == nil && m > 0 {
+		return time.Duration(m) * time.Minute
+	}
+	return 30 * time.Minute
+}
+
 // cloneToStaging copies the repository into a folder of this attempt's own and
 // returns it. The caller moves it into place; on any failure nothing is left
 // behind, so no later attempt inherits this one's mess.
@@ -307,9 +320,11 @@ func (h *Hub) cloneToStaging(sp connectSpec) (string, error) {
 		if err != nil {
 			return "", err
 		}
+		ctx, cancel := context.WithTimeout(context.Background(), cloneTimeout())
+		defer cancel()
 		// git clones happily into an existing EMPTY folder, which is what
 		// MkdirTemp just made and what nothing else has a name for.
-		if _, cerr := gitengine.Clone(sp.url, tmp, sp.branch, token, gitName, gitEmail); cerr != nil {
+		if _, cerr := gitengine.CloneContext(ctx, sp.url, tmp, sp.branch, token, gitName, gitEmail); cerr != nil {
 			_ = os.RemoveAll(tmp)
 			return "", cerr
 		}
@@ -489,6 +504,9 @@ func friendlyConnectError(what string, stage connectStage, err error) string {
 		// my browser" is exactly what the user is looking at.
 		return "the server could not open a secure connection to " + what +
 			". Listing repositories can work while this does not: the machine running Configer reaches GitHub through a company proxy or inspected connection that Git has not been told about, and an administrator needs to configure it"
+	case strings.Contains(low, "context deadline exceeded"), strings.Contains(low, "context canceled"):
+		return "fetching " + what + " took too long and was stopped. A repository this size can need longer" +
+			" - an administrator can raise the limit - but a connection that stalls looks the same, so it is worth checking that the machine running Configer can reach GitHub"
 	case strings.Contains(low, "failed to connect"), strings.Contains(low, "unable to access"),
 		strings.Contains(low, "could not resolve host"), strings.Contains(low, "connection refused"),
 		strings.Contains(low, "timed out"), strings.Contains(low, "network is unreachable"),

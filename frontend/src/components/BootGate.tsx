@@ -58,7 +58,7 @@ function isWrongAddress(err: unknown): boolean {
 
 // BootSplash is the in-between: the product's own mark on its own canvas, so
 // the first paint already belongs to the app rather than being a blank page.
-function BootSplash() {
+export function BootSplash({ label = "Starting" }: { label?: string }) {
   return (
     <div className="boot-screen">
       <div className="boot-splash">
@@ -66,7 +66,7 @@ function BootSplash() {
         <Typography.Text strong style={{ fontSize: 15 }}>
           {brand.appName}
         </Typography.Text>
-        <span className="boot-progress" aria-label="Starting" />
+        <span className="boot-progress" aria-label={label} />
       </div>
     </div>
   );

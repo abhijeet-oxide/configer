@@ -725,6 +725,25 @@ export interface RepoSummary {
   status?: "connecting" | "error" | "";
 }
 
+/**
+ * Whether an application can actually be READ yet.
+ *
+ * The portfolio also carries applications whose connection is still running,
+ * and ones whose connection failed - both are shown so the user can watch or
+ * clear them, but neither has a server behind it. Every surface that fans out
+ * per-application reads (the inbox, the estate, the change log) must ask this
+ * first, or it addresses an application the service does not have and turns one
+ * failed connection into a stream of errors.
+ */
+export function isReady(r: RepoSummary): boolean {
+  return !r.status;
+}
+
+/** The applications a repo-scoped read may address. */
+export function readyRepos(repos: RepoSummary[] | undefined): RepoSummary[] {
+  return (repos ?? []).filter(isReady);
+}
+
 export interface Workspace {
   name: string;
   version: string;
@@ -888,9 +907,16 @@ export class ApiError extends Error {
    * state rather than an error, and never retries.
    */
   get isNoRepository() { return this.code === "no_repository"; }
+  /**
+   * The request named an application this deployment does not have (a stale
+   * link, a removed application, or one whose connection never completed).
+   * Like isNoRepository it is a STATE the UI renders as an empty page with a
+   * way out - never a red failure toast, and never worth retrying.
+   */
+  get isUnknownRepository() { return this.code === "unknown_repository"; }
   /** true for failures a retry could plausibly fix (network/5xx/429) */
   get isRetryable() {
-    if (this.isNoRepository) return false; // connecting an application fixes it, not a retry
+    if (this.isNoRepository || this.isUnknownRepository) return false; // reconnecting fixes it, not a retry
     return this.status === 429 || this.status >= 500;
   }
 }
@@ -1085,6 +1111,30 @@ export const api = {
       if (repo && repo.status !== "connecting") return repo;
       if (Date.now() > deadline) throw new TimeoutError();
       await new Promise((r) => setTimeout(r, interval));
+    }
+  },
+  // connectApplication is the whole "create an application" step: start the
+  // connection, wait for the background clone/open, and hand back the ready
+  // application. A FAILED connection leaves nothing behind - the half-connected
+  // entry is cleared - so the portfolio never grows a ghost application that
+  // answers every read with "not connected" and cannot be opened to be removed.
+  connectApplication: async (p: {
+    url: string;
+    name?: string;
+    branch?: string;
+    token?: string;
+    mode?: "remote";
+  }): Promise<RepoSummary> => {
+    const started = await api.connectRepo(p);
+    try {
+      return await api.waitForRepoReady(started.id);
+    } catch (err) {
+      try {
+        await api.removeRepo(started.id);
+      } catch {
+        // best effort: the failure the user needs to see is the original one
+      }
+      throw err;
     }
   },
   renameRepo: (id: string, name: string) =>

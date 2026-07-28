@@ -26,8 +26,13 @@ export function useRepoQuery<
   options: UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
 ): UseQueryResult<TData, TError> {
   const repoId = useUI((s) => s.repoId);
+  // An application that is still connecting - or whose connection failed - has
+  // no server behind it. Reading from it would answer "this application is not
+  // connected" on every request, once per view, forever; the workspace shows
+  // that state once instead.
+  const readable = useUI((s) => s.repoReadable);
   return useQuery({
     ...options,
-    enabled: !!repoId && options.enabled !== false,
+    enabled: !!repoId && readable && options.enabled !== false,
   });
 }

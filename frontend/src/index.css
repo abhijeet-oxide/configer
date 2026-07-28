@@ -1803,3 +1803,169 @@ body {
   font-size: 11.5px;
   overflow-wrap: anywhere;
 }
+
+/* ---------------------------------------------------------------- sign in */
+
+/* The front door of a deployment with sign-in configured. It shares the boot
+   screen's canvas so the first two pages of the product feel like one thing,
+   and carries the brand mark, one action, and the three sentences that tell a
+   newcomer what they are signing in to. */
+.signin-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  background:
+    radial-gradient(120% 90% at 50% -10%, var(--brand-soft) 0%, transparent 60%),
+    var(--canvas);
+  color: var(--text);
+}
+.signin-theme-toggle.ant-btn {
+  position: fixed;
+  top: 14px;
+  inset-inline-end: 14px;
+  color: var(--text-3);
+}
+.signin-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  padding: 30px 30px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--el-overlay);
+}
+.signin-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.signin-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  min-width: 0;
+}
+.signin-brand-name {
+  font-size: var(--fs-16);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.signin-brand-tag {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+.signin-title.ant-typography {
+  margin: 0 0 8px;
+  font-size: var(--fs-20);
+  letter-spacing: -0.015em;
+}
+.signin-body.ant-typography {
+  margin-bottom: 20px;
+  font-size: var(--fs-13);
+  line-height: 1.6;
+}
+.signin-cta.ant-btn {
+  height: 44px;
+  font-weight: 600;
+}
+.signin-points {
+  list-style: none;
+  margin: 22px 0 0;
+  padding: 18px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.signin-points li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 9px;
+  align-items: start;
+  font-size: var(--fs-12);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+.signin-points li .anticon {
+  color: var(--c-ok);
+  margin-top: 2px;
+}
+.signin-foot {
+  margin-top: 18px;
+  text-align: center;
+  font-size: var(--fs-11, 11px);
+}
+@media (max-width: 480px) {
+  .signin-card {
+    padding: 22px 18px 18px;
+  }
+}
+
+/* -------------------------------------------------------- notification log */
+
+/* Behind the bell: what the app has told you, newest first. Sized so a long
+   history scrolls inside the panel instead of running off the screen, and
+   capped on a phone so it never covers the whole page. */
+.notif-panel {
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+}
+.notif-head,
+.notif-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.notif-head {
+  border-bottom: 1px solid var(--border);
+}
+.notif-foot {
+  border-top: 1px solid var(--border);
+}
+.notif-title {
+  font-weight: 600;
+  font-size: var(--fs-13);
+}
+.notif-list {
+  max-height: min(420px, 60vh);
+  overflow: auto;
+}
+.notif-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notif-item:last-child {
+  border-bottom: 0;
+}
+.notif-icon {
+  margin-top: 2px;
+}
+.notif-body {
+  min-width: 0;
+}
+.notif-item-title {
+  font-size: var(--fs-13);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.notif-detail.ant-typography {
+  margin: 2px 0 0;
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+.notif-meta {
+  margin-top: 4px;
+  font-size: var(--fs-11, 11px);
+  color: var(--text-3);
+}

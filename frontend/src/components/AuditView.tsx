@@ -1,7 +1,7 @@
 import { Select, Table } from "antd";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { api, type AuditEvent } from "../api";
+import { api, type AuditEvent, ApiError } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
 import { fmtDateTime } from "../timefmt";
@@ -93,7 +93,18 @@ export default function AuditView() {
         }
       />
 
-      {auditQ.isLoading ? (
+      {auditQ.error instanceof ApiError && auditQ.error.isForbidden ? (
+        // Not a failure: the trail names who did what across the whole
+        // deployment, so only an administrator may read it. Say that plainly
+        // instead of an empty table or a red toast per refresh.
+        <SectionCard>
+          <EmptyState
+            art={<EmptyArt size={104} />}
+            title="The audit trail is for administrators"
+            hint="It records who did what across every application, so only an administrator of this deployment can read it. Ask one if you need an action traced."
+          />
+        </SectionCard>
+      ) : auditQ.isLoading ? (
         <TableSkeleton />
       ) : events.length === 0 ? (
         <SectionCard>

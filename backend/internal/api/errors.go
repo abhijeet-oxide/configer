@@ -41,8 +41,14 @@ const (
 	// CodeNoRepository is the expected, non-error state of a fresh (or emptied)
 	// deployment: no application is connected, so there is nothing repo-scoped
 	// to answer with. Clients treat it as "nothing here yet", not a fault.
-	CodeNoRepository  = "no_repository"  // no application is connected (503)
-	CodeInternalError = "internal_error" // unexpected, unclassified server fault (500)
+	CodeNoRepository = "no_repository" // no application is connected (503)
+	// CodeUnknownRepository is a request addressed to an application this
+	// deployment does not have (a stale deep link, a bookmark to a removed
+	// application, an application whose connection never completed). Like
+	// CodeNoRepository it is a STATE the client renders as an empty page with a
+	// way out, never a red failure toast.
+	CodeUnknownRepository = "unknown_repository" // no such application (404)
+	CodeInternalError     = "internal_error"     // unexpected, unclassified server fault (500)
 )
 
 // FieldError names one field-level validation failure so a form can highlight

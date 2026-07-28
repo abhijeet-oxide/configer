@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Divider, Typography } from "antd";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ExportOutlined,
   LogoutOutlined,
@@ -12,6 +12,7 @@ import {
 import { api } from "../api";
 import { useUI } from "../store";
 import { useIdentity } from "../identity";
+import { useSignOut } from "../useSignOut";
 import { useDeployment } from "../deployment";
 import { useTimeSettings } from "../timefmt";
 import { envHex } from "../theme";
@@ -110,10 +111,9 @@ function LiveClock() {
 export default function SettingsView() {
   const identity = useIdentity();
   const { repoId, setSection, setWelcomeOpen } = useUI();
-  const qc = useQueryClient();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const [membersOpen, setMembersOpen] = useState(false);
-  const logout = useMutation({ mutationFn: api.logout, onSuccess: () => qc.invalidateQueries() });
+  const logout = useSignOut();
 
   const deployment = useDeployment();
   const meta = deployment.reachable ? deployment : null;

@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -41,6 +42,11 @@ type Service struct {
 	// CallbackURL is this deployment's /api/auth/callback URL as GitHub
 	// should redirect to it (public address, not localhost, in production).
 	CallbackURL string
+	// AppURL is where the user-facing app is served when that is NOT the same
+	// address as this API (a separately-hosted SPA, or the dev server in front
+	// of the backend). Login returns the browser there instead of to the API
+	// host, which serves no page at /applications and would 404.
+	AppURL string
 	// APIBase points at GitHub's API (override for GitHub Enterprise).
 	APIBase string
 	// WebBase points at GitHub's web login (override for GitHub Enterprise).
@@ -123,6 +129,12 @@ func (s *Service) callbackURL(r *http.Request) string {
 	if s.CallbackURL != "" {
 		return s.CallbackURL
 	}
+	return requestOrigin(r) + "/api/auth/callback"
+}
+
+// requestOrigin is the scheme://host this request arrived on, honoring the
+// proxy headers a TLS-terminating load balancer sets.
+func requestOrigin(r *http.Request) string {
 	scheme := "http"
 	if p := r.Header.Get("X-Forwarded-Proto"); p != "" {
 		scheme = p
@@ -133,7 +145,55 @@ func (s *Service) callbackURL(r *http.Request) string {
 	if host == "" {
 		host = r.Host
 	}
-	return scheme + "://" + host + "/api/auth/callback"
+	return scheme + "://" + host
+}
+
+// originOf reduces a URL to scheme://host, or "" when it carries neither.
+func originOf(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return ""
+	}
+	return u.Scheme + "://" + u.Host
+}
+
+// isLoopback reports whether an origin points at this machine. A developer runs
+// the UI and the API on two loopback ports, so those two count as one site.
+func isLoopback(origin string) bool {
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	host := u.Hostname()
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
+}
+
+// appOrigin is where the USER-FACING app is served for this request. The API
+// and the app are often not the same address (a separately-hosted SPA, or the
+// dev server proxying to the backend), and sending the browser back to the API
+// address lands it on a path that serves no page. An explicitly configured app
+// address wins; otherwise the page that started the login is trusted when it
+// belongs to this deployment; otherwise the API's own address is used.
+func (s *Service) appOrigin(r *http.Request) string {
+	if o := originOf(s.AppURL); o != "" {
+		return o
+	}
+	if o := originOf(r.Header.Get("Referer")); o != "" && s.trustedOrigin(r, o) {
+		return o
+	}
+	return requestOrigin(r)
+}
+
+// trustedOrigin reports whether a browser-supplied origin may receive the
+// post-login redirect. Anything else would make login an open redirect.
+func (s *Service) trustedOrigin(r *http.Request, origin string) bool {
+	if o := originOf(s.AppURL); o != "" {
+		return strings.EqualFold(origin, o)
+	}
+	if strings.EqualFold(origin, requestOrigin(r)) {
+		return true
+	}
+	return isLoopback(origin) && isLoopback(requestOrigin(r))
 }
 
 // safeReturn keeps the post-login redirect on this site: a local absolute path
@@ -147,7 +207,39 @@ func safeReturn(raw string) string {
 	if u, err := url.Parse(raw); err != nil || u.Host != "" || u.Scheme != "" {
 		return "/"
 	}
+	// /api/... is the service, not a page: returning there after login would
+	// show raw JSON instead of the app.
+	if strings.HasPrefix(raw, "/api/") {
+		return "/"
+	}
 	return raw
+}
+
+// returnTarget resolves the full address to send the browser to after login:
+// the page the user came from, on the origin that actually serves the app. An
+// absolute URL is accepted only when it belongs to this deployment.
+func (s *Service) returnTarget(r *http.Request, raw string) string {
+	if raw == "" {
+		// No explicit request: come back to the page that started the login.
+		if ref := r.Header.Get("Referer"); ref != "" {
+			if u, err := url.Parse(ref); err == nil {
+				if o := originOf(ref); o == "" || s.trustedOrigin(r, o) {
+					raw = u.RequestURI()
+				}
+			}
+		}
+	}
+	if o := originOf(raw); o != "" {
+		if !s.trustedOrigin(r, o) {
+			return s.appOrigin(r) + "/"
+		}
+		u, err := url.Parse(raw)
+		if err != nil {
+			return s.appOrigin(r) + "/"
+		}
+		return o + safeReturn(u.RequestURI())
+	}
+	return s.appOrigin(r) + safeReturn(raw)
 }
 
 // rememberToken caches a user's GitHub access token for the lifetime of this
@@ -250,8 +342,9 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600,
 	})
 	// Remember where the user was so login returns them there (e.g. mid
-	// add-application) instead of always dumping them on the start page.
-	ret := safeReturn(r.URL.Query().Get("return_to"))
+	// add-application) instead of always dumping them on the start page - and
+	// on the address that actually serves the app, not the API's own.
+	ret := s.returnTarget(r, r.URL.Query().Get("return_to"))
 	http.SetCookie(w, &http.Cookie{
 		Name: "configer_oauth_return", Value: ret, Path: "/",
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: http.SameSiteLaxMode, MaxAge: 600,
@@ -306,7 +399,7 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "GitHub user lookup failed: "+err.Error(), http.StatusBadGateway)
 		return
 	}
-	ghUser.Admin = s.Admins[ghUser.Login]
+	ghUser.Admin = s.isAdmin(r.Context(), ghUser.Login)
 	ghUser.CreatedAt = time.Now().UTC()
 	s.rememberToken(ghUser.Login, token)
 	if err := s.Store.UpsertUser(r.Context(), ghUser); err != nil {
@@ -328,13 +421,43 @@ func (s *Service) callback(w http.ResponseWriter, r *http.Request) {
 		HttpOnly: true, Secure: s.SecureCookies, SameSite: s.sameSite(), MaxAge: int(sessionTTL.Seconds()),
 	})
 	http.SetCookie(w, &http.Cookie{Name: "configer_oauth_state", Value: "", Path: "/", MaxAge: -1})
-	// Return the user to where they started login (validated to a local path).
-	ret := "/"
-	if c, err := r.Cookie("configer_oauth_return"); err == nil {
-		ret = safeReturn(c.Value)
+	// Return the user to where they started login (re-validated: only a page
+	// this deployment serves).
+	ret := s.appOrigin(r) + "/"
+	if c, err := r.Cookie("configer_oauth_return"); err == nil && c.Value != "" {
+		ret = s.returnTarget(r, c.Value)
 	}
 	http.SetCookie(w, &http.Cookie{Name: "configer_oauth_return", Value: "", Path: "/", MaxAge: -1})
 	http.Redirect(w, r, ret, http.StatusFound)
+}
+
+// isAdmin decides whether a signing-in user administers this deployment.
+//
+// A configured admin list is the authority. Without one, the person who
+// installs a deployment would otherwise have no way to administer it: nobody
+// can manage members or read the audit trail, and the UI can only say "ask an
+// administrator" to the very person who is one. So the FIRST user to sign in
+// on an empty deployment becomes its administrator, once, and that grant is
+// stored - later users are ordinary users. An existing stored grant is always
+// preserved, so an admin does not lose the role by signing in again.
+func (s *Service) isAdmin(ctx context.Context, login string) bool {
+	if s.Admins[login] {
+		return true
+	}
+	if u, err := s.Store.GetUser(ctx, login); err == nil && u.Admin {
+		return true
+	}
+	if len(s.Admins) > 0 {
+		return false
+	}
+	users, err := s.Store.ListUsers(ctx)
+	if err != nil || len(users) > 0 {
+		return false
+	}
+	slog.Info("first sign-in on a deployment with no configured administrators: granting the administrator role",
+		slog.String("login", login),
+		slog.String("hint", "set CONFIGER_ADMINS to choose administrators explicitly"))
+	return true
 }
 
 // sameSite chooses the session cookie's SameSite policy. When cookies are

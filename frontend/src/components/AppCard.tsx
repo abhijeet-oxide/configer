@@ -14,12 +14,18 @@ import type { RepoSummary } from "../api";
 import { InlineNotice, StatusPill } from "./ui";
 import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
+import { sentence } from "../notify";
 
 // AppCard renders one application in the collection. Two variants share the
 // same data story: "full" is the Applications page card (actions, favorite,
 // environments); "home" is the compact card on the operational start page.
 
 export function SyncPill({ r }: { r: RepoSummary }) {
+  // A connection that is still running, or that failed, is about the
+  // APPLICATION itself rather than its sync state, and outranks everything
+  // else the pill could say.
+  if (r.status === "connecting") return <StatusPill tone="pending">Connecting…</StatusPill>;
+  if (r.status === "error") return <StatusPill tone="danger">Not connected</StatusPill>;
   if (r.error) return <StatusPill tone="danger">Unavailable</StatusPill>;
   if (r.syncError)
     return (
@@ -162,7 +168,15 @@ export default function AppCard({
         </span>
       </div>
 
-      {r.error ? (
+      {r.status === "connecting" ? (
+        <InlineNotice tone="info">
+          Reading the repository. This card updates itself when it is ready.
+        </InlineNotice>
+      ) : r.status === "error" ? (
+        <InlineNotice tone="danger">
+          {sentence(r.error) || "This repository could not be connected."} Remove it and try again.
+        </InlineNotice>
+      ) : r.error ? (
         <InlineNotice tone="danger">{r.error}</InlineNotice>
       ) : r.needsSetup ? (
         <InlineNotice tone="warn">Not set up yet - open it to finish setup.</InlineNotice>
@@ -205,12 +219,22 @@ export default function AppCard({
       {/* Footer actions: info opens the side panel; the arrow (like the card
           itself) goes straight inside the application. */}
       <div className="mt-auto flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-        <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails}>
-          Details
-        </Button>
-        <Button size="small" type="primary" ghost={!r.needsSetup} onClick={onOpen}>
-          {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: 10 }} />
-        </Button>
+        {r.status ? (
+          // Nothing to open: the one useful action on an application that is
+          // not connected is to stop waiting for it.
+          <Button size="small" danger disabled={r.status === "connecting"} onClick={onDisconnect}>
+            Remove
+          </Button>
+        ) : (
+          <>
+            <Button size="small" icon={<InfoCircleOutlined />} onClick={onDetails}>
+              Details
+            </Button>
+            <Button size="small" type="primary" ghost={!r.needsSetup} onClick={onOpen}>
+              {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: 10 }} />
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

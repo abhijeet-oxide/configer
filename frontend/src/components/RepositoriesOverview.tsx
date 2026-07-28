@@ -1,7 +1,7 @@
 import { Button } from "antd";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { BranchesOutlined, GithubOutlined, HddOutlined, ExportOutlined } from "../icons";
-import { api } from "../api";
+import { api, readyRepos } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { WorkspaceSkeleton } from "./Skeletons";
@@ -18,7 +18,10 @@ export default function RepositoriesOverview() {
   const { repoId, setSection } = useUI();
   const switchRepo = useSwitchRepo();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const repos = wsQ.data?.repos ?? [];
+  // Only applications that are actually connected: one still connecting (or
+  // whose connection failed) has nothing to read, and asking anyway turns a
+  // single failed connection into an error per application per refresh.
+  const repos = readyRepos(wsQ.data?.repos);
 
   // Per-repo drift count, fetched lazily (best effort; a repo with no
   // committed baseline simply reports zero).

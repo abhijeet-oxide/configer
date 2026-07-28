@@ -34,6 +34,7 @@ func newPlatform(dataDir string) (*store.Store, *auth.Service, error) {
 		ClientID:      os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
 		ClientSecret:  os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
 		CallbackURL:   os.Getenv("CONFIGER_OAUTH_CALLBACK"),
+		AppURL:        os.Getenv("CONFIGER_APP_URL"),
 		APIBase:       os.Getenv("GITHUB_API_URL"),
 		WebBase:       os.Getenv("GITHUB_WEB_URL"),
 		Store:         st,
@@ -69,6 +70,20 @@ func defaultRole() store.Role {
 		return r
 	}
 	return store.RoleViewer
+}
+
+// roleLabel names a role the way the UI does, so a refusal reads as a sentence
+// about what someone can do here rather than an internal enum.
+func roleLabel(r store.Role) string {
+	switch r {
+	case store.RoleApprover:
+		return "approver"
+	case store.RoleEditor:
+		return "editor"
+	case store.RoleViewer:
+		return "view only"
+	}
+	return "none"
 }
 
 // roleRank orders roles by capability.
@@ -124,15 +139,14 @@ func (h *Hub) authorize(w http.ResponseWriter, r *http.Request, repoID string) b
 	}
 	u, ok := auth.UserFrom(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
 		return false
 	}
 	need := requiredRole(r)
 	have := h.effectiveRole(r, repoID, u)
 	if roleRank(have) < roleRank(need) {
-		writeJSON(w, http.StatusForbidden, map[string]string{
-			"error": "your role (" + string(have) + ") does not allow this action; it needs " + string(need),
-		})
+		writeError(w, r, http.StatusForbidden, CodeForbidden,
+			"your access to this application is "+roleLabel(have)+"; this action needs "+roleLabel(need))
 		return false
 	}
 	return true
@@ -299,7 +313,7 @@ func humanizeAction(method, path string) string {
 func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
 	// The member roster includes the full user directory, so it is admin-only,
 	// matching the setMember/removeMember writes it accompanies.
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "see who can use this application") {
 		return
 	}
 	id := r.PathValue("id")
@@ -338,7 +352,7 @@ func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
 // @Security    CookieSession
 // @Router      /api/repos/{id}/members [put]
 func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "change who can use this application") {
 		return
 	}
 	var req struct {
@@ -377,7 +391,7 @@ func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
 // @Security    CookieSession
 // @Router      /api/repos/{id}/members/{login} [delete]
 func (h *Hub) removeMember(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "change who can use this application") {
 		return
 	}
 	repoID, login := r.PathValue("id"), r.PathValue("login")
@@ -436,19 +450,23 @@ func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// requireAdmin allows deployment admins (or anyone when auth is disabled -
-// single-user mode has no roles to protect).
-func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
+// requireAdmin allows deployment administrators (or anyone when auth is
+// disabled - single-user mode has no roles to protect). `what` names the thing
+// being asked for, in the user's own words ("manage who can use this
+// application"), so the refusal reads as a sentence about the product and never
+// mentions an environment variable the reader cannot act on.
+func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request, what string) bool {
 	if !h.auth.Enabled() {
 		return true
 	}
 	u, ok := auth.UserFrom(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
 		return false
 	}
 	if !u.Admin {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "only deployment admins can manage members (CONFIGER_ADMINS)"})
+		writeError(w, r, http.StatusForbidden, CodeForbidden,
+			"only an administrator of this deployment can "+what)
 		return false
 	}
 	return true
@@ -471,7 +489,7 @@ func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request) bool {
 // @Security    CookieSession
 // @Router      /api/audit [get]
 func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "read the audit trail") {
 		return
 	}
 	limit, afterID := pageParams(r)
@@ -510,7 +528,7 @@ func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 // @Security    CookieSession
 // @Router      /api/audit/verify [get]
 func (h *Hub) auditVerify(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "read the audit trail") {
 		return
 	}
 	ok, brokenAt, err := h.platform.VerifyAudit(r.Context())

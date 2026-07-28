@@ -14,7 +14,8 @@ import UserAvatar from "./UserAvatar";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, type Grid } from "../api";
+import { api, ApiError, type Grid } from "../api";
+import { describeError } from "../notify";
 import { useActivity } from "../activity";
 import { useUI } from "../store";
 import { envHex } from "../theme";
@@ -55,24 +56,55 @@ function DeleteApplicationModal({
   const qc = useQueryClient();
   const [alsoConfiger, setAlsoConfiger] = useState(false);
 
+  // Deleting has two halves and only one of them can be undone by trying
+  // again, so they are not all-or-nothing: if the metadata cannot be deleted
+  // (the application is no longer connected, or the repository cannot be
+  // written), the workspace entry is STILL removed - otherwise a half-connected
+  // application becomes impossible to get rid of from the page that offers to
+  // delete it. What actually happened is reported afterwards, in one sentence.
   const remove = useMutation({
-    mutationFn: async () => {
-      // Delete the .configer metadata first (a commit on the repo), then drop
-      // the workspace connection.
-      if (alsoConfiger) await api.deinit("Local user");
-      if (repoId) await api.removeRepo(repoId);
+    mutationFn: async (): Promise<{ metadataRemoved: boolean; metadataProblem?: string }> => {
+      let metadataRemoved = false;
+      let metadataProblem: string | undefined;
+      if (alsoConfiger) {
+        try {
+          await api.deinit();
+          metadataRemoved = true;
+        } catch (err) {
+          // An application the service does not have has no metadata to delete;
+          // that is the state the user is trying to clean up, not a failure.
+          if (!(err instanceof ApiError && (err.isUnknownRepository || err.isNoRepository))) {
+            metadataProblem = describeError(err).title;
+          }
+        }
+      }
+      if (repoId) {
+        try {
+          await api.removeRepo(repoId);
+        } catch (err) {
+          if (!(err instanceof ApiError && err.status === 404)) throw err;
+        }
+      }
+      return { metadataRemoved, metadataProblem };
     },
-    onSuccess: () => {
-      message.success(
-        alsoConfiger
-          ? `"${project}" removed and its .configer metadata deleted from the repository.`
-          : `"${project}" removed from the workspace. The repository is untouched.`,
-      );
+    onSuccess: ({ metadataRemoved, metadataProblem }) => {
+      if (metadataProblem) {
+        message.warning(
+          `"${project}" was removed from the workspace, but its .configer metadata could not be deleted: ${metadataProblem}`,
+          8,
+        );
+      } else {
+        message.success(
+          metadataRemoved
+            ? `"${project}" removed and its .configer metadata deleted from the repository.`
+            : `"${project}" removed from the workspace. The repository is untouched.`,
+        );
+      }
       qc.invalidateQueries({ queryKey: ["workspace"] });
       onClose();
       onRemoved();
     },
-    onError: (e: Error) => message.error(e.message, 6),
+    onError: (e) => message.error(describeError(e).title, 6),
   });
 
   return (

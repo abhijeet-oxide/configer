@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"os"
@@ -351,6 +352,15 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("DELETE /api/repos/{id}/members/{login}", h.removeMember)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
+	// Everything that is not the API is the app itself: served from the bundled
+	// UI when this deployment has one, so a deep link (or the redirect that ends
+	// a login) opens the page it names instead of a "not found".
+	if dir := webDir(); dir != "" {
+		slog.Info("serving the user interface", slog.String("dir", dir))
+		mux.Handle("/", webHandler(dir))
+	} else {
+		mux.Handle("/", noWebHandler(os.Getenv("CONFIGER_APP_URL")))
+	}
 	return withObservability(withCORS(withBodyLimit(h.auth.Middleware(mux))), h.log())
 }
 
@@ -416,12 +426,18 @@ func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 	if hd == nil {
 		h.mu.Lock()
 		reason := h.errs[id]
+		_, pending := h.connecting[id]
 		h.mu.Unlock()
-		msg := "unknown repository: " + id
-		if reason != "" {
-			msg = "repository " + id + " is unavailable: " + reason
+		// Plain words, and a stable code the UI renders as a state (an empty
+		// page that offers a way out) rather than a failure toast per request.
+		msg := "this application is not connected to this deployment"
+		switch {
+		case pending:
+			msg = "this application is still being connected"
+		case reason != "":
+			msg = "this application is unavailable: " + reason
 		}
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": msg})
+		writeError(w, r, http.StatusNotFound, CodeUnknownRepository, msg)
 		return
 	}
 	if !h.authorize(w, r, id) {
@@ -751,6 +767,10 @@ func (h *Hub) connectWorker(sp connectSpec) {
 		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 		dir := filepath.Join(h.dataDir, "repos", sp.id)
+		if perr := h.prepareCloneDir(dir); perr != nil {
+			h.failConnecting(sp.id, perr.Error())
+			return
+		}
 		if _, cerr := gitengine.Clone(sp.url, dir, sp.branch, sp.token, gitName, gitEmail); cerr != nil {
 			// An auto-supplied credential must never make things worse: if it
 			// was rejected, retry once the anonymous (public) way.
@@ -761,7 +781,10 @@ func (h *Hub) connectWorker(sp connectSpec) {
 				}
 			}
 			if cerr != nil {
-				h.failConnecting(sp.id, cerr.Error())
+				// Never leave a half-clone behind: it would make the next
+				// attempt fail on a directory the user never created.
+				_ = os.RemoveAll(dir)
+				h.failConnecting(sp.id, friendlyConnectError(cerr))
 				return
 			}
 		}
@@ -773,11 +796,11 @@ func (h *Hub) connectWorker(sp connectSpec) {
 		if !e.Local {
 			_ = os.RemoveAll(e.Path)
 		}
-		h.failConnecting(sp.id, err.Error())
+		h.failConnecting(sp.id, friendlyConnectError(err))
 		return
 	}
 	if err := h.registry.Add(e); err != nil {
-		h.failConnecting(sp.id, err.Error())
+		h.failConnecting(sp.id, friendlyConnectError(err))
 		return
 	}
 	h.mu.Lock()
@@ -785,6 +808,59 @@ func (h *Hub) connectWorker(sp connectSpec) {
 	h.mu.Unlock()
 	h.enqueueReindex(e.ID)
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
+}
+
+// prepareCloneDir makes sure the working copy directory is free before a clone.
+//
+// The directory is named after the application id, and a previous attempt that
+// failed (or a server that was stopped mid-clone) can leave one behind. Git
+// then refuses with "already exists and is not an empty directory" - a failure
+// about Configer's own scratch space that the user can neither see nor clear.
+// Any directory here that no connected application claims is exactly that
+// leftover, so it is removed; one that IS claimed is left alone and reported.
+func (h *Hub) prepareCloneDir(dir string) error {
+	if _, err := os.Stat(dir); err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return errors.New("the folder for this application on the server cannot be read")
+	}
+	for _, e := range h.registry.List() {
+		if filepath.Clean(e.Path) == filepath.Clean(dir) {
+			return errors.New("another application on this deployment already uses that folder; rename this one and try again")
+		}
+	}
+	slog.Info("removing a leftover working copy before cloning", slog.String("dir", dir))
+	if err := os.RemoveAll(dir); err != nil {
+		return errors.New("a leftover copy of this repository on the server could not be removed")
+	}
+	return nil
+}
+
+// friendlyConnectError turns a git/clone failure into something the person who
+// pressed the button can act on. The original text still goes to the log; what
+// reaches the UI says what happened and what to do, never git jargon.
+func friendlyConnectError(err error) string {
+	msg := err.Error()
+	low := strings.ToLower(msg)
+	switch {
+	case strings.Contains(low, "already exists and is not an empty directory"),
+		strings.Contains(low, "destination path"):
+		return "a previous copy of this repository was still on the server; it has been cleared, please try again"
+	case strings.Contains(low, "authentication failed"), strings.Contains(low, "could not read username"),
+		strings.Contains(low, "403"), strings.Contains(low, "permission denied"):
+		return "the repository could not be opened with the access available; sign in again or use a repository you have access to"
+	case strings.Contains(low, "remote branch"), strings.Contains(low, "not found in upstream origin"):
+		return "that branch does not exist in the repository; pick another branch"
+	case strings.Contains(low, "repository not found"), strings.Contains(low, "not found"):
+		return "that repository could not be found; check that it still exists and that you have access to it"
+	case strings.Contains(low, "could not resolve host"), strings.Contains(low, "connection refused"),
+		strings.Contains(low, "timed out"), strings.Contains(low, "network"):
+		return "the repository host could not be reached; check the connection and try again"
+	case strings.Contains(low, "no space left"):
+		return "there is not enough space on the server to copy this repository"
+	}
+	return "the repository could not be connected: " + msg
 }
 
 // failConnecting records a background connection failure so the portfolio shows

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
+	"github.com/abhijeet-oxide/configer/backend/internal/store"
 )
 
 // The picker's search asks GitHub rather than filtering an already-downloaded
@@ -91,33 +92,91 @@ func TestRepoSearchQueryStaysWithinGitHubsLimit(t *testing.T) {
 	}
 }
 
+// signedIn builds a request carrying an authenticated user, so a handler behind
+// requireUser can be exercised without a session store.
+func signedIn(method, path string) *http.Request {
+	r := httptest.NewRequest(method, path, nil)
+	return r.WithContext(auth.WithUser(r.Context(), store.User{Login: "vera"}))
+}
+
 // Organizations are listed so the picker can name one it can see nothing in.
-// A session predating the read:org scope simply loses the hint - it is not an
-// error page.
-func TestGitHubOrgsDegradesWhenScopeIsMissing(t *testing.T) {
+// A session granted before read:org was asked for stays valid but cannot list
+// them: that is a reconnect prompt, not an error page - and not silence, which
+// would leave the feature permanently off for everyone who was already signed
+// in when the scope changed.
+func TestGitHubOrgsAsksForReconnectOnAnOldGrant(t *testing.T) {
+	cases := []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{"the call is refused", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-OAuth-Scopes", "read:user, user:email, repo")
+			w.WriteHeader(http.StatusForbidden)
+		}},
+		{"it answers but the scope is absent", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-OAuth-Scopes", "read:user, user:email, repo")
+			fmt.Fprint(w, `[]`)
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			gh := httptest.NewServer(c.handler)
+			defer gh.Close()
+			t.Setenv("CONFIGER_GITHUB_TOKEN", "server-token")
+			h := &Hub{auth: &auth.Service{
+				ClientID: "cid", ClientSecret: "sec", APIBase: gh.URL, Store: &store.Store{},
+			}}
+
+			rec := httptest.NewRecorder()
+			h.githubOrgs(rec, signedIn(http.MethodGet, "/api/github/orgs"))
+			if rec.Code != http.StatusOK {
+				t.Fatalf("orgs = %d, want 200 so the picker keeps working", rec.Code)
+			}
+			var got struct {
+				Orgs        []GitHubOrg `json:"orgs"`
+				GrantURL    string      `json:"grantUrl"`
+				NeedsReauth bool        `json:"needsReauth"`
+			}
+			if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Orgs) != 0 {
+				t.Errorf("orgs = %+v, want empty", got.Orgs)
+			}
+			if !got.NeedsReauth {
+				t.Error("a grant without read:org must ask the user to reconnect")
+			}
+			if !strings.HasSuffix(got.GrantURL, "/settings/connections/applications/cid") {
+				t.Errorf("grantUrl = %q, want the OAuth app's connection page", got.GrantURL)
+			}
+		})
+	}
+}
+
+// A current grant carries read:org, so nothing is asked of the user.
+func TestGitHubOrgsIsQuietOnACurrentGrant(t *testing.T) {
 	gh := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusForbidden) // an older grant without read:org
+		w.Header().Set("X-OAuth-Scopes", "read:user, user:email, repo, read:org")
+		fmt.Fprint(w, `[{"login":"acme"}]`)
 	}))
 	defer gh.Close()
 	t.Setenv("CONFIGER_GITHUB_TOKEN", "server-token")
-	h := &Hub{auth: &auth.Service{APIBase: gh.URL, ClientID: "cid"}}
-
+	h := &Hub{auth: &auth.Service{
+		ClientID: "cid", ClientSecret: "sec", APIBase: gh.URL, Store: &store.Store{},
+	}}
 	rec := httptest.NewRecorder()
-	h.githubOrgs(rec, httptest.NewRequest(http.MethodGet, "/api/github/orgs", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("orgs = %d, want 200 with an empty list", rec.Code)
-	}
+	h.githubOrgs(rec, signedIn(http.MethodGet, "/api/github/orgs"))
 	var got struct {
-		Orgs     []GitHubOrg `json:"orgs"`
-		GrantURL string      `json:"grantUrl"`
+		Orgs        []GitHubOrg `json:"orgs"`
+		NeedsReauth bool        `json:"needsReauth"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got.Orgs) != 0 {
-		t.Errorf("orgs = %+v, want empty", got.Orgs)
+	if len(got.Orgs) != 1 || got.Orgs[0].Login != "acme" {
+		t.Fatalf("orgs = %+v", got.Orgs)
 	}
-	if !strings.HasSuffix(got.GrantURL, "/settings/connections/applications/cid") {
-		t.Errorf("grantUrl = %q, want the OAuth app's connection page", got.GrantURL)
+	if got.NeedsReauth {
+		t.Error("a grant that already carries read:org must not ask for anything")
 	}
 }

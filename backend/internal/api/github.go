@@ -53,26 +53,48 @@ var ghHTTP = httpx.Client(20 * time.Second)
 
 // ghGet performs one authenticated GitHub API call and decodes the response.
 func (h *Hub) ghGet(r *http.Request, token, path string, out any) error {
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, h.auth.GitHubAPIBase()+path, nil)
-	if err != nil {
-		return err
+	_, err := h.ghGetScopes(r, token, path, out)
+	return err
+}
+
+// ghGetScopes is ghGet plus the scopes GitHub says this token carries
+// (X-OAuth-Scopes, returned on every API call). Changing the scopes Configer
+// asks for does NOT upgrade a token that was already granted: the session stays
+// valid and simply cannot do the new thing. Reading the header is how a
+// too-old grant is recognized and named, instead of quietly behaving as if the
+// user had no organizations.
+func (h *Hub) ghGetScopes(r *http.Request, token, path string, out any) (scopes string, err error) {
+	req, rerr := http.NewRequestWithContext(r.Context(), http.MethodGet, h.auth.GitHubAPIBase()+path, nil)
+	if rerr != nil {
+		return "", rerr
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
-	res, err := ghHTTP.Do(req)
-	if err != nil {
-		return fmt.Errorf("GitHub is not reachable right now: %w", err)
+	res, derr := ghHTTP.Do(req)
+	if derr != nil {
+		return "", fmt.Errorf("GitHub is not reachable right now: %w", derr)
 	}
 	defer res.Body.Close()
+	scopes = res.Header.Get("X-OAuth-Scopes")
 	switch {
 	case res.StatusCode == http.StatusUnauthorized || res.StatusCode == http.StatusForbidden:
-		return fmt.Errorf("GitHub did not accept the sign-in; please sign in again")
+		return scopes, fmt.Errorf("GitHub did not accept the sign-in; please sign in again")
 	case res.StatusCode == http.StatusNotFound:
-		return fmt.Errorf("that repository was not found, or the sign-in has no access to it")
+		return scopes, fmt.Errorf("that repository was not found, or the sign-in has no access to it")
 	case res.StatusCode != http.StatusOK:
-		return fmt.Errorf("GitHub answered with HTTP %d", res.StatusCode)
+		return scopes, fmt.Errorf("GitHub answered with HTTP %d", res.StatusCode)
 	}
-	return json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(out)
+	return scopes, json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(out)
+}
+
+// hasScope reports whether a GitHub X-OAuth-Scopes header grants one scope.
+func hasScope(header, want string) bool {
+	for _, s := range strings.Split(header, ",") {
+		if strings.TrimSpace(s) == want {
+			return true
+		}
+	}
+	return false
 }
 
 // githubStatus reports whether repository browsing is possible right now and
@@ -200,30 +222,38 @@ func (h *Hub) githubOrgs(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"error": "sign in with GitHub to browse your organizations"})
 		return
 	}
-	orgs, err := h.userOrgs(r, token)
+	orgs, scopes, err := h.userOrgs(r, token)
+	// A session granted before read:org was asked for stays perfectly valid -
+	// GitHub does not upgrade a token because the app now wants more - so it
+	// simply cannot list organizations. Saying "reconnect" is the difference
+	// between the feature never turning on for existing users and one click;
+	// answering 200 with an empty list keeps the picker working meanwhile.
+	needsReauth := err != nil || (scopes != "" && !hasScope(scopes, "read:org"))
 	if err != nil {
-		// An older session was granted before read:org was requested, so this
-		// call can legitimately fail. That is not worth an error page: the
-		// picker simply loses the "this org needs approval" hint.
-		writeJSON(w, http.StatusOK, map[string]any{"orgs": []GitHubOrg{}, "grantUrl": h.auth.GitHubGrantURL()})
-		return
+		orgs = []GitHubOrg{}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"orgs": orgs, "grantUrl": h.auth.GitHubGrantURL()})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"orgs":        orgs,
+		"grantUrl":    h.auth.GitHubGrantURL(),
+		"needsReauth": needsReauth && h.auth.Enabled(),
+	})
 }
 
-// userOrgs reads the signed-in user's organizations (login only).
-func (h *Hub) userOrgs(r *http.Request, token string) ([]GitHubOrg, error) {
+// userOrgs reads the signed-in user's organizations (login only), and reports
+// the scopes GitHub says the token carries.
+func (h *Hub) userOrgs(r *http.Request, token string) ([]GitHubOrg, string, error) {
 	var batch []struct {
 		Login string `json:"login"`
 	}
-	if err := h.ghGet(r, token, "/user/orgs?per_page=100", &batch); err != nil {
-		return nil, err
+	scopes, err := h.ghGetScopes(r, token, "/user/orgs?per_page=100", &batch)
+	if err != nil {
+		return nil, scopes, err
 	}
 	out := make([]GitHubOrg, 0, len(batch))
 	for _, o := range batch {
 		out = append(out, GitHubOrg{Login: o.Login})
 	}
-	return out, nil
+	return out, scopes, nil
 }
 
 // githubSearchRepos searches GitHub itself, scoped to what this user can see.
@@ -260,7 +290,7 @@ func (h *Hub) githubSearchRepos(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"error": "sign in with GitHub to search your repositories"})
 		return
 	}
-	orgs, _ := h.userOrgs(r, token) // best effort: fewer scopes just narrows the scope
+	orgs, _, _ := h.userOrgs(r, token) // best effort: fewer scopes just narrows the search
 	owners := make([]string, 0, len(orgs)+1)
 	if login != "" {
 		owners = append(owners, "user:"+login)

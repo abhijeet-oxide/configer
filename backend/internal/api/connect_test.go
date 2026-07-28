@@ -447,3 +447,49 @@ func TestAStagedCloneKeepsItsGitDirectory(t *testing.T) {
 		}
 	}
 }
+
+// Two things that look identical from the outside and are opposites: a
+// repository with nothing in it yet, and Configer failing to copy a repository
+// that is perfectly fine. Calling the second one "empty" tells the user their
+// work is missing, which is both wrong and alarming - the report that caught
+// this had a repository full of manifests.
+func TestABrokenCopyIsNotReportedAsAnEmptyRepository(t *testing.T) {
+	// A copy with no repository data in it: whatever the cause, it is ours.
+	broken := t.TempDir()
+	if gitengine.IsRepo(broken) {
+		t.Fatal("fixture is not what the test needs")
+	}
+	if _, err := NewExisting(broken); err == nil {
+		t.Fatal("a copy with no repository data must not be turned into a new repository")
+	} else if strings.Contains(err.Error(), "nothing to commit") {
+		t.Errorf("the copy was initialized instead of refused: %q", err)
+	}
+
+	// A folder someone pointed Configer at, on the other hand, is allowed to
+	// become one - that is the whole point of opening a folder in place.
+	if _, err := New(t.TempDir()); err != nil && strings.Contains(err.Error(), "nothing to commit") {
+		t.Skip("an empty folder cannot be initialized on this platform")
+	}
+}
+
+// And the two are told apart before either is reported.
+func TestEmptyRepositoryAndBrokenCopyAreDistinguished(t *testing.T) {
+	run := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	// A real repository with no commits: .git present, no history.
+	empty := t.TempDir()
+	run(empty, "init", "-q", "-b", "main", empty)
+	if !gitengine.IsRepo(empty) || gitengine.HasCommits(empty) {
+		t.Fatal("fixture should be a repository with no commits")
+	}
+	// A copy that never arrived: no .git at all.
+	broken := t.TempDir()
+	if gitengine.IsRepo(broken) {
+		t.Fatal("fixture should have no repository data")
+	}
+}

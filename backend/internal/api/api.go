@@ -100,11 +100,28 @@ func changePolicy() changeset.Policy {
 
 // New builds a Server: plugins registered, repo opened (or bootstrapped into
 // git), CR store loaded, PR provider detected from the origin remote.
-func New(repoPath string) (*Server, error) {
+func New(repoPath string) (*Server, error) { return newServer(repoPath, false) }
+
+// NewExisting opens a tree that MUST already be a git repository - a copy
+// Configer made itself.
+//
+// The difference from New is not pedantry. New will initialize a repository
+// where there is none, which is right for a folder someone pointed at and
+// wrong for a copy Configer just fetched: if the repository data is missing
+// there, the fetch failed, and quietly making a fresh empty repository on top
+// of it buries that. It surfaced as "nothing to commit" from a git command the
+// user never asked for, about a repository that was not theirs.
+func NewExisting(repoPath string) (*Server, error) { return newServer(repoPath, true) }
+
+func newServer(repoPath string, mustExist bool) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
 	sources.Register(reg)
 
+	if mustExist && !gitengine.IsRepo(repoPath) {
+		slog.Error("a copy Configer made has no repository data in it", slog.String("path", repoPath))
+		return nil, errors.New("the copy on this server is missing its repository data, so it cannot be read")
+	}
 	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
 	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 	repo, err := gitengine.EnsureRepo(repoPath, gitName, gitEmail)

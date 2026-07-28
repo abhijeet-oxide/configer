@@ -133,6 +133,14 @@ func CloneContext(ctx context.Context, url, dir, branch, token, name, email stri
 	return r, nil
 }
 
+// IsRepo reports whether dir holds git repository data at all. A copy Configer
+// made itself always should; one that does not means the copy failed rather
+// than that anything is wrong with the repository it came from.
+func IsRepo(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
 // HasCommits reports whether a repository has any history yet. A repository
 // created and never pushed to clones successfully and looks like a working
 // tree, but there is nothing in it to read, nothing to branch from and nothing

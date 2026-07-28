@@ -219,11 +219,22 @@ func (h *Hub) connectWorker(sp connectSpec) {
 		if h.dismissed(sp.id) {
 			return
 		}
-		// A repository with no commits clones fine and then has nothing in it:
-		// nothing to read, nothing to branch from, nothing to write back
-		// against. Better to say so than to connect an application that cannot
-		// do anything and leave the user to work out why.
+		// Check what actually arrived, and be exact about whose problem it is.
+		// These two look identical from the outside and are opposites: one is a
+		// repository with nothing in it yet, the other is Configer failing to
+		// copy a repository that is perfectly fine. Reporting the first when it
+		// is the second tells the user their work is missing, which is both
+		// wrong and alarming.
+		if !gitengine.IsRepo(staged) {
+			slog.Error("the copy has no repository data in it",
+				slog.String("id", sp.id), slog.String("origin", what),
+				slog.String("dir", staged), slog.Any("contents", dirNames(staged)))
+			h.failConnecting(sp.id, "Configer could not make a usable copy of "+what+". "+internalFaultTail)
+			return
+		}
 		if !gitengine.HasCommits(staged) {
+			// A repository created and never pushed to: nothing to read,
+			// nothing to branch from, nothing to write back against.
 			h.failConnecting(sp.id, what+" has no commits yet, so there is no configuration to manage."+
 				" Push at least one file to it, then add it here")
 			return
@@ -545,6 +556,23 @@ func friendlyConnectError(what string, stage connectStage, err error) string {
 		return head + " The reason given was: " + reason
 	}
 	return head + " " + internalFaultTail
+}
+
+// dirNames lists what is in a directory, for a log line that has to explain
+// why a copy could not be used.
+func dirNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return []string{"unreadable: " + err.Error()}
+	}
+	out := make([]string, 0, len(entries))
+	for _, e := range entries {
+		out = append(out, e.Name())
+	}
+	if len(out) == 0 {
+		return []string{"(empty)"}
+	}
+	return out
 }
 
 // dismissed reports whether the user gave up on this connection while it was

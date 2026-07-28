@@ -34,6 +34,11 @@ const (
 	SkipGenerated SkipReason = "generated"
 	// SkipIgnored: an ignore rule in .configer/ignore.yaml matched it.
 	SkipIgnored SkipReason = "ignored"
+	// SkipStructural: the file describes structure rather than settings - a
+	// kustomization, a Kptfile, a chart's plumbing, a schema. Discovery decides
+	// this, not the scan, but it is reported the same way: a file that vanishes
+	// with no explanation is the same dead end whichever stage dropped it.
+	SkipStructural SkipReason = "structural"
 )
 
 // SkippedFile is one file the scan left out, and why.

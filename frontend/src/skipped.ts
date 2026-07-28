@@ -13,6 +13,7 @@ import type { SkippedFile } from "./api";
 export const SKIP_REASONS: Record<SkippedFile["reason"], string> = {
   generated: "the file says a generator wrote it",
   ignored: "an ignore rule in .configer/ignore.yaml matches it",
+  structural: "the file describes structure rather than settings",
 };
 
 export const SKIP_EXPLANATIONS: Record<SkippedFile["reason"], string> = {
@@ -21,6 +22,10 @@ export const SKIP_EXPLANATIONS: Record<SkippedFile["reason"], string> = {
     "editing generated output makes a second source of truth: the next run of whatever produced them " +
     "writes over it. Manage the inputs the generator reads instead.",
   ignored: "An ignore rule in .configer/ignore.yaml matches these files.",
+  structural:
+    "Kustomizations, Kptfiles, chart plumbing and schemas say how a repository is assembled, not what its " +
+    "settings are, so Configer does not turn them into grid columns. If the values you want to manage live " +
+    "inside one of these - a patches: block, for instance - Configer cannot reach them yet.",
 };
 
 /** Group skipped files by reason, most common first. */

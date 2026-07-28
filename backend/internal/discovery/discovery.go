@@ -105,7 +105,20 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	sharedSeen := map[string]bool{}
 
 	for _, fr := range scan.Files {
-		if len(fr.Candidates) == 0 || skipFile(fr.File) {
+		// A file dropped here disappeared without a word: it was read, it had
+		// settings in it, and nothing said why none of them arrived. For a Flux
+		// repository that is the file Flux's own docs tell you to customize
+		// (flux-system/kustomization.yaml), so the silence pointed the user at
+		// the one file they must NOT edit.
+		if skipFile(fr.File) {
+			if len(fr.Candidates) > 0 {
+				res.Skipped = append(res.Skipped, ingest.SkippedFile{
+					File: fr.File, Reason: ingest.SkipStructural,
+				})
+			}
+			continue
+		}
+		if len(fr.Candidates) == 0 {
 			continue
 		}
 		// Reference-aware anchors: a candidate reached through a YAML alias

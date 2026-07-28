@@ -478,7 +478,7 @@ export interface Discovery {
  *  someone needs to know is why their file was passed over. */
 export interface SkippedFile {
   file: string;
-  reason: "generated" | "ignored";
+  reason: "generated" | "ignored" | "structural";
 }
 
 // --- platform: identity, roles, audit -------------------------------------

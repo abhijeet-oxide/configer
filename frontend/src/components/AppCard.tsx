@@ -43,6 +43,31 @@ export function SyncPill({ r }: { r: RepoSummary }) {
   return <StatusPill tone="ok">Git synced</StatusPill>;
 }
 
+// AccessPill says what the CALLER can do in this application, and where that
+// came from. It belongs on the card, not next to the person's name: the same
+// engineer is an approver on one application and a reader on the next, so one
+// label on a profile is always wrong for some of them.
+export function AccessPill({ r }: { r: RepoSummary }) {
+  if (!r.role || r.roleSource === "single-user") return null;
+  const tone = r.role === "viewer" ? "neutral" : r.role === "editor" ? "review" : "ok";
+  const label = r.role === "viewer" ? "View only" : r.role === "editor" ? "Can edit" : "Can publish";
+  const why =
+    r.roleSource === "git"
+      ? "This mirrors your permission on the repository in GitHub."
+      : r.roleSource === "admin"
+        ? "You are an administrator of this Configer deployment."
+        : r.roleSource === "configer"
+          ? "An administrator granted you this access in Configer."
+          : "This deployment's default access.";
+  return (
+    <Tooltip title={why}>
+      <span style={{ display: "inline-flex" }}>
+        <StatusPill tone={tone as "neutral" | "review" | "ok"}>{label}</StatusPill>
+      </span>
+    </Tooltip>
+  );
+}
+
 // The compact Home variant: name, branch, instances, waiting work, updated.
 export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void }) {
   return (
@@ -67,6 +92,7 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
           </span>
         )}
         <SyncPill r={r} />
+        <AccessPill r={r} />
       </div>
       <div className="flex flex-col gap-1 text-xs">
         <span className="inline-flex items-center gap-1.5 text-review">
@@ -147,12 +173,22 @@ export default function AppCard({
           <Dropdown
             trigger={["click"]}
             menu={{
+              // Only what this role can actually do here. Disconnecting an
+              // application is the approver's call, like publishing.
               items: [
                 { key: "open", label: "Open configuration" },
-                { key: "edit", label: "Edit details" },
-                { key: "import", label: "Import settings" },
-                { type: "divider" },
-                { key: "disconnect", danger: true, label: "Disconnect from workspace" },
+                ...(r.role && r.role !== "viewer"
+                  ? [
+                      { key: "edit", label: "Edit details" },
+                      { key: "import", label: "Import settings" },
+                    ]
+                  : []),
+                ...(!r.role || r.role === "approver"
+                  ? [
+                      { type: "divider" as const },
+                      { key: "disconnect", danger: true, label: "Disconnect from workspace" },
+                    ]
+                  : []),
               ],
               onClick: ({ key, domEvent }) => {
                 domEvent.stopPropagation();
@@ -191,6 +227,7 @@ export default function AppCard({
               </span>
             )}
             <SyncPill r={r} />
+            <AccessPill r={r} />
           </Space>
           <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
             {r.params} parameter{r.params === 1 ? "" : "s"} · {r.instances} instance{r.instances === 1 ? "" : "s"}

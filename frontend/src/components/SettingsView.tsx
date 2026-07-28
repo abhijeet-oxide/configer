@@ -18,6 +18,7 @@ import { useTimeSettings } from "../timefmt";
 import { envHex } from "../theme";
 import { zoneOffsetLabel } from "../settings";
 import { StatusPill } from "./ui";
+import { AccessPill } from "./AppCard";
 import MembersModal from "./MembersModal";
 import {
   DensityControl,
@@ -76,14 +77,6 @@ function Row({
   );
 }
 
-const ROLE_EXPLANATION: Record<string, string> = {
-  Viewer: "You can browse every configuration but not change it.",
-  Editor: "You can edit values and submit changes for review.",
-  Approver: "You can review, approve and publish changes.",
-  Administrator: "You manage people, roles and every application on this deployment.",
-  "Full access": "This deployment runs in single-user mode, so every capability is yours.",
-};
-
 // LiveClock proves the time-zone choice instantly: the current time, in the
 // chosen zone, ticking. Subscribes to the time settings so it re-renders the
 // moment either control changes.
@@ -117,8 +110,7 @@ export default function SettingsView() {
 
   const deployment = useDeployment();
   const meta = deployment.reachable ? deployment : null;
-  const activeApp = wsQ.data?.repos.find((r) => r.id === repoId);
-  const roleExplains = ROLE_EXPLANATION[identity.roleLabel] ?? "";
+  const apps = (wsQ.data?.repos ?? []).filter((r) => !r.status);
 
   const avatar = identity.user?.avatarUrl ? (
     <img className="settings-avatar" src={identity.user.avatarUrl} alt="" />
@@ -151,9 +143,12 @@ export default function SettingsView() {
               <Typography.Title level={4} style={{ margin: 0 }}>
                 {identity.displayName}
               </Typography.Title>
-              {identity.roleLabel && (
-                <StatusPill tone={identity.admin ? "review" : "neutral"} dot={false}>
-                  {identity.roleLabel}
+              {/* Only what is genuinely true of the PERSON. Administering the
+                  deployment is; "Viewer" is not - that belongs to one
+                  application at a time and is listed below. */}
+              {identity.admin && (
+                <StatusPill tone="review" dot={false}>
+                  Administrator
                 </StatusPill>
               )}
             </div>
@@ -224,16 +219,34 @@ export default function SettingsView() {
         <section className="settings-section">
           <h2 className="settings-section-title">Access</h2>
           <div className="settings-section-body">
+          {/* One row per application, because that is how access actually
+              works: the same person is an approver on one and a reader on the
+              next. Where the access came from is in each pill's tooltip. */}
           <Row
-            title={activeApp ? `Your role on ${activeApp.name}` : "Your role"}
-            description={roleExplains}
+            stacked
+            title="Your access"
+            description={
+              identity.admin
+                ? "You administer this deployment, so you can publish everywhere."
+                : "What you can do in each application. Where an application is connected with your own GitHub sign-in, this mirrors your permission on the repository."
+            }
             control={
-              identity.roleLabel ? (
-                <StatusPill tone={identity.admin ? "review" : "neutral"} dot={false}>
-                  {identity.roleLabel}
-                </StatusPill>
+              apps.length === 0 ? (
+                <span style={{ color: "var(--text-3)" }}>No applications connected yet.</span>
               ) : (
-                <span style={{ color: "var(--text-3)" }}>Select an application</span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {apps.map((r) => (
+                    <div
+                      key={r.id}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}
+                    >
+                      <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {r.name}
+                      </span>
+                      <AccessPill r={r} />
+                    </div>
+                  ))}
+                </div>
               )
             }
           />

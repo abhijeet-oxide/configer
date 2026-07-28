@@ -63,6 +63,11 @@ type Hub struct {
 	index          *search.Index
 	reindexCh      chan string
 	reindexPending map[string]bool
+
+	// gitRoles memoizes each user's permission on each application's repository
+	// (see access.go): authorization runs on every repo-scoped request, so the
+	// mirrored role cannot be a GitHub call each time.
+	gitRoles *gitRoleCache
 }
 
 // connecting is the transient state of a repository being connected in the
@@ -103,6 +108,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		handlers:    map[string]http.Handler{},
 		errs:        map[string]string{},
 		connecting:  map[string]*connecting{},
+		gitRoles:    newGitRoleCache(),
 	}
 	// The search index lives in the platform database (SQLite FTS5) with a
 	// bounded in-memory tier; on Postgres it runs memory-only. A single worker
@@ -522,6 +528,13 @@ type RepoSummary struct {
 	// it failed, and empty ("" = ready) for a fully connected repository. The
 	// client polls the portfolio until it leaves "connecting".
 	Status string `json:"status,omitempty"`
+	// Role is the CALLER's capability on this application, and RoleSource says
+	// where it came from (see access.go). A role belongs to a (person,
+	// application) pair - the same person is an approver on one and a viewer on
+	// the next - so the portfolio carries it per card rather than the product
+	// stamping one label on the person.
+	Role       string `json:"role,omitempty"`
+	RoleSource string `json:"roleSource,omitempty"`
 }
 
 func (h *Hub) summarize(e workspace.Entry) RepoSummary {
@@ -593,11 +606,28 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 // @Success     200 {object} map[string]interface{}
 // @Router      /api/repos [get]
 // @Router      /api/workspace [get]
-func (h *Hub) list(w http.ResponseWriter, _ *http.Request) {
+func (h *Hub) list(w http.ResponseWriter, r *http.Request) {
 	entries := h.registry.List()
 	out := make([]RepoSummary, 0, len(entries))
+	// Each card carries the CALLER's own access to that application, resolved
+	// for all of them together (see grantsFor).
+	u, signedIn := auth.UserFrom(r.Context())
+	var grants map[string]Grant
+	if h.auth.Enabled() && signedIn {
+		ids := make([]string, 0, len(entries))
+		for _, e := range entries {
+			ids = append(ids, e.ID)
+		}
+		grants = h.grantsFor(r, ids, u)
+	}
 	for _, e := range entries {
-		out = append(out, h.summarize(e))
+		sum := h.summarize(e)
+		if !h.auth.Enabled() {
+			sum.Role, sum.RoleSource = string(store.RoleApprover), "single-user"
+		} else if g, ok := grants[e.ID]; ok {
+			sum.Role, sum.RoleSource = string(g.Role), g.Source
+		}
+		out = append(out, sum)
 	}
 	// Include repositories still connecting (or that failed to) in the
 	// background, so the portfolio reflects in-flight work the client polls.

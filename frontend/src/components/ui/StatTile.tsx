@@ -32,10 +32,15 @@ export default function StatTile({
           {icon}
         </div>
       )}
-      <div className="min-w-0">
-        <div className="mb-0.5 whitespace-nowrap text-xs text-ink-2">{label}</div>
-        <div className="text-xl leading-tight font-semibold text-ink">{value}</div>
-        {sub && <div className="mt-0.5 whitespace-nowrap text-[11px] text-ink-3">{sub}</div>}
+      {/* The sub-line is a sentence, not a metric: it has to wrap inside the
+          tile rather than run past its edge. whitespace-nowrap kept "Types and
+          rules pass - not a deployment safety check" on one line, so the card
+          clipped it mid-word. The label and the value stay on one line - they
+          are short by construction - but truncate rather than overflow. */}
+      <div className="min-w-0 flex-1">
+        <div className="mb-0.5 truncate text-xs text-ink-2">{label}</div>
+        <div className="text-xl leading-tight font-semibold text-ink break-words">{value}</div>
+        {sub && <div className="mt-0.5 text-[11px] leading-snug text-ink-3">{sub}</div>}
       </div>
     </div>
   );

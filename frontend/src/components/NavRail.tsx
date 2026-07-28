@@ -222,17 +222,22 @@ function ProfileCard({ collapsed, active }: { collapsed: boolean; active: boolea
       style={{ justifyContent: collapsed ? "center" : "flex-start" }}
     >
       {avatar}
+      {/* The person, and nothing about permissions: access belongs to an
+          application, not to a name in a sidebar. It is shown on each
+          application's card and in its context strip instead. */}
       {!collapsed && (
         <div style={{ minWidth: 0, lineHeight: 1.25 }}>
           <div className="rail-profile-name">{id.displayName}</div>
-          {id.roleLabel && <div className="rail-profile-role">{id.roleLabel}</div>}
+          {id.authEnabled && id.user?.login && (
+            <div className="rail-profile-role">{id.user.login}</div>
+          )}
         </div>
       )}
     </div>
   );
   return (
     <Tooltip
-      title={collapsed ? `${id.displayName}${id.roleLabel ? ` · ${id.roleLabel}` : ""}` : "Profile and settings"}
+      title={collapsed ? id.displayName : "Profile and settings"}
       placement="right"
     >
       {inner}

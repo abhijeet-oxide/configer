@@ -21,8 +21,11 @@ export interface Identity {
   user: AuthUser | null;
   /** what to call the person, always set: name > login > "Local user" */
   displayName: string;
-  /** capability on the ACTIVE application, in glossary words */
-  roleLabel: string;
+  /** Capability on the ACTIVE application. A role is a property of (person,
+   *  application): the same person is an approver on one and a viewer on the
+   *  next, so no surface that shows a PERSON may label them with it. Surfaces
+   *  that show an application read it from that application (RepoSummary.role,
+   *  rendered by AccessPill) or from this hook while it is the active one. */
   role: RoleName | null;
   admin: boolean;
   /** may change configuration here: stage edits, submit, manage instances */
@@ -31,12 +34,6 @@ export interface Identity {
   canApprove: boolean;
   loading: boolean;
 }
-
-const ROLE_LABELS: Record<RoleName, string> = {
-  viewer: "Viewer",
-  editor: "Editor",
-  approver: "Approver",
-};
 
 export function useIdentity(): Identity {
   const repoId = useUI((s) => s.repoId);
@@ -69,7 +66,7 @@ export function useIdentity(): Identity {
     // allowed.
     return {
       authEnabled: false, signedIn: false, user: null, displayName: "",
-      roleLabel: "", role: null, admin: false,
+      role: null, admin: false,
       canEdit: false, canApprove: false, loading: true,
     };
   }
@@ -78,7 +75,7 @@ export function useIdentity(): Identity {
     // Single-user mode: no login, one local operator with every capability.
     return {
       authEnabled: false, signedIn: true, user: null, displayName: "Local user",
-      roleLabel: "Full access", role: "approver", admin: true,
+      role: "approver", admin: true,
       canEdit: true, canApprove: true, loading: false,
     };
   }
@@ -98,8 +95,6 @@ export function useIdentity(): Identity {
     signedIn: !!user,
     user,
     displayName: user?.name || user?.login || "",
-    // Admins approve everywhere; that outranks any per-application role.
-    roleLabel: admin ? "Administrator" : role ? ROLE_LABELS[role] : "",
     role,
     admin,
     canEdit,

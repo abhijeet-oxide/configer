@@ -286,18 +286,20 @@ func TestAppLifecycleIsApproverGated(t *testing.T) {
 	}
 }
 
-// Connecting an application makes you its approver. Without this the deployment
-// default (viewer, rightly, for everyone else) applied to the person who had
-// just set the application up: they could not edit it, submit anything, or
-// grant themselves access - a dead end on every new deployment.
+// Connecting an application records an EXPLICIT approver grant for whoever
+// connected it, rather than leaving them on whatever the deployment default
+// happens to be. That is what makes it survive an operator tightening the
+// default: the person who set the application up keeps working on it, and
+// nobody else is granted anything.
 func TestConnectingAnApplicationMakesYouItsApprover(t *testing.T) {
+	t.Setenv("CONFIGER_DEFAULT_ROLE", "viewer") // the tightened deployment
 	hub, _ := testHub(t)
 	ctx := context.Background()
 	repoID := hub.registry.List()[0].ID
 
-	// A fresh member starts at the deployment default.
-	if got := hub.effectiveRole(userReq(t, "vera"), repoID, store.User{Login: "vera"}); got != store.RoleViewer {
-		t.Fatalf("default role = %q, want viewer", got)
+	// Someone who did not connect it starts at the deployment default.
+	if g := hub.grantFor(userReq(t, "vera"), repoID, store.User{Login: "vera"}); g.Role != store.RoleViewer || g.Source != "default" {
+		t.Fatalf("before connecting = %+v, want viewer from the default", g)
 	}
 
 	// The connect worker records the caller as the application's approver.
@@ -306,12 +308,13 @@ func TestConnectingAnApplicationMakesYouItsApprover(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := hub.effectiveRole(userReq(t, "vera"), repoID, store.User{Login: "vera"}); got != store.RoleApprover {
-		t.Fatalf("role after connecting = %q, want approver", got)
+	g := hub.grantFor(userReq(t, "vera"), repoID, store.User{Login: "vera"})
+	if g.Role != store.RoleApprover || g.Source != "configer" {
+		t.Fatalf("after connecting = %+v, want approver from an explicit grant", g)
 	}
 	// And it grants nothing to anyone else.
 	if got := hub.effectiveRole(userReq(t, "someone"), repoID, store.User{Login: "someone"}); got != store.RoleViewer {
-		t.Fatalf("another user's role = %q, want viewer", got)
+		t.Fatalf("another user's role = %q, want the deployment default", got)
 	}
 }
 

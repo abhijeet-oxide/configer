@@ -3985,6 +3985,13 @@
                 "remote": {
                     "type": "string"
                 },
+                "role": {
+                    "description": "Role is the CALLER's capability on this application, and RoleSource says\nwhere it came from (see access.go). A role belongs to a (person,\napplication) pair - the same person is an approver on one and a viewer on\nthe next - so the portfolio carries it per card rather than the product\nstamping one label on the person.",
+                    "type": "string"
+                },
+                "roleSource": {
+                    "type": "string"
+                },
                 "status": {
                     "description": "Status is \"connecting\" while a background clone/open runs, \"error\" when\nit failed, and empty (\"\" = ready) for a fully connected repository. The\nclient polls the portfolio until it leaves \"connecting\".",
                     "type": "string"

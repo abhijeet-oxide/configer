@@ -1568,6 +1568,32 @@ paths:
       summary: List GitHub branches
       tags:
       - Workspace
+  /api/github/orgs:
+    get:
+      description: Organizations the signed-in user belongs to, with how many of their
+        repositories this deployment can see. An organization with zero visible repositories
+        has not approved the Configer OAuth app; `grantUrl` is where that is granted.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: List GitHub organizations
+      tags:
+      - Workspace
   /api/github/repos:
     get:
       description: Repositories the resolved credential can reach (own, collaborations,
@@ -1591,6 +1617,42 @@ paths:
       security:
       - CookieSession: []
       summary: List GitHub repositories
+      tags:
+      - Workspace
+  /api/github/repos/search:
+    get:
+      description: Search the signed-in user's own and organization repositories by
+        name. Scoped server-side to the accounts the user belongs to, so it never
+        searches all of GitHub.
+      parameters:
+      - description: Search term (2+ characters)
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing or too-short term
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Search GitHub repositories
       tags:
       - Workspace
   /api/github/status:

@@ -273,6 +273,18 @@ func (s *Service) GitHubAPIBase() string {
 	return s.apiBase()
 }
 
+// GitHubGrantURL is where a user grants this OAuth app access to one of their
+// organizations. An org with OAuth App access restrictions hides its
+// repositories until an owner approves the app (or approves the user's
+// request), and this page is where that is done - so the UI can point at it
+// instead of leaving an org looking empty for no stated reason.
+func (s *Service) GitHubGrantURL() string {
+	if s == nil || s.ClientID == "" {
+		return ""
+	}
+	return s.webBase() + "/settings/connections/applications/" + s.ClientID
+}
+
 // UserFrom returns the authenticated user carried by the request context.
 func UserFrom(ctx context.Context) (store.User, bool) {
 	u, ok := ctx.Value(userKey).(store.User)
@@ -351,9 +363,13 @@ func (s *Service) login(w http.ResponseWriter, r *http.Request) {
 	})
 	// The repo scope lets Configer list the user's repositories (their own
 	// and their orgs') and clone private ones during application creation.
+	// read:org is what lets the picker NAME an organization it can see no
+	// repositories in: without it an org whose owners have not approved this
+	// OAuth app is simply invisible, and the user is left concluding their
+	// repositories are missing rather than that access needs granting.
 	q := url.Values{
 		"client_id":    {s.ClientID},
-		"scope":        {"read:user user:email repo"},
+		"scope":        {"read:user user:email repo read:org"},
 		"state":        {state},
 		"redirect_uri": {s.callbackURL(r)},
 	}

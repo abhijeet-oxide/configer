@@ -21,3 +21,15 @@ export function useElementSize<T extends HTMLElement>() {
 
   return { ref, ...size };
 }
+
+// useDebounced holds a fast-changing value still until it stops changing, so a
+// keystroke does not become a request. The delay is the pause a person makes
+// between typing and expecting an answer.
+export function useDebounced<T>(value: T, delayMs: number): T {
+  const [settled, setSettled] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setSettled(value), delayMs);
+    return () => clearTimeout(t);
+  }, [value, delayMs]);
+  return settled;
+}

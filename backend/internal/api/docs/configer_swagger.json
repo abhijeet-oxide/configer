@@ -1205,6 +1205,44 @@
                 }
             }
         },
+        "/api/github/orgs": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Organizations the signed-in user belongs to, with how many of their repositories this deployment can see. An organization with zero visible repositories has not approved the Configer OAuth app; `grantUrl` is where that is granted.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "List GitHub organizations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "GitHub call failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/github/repos": {
             "get": {
                 "security": [
@@ -1226,6 +1264,59 @@
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
+                        }
+                    },
+                    "401": {
+                        "description": "Not signed in",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "502": {
+                        "description": "GitHub call failed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/github/repos/search": {
+            "get": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Search the signed-in user's own and organization repositories by name. Scoped server-side to the accounts the user belongs to, so it never searches all of GitHub.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Workspace"
+                ],
+                "summary": "Search GitHub repositories",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search term (2+ characters)",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Missing or too-short term",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
                         }
                     },
                     "401": {

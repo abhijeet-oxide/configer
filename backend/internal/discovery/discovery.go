@@ -425,7 +425,6 @@ var identityKeyPriority = []string{
 // list candidates arrive whole from the XML parser.
 func keyListSelectors(cands []candidate) []candidate {
 	// Group entries by (list prefix). For each prefix collect index -> field -> value.
-	type entryField struct{ idx, field string }
 	byPrefix := map[string]map[string]map[string]any{} // prefix -> idx -> field -> value
 	prefixOrder := []string{}
 	for _, c := range cands {

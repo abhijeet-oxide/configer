@@ -65,6 +65,18 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
   // view access sees no edit affordances anywhere, and this is the one place
   // that says why - once, quietly, rather than a banner on every screen.
   const { canEdit, authEnabled, loading } = useIdentity();
+  // Say WHY, in the same breath. "Viewer" on its own is a question, not an
+  // answer, and the answer is usually "because that is your access to this
+  // repository in GitHub" - which tells the user exactly where to fix it.
+  const roleQ = useQuery({
+    queryKey: ["my-role", repoId],
+    queryFn: () => api.myRole(repoId!),
+    enabled: !!repoId && authEnabled,
+    staleTime: 60_000,
+  });
+  const whyViewOnly =
+    (roleQ.data?.detail ? `You can read this application; ${roleQ.data.detail}. ` : "") +
+    "Changing a value, submitting for review or publishing needs edit access.";
   const st = statusQ.data;
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);
   const pending = draftQ.data?.draft?.items?.length ?? 0;
@@ -103,7 +115,7 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
         </span>
       )}
       {authEnabled && !loading && !canEdit && (
-        <Tooltip title="You can read this application's configuration and its history. Changing a value, submitting for review or publishing needs edit access - an administrator grants it.">
+        <Tooltip title={whyViewOnly}>
           <span style={{ display: "inline-flex" }}>
             <StatusPill tone="neutral" icon={<EyeOutlined style={{ fontSize: 11 }} />}>
               View only

@@ -7,7 +7,6 @@ package api
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -60,16 +59,27 @@ func cookieSecure() bool {
 	return strings.EqualFold(strings.TrimSpace(os.Getenv("CONFIGER_ENV")), "production")
 }
 
-// defaultRole is the capability users get on applications where no explicit
-// role is assigned. It defaults to viewer - the least privilege - so a fresh
-// deployment does not hand every authenticated user edit rights on every
-// application. Operators who want the old open-by-default behavior set
-// CONFIGER_DEFAULT_ROLE=editor explicitly.
+// defaultRole is the capability users get on an application where no earlier
+// source in the chain answered (see access.go): not a deployment administrator,
+// no explicit Configer grant, and no per-user Git credential to mirror.
+//
+// It is FULL access, deliberately. That case means Configer cannot yet tell one
+// person from another here - the application is reached through one shared
+// service credential, so every signed-in user has exactly the same access to it
+// whatever the product pretends. Handing everyone "view only" in that situation
+// does not protect anything; it just stops them using a tool they can already
+// use, which is what a locked-out first deployment looked like.
+//
+// Real per-user rules for shared-credential applications are the next layer -
+// they need the user management this tool has not built yet, and access.go's
+// ordered chain is where that source will slot in ahead of this default. Until
+// then an operator who wants it tighter sets CONFIGER_DEFAULT_ROLE=viewer (or
+// editor) and it applies immediately.
 func defaultRole() store.Role {
 	if r := store.Role(os.Getenv("CONFIGER_DEFAULT_ROLE")); r.Valid() {
 		return r
 	}
-	return store.RoleViewer
+	return store.RoleApprover
 }
 
 // roleLabel names a role the way the UI does, so a refusal reads as a sentence
@@ -111,23 +121,6 @@ func requiredRole(r *http.Request) store.Role {
 	default:
 		return store.RoleEditor
 	}
-}
-
-// effectiveRole computes a user's role on one application: deployment admins
-// approve everywhere; an explicit membership wins; otherwise the deployment
-// default applies (by default viewer, so every authenticated user can read
-// every application in the shared registry but not change it until granted a
-// role).
-func (h *Hub) effectiveRole(r *http.Request, repoID string, u store.User) store.Role {
-	if u.Admin {
-		return store.RoleApprover
-	}
-	if role, err := h.platform.MemberRole(r.Context(), repoID, u.Login); err == nil {
-		return role
-	} else if !errors.Is(err, store.ErrNotFound) {
-		return store.RoleViewer // database trouble: fail safe, never up
-	}
-	return defaultRole()
 }
 
 // authorize gates one repo-scoped request. With OAuth disabled everything is
@@ -443,9 +436,15 @@ func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
 		return
 	}
+	// The source travels with the role so the UI can say WHY - "this mirrors
+	// your permission on the repository in GitHub" answers the question a bare
+	// "Viewer" only raises.
+	g := h.grantFor(r, r.PathValue("id"), u)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": true,
-		"role":    h.effectiveRole(r, r.PathValue("id"), u),
+		"role":    g.Role,
+		"source":  g.Source,
+		"detail":  g.Detail,
 		"admin":   u.Admin,
 	})
 }

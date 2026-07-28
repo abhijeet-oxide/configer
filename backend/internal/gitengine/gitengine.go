@@ -365,3 +365,48 @@ func (r *Repo) AheadBehind(branch string) (ahead, behind int, err error) {
 	}
 	return ahead, behind, nil
 }
+
+// GitHubFullName extracts "owner/name" from a GitHub remote URL, in either the
+// https or the ssh form, with any embedded credential and trailing ".git"
+// removed. It reports false for anything that is not a GitHub repository - a
+// local folder, or another host - so callers can tell "not GitHub" apart from
+// "GitHub, unknown repository".
+func GitHubFullName(origin string) (string, bool) {
+	u := strings.TrimSpace(Redact(origin))
+	switch {
+	case strings.HasPrefix(u, "git@"):
+		// git@github.com:owner/name.git
+		host, path, ok := strings.Cut(strings.TrimPrefix(u, "git@"), ":")
+		if !ok || !isGitHubHost(host) {
+			return "", false
+		}
+		u = path
+	case strings.Contains(u, "://"):
+		_, rest, _ := strings.Cut(u, "://")
+		host, path, ok := strings.Cut(rest, "/")
+		if !ok || !isGitHubHost(host) {
+			return "", false
+		}
+		u = path
+	default:
+		return "", false // a local path
+	}
+	u = strings.TrimSuffix(strings.Trim(u, "/"), ".git")
+	owner, name, ok := strings.Cut(u, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return "", false
+	}
+	return owner + "/" + name, true
+}
+
+// isGitHubHost matches github.com and GitHub Enterprise hosts, which is as far
+// as a URL can tell us; a non-GitHub host simply has no permissions API here.
+func isGitHubHost(host string) bool {
+	host = strings.ToLower(host)
+	if i := strings.Index(host, "@"); i >= 0 {
+		host = host[i+1:]
+	}
+	host, _, _ = strings.Cut(host, ":")
+	return host == "github.com" || strings.HasPrefix(host, "github.") ||
+		strings.HasSuffix(host, ".github.com")
+}

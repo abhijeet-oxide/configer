@@ -253,6 +253,18 @@ func (s *Service) rememberToken(login, token string) {
 	s.tokens[login] = token
 }
 
+// SetGitHubToken records a user's GitHub access token without an OAuth round
+// trip. The login callback is the only caller in production; it is exported so
+// a test - or, later, a credential provider that obtains tokens some other way
+// - can supply one, since the cache is process memory and cannot be seeded
+// through the store.
+func (s *Service) SetGitHubToken(login, token string) {
+	if s == nil || login == "" {
+		return
+	}
+	s.rememberToken(login, token)
+}
+
 // GitHubToken returns the cached GitHub access token for a signed-in user,
 // or "" when none is known (session predates this process).
 func (s *Service) GitHubToken(login string) string {

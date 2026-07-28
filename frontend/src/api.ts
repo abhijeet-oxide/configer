@@ -498,11 +498,15 @@ export interface Member {
   role: RoleName;
 }
 
-/** /repos/{id}/role: the caller's own effective capability on one application. */
+/** /repos/{id}/role: the caller's own effective capability on one application,
+ *  and where it came from - so the UI can say WHY, which a bare "Viewer" only
+ *  raises as a question. */
 export interface MyRole {
   enabled: boolean;
   role: RoleName;
   admin: boolean;
+  source?: "admin" | "configer" | "git" | "default";
+  detail?: string;
 }
 
 export interface AuditEvent {
@@ -723,6 +727,11 @@ export interface RepoSummary {
   /** "connecting" while a background clone/open runs, "error" when it failed,
    *  and absent (ready) for a fully connected repository. */
   status?: "connecting" | "error" | "";
+  /** the CALLER's capability on this application, and where it came from. A
+   *  role belongs to a (person, application) pair - the same person is an
+   *  approver on one and a viewer on the next - so it is carried per card. */
+  role?: RoleName;
+  roleSource?: "admin" | "configer" | "git" | "default" | "single-user";
 }
 
 /**

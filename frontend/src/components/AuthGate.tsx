@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, UNAUTHORIZED_EVENT } from "../api";
 import { useSession } from "../session";
@@ -47,10 +47,15 @@ export default function AuthGate({ children }: { children: React.ReactNode }) {
   const me = meQ.data;
   const signedIn = !!me && (!me.enabled || !!me.user);
 
-  // Once signed in, forget how the last session ended, so a later sign-out
-  // never shows "your session expired".
+  // Forget how the last session ended only when a NEW one begins - the
+  // transition from signed out to signed in. Clearing it merely because
+  // somebody is signed in would race the expiry itself: the 401 arrives while
+  // the previous identity is still cached, and the page would greet an
+  // interrupted user with "Welcome" instead of telling them what happened.
+  const wasSignedIn = useRef(signedIn);
   useEffect(() => {
-    if (signedIn && reason !== "new") clearReason();
+    if (signedIn && !wasSignedIn.current && reason !== "new") clearReason();
+    wasSignedIn.current = signedIn;
   }, [signedIn, reason, clearReason]);
 
   // Before the answer arrives, show the product's own quiet canvas rather than

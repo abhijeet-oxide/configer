@@ -1,4 +1,4 @@
-import { Layout, Result, Drawer, Button, Alert, Avatar, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Drawer, Button, Alert, Avatar, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   AppstoreOutlined,
@@ -57,7 +57,7 @@ import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
 import { loginHref } from "./components/SignInView";
 import EditorStatusBar from "./components/EditorStatusBar";
-import { OfflineArt, StatePanel } from "./components/illustrations";
+import { NotFoundArt, OfflineArt, ServiceDownArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
   TableSkeleton,
@@ -485,7 +485,7 @@ export default function App() {
       return (
         <div style={{ paddingTop: 48 }}>
           <StatePanel
-            art={<OfflineArt />}
+            art={<ServiceDownArt />}
             title={`Can't reach the ${deployment.name} service`}
             subtitle={
               <>
@@ -612,11 +612,30 @@ export default function App() {
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))
       return <ConfigurationPage section={section}>{appBody()}</ConfigurationPage>;
+    // An address that names no section: a page, not a bare result box.
     return (
-      <Result
-        title={section}
-        subTitle="This section does not exist. Use the navigation rail on the left."
-      />
+      <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+        <div style={{ paddingTop: 48 }}>
+          <StatePanel
+            art={<NotFoundArt size={132} />}
+            title="This page doesn't exist"
+            subtitle={
+              <>
+                Nothing here answers to <b>{section}</b>. It may have been renamed, or the link may
+                be out of date.
+              </>
+            }
+            actions={
+              <>
+                <Button type="primary" onClick={() => setSection("home")}>
+                  Go to start page
+                </Button>
+                <Button onClick={() => setSection("workspace")}>See applications</Button>
+              </>
+            }
+          />
+        </div>
+      </div>
     );
   }
 

@@ -100,6 +100,9 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A stopped server can leave a half-copied repository behind. Clearing it
+	// here means nobody ever meets it.
+	sweepIncoming(dataDir)
 	platform, authSvc, err := newPlatform(dataDir)
 	if err != nil {
 		return nil, err
@@ -850,34 +853,28 @@ func (h *Hub) connectWorker(sp connectSpec) {
 			Path: filepath.Join(h.dataDir, "repos", sp.id), Branch: sp.branch,
 			Remote: true, Token: sp.token, AddedAt: sp.addedAt}
 	default:
-		gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
-		gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
 		dir := filepath.Join(h.dataDir, "repos", sp.id)
-		if perr := h.prepareCloneDir(what, dir); perr != nil {
-			h.failConnecting(sp.id, perr.Error())
+		// Copy into a folder of this attempt's own, then move it into place.
+		// Cloning straight to the final location made anything already sitting
+		// there fatal - a leftover from a stopped server, another attempt, the
+		// application itself - and git's complaint about it ("destination path
+		// already exists") is about Configer's storage, which the user can
+		// neither see nor clear. A folder nothing else can name cannot collide.
+		staged, cerr := h.cloneToStaging(sp)
+		if cerr != nil {
+			slog.Warn("clone failed", slog.String("id", sp.id),
+				slog.String("origin", what), slog.Any("error", cerr))
+			h.failConnecting(sp.id, friendlyConnectError(what, cerr))
 			return
 		}
 		if h.dismissed(sp.id) {
+			_ = os.RemoveAll(staged)
 			return
 		}
-		if _, cerr := gitengine.Clone(sp.url, dir, sp.branch, sp.token, gitName, gitEmail); cerr != nil {
-			// An auto-supplied credential must never make things worse: if it
-			// was rejected, retry once the anonymous (public) way.
-			if sp.autoToken {
-				_ = os.RemoveAll(dir)
-				if _, cerr2 := gitengine.Clone(sp.url, dir, sp.branch, "", gitName, gitEmail); cerr2 == nil {
-					cerr = nil
-				}
-			}
-			if cerr != nil {
-				// Never leave a half-clone behind: it would make the next
-				// attempt fail on a directory the user never created.
-				_ = os.RemoveAll(dir)
-				slog.Warn("clone failed", slog.String("id", sp.id),
-					slog.String("origin", what), slog.Any("error", cerr))
-				h.failConnecting(sp.id, friendlyConnectError(what, cerr))
-				return
-			}
+		if perr := h.placeClone(what, staged, dir); perr != nil {
+			_ = os.RemoveAll(staged)
+			h.failConnecting(sp.id, perr.Error())
+			return
 		}
 		e = workspace.Entry{ID: sp.id, Name: sp.name, Origin: sp.url, Path: dir,
 			Branch: sp.branch, AddedAt: sp.addedAt}
@@ -927,40 +924,116 @@ func (h *Hub) connectWorker(sp connectSpec) {
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
 }
 
-// prepareCloneDir makes sure the working copy directory is free before a clone.
+// incomingPrefix names a folder a connection is still copying into. It starts
+// with a dot so it can never be mistaken for an application id, and it is swept
+// at startup: a server stopped mid-clone leaves one behind, and nobody should
+// have to know that to add a repository.
+const incomingPrefix = ".incoming-"
+
+// sweepIncoming removes staging folders left by a server that stopped while a
+// clone was running. Anything under this prefix is by definition unfinished.
+func sweepIncoming(dataDir string) {
+	base := filepath.Join(dataDir, "repos")
+	entries, err := os.ReadDir(base)
+	if err != nil {
+		return
+	}
+	for _, ent := range entries {
+		if !ent.IsDir() || !strings.HasPrefix(ent.Name(), incomingPrefix) {
+			continue
+		}
+		slog.Info("clearing an unfinished copy left by an earlier run", slog.String("dir", ent.Name()))
+		_ = os.RemoveAll(filepath.Join(base, ent.Name()))
+	}
+}
+
+// cloneToStaging copies the repository into a folder of this attempt's own and
+// returns it. The caller moves it into place; on any failure nothing is left
+// behind, so no later attempt inherits this one's mess.
+func (h *Hub) cloneToStaging(sp connectSpec) (string, error) {
+	gitName := getenv("CONFIGER_GIT_NAME", "Configer Bot")
+	gitEmail := getenv("CONFIGER_GIT_EMAIL", "configer-bot@localhost")
+	base := filepath.Join(h.dataDir, "repos")
+	try := func(token string) (string, error) {
+		if err := os.MkdirAll(base, 0o755); err != nil {
+			return "", err
+		}
+		tmp, err := os.MkdirTemp(base, incomingPrefix+sp.id+"-")
+		if err != nil {
+			return "", err
+		}
+		// git clones happily into an existing EMPTY folder, which is what
+		// MkdirTemp just made and what nothing else has a name for.
+		if _, cerr := gitengine.Clone(sp.url, tmp, sp.branch, token, gitName, gitEmail); cerr != nil {
+			_ = os.RemoveAll(tmp)
+			return "", cerr
+		}
+		return tmp, nil
+	}
+	staged, err := try(sp.token)
+	if err != nil && sp.autoToken {
+		// A credential Configer supplied on the user's behalf must never make
+		// things worse than having none: try once the way the public would.
+		// The first failure is the one worth reporting if this fails too - it
+		// is the one about the access the user actually has.
+		if anon, aerr := try(""); aerr == nil {
+			return anon, nil
+		}
+	}
+	return staged, err
+}
+
+// placeClone moves a finished copy to the folder the application will use.
 //
-// The directory is named after the application id, and a server stopped
-// mid-clone can leave one behind. Git would then refuse with "already exists
-// and is not an empty directory" - a failure about Configer's own scratch space
-// that the user can neither see nor clear. Any directory here that no connected
-// application claims is exactly that leftover, so it is removed; one that IS
-// claimed is left alone and reported.
+// Everything it can refuse for is a fault on this side: the copy succeeded, so
+// the repository and the user's access to it are not in question. Each failure
+// says which step broke, because one sentence for three causes is a sentence
+// nobody can act on - including whoever reads the report.
+func (h *Hub) placeClone(what, staged, dir string) error {
+	if err := h.prepareCloneDir(what, dir); err != nil {
+		return err
+	}
+	if err := os.Rename(staged, dir); err != nil {
+		slog.Error("could not move a finished copy into place",
+			slog.String("from", staged), slog.String("to", dir), slog.Any("error", err))
+		return errors.New("Configer copied " + what + " but could not put it in place on the server. " + internalFaultTail)
+	}
+	return nil
+}
+
+// internalFaultTail ends every message about a failure on Configer's own side.
+// It says whose problem it is and who can see the reason, and asks nothing of
+// the user that would not work - "try again" is not advice when the cause is a
+// folder they cannot reach.
+const internalFaultTail = "This is a fault on the Configer side, not with the repository; the reason is in the service log, so tell an administrator if it happens again."
+
+// prepareCloneDir makes sure the final location is free before a finished copy
+// is moved into it.
 //
-// Ids are reserved against connections still in flight (see connect), so this
-// can no longer collide with an attempt that is still running - which is what
-// made one slow repository fail on every retry after it. Everything it can
-// still refuse for is a fault on this side, and says so.
+// A server stopped mid-clone (before staging folders existed) can leave one
+// behind, and a location no connected application claims is exactly that. One
+// that IS claimed is left alone and reported: it holds a healthy application's
+// working copy.
 func (h *Hub) prepareCloneDir(what, dir string) error {
-	internal := errors.New("Configer could not set up a working copy of " + what +
-		" on the server. This is a fault on the Configer side, not with the repository - wait a moment and try again, and tell an administrator if it keeps happening")
 	if _, err := os.Stat(dir); err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		slog.Warn("cannot read the working copy location", slog.String("dir", dir), slog.Any("error", err))
-		return internal
+		slog.Error("cannot read the working copy location", slog.String("dir", dir), slog.Any("error", err))
+		return errors.New("Configer could not read where it keeps " + what + " on the server. " + internalFaultTail)
 	}
 	for _, e := range h.registry.List() {
 		if filepath.Clean(e.Path) == filepath.Clean(dir) {
-			slog.Warn("working copy location is claimed by a connected application",
+			slog.Error("working copy location is claimed by a connected application",
 				slog.String("dir", dir), slog.String("id", e.ID))
-			return internal
+			return errors.New("the application \"" + e.Name + "\" already keeps its copy where " + what +
+				" would go. Disconnect it first, or add this one under a different name")
 		}
 	}
-	slog.Info("removing a leftover working copy before cloning", slog.String("dir", dir))
+	slog.Info("removing a leftover working copy before putting a new one in place", slog.String("dir", dir))
 	if err := os.RemoveAll(dir); err != nil {
-		slog.Warn("could not clear a leftover working copy", slog.String("dir", dir), slog.Any("error", err))
-		return internal
+		slog.Error("could not clear a leftover working copy", slog.String("dir", dir), slog.Any("error", err))
+		return errors.New("Configer could not clear an old copy of " + what + " on the server. " + internalFaultTail)
 	}
 	return nil
 }
@@ -986,11 +1059,10 @@ func friendlyConnectError(what string, err error) string {
 	switch {
 	case strings.Contains(low, "already exists and is not an empty directory"),
 		strings.Contains(low, "destination path"):
-		// Configer prepares its own working folder before cloning, so reaching
-		// here means two attempts collided on this side. Nothing about the
-		// repository is wrong and there is nothing for the user to undo.
-		return "Configer could not set up a working copy of " + what +
-			" on the server. This is a fault on the Configer side, not with the repository - wait a moment and try again, and tell an administrator if it keeps happening"
+		// Each attempt copies into a folder of its own that nothing else can
+		// name, so this cannot happen any more. If it does, something is
+		// writing into Configer's storage and the user is not the cause.
+		return "Configer could not make a copy of " + what + " on the server. " + internalFaultTail
 	case strings.Contains(low, "authentication failed"), strings.Contains(low, "could not read username"),
 		// Git asks for a password it cannot ask for (no terminal on a server):
 		// the credential Configer had was not accepted, or there was none.

@@ -206,3 +206,83 @@ func waitForConnects(t *testing.T, hub *Hub) {
 	}
 	t.Error("a connect worker never finished")
 }
+
+// The failure class this removes: anything already sitting where the working
+// copy goes used to make git refuse the clone outright ("destination path
+// already exists"), and the user was told about a folder on the server they can
+// neither see nor clear. Each attempt now copies into a folder of its own, so a
+// leftover is cleared at the end - after the copy succeeded - and never gets a
+// vote on whether the repository can be added.
+func TestALeftoverWorkingCopyDoesNotStopAConnection(t *testing.T) {
+	hub, handler := testHub(t)
+	defer waitForConnects(t, hub)
+	source := hub.registry.List()[0].Path // a real git repository to copy from
+
+	leftover := filepath.Join(hub.dataDir, "repos", "copy-of-t")
+	if err := os.MkdirAll(filepath.Join(leftover, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(leftover, "junk.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	id := connectOnce(t, handler, "file://"+source, "copy of t")
+	if id != "copy-of-t" {
+		t.Fatalf("id = %q, want the leftover's own name back", id)
+	}
+	waitForConnects(t, hub)
+
+	if _, ok := hub.registry.Get(id); !ok {
+		hub.mu.Lock()
+		c := hub.connecting[id]
+		hub.mu.Unlock()
+		msg := ""
+		if c != nil {
+			msg = c.Error
+		}
+		t.Fatalf("the repository was not connected: %s", msg)
+	}
+	if _, err := os.Stat(filepath.Join(leftover, "junk.txt")); err == nil {
+		t.Error("the leftover should have been replaced by the fresh copy")
+	}
+	if _, err := os.Stat(filepath.Join(leftover, ".git")); err != nil {
+		t.Error("the connected application has no working copy")
+	}
+}
+
+// A server stopped mid-copy leaves an unfinished folder behind. Nobody should
+// have to know that to add a repository, so it is cleared at startup.
+func TestUnfinishedCopiesAreSweptAtStartup(t *testing.T) {
+	dataDir := t.TempDir()
+	junk := filepath.Join(dataDir, "repos", incomingPrefix+"flux-cd-123")
+	keep := filepath.Join(dataDir, "repos", "flux-cd")
+	for _, d := range []string{junk, keep} {
+		if err := os.MkdirAll(filepath.Join(d, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	sweepIncoming(dataDir)
+	if _, err := os.Stat(junk); !os.IsNotExist(err) {
+		t.Error("an unfinished copy should be cleared at startup")
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Error("a real application's working copy must be left alone")
+	}
+}
+
+// The one refusal at this step that is NOT Configer's own fault names the
+// application in the way and what to do, rather than describing storage.
+func TestPlacementRefusalNamesTheApplicationInTheWay(t *testing.T) {
+	hub, _ := testHub(t)
+	inUse := hub.registry.List()[0]
+	err := hub.placeClone("acme/flux-cd", t.TempDir(), inUse.Path)
+	if err == nil {
+		t.Fatal("a connected application's working copy must not be overwritten")
+	}
+	if !strings.Contains(err.Error(), inUse.Name) {
+		t.Errorf("the message should name the application in the way: %q", err)
+	}
+	if _, serr := os.Stat(inUse.Path); serr != nil {
+		t.Error("the connected application's working copy was removed")
+	}
+}

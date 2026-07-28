@@ -29,11 +29,11 @@ import (
 // of showing an empty proposal. "Found nothing" is a normal answer here: plenty
 // of repositories hold manifests with no configuration Configer can manage.
 type Result struct {
-	Detection   layout.Detection  `json:"detection"`
-	Instances   []model.Instance  `json:"instances"`
-	Parameters  []model.Parameter `json:"parameters"`
-	SharedFiles []string          `json:"sharedFiles,omitempty"`
-	Skipped     []string          `json:"skipped,omitempty"`
+	Detection   layout.Detection     `json:"detection"`
+	Instances   []model.Instance     `json:"instances"`
+	Parameters  []model.Parameter    `json:"parameters"`
+	SharedFiles []string             `json:"sharedFiles,omitempty"`
+	Skipped     []ingest.SkippedFile `json:"skipped,omitempty"`
 }
 
 // nonNil turns a nil slice into an empty one, so it marshals as [] not null.
@@ -472,8 +472,8 @@ func keyListSelectors(cands []candidate) []candidate {
 	}
 
 	// Decide the identity key per prefix, and the per-index selector to use.
-	keyForPrefix := map[string]string{}       // prefix -> identity field
-	selectorForEntry := map[string]string{}   // prefix+"\x00"+idx -> "field=value"
+	keyForPrefix := map[string]string{}     // prefix -> identity field
+	selectorForEntry := map[string]string{} // prefix+"\x00"+idx -> "field=value"
 	for _, prefix := range prefixOrder {
 		entries := byPrefix[prefix]
 		chosen := ""

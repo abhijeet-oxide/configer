@@ -29,7 +29,8 @@ import {
 import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, type Binding, type Instance, type Parameter } from "../api";
+import { api, bindingsOf, type Binding, type Instance, type Parameter, type SkippedFile } from "../api";
+import { groupSkipped, SKIP_EXPLANATIONS, SKIP_REASONS } from "../skipped";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { InlineNotice, Stepper } from "./ui";
@@ -206,6 +207,37 @@ function LocationsCell({ p }: { p: Parameter }) {
   );
 }
 
+// SkippedFiles names the files the scan passed over and why. It is the answer
+// to the only question an empty proposal raises - "my repository is not empty,
+// what happened to my files?" - which the API had all along and nothing showed.
+function SkippedFiles({ skipped }: { skipped: SkippedFile[] }) {
+  if (skipped.length === 0) return null;
+  return (
+    <div className="rounded-card-lg bg-surface-2 px-4 py-3">
+      <Typography.Text strong style={{ fontSize: 13 }}>
+        {skipped.length} file{skipped.length === 1 ? "" : "s"} passed over
+      </Typography.Text>
+      {groupSkipped(skipped).map((g) => (
+        <div key={g.reason} style={{ marginTop: 10 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {g.files.length} because {SKIP_REASONS[g.reason]}. {SKIP_EXPLANATIONS[g.reason]}
+          </Typography.Text>
+          <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
+            {g.files.slice(0, 8).map((f) => (
+              <li key={f} className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
+                {f}
+              </li>
+            ))}
+            {g.files.length > 8 && (
+              <li style={{ fontSize: 11, color: "var(--text-3)" }}>and {g.files.length - 8} more</li>
+            )}
+          </ul>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function OnboardingWizard({ projectName }: { projectName: string }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -228,6 +260,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   // is an ordinary answer - plenty of repositories hold manifests with no
   // configuration to manage - and it must not be able to take the page down.
   const found = useMemo(() => d?.parameters ?? [], [d]);
+  const skipped = useMemo(() => d?.skipped ?? [], [d]);
 
   const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
   // Distinct configuration formats found across every discovered parameter -
@@ -344,16 +377,16 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   // rendered output, CRDs - without holding SETTINGS that belong in a grid.
   // Walking someone through four steps over zeros, with Next disabled and no
   // reason given, tells them none of that.
-  if (found.length === 0 && insts.length === 0) {
+  if (found.length === 0) {
     return (
       <div style={{ paddingTop: 40 }}>
         <StatePanel
           art={<ScanArt />}
           title="Nothing to manage in this repository yet"
           subtitle={
-            "Configer read the files and did not find settings it can put in a grid. It looks for " +
-            "configuration values in YAML, JSON or XML - usually one folder per environment or cluster. " +
-            "A repository of generated manifests, or one whose settings live somewhere else, will look like this."
+            skipped.length > 0
+              ? "Configer read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below."
+              : "Configer read the files and found no settings it can put in a grid. It looks for configuration values in YAML, JSON or XML - usually one folder per environment or cluster."
           }
           actions={
             <>
@@ -365,6 +398,11 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             </>
           }
         />
+        {/* The reason IS the answer here: without it the page says "nothing
+            found" about a repository the user knows has files in it. */}
+        <div style={{ maxWidth: 720, margin: "8px auto 0" }}>
+          <SkippedFiles skipped={skipped} />
+        </div>
       </div>
     );
   }
@@ -774,6 +812,10 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             ))}
         </div>
       )}
+
+      <div style={{ marginTop: 16 }}>
+        <SkippedFiles skipped={skipped} />
+      </div>
 
       <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>
         {chosenParams.length} settings selected across {insts.length} instances

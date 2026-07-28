@@ -1,4 +1,4 @@
-import { Layout, Result, Drawer, Button, Alert, Avatar, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
+import { Layout, Drawer, Button, Alert, Avatar, Tooltip, Grid as AntGrid, App as AntApp, theme as antdTheme } from "antd";
 import {
   ApartmentOutlined,
   AppstoreOutlined,
@@ -12,10 +12,11 @@ import {
   MoonOutlined,
 } from "./icons";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { api, type Grid as GridData, type Meta } from "./api";
+import { api, isReady, readyRepos, type Grid as GridData, type Meta, type RepoSummary } from "./api";
 import { useConn, loadSnapshot, drainQueue, requeue, OfflineError, type QueuedEdit } from "./offline";
+import { notifyError, sentence } from "./notify";
 import { useRepoQuery } from "./repoQuery";
 import { useDeployment, useHealth } from "./deployment";
 import { useUI } from "./store";
@@ -54,8 +55,9 @@ import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
 import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
+import { loginHref } from "./components/SignInView";
 import EditorStatusBar from "./components/EditorStatusBar";
-import { OfflineArt, StatePanel } from "./components/illustrations";
+import { NotFoundArt, OfflineArt, ServiceDownArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
   TableSkeleton,
@@ -177,12 +179,30 @@ export default function App() {
   const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const online = useConn((s) => s.online);
   const deployment = useDeployment();
+  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
+  // The selected application's portfolio entry, and whether it can be read at
+  // all: an application still connecting, or one whose connection failed, has
+  // no server behind it, so every repo-scoped read must hold off rather than
+  // address an application the service does not have (one failed connection
+  // would otherwise become a stream of "not connected" errors).
+  const activeRepo = wsQ.data?.repos.find((r) => r.id === repoId) ?? null;
+  const activeUnavailable = !!activeRepo && !isReady(activeRepo);
+  // Until the portfolio has answered, nothing repo-scoped is read: a remembered
+  // application may since have been removed, or may never have finished
+  // connecting, and asking anyway spends a round of doomed requests on every
+  // cold start. If the portfolio itself cannot be read (offline), fall back to
+  // trying: the offline snapshot layer handles it from there.
+  const readable = !!repoId && (wsQ.isSuccess ? !activeUnavailable : wsQ.isError);
+  // Publish readability so EVERY repo-scoped read inherits the gate (see
+  // repoQuery.ts) instead of each view remembering to check.
+  const setRepoReadable = useUI((s) => s.setRepoReadable);
+  useEffect(() => setRepoReadable(readable), [readable, setRepoReadable]);
   // Whether the selected repository carries a Configer application at all: a
   // connected-but-uninitialized repo routes into the onboarding wizard.
   const projectQ = useQuery({
     queryKey: ["project-info"],
     queryFn: api.projectInfo,
-    enabled: !!repoId,
+    enabled: readable,
     staleTime: 30_000,
   });
   const uninitialized = projectQ.data?.initialized === false;
@@ -194,23 +214,25 @@ export default function App() {
     // still false, so gating on `!uninitialized` would fire a grid load against
     // a possibly un-onboarded repo - which reads .configer/parameters.yaml and
     // fails with a spurious "parameter file not found" toast.
-    enabled: projectQ.data?.initialized === true,
+    enabled: readable && projectQ.data?.initialized === true,
     refetchInterval: online ? false : 10_000,
   });
   // Lightweight heartbeat: keeps probing while unreachable so recovery is
   // automatic. The same probe gated the boot (see BootGate), so it is already
   // warm here.
   useHealth();
-  const metaQ = useRepoQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000 });
-  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
+  const metaQ = useRepoQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000, enabled: readable });
   const qc = useQueryClient();
 
   // Bind the app to a valid repository once the workspace is known: adopt the
-  // first one when none is selected (or the remembered one is gone), and step
-  // back to the workspace screen when nothing is connected at all.
+  // first READY one when none is selected (or the remembered one is gone), and
+  // step back to the workspace screen when nothing is connected at all. An
+  // application that is still connecting (or failed to) is deliberately never
+  // adopted: it would take the user into a workspace made of failed reads.
   useEffect(() => {
     const repos = wsQ.data?.repos;
     if (!repos) return;
+    const ready = readyRepos(repos);
     if (repos.length === 0) {
       // The last application was disconnected: drop the selection and every
       // cached read that belonged to it, so nothing repo-scoped is left to
@@ -222,10 +244,19 @@ export default function App() {
       setSection("workspace");
       return;
     }
-    if (!repoId || !repos.some((r) => r.id === repoId)) {
-      setRepo(repos[0].id);
-      qc.clear();
+    // Keep an explicitly-selected application that is mid-connection: the user
+    // is watching it come up, and the views below show that state.
+    if (repoId && repos.some((r) => r.id === repoId)) return;
+    if (ready.length === 0) {
+      if (repoId) {
+        setRepo(null);
+        qc.clear();
+      }
+      setSection("workspace");
+      return;
     }
+    setRepo(ready[0].id);
+    qc.clear();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wsQ.data, repoId]);
 
@@ -454,7 +485,7 @@ export default function App() {
       return (
         <div style={{ paddingTop: 48 }}>
           <StatePanel
-            art={<OfflineArt />}
+            art={<ServiceDownArt />}
             title={`Can't reach the ${deployment.name} service`}
             subtitle={
               <>
@@ -544,6 +575,16 @@ export default function App() {
           <WorkspaceView />
         </div>
       );
+    // The selected application is still being connected, or its connection
+    // failed. It has no configuration to show yet, and asking for some would
+    // only produce errors - so this is its own state, with the two things worth
+    // doing: wait, or remove it and start over.
+    if (activeUnavailable && activeRepo)
+      return (
+        <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+          <UnavailableApplication repo={activeRepo} />
+        </div>
+      );
     // Hold every application-level view until we actually know whether this
     // repo carries a Configer application. Rendering the editor (or the tab
     // strip, which fires its own draft/grid/sources queries) before projectInfo
@@ -571,11 +612,30 @@ export default function App() {
     // page as a tab (Overview, Editor, Compare, Release history, Approvals…).
     if (APP_SECTIONS.has(section))
       return <ConfigurationPage section={section}>{appBody()}</ConfigurationPage>;
+    // An address that names no section: a page, not a bare result box.
     return (
-      <Result
-        title={section}
-        subTitle="This section does not exist. Use the navigation rail on the left."
-      />
+      <div style={{ height: "100%", overflow: "auto", ...panelBg }}>
+        <div style={{ paddingTop: 48 }}>
+          <StatePanel
+            art={<NotFoundArt size={132} />}
+            title="This page doesn't exist"
+            subtitle={
+              <>
+                Nothing here answers to <b>{section}</b>. It may have been renamed, or the link may
+                be out of date.
+              </>
+            }
+            actions={
+              <>
+                <Button type="primary" onClick={() => setSection("home")}>
+                  Go to start page
+                </Button>
+                <Button onClick={() => setSection("workspace")}>See applications</Button>
+              </>
+            }
+          />
+        </div>
+      </div>
     );
   }
 
@@ -775,7 +835,7 @@ function MobileProfileButton() {
       <Button
         size="small"
         type="primary"
-        href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+        href={loginHref()}
       >
         Sign in
       </Button>
@@ -808,5 +868,54 @@ function TreeDrawerButton({ grid }: { grid: GridData }) {
         <CategoryTree grid={grid} />
       </Drawer>
     </>
+  );
+}
+
+// UnavailableApplication is what an application that is not (yet) connected
+// shows in place of its workspace: a plain sentence about what is happening,
+// and a way out. Removing it here disconnects only the workspace entry - no
+// repository is touched, because none was ever successfully read.
+function UnavailableApplication({ repo }: { repo: RepoSummary }) {
+  const qc = useQueryClient();
+  const setRepo = useUI((s) => s.setRepo);
+  const setSection = useUI((s) => s.setSection);
+  const connecting = repo.status === "connecting";
+  const remove = useMutation({
+    mutationFn: () => api.removeRepo(repo.id),
+    onSuccess: () => {
+      setRepo(null);
+      setSection("workspace");
+      qc.clear();
+      void qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
+    onError: (e) => notifyError(e),
+  });
+  return (
+    <div style={{ paddingTop: 48 }}>
+      <StatePanel
+        art={<OfflineArt />}
+        title={connecting ? `Connecting "${repo.name}"…` : `"${repo.name}" could not be connected`}
+        subtitle={
+          connecting ? (
+            <>
+              Configer is reading the repository. This page updates itself as soon as it is ready -
+              a large repository can take a minute.
+            </>
+          ) : (
+            <>
+              {sentence(repo.error) || "The repository could not be read."} Nothing was changed in
+              Git - you can remove this application and add it again.
+            </>
+          )
+        }
+        actions={
+          connecting ? null : (
+            <Button danger loading={remove.isPending} onClick={() => remove.mutate()}>
+              Remove this application
+            </Button>
+          )
+        }
+      />
+    </div>
   );
 }

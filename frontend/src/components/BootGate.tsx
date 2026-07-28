@@ -5,7 +5,7 @@ import { ApiError, apiBaseUrl } from "../api";
 import { useHealth } from "../deployment";
 import { theme as brand } from "../theme.config";
 import BrandMark from "./BrandMark";
-import { OfflineArt } from "./illustrations";
+import { ServiceDownArt } from "./illustrations";
 
 // BootGate answers the first question the app has to ask: is the service there?
 //
@@ -58,7 +58,7 @@ function isWrongAddress(err: unknown): boolean {
 
 // BootSplash is the in-between: the product's own mark on its own canvas, so
 // the first paint already belongs to the app rather than being a blank page.
-function BootSplash() {
+export function BootSplash({ label = "Starting" }: { label?: string }) {
   return (
     <div className="boot-screen">
       <div className="boot-splash">
@@ -66,7 +66,7 @@ function BootSplash() {
         <Typography.Text strong style={{ fontSize: 15 }}>
           {brand.appName}
         </Typography.Text>
-        <span className="boot-progress" aria-label="Starting" />
+        <span className="boot-progress" aria-label={label} />
       </div>
     </div>
   );
@@ -98,47 +98,72 @@ function ServiceUnavailable({
 
   const misaddressed = isWrongAddress(error);
   return (
-    <div className="boot-screen">
-      <div className="boot-card">
-        <div className="boot-card-brand">
-          <BrandMark />
-          <Typography.Text strong>{brand.appName}</Typography.Text>
-        </div>
-        <OfflineArt size={120} />
-        <Typography.Title level={4} style={{ margin: "10px 0 0" }}>
-          {misaddressed
-            ? `${brand.appName} can’t find its service`
-            : `${brand.appName} can’t reach its service`}
-        </Typography.Title>
-        <Typography.Text type="secondary" style={{ fontSize: 13.5 }}>
-          {misaddressed ? (
-            <>
-              Something answered at the configured address, but it isn&rsquo;t the {brand.appName}
-              {" "}API. The service address this page is built with looks wrong - an administrator
-              can correct it.
-            </>
-          ) : (
-            <>
-              The service isn&rsquo;t responding right now. It may be starting up, restarting, or
-              briefly under maintenance. Nothing you have saved is affected - your configuration
-              lives in Git.
-            </>
+    <div className="auth-screen">
+      <div className="auth-centered">
+        <div className="auth-card">
+          <div className="auth-lockup">
+            <BrandMark size={30} />
+            <div className="auth-lockup-text">
+              <span className="auth-lockup-name">{brand.appName}</span>
+              <span className="auth-lockup-tag">Config lifecycle</span>
+            </div>
+          </div>
+          <div className="auth-card-art">
+            <ServiceDownArt size={140} />
+          </div>
+          <Typography.Title level={3} className="auth-title">
+            {misaddressed ? "Service not found at this address" : "Service unavailable"}
+          </Typography.Title>
+          <Typography.Paragraph type="secondary" className="auth-body">
+            {misaddressed ? (
+              <>
+                Something answered at the configured address, but it isn&rsquo;t the{" "}
+                {brand.appName} API. The address this page is built with looks wrong - an
+                administrator can correct it.
+              </>
+            ) : (
+              <>
+                {brand.appName} can&rsquo;t reach its service right now. It may be starting up,
+                restarting, or briefly under maintenance. Nothing you have saved is affected - your
+                configuration lives in Git.
+              </>
+            )}
+          </Typography.Paragraph>
+          {misaddressed && (
+            <code className="auth-detail">
+              {apiBaseUrl()}/health {"->"} {(error as ApiError).status}
+            </code>
           )}
-        </Typography.Text>
-        {misaddressed && (
-          <code className="boot-card-detail">
-            {apiBaseUrl()}/health {"->"} {(error as ApiError).status}
-          </code>
-        )}
-        <div className="boot-card-actions">
-          <Button type="primary" icon={<ReloadOutlined />} loading={retrying} onClick={onRetry}>
-            Try again
-          </Button>
+          {/* The wait is shown as progress rather than a number that ticks down
+              in prose: it says "this page is working on it" at a glance. */}
+          {!misaddressed && (
+            <div className="auth-retry" role="status" aria-live="polite">
+              <div className="auth-retry-track">
+                <span
+                  className="auth-retry-fill"
+                  style={{ width: `${((RETRY_SECONDS - left) / RETRY_SECONDS) * 100}%` }}
+                />
+              </div>
+              <span className="auth-retry-label">
+                {retrying ? "Checking…" : `Checking again in ${left}s`}
+              </span>
+            </div>
+          )}
+          <div className="auth-card-actions">
+            <Button
+              type="primary"
+              size="large"
+              icon={<ReloadOutlined />}
+              loading={retrying}
+              onClick={onRetry}
+              className="auth-cta"
+            >
+              Try again now
+            </Button>
+          </div>
         </div>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {retrying ? "Checking…" : `Checking again in ${left}s`}
-        </Typography.Text>
       </div>
     </div>
   );
+
 }

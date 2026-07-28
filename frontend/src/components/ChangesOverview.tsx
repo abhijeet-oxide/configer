@@ -1,7 +1,7 @@
 import { Select, Table } from "antd";
 import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { api, type ChangeRequest, type ChangeState } from "../api";
+import { api, type ChangeRequest, type ChangeState, readyRepos } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { StatePill } from "./CrSteps";
@@ -40,7 +40,10 @@ export default function ChangesOverview() {
   const [app, setApp] = useState("");
 
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const repos = wsQ.data?.repos ?? [];
+  // Only applications that are actually connected: one still connecting (or
+  // whose connection failed) has nothing to read, and asking anyway turns a
+  // single failed connection into an error per application per refresh.
+  const repos = readyRepos(wsQ.data?.repos);
   const changeQs = useQueries({
     queries: repos.map((r) => ({
       queryKey: ["inbox-changes", r.id],

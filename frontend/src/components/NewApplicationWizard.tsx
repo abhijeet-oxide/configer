@@ -33,6 +33,8 @@ import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { useCapabilities } from "../deployment";
 import { relTime } from "./DashboardView";
 import { InlineNotice, Stepper } from "./ui";
+import { loginHref } from "./SignInView";
+import { describeError, sentence } from "../notify";
 import { InlineListSkeleton } from "./Skeletons";
 
 // NewApplicationWizard is the seamless "New application" flow. It opens on a
@@ -69,6 +71,10 @@ export default function NewApplicationWizard({
   const [repo, setRepo] = useState<GitHubRepo | null>(null);
   const [branch, setBranch] = useState<string | undefined>();
   const [name, setName] = useState("");
+  // A failed creation belongs INSIDE the dialog, next to the button that
+  // caused it: a toast over a dialog is easy to miss, and leaves the user
+  // looking at a form with no idea whether it worked.
+  const [failure, setFailure] = useState<string | null>(null);
 
   const statusQ = useQuery({ queryKey: ["github-status"], queryFn: api.githubStatus, enabled: open });
   const caps = useCapabilities();
@@ -86,22 +92,27 @@ export default function NewApplicationWizard({
     setRepo(null);
     setBranch(undefined);
     setName("");
+    setFailure(null);
   };
 
   const create = useMutation({
     // Connect returns 202 immediately; wait for the background clone/open to
     // finish (or fail) before advancing, so onboarding gets a ready repository.
-    mutationFn: async () => {
-      const started = await api.connectRepo({ url: repo!.url, name: name.trim() || repo!.name, branch });
-      return api.waitForRepoReady(started.id);
-    },
+    // A failure clears the half-connected entry (see api.connectApplication),
+    // so a retry starts clean instead of colliding with the last attempt.
+    mutationFn: () =>
+      api.connectApplication({ url: repo!.url, name: name.trim() || repo!.name, branch }),
+    onMutate: () => setFailure(null),
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created. Scanning the repository…`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
       reset();
       onCreated(r);
     },
-    onError: (e: Error) => message.error(e.message, 6),
+    onError: (e: Error) => {
+      setFailure(sentence(describeError(e).title));
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
   });
 
   const pickRepo = (r: GitHubRepo) => {
@@ -186,6 +197,7 @@ export default function NewApplicationWizard({
             name={name}
             setName={setName}
             creating={create.isPending}
+            failure={failure}
             onBack={() => setStep(0)}
             onCreate={() => create.mutate()}
           />
@@ -268,19 +280,21 @@ function LocalFolderStep({
   const qc = useQueryClient();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [picked, setPicked] = useState<PickedFolder | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const connect = useMutation({
     // Name is derived server-side from the folder; nothing to enter here.
-    mutationFn: async (path: string) => {
-      const started = await api.connectRepo({ url: path });
-      return api.waitForRepoReady(started.id);
-    },
+    mutationFn: (path: string) => api.connectApplication({ url: path }),
+    onMutate: () => setFailure(null),
     onSuccess: (r) => {
       message.success(`Application "${r.name}" created from the local folder. Scanning it…`);
       qc.invalidateQueries({ queryKey: ["workspace"] });
       onDone(r);
     },
-    onError: (e: Error) => message.error(e.message, 6),
+    onError: (e) => {
+      setFailure(sentence(describeError(e).title));
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
   });
 
   return (
@@ -348,6 +362,11 @@ function LocalFolderStep({
         </div>
       )}
 
+      {failure && (
+        <InlineNotice tone="danger" className="mt-3">
+          {failure}
+        </InlineNotice>
+      )}
       <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
         <FileSearchOutlined /> The folder is added as itself
         {picked && !picked.isRepo && " - a local Git repository is initialized for it"}. Configer
@@ -589,7 +608,7 @@ function RepoStep({
           type="primary"
           size="large"
           icon={<GithubOutlined />}
-          href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+          href={loginHref()}
         >
           Continue with GitHub
         </Button>
@@ -708,6 +727,7 @@ function FinishStep({
   name,
   setName,
   creating,
+  failure,
   onBack,
   onCreate,
 }: {
@@ -717,6 +737,8 @@ function FinishStep({
   name: string;
   setName: (n: string) => void;
   creating: boolean;
+  /** why the last attempt failed, shown next to the button that caused it */
+  failure: string | null;
   onBack: () => void;
   onCreate: () => void;
 }) {
@@ -783,10 +805,14 @@ function FinishStep({
           />
         </Form.Item>
       </Form>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-        <FileSearchOutlined /> After creating, Configer scans this branch and shows the
-        configuration files it found, so you choose what to manage.
-      </Typography.Text>
+      {failure ? (
+        <InlineNotice tone="danger">{failure}</InlineNotice>
+      ) : (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <FileSearchOutlined /> After creating, Configer scans this branch and shows the
+          configuration files it found, so you choose what to manage.
+        </Typography.Text>
+      )}
       <div className="wizard-actions">
         <Button icon={<ArrowLeftOutlined />} onClick={onBack} disabled={creating}>
           Repository
@@ -799,7 +825,7 @@ function FinishStep({
           disabled={branchesQ.isLoading && !chosen}
           onClick={onCreate}
         >
-          Create application & scan
+          {failure ? "Try again" : "Create application & scan"}
         </Button>
       </div>
     </div>
@@ -822,11 +848,11 @@ export function ConnectForm({
   const qc = useQueryClient();
   const caps = useCapabilities();
   const [form] = Form.useForm<{ url: string; name: string; branch?: string; token?: string }>();
+  const [failure, setFailure] = useState<string | null>(null);
   const connect = useMutation({
-    mutationFn: async (v: { url: string; name: string; branch?: string; token?: string }) => {
-      const started = await api.connectRepo(v);
-      return api.waitForRepoReady(started.id);
-    },
+    mutationFn: (v: { url: string; name: string; branch?: string; token?: string }) =>
+      api.connectApplication(v),
+    onMutate: () => setFailure(null),
     onSuccess: (r) => {
       const how = r.local ? "opened in place" : r.noClone ? "connected via the GitHub API" : "connected";
       message.success(`Application "${r.name}" created (${how}).`);
@@ -834,7 +860,10 @@ export function ConnectForm({
       form.resetFields();
       onDone(r);
     },
-    onError: (e: Error) => message.error(e.message, 6),
+    onError: (e) => {
+      setFailure(sentence(describeError(e).title));
+      qc.invalidateQueries({ queryKey: ["workspace"] });
+    },
   });
   return (
     <Form form={form} layout="vertical" onFinish={(v) => connect.mutate(v)} requiredMark={false}>
@@ -870,9 +899,14 @@ export function ConnectForm({
       >
         <Input.Password placeholder="ghp_… (optional)" autoComplete="off" />
       </Form.Item>
+      {failure && (
+        <InlineNotice tone="danger" className="mb-3">
+          {failure}
+        </InlineNotice>
+      )}
       <div style={{ display: "flex", justifyContent: "flex-end" }}>
         <Button type="primary" htmlType="submit" loading={connect.isPending} icon={<PlusOutlined />}>
-          Create application
+          {failure ? "Try again" : "Create application"}
         </Button>
       </div>
     </Form>

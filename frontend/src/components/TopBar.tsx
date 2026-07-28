@@ -3,18 +3,20 @@ import {
   Space,
   Tooltip,
   Button,
-  Badge,
   Avatar,
   Dropdown,
   Typography,
 } from "antd";
-import { SearchOutlined, BellOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
+import { SearchOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
 import { toggleThemeWithReveal } from "../themeTransition";
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
+import { useSignOut } from "../useSignOut";
+import { loginHref } from "./SignInView";
+import NotificationsPanel from "./NotificationsPanel";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { modLabel, shortcut } from "../platform";
@@ -219,14 +221,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
           />
         </Tooltip>
-        <Tooltip
-          placement="bottomRight"
-          title={awaiting ? `${awaiting} change(s) waiting for review` : "Nothing waiting for review"}
-        >
-          <Badge count={awaiting} size="small" color="var(--c-review)">
-            <Button size="small" type="text" icon={<BellOutlined />} onClick={() => setSection("inbox")} />
-          </Badge>
-        </Tooltip>
+        <NotificationsPanel awaiting={awaiting} />
         <IdentityControl repoId={repoId} />
       </Space>
     </div>
@@ -237,14 +232,10 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
 // configured) show nothing; multi-user ones show a Sign-in button or the
 // user's avatar menu (people & roles for admins, sign out).
 function IdentityControl({ repoId }: { repoId: string | null }) {
-  const qc = useQueryClient();
   const { setSection } = useUI();
   const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
   const [membersOpen, setMembersOpen] = useState(false);
-  const logout = useMutation({
-    mutationFn: api.logout,
-    onSuccess: () => qc.invalidateQueries(),
-  });
+  const logout = useSignOut();
 
   const me = meQ.data;
   if (!me?.enabled) return null;
@@ -253,7 +244,7 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
       <Button
         size="small"
         type="primary"
-        href={`/api/auth/login?return_to=${encodeURIComponent(window.location.pathname + window.location.search)}`}
+        href={loginHref()}
       >
         Sign in with GitHub
       </Button>

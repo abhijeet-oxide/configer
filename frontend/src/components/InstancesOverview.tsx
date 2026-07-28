@@ -2,7 +2,7 @@ import { Button, Input, Modal, Select, Table } from "antd";
 import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { SearchOutlined, TableOutlined, ClusterOutlined } from "../icons";
-import { api, type Instance } from "../api";
+import { api, type Instance, readyRepos } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { envHex } from "../theme";
@@ -36,7 +36,10 @@ export default function InstancesOverview() {
   const [sel, setSel] = useState<EstateRow | null>(null);
 
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const repos = wsQ.data?.repos ?? [];
+  // Only applications that are actually connected: one still connecting (or
+  // whose connection failed) has nothing to read, and asking anyway turns a
+  // single failed connection into an error per application per refresh.
+  const repos = readyRepos(wsQ.data?.repos);
   const instQs = useQueries({
     queries: repos.map((r) => ({
       queryKey: ["estate-instances", r.id],

@@ -1,6 +1,8 @@
 import { App as AntApp, Avatar, Button, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type AuthUser, type RoleName } from "../api";
+import { api, ApiError, type AuthUser, type RoleName } from "../api";
+import { AccessDeniedArt } from "./illustrations";
+import { EmptyState } from "./ui";
 
 // MembersModal is where deployment admins assign per-application roles:
 // viewer (read only), editor (stage and submit changes), approver (may also
@@ -46,6 +48,25 @@ export default function MembersModal({
   });
 
   const assigned = new Map((q.data?.members ?? []).map((m) => [m.login, m.role]));
+  const forbidden = q.error instanceof ApiError && q.error.isForbidden;
+
+  if (forbidden) {
+    // Who may use an application is administered deployment-wide, so this
+    // dialog simply does not apply to this person. One sentence, and a way
+    // out - never a red toast repeated behind an empty table.
+    return (
+      <Modal title="People & roles" open={open} onCancel={onClose} footer={null} width={480}>
+        <EmptyState
+          art={<AccessDeniedArt size={116} />}
+          title="Managed by an administrator"
+          hint="Who can use this application is set deployment-wide. Ask an administrator to change someone's access."
+        />
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <Button onClick={onClose}>Close</Button>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title="People & roles" open={open} onCancel={onClose} footer={null} width={640}>

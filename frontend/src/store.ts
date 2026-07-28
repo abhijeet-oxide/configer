@@ -177,6 +177,11 @@ interface UIState {
   /** the active repository (workspace entry id); null until the workspace
    *  loads, then always set while any repository is connected */
   repoId: string | null;
+  /** whether the active repository can actually be READ: false while its
+   *  connection is still running, or after it failed. Repo-scoped reads are
+   *  gated on it (see repoQuery.ts), so a half-connected application never
+   *  turns into a stream of failed requests. */
+  repoReadable: boolean;
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
@@ -234,6 +239,7 @@ interface UIState {
   /** system theme changed while the preference is "system" */
   applySystemMode: (m: Mode) => void;
   setRepo: (id: string | null) => void;
+  setRepoReadable: (readable: boolean) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
@@ -286,6 +292,10 @@ export const useUI = create<UIState>((set) => ({
   timeZone: settings0.timeZone,
   hourCycle: settings0.hourCycle,
   repoId: initialRepo,
+  // Starts closed: until the workspace listing says the selected application is
+  // connected, a repo-scoped read has no idea whether there is anything to read
+  // (App turns it on as soon as it knows - see App.tsx).
+  repoReadable: false,
   section: initialSection,
   categoryKey: null,
   selectedParamId: initialParam,
@@ -342,6 +352,7 @@ export const useUI = create<UIState>((set) => ({
   // the painted mode changes; the preference (and storage) stay "system".
   applySystemMode: (mode) =>
     set((s) => (s.themePref === "system" && s.mode !== mode ? { mode } : {})),
+  setRepoReadable: (repoReadable) => set((s) => (s.repoReadable === repoReadable ? {} : { repoReadable })),
   setRepo: (repoId) => {
     if (repoId) localStorage.setItem("configer.repoId", repoId);
     else localStorage.removeItem("configer.repoId");

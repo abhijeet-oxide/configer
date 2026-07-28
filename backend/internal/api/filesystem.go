@@ -57,7 +57,7 @@ func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
 	// single-user (localhost) mode auth is disabled and this is a no-op; with
 	// OAuth enabled it stops any signed-in user - let alone an anonymous one -
 	// from enumerating server directories (e.g. ?path=/etc).
-	if !h.requireAdmin(w, r) {
+	if !h.requireAdmin(w, r, "browse folders on the machine Configer runs on") {
 		return
 	}
 	// The UI hides this source on a hosted deployment; the server refuses it

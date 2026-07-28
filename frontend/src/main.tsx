@@ -4,9 +4,10 @@ import { App as AntApp, ConfigProvider } from 'antd'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import BootGate from './components/BootGate'
+import AuthGate from './components/AuthGate'
 import { useUI } from './store'
 import { buildTheme } from './theme'
-import { ApiError, UNAUTHORIZED_EVENT } from './api'
+import { ApiError } from './api'
 import { notifyError, setNotifier } from './notify'
 import './styles.css'
 import './tokens.css'
@@ -43,6 +44,10 @@ const queryClient = new QueryClient({
       // The service probe owns its own presentation (the boot screen and the
       // connection banner), so a failed probe must not also raise a popup.
       if (query.queryKey[0] === 'health') return
+      // A READ refused by the user's role is a property of the page, not an
+      // event: the view says what this person may see. Toasting it would repeat
+      // the same sentence for every read the page happens to make.
+      if (err instanceof ApiError && err.isForbidden) return
       if (query.state.data === undefined) notifyError(err)
     },
   }),
@@ -83,9 +88,12 @@ function ThemeRoot() {
     >
       <AntApp>
         <GlobalFeedback />
-        {/* Nothing renders until we know the service is there: see BootGate. */}
+        {/* Nothing renders until we know the service is there (BootGate) and
+            whether this browser may see it at all (AuthGate). */}
         <BootGate>
-          <App />
+          <AuthGate>
+            <App />
+          </AuthGate>
         </BootGate>
       </AntApp>
     </ConfigProvider>
@@ -93,39 +101,14 @@ function ThemeRoot() {
 }
 
 // GlobalFeedback bridges the react-query cache handlers to Ant's theme-aware
-// notification context, and turns a 401 (session missing/expired) into a
-// graceful, dismissible "sign in again" prompt instead of an abrupt redirect or
-// a silent failure. The login endpoint is provider-agnostic (GitHub today, any
-// OIDC/SSO provider the backend adds tomorrow), so this needs no change to
-// support new providers.
+// notification context. A 401 is deliberately NOT handled here: a missing or
+// expired session is not a per-request failure to pop up once per read, it is a
+// state of the whole app - AuthGate swaps the app for the sign-in page, which
+// says what happened and offers the one action that fixes it.
 function GlobalFeedback() {
   const { notification } = AntApp.useApp()
   React.useEffect(() => {
     setNotifier(notification)
-  }, [notification])
-  React.useEffect(() => {
-    let open = false
-    const onUnauthorized = () => {
-      if (open) return
-      open = true
-      notification.warning({
-        key: 'session-expired',
-        message: 'Please sign in again',
-        description: 'Your session has expired or you are not signed in.',
-        placement: 'bottomRight',
-        duration: 0,
-        btn: (
-          <a className="ant-btn ant-btn-primary ant-btn-sm" href="/api/auth/login">
-            Sign in
-          </a>
-        ),
-        onClose: () => {
-          open = false
-        },
-      })
-    }
-    window.addEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
-    return () => window.removeEventListener(UNAUTHORIZED_EVENT, onUnauthorized)
   }, [notification])
   return null
 }

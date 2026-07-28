@@ -75,6 +75,7 @@ being applied.
 | `CONFIGER_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `CONFIGER_SYNC_SECONDS` | `30` | Git sync interval (seconds); 0 = disabled |
 | `CONFIGER_ENV_FILE` | *(unset)* | Explicit `.env` path; skips the upward search |
+| `CONFIGER_WEB_DIR` | *(auto)* | Directory of the built UI to serve from this process; `./web` and `../frontend/dist` are tried when unset |
 | `CONFIGER_LOCAL_FOLDERS` | *(auto)* | Offer the "Local folder" source. Auto-detected: on for a non-production server reached from the same machine, off for anything hosted. Set `true`/`false` to decide explicitly |
 
 ### Platform (users, sessions, roles, audit)
@@ -85,6 +86,7 @@ being applied.
 | `GITHUB_OAUTH_CLIENT_ID` | *(unset)* | GitHub OAuth app client id; unset = single-user mode (no login) |
 | `GITHUB_OAUTH_CLIENT_SECRET` | *(unset)* | GitHub OAuth app client secret |
 | `CONFIGER_OAUTH_CALLBACK` | *(unset)* | Public `/api/auth/callback` URL (needed behind a proxy) |
+| `CONFIGER_APP_URL` | *(unset)* | Where the app is served when it is not this same address; login returns the browser here |
 | `GITHUB_WEB_URL` | `https://github.com` | GitHub web base (GitHub Enterprise) |
 | `CONFIGER_ADMINS` | *(unset)* | Comma-separated GitHub logins allowed to assign roles |
 | `CONFIGER_DEFAULT_ROLE` | `editor` | Role where no explicit assignment exists: viewer / editor / approver |
@@ -274,6 +276,16 @@ base URL is missing its `/api` prefix.
 2. The startup log says which one is missing (`auth disabled: ... reason=...`)
 3. The OAuth app's callback URL must be `<public-url>/api/auth/callback`; set
    `CONFIGER_OAUTH_CALLBACK` when a proxy fronts the deployment
+4. Nobody can manage members or read the audit trail: those are administrator
+   actions. The first user to sign in on a deployment with no `CONFIGER_ADMINS`
+   becomes its administrator; set `CONFIGER_ADMINS` to choose explicitly
+
+### Signing in lands on a "not found" page
+
+The browser is being returned to an address that serves the API but no app.
+Either serve the UI from the same process (`CONFIGER_WEB_DIR`, or the default
+`./web`), or name where the app lives with `CONFIGER_APP_URL`. With the UI and
+the API on one origin (the bundled nginx stack) neither is needed.
 
 ### Git sync not working
 

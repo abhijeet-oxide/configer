@@ -934,9 +934,20 @@ body {
 }
 .ill-lift { animation: illLift 3.8s ease-in-out infinite; }
 
+/* The settings gear on the sign-in scene: one slow revolution, so the page has
+   a pulse without anything demanding attention. */
+@keyframes illTurn { to { transform: rotate(360deg); } }
+.ill-turn { animation: illTurn 18s linear infinite; }
+
+/* Leaving the workspace: the arrow slides out and returns, the one motion on
+   the signed-out page. */
+@keyframes illExit { 0%, 100% { transform: translateX(0); opacity: 0.85; } 50% { transform: translateX(6px); opacity: 1; } }
+.ill-exit { animation: illExit 2.6s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
   .ill-draw { animation: none; stroke-dashoffset: 0; }
-  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash, .ill-lift { animation: none; }
+  .ill-pop, .ill-ripple, .ill-spark, .ill-floaty, .ill-sweep, .ill-dash, .ill-lift,
+  .ill-turn, .ill-exit { animation: none; }
 }
 
 /* -------------------------------------------------- data-viz motion */
@@ -1802,4 +1813,366 @@ body {
   font-family: var(--font-mono, monospace);
   font-size: 11.5px;
   overflow-wrap: anywhere;
+}
+
+/* ----------------------------------------------------- identity & outage */
+
+/* The pages that stand between a person and their work - sign in, session
+   ended, service unreachable - share one canvas, one lockup and one card, so
+   they read as parts of this product rather than as separate error screens.
+   The canvas carries a single brand wash from the top so the page has depth
+   without any surface fighting the card for attention. */
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  background:
+    radial-gradient(120% 80% at 50% -20%, var(--brand-soft) 0%, transparent 62%),
+    var(--canvas);
+  color: var(--text);
+}
+.auth-theme-toggle.ant-btn {
+  position: fixed;
+  top: 14px;
+  inset-inline-end: 14px;
+  z-index: 2;
+  color: var(--text-3);
+}
+
+/* The lockup: mark, product, and what it does. Same place, same size, every
+   page of the family. */
+.auth-lockup {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.auth-lockup-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  min-width: 0;
+}
+.auth-lockup-name {
+  font-size: var(--fs-15, 15px);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.auth-lockup-tag {
+  font-size: var(--fs-11, 11px);
+  color: var(--text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ---- arriving: the split page ---- */
+
+.auth-split {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  min-height: 100vh;
+}
+/* The left half is the only place this family raises its voice: a tinted panel
+   carrying the product's own subject matter. */
+.auth-aside {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 44px 48px;
+  background:
+    radial-gradient(90% 60% at 30% 20%, var(--brand-soft) 0%, transparent 70%),
+    linear-gradient(155deg, var(--brand-soft) 0%, transparent 65%),
+    var(--surface-2);
+  border-inline-end: 1px solid var(--border);
+}
+.auth-aside-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 18px;
+  min-height: 0;
+}
+.auth-aside-art {
+  display: flex;
+  justify-content: center;
+}
+.auth-aside-art .ill {
+  width: min(100%, 380px);
+  height: auto;
+}
+.auth-aside-copy {
+  max-width: 430px;
+}
+.auth-aside-title {
+  margin: 0 0 8px;
+  font-size: var(--fs-20);
+  font-weight: 640;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  color: var(--text);
+}
+.auth-aside-text {
+  margin: 0;
+  font-size: var(--fs-13);
+  line-height: 1.65;
+  color: var(--text-2);
+}
+.auth-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 44px 32px;
+}
+.auth-panel {
+  width: 100%;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- ending: the centered card ---- */
+
+.auth-centered {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 28px 30px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  background: var(--surface);
+  box-shadow: var(--el-overlay);
+}
+.auth-card .auth-lockup {
+  align-self: flex-start;
+}
+.auth-card-art {
+  margin: 6px 0 2px;
+}
+.auth-card-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+.auth-card-actions .ant-btn {
+  flex: 1 1 160px;
+  height: 46px;
+}
+
+/* ---- shared type and pieces ---- */
+
+.auth-title.ant-typography {
+  margin: 0 0 8px;
+  letter-spacing: -0.02em;
+}
+.auth-body.ant-typography {
+  margin-bottom: 22px;
+  font-size: var(--fs-13);
+  line-height: 1.65;
+}
+.auth-cta.ant-btn {
+  height: 46px;
+  font-weight: 600;
+}
+.auth-points {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 20px 0 0;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.auth-points li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  align-items: start;
+  font-size: var(--fs-12);
+  color: var(--text-2);
+  line-height: 1.55;
+}
+.auth-points li .anticon {
+  color: var(--c-ok);
+  margin-top: 2px;
+}
+.auth-note {
+  margin-top: 20px;
+  padding: 10px 12px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-size: var(--fs-12);
+  color: var(--text-2);
+  line-height: 1.5;
+}
+/* The one technical detail this family ever shows: the address that failed,
+   when the address itself is the problem. */
+.auth-detail {
+  max-width: 100%;
+  margin-bottom: 16px;
+  padding: 6px 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+/* The automatic retry, shown as a filling track rather than a number in prose:
+   the page is visibly working, and the manual button stays the way to skip the
+   wait. */
+.auth-retry {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.auth-retry-track {
+  width: 100%;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.auth-retry-fill {
+  display: block;
+  height: 100%;
+  background: var(--brand);
+  transition: width 1s linear;
+}
+.auth-retry-label {
+  font-size: var(--fs-12);
+  color: var(--text-3);
+}
+
+.auth-foot.ant-typography {
+  margin-top: 18px;
+  text-align: center;
+  font-size: var(--fs-11, 11px);
+}
+
+/* One column below the split's breaking point: the panel becomes a band above
+   the action, the illustration shrinks, and the copy that sold the product on a
+   wide screen steps aside for the thing the visitor came to do. */
+@media (max-width: 900px) {
+  .auth-split {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .auth-aside {
+    gap: 16px;
+    padding: 28px 24px 22px;
+    border-inline-end: 0;
+    border-block-end: 1px solid var(--border);
+  }
+  .auth-aside-art .ill {
+    width: min(100%, 220px);
+  }
+  .auth-aside-copy {
+    max-width: none;
+  }
+  .auth-aside-title {
+    font-size: var(--fs-16);
+  }
+  .auth-main {
+    padding: 28px 24px 40px;
+  }
+  .auth-panel {
+    max-width: 440px;
+  }
+}
+@media (max-width: 480px) {
+  .auth-aside {
+    padding: 22px 18px 18px;
+  }
+  .auth-aside-text {
+    display: none; /* the headline carries it; the action matters more here */
+  }
+  .auth-main {
+    padding: 22px 18px 32px;
+  }
+  .auth-card {
+    padding: 22px 18px 18px;
+  }
+}
+
+/* -------------------------------------------------------- notification log */
+
+/* Behind the bell: what the app has told you, newest first. Sized so a long
+   history scrolls inside the panel instead of running off the screen, and
+   capped on a phone so it never covers the whole page. */
+.notif-panel {
+  width: min(380px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+}
+.notif-head,
+.notif-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+}
+.notif-head {
+  border-bottom: 1px solid var(--border);
+}
+.notif-foot {
+  border-top: 1px solid var(--border);
+}
+.notif-title {
+  font-weight: 600;
+  font-size: var(--fs-13);
+}
+.notif-list {
+  max-height: min(420px, 60vh);
+  overflow: auto;
+}
+.notif-item {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notif-item:last-child {
+  border-bottom: 0;
+}
+.notif-icon {
+  margin-top: 2px;
+}
+.notif-body {
+  min-width: 0;
+}
+.notif-item-title {
+  font-size: var(--fs-13);
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.notif-detail.ant-typography {
+  margin: 2px 0 0;
+  font-size: var(--fs-12);
+  overflow-wrap: anywhere;
+}
+.notif-meta {
+  margin-top: 4px;
+  font-size: var(--fs-11, 11px);
+  color: var(--text-3);
 }

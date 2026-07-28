@@ -34,7 +34,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult } from "../api";
+import { api, bindingsOf, expandBinding, type Grid, type Parameter, type ScanCandidate, type ScanResult, readyRepos } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import PasteImportModal from "./PasteImportModal";
@@ -426,7 +426,10 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
   const { repoId } = useUI();
   const switchRepo = useSwitchRepo();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 15_000 });
-  const repos = wsQ.data?.repos ?? [];
+  // Only applications that are actually connected: one still connecting (or
+  // whose connection failed) has nothing to read, and asking anyway turns a
+  // single failed connection into an error per application per refresh.
+  const repos = readyRepos(wsQ.data?.repos);
   const [choice, setChoice] = useState<string | null>(null);
   const [wizardOpen, setWizardOpen] = useState(false);
   const selectedId = choice ?? repoId ?? repos[0]?.id ?? null;

@@ -30,6 +30,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
+	"github.com/abhijeet-oxide/configer/backend/internal/recognizers"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/sources"
 )
@@ -116,6 +117,7 @@ func NewExisting(repoPath string) (*Server, error) { return newServer(repoPath, 
 func newServer(repoPath string, mustExist bool) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
+	recognizers.Register(reg)
 	sources.Register(reg)
 
 	if mustExist && !gitengine.IsRepo(repoPath) {

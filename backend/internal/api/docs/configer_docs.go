@@ -1026,7 +1026,10 @@ const docTemplateconfiger = `{
         },
         "/api/discover": {
             "post": {
-                "description": "Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept.",
+                "description": "Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept. Send ` + "`" + `{\"manage\":[\"path\"]}` + "`" + ` to include files the scan would otherwise pass over (a generated file, a kustomization) - the proposal then treats them like any other.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -1034,6 +1037,16 @@ const docTemplateconfiger = `{
                     "Onboarding"
                 ],
                 "summary": "Discover an application",
+                "parameters": [
+                    {
+                        "description": "Optional overrides: manage[] names files to include despite being passed over",
+                        "name": "body",
+                        "in": "body",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",

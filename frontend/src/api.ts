@@ -479,6 +479,22 @@ export interface Discovery {
 export interface SkippedFile {
   file: string;
   reason: "generated" | "ignored" | "structural";
+  /** what produced it, when a recognizer knew - the specifics needed to decide
+   *  whether to manage it anyway */
+  origin?: FileOrigin;
+}
+
+export interface FileOrigin {
+  id: string;
+  /** what produced it, e.g. "flux bootstrap" */
+  name: string;
+  /** the command that will write over it again */
+  regenerates?: string;
+  /** what happens to an edit made here */
+  note?: string;
+  /** where the same change belongs so that it survives */
+  instead?: string;
+  docs?: string;
 }
 
 // --- platform: identity, roles, audit -------------------------------------
@@ -1266,7 +1282,11 @@ export const api = {
   }) => putCatalog<ApplicationDetails>(rp("/application"), p),
   deinit: (author?: string) =>
     send<{ ok: boolean; removed: boolean }>("POST", rp("/deinit"), { author }),
-  discover: () => send<Discovery>("POST", rp("/discover")),
+  /** The proposal. `manage` names files to include that the scan would
+   *  otherwise pass over - the user overriding a default for their own
+   *  repository, one file at a time. */
+  discover: (manage?: string[]) =>
+    send<Discovery>("POST", rp("/discover"), manage?.length ? { manage } : undefined),
   initApp: (p: {
     name: string;
     description?: string;

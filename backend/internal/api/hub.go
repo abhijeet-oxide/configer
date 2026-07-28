@@ -334,6 +334,8 @@ func (h *Hub) Routes() http.Handler {
 	// GitHub browsing for the New Application flow (credentials stay server-side).
 	mux.HandleFunc("GET /api/github/status", h.githubStatus)
 	mux.HandleFunc("GET /api/github/repos", h.githubRepos)
+	mux.HandleFunc("GET /api/github/repos/search", h.githubSearchRepos)
+	mux.HandleFunc("GET /api/github/orgs", h.githubOrgs)
 	mux.HandleFunc("GET /api/github/branches", h.githubBranches)
 	// Local-folder picker for the New Application flow (localhost mode).
 	mux.HandleFunc("GET /api/fs/browse", h.browseFolders)

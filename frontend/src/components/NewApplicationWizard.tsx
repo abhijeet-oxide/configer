@@ -22,13 +22,17 @@ import {
   FolderOutlined,
   GithubOutlined,
   HddOutlined,
+  LoadingOutlined,
   LockOutlined,
   PlusOutlined,
+  TeamOutlined,
   ThunderboltOutlined,
   SearchOutlined,
+  UserOutlined,
 } from "../icons";
 import { useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useDebounced } from "../hooks";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type GitHubRepo, type RepoSummary } from "../api";
 import { useCapabilities } from "../deployment";
 import { relTime } from "./DashboardView";
@@ -547,17 +551,69 @@ function RepoStep({
     enabled: !!status?.available,
     staleTime: 60_000,
   });
+  // The organizations the person belongs to, so one that contributes no
+  // repositories can be NAMED rather than being silently absent.
+  const orgsQ = useQuery({
+    queryKey: ["github-orgs"],
+    queryFn: api.githubOrgs,
+    enabled: !!status?.available,
+    staleTime: 300_000,
+    retry: false,
+  });
 
+  // Searching asks GitHub, scoped server-side to this user's accounts. Filtering
+  // the downloaded page in the browser meant anything outside it answered
+  // "nothing matches" - truncation wearing the face of a missing repository.
+  const term = q.trim();
+  const debounced = useDebounced(term, 300);
+  const searching = debounced.length >= 2;
+  const searchQ = useQuery({
+    queryKey: ["github-repo-search", debounced],
+    queryFn: ({ signal }) => api.githubSearchRepos(debounced, { signal }),
+    enabled: !!status?.available && searching,
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
+  });
+
+  const listed = useMemo(() => reposQ.data?.repos ?? [], [reposQ.data]);
+  // While a search is in flight the local matches stand in, so the list never
+  // empties between keystrokes.
   const repos = useMemo(() => {
-    const all = reposQ.data?.repos ?? [];
-    const needle = q.trim().toLowerCase();
-    if (!needle) return all;
-    return all.filter(
+    if (!searching) return listed;
+    const needle = debounced.toLowerCase();
+    const local = listed.filter(
       (r) =>
         r.fullName.toLowerCase().includes(needle) ||
         (r.description ?? "").toLowerCase().includes(needle),
     );
-  }, [reposQ.data, q]);
+    if (!searchQ.data) return local;
+    // GitHub's answer wins, with local matches it did not return folded in
+    // (a just-renamed repository can be in one and not the other).
+    const seen = new Set(searchQ.data.repos.map((r) => r.fullName));
+    return [...searchQ.data.repos, ...local.filter((r) => !seen.has(r.fullName))];
+  }, [listed, searching, debounced, searchQ.data]);
+
+  // One section per owner: the person's own account first, then each
+  // organization by name. A flat list sorted by push date made "the repo in
+  // this org" a scrolling exercise.
+  const groups = useMemo(() => {
+    const by = new Map<string, GitHubRepo[]>();
+    for (const r of repos) by.set(r.owner, [...(by.get(r.owner) ?? []), r]);
+    const me = status?.login ?? "";
+    return [...by.entries()].sort(([a], [b]) =>
+      a === me ? -1 : b === me ? 1 : a.localeCompare(b),
+    );
+  }, [repos, status?.login]);
+
+  // Organizations the user belongs to that contributed nothing: the OAuth app
+  // has not been approved for them. This is the one case worth explaining -
+  // otherwise the org is simply not there and the user concludes their
+  // repositories are missing.
+  const unapproved = useMemo(() => {
+    if (searching) return [];
+    const present = new Set(listed.map((r) => r.owner));
+    return (orgsQ.data?.orgs ?? []).map((o) => o.login).filter((o) => !present.has(o));
+  }, [orgsQ.data, listed, searching]);
 
   if (loading) return <InlineListSkeleton rows={5} />;
 
@@ -637,8 +693,8 @@ function RepoStep({
           allowClear
           autoFocus
           style={{ flex: "1 1 220px", minWidth: 0 }}
-          prefix={<SearchOutlined />}
-          placeholder="Search your repositories and organizations…"
+          prefix={searchQ.isFetching ? <LoadingOutlined /> : <SearchOutlined />}
+          placeholder="Search every repository you can reach…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
@@ -666,43 +722,105 @@ function RepoStep({
       ) : reposQ.isLoading ? (
         <InlineListSkeleton rows={6} />
       ) : repos.length === 0 ? (
-        <Empty description={q ? "Nothing matches that search." : "No repositories found."} />
-      ) : (
-        <List
-          size="small"
-          style={{ maxHeight: 380, overflow: "auto" }}
-          dataSource={repos.slice(0, 60)}
-          renderItem={(r) => (
-            <List.Item
-              className="scm-change-row"
-              style={{ cursor: "pointer", borderRadius: 8, paddingInline: 10 }}
-              onClick={() => onPick(r)}
-              actions={[<ArrowRightOutlined key="go" style={{ opacity: 0.45 }} />]}
-            >
-              <List.Item.Meta
-                avatar={<GithubOutlined style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }} />}
-                title={
-                  <Space size={8}>
-                    <span className="mono" style={{ fontSize: 13 }}>
-                      {r.fullName}
-                    </span>
-                    {r.private && (
-                      <Tag icon={<LockOutlined />} style={{ fontSize: 10 }}>
-                        private
-                      </Tag>
-                    )}
-                  </Space>
-                }
-                description={
-                  <span style={{ fontSize: 12 }}>
-                    {r.description || "no description"}
-                    {r.pushedAt && <span style={{ opacity: 0.6 }}> · updated {relTime(r.pushedAt)}</span>}
-                  </span>
-                }
-              />
-            </List.Item>
-          )}
+        <Empty
+          description={
+            searching
+              ? `Nothing named "${debounced}" in your account or your organizations.`
+              : "No repositories found."
+          }
         />
+      ) : (
+        <div style={{ maxHeight: 380, overflow: "auto" }}>
+          {groups.map(([owner, list]) => (
+            <div key={owner}>
+              {/* One heading per account, so "the repository in this
+                  organization" is a place to look rather than a scroll. */}
+              <div
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  padding: "6px 10px 4px",
+                  background: "var(--surface)",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "var(--text-2)",
+                }}
+              >
+                {owner === status.login ? <UserOutlined /> : <TeamOutlined />}
+                <span className="mono">{owner}</span>
+                <span style={{ fontWeight: 400, color: "var(--text-3)" }}>
+                  {list.length} repositor{list.length === 1 ? "y" : "ies"}
+                </span>
+              </div>
+              <List
+                size="small"
+                dataSource={list}
+                renderItem={(r) => (
+                  <List.Item
+                    className="scm-change-row"
+                    style={{ cursor: "pointer", borderRadius: 8, paddingInline: 10 }}
+                    onClick={() => onPick(r)}
+                    actions={[<ArrowRightOutlined key="go" style={{ opacity: 0.45 }} />]}
+                  >
+                    <List.Item.Meta
+                      avatar={<GithubOutlined style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }} />}
+                      title={
+                        <Space size={8}>
+                          <span className="mono" style={{ fontSize: 13 }}>
+                            {r.name}
+                          </span>
+                          {r.private && (
+                            <Tag icon={<LockOutlined />} style={{ fontSize: 10 }}>
+                              private
+                            </Tag>
+                          )}
+                        </Space>
+                      }
+                      description={
+                        <span style={{ fontSize: 12 }}>
+                          {r.description || "no description"}
+                          {r.pushedAt && (
+                            <span style={{ opacity: 0.6 }}> · updated {relTime(r.pushedAt)}</span>
+                          )}
+                        </span>
+                      }
+                    />
+                  </List.Item>
+                )}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+      {/* The listing is a window, not an index. Saying so is the difference
+          between "search for it" and concluding the repository is not there. */}
+      {!searching && reposQ.data?.truncated && (
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          Showing your most recently updated repositories. Search to reach the rest.
+        </Typography.Text>
+      )}
+      {/* An organization the user belongs to that contributed nothing has not
+          approved this app. Without this it is simply absent, and the user is
+          left thinking their repositories are missing. */}
+      {unapproved.length > 0 && (
+        <InlineNotice
+          tone="info"
+          action={
+            orgsQ.data?.grantUrl ? (
+              <Button size="small" href={orgsQ.data.grantUrl} target="_blank" rel="noreferrer">
+                Grant access
+              </Button>
+            ) : undefined
+          }
+        >
+          No repositories visible in {unapproved.slice(0, 3).join(", ")}
+          {unapproved.length > 3 ? ` and ${unapproved.length - 3} more` : ""}. Configer needs the
+          organization&rsquo;s approval before its repositories appear here.
+        </InlineNotice>
       )}
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <Button type="link" size="small" style={{ paddingInline: 0 }} onClick={onBack}>

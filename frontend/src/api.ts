@@ -1119,7 +1119,22 @@ export const api = {
   githubStatus: () => get<GitHubStatus>("/github/status"),
   browseFolders: (path?: string) =>
     get<FolderListing>(`/fs/browse${path ? `?path=${encodeURIComponent(path)}` : ""}`),
-  githubRepos: () => get<{ repos: GitHubRepo[] }>("/github/repos"),
+  /** The picker's listing: what the credential can reach, most recently pushed
+   *  first. `truncated` means the window ended before the account did, so the
+   *  UI must say so rather than let a missing repository read as a missing
+   *  repository. */
+  githubRepos: () => get<{ repos: GitHubRepo[]; truncated?: boolean }>("/github/repos"),
+  /** Search GitHub itself, scoped server-side to the user's own account and
+   *  their organizations - the only way to reach a repository outside the
+   *  listing's window. */
+  githubSearchRepos: (q: string, opts?: { signal?: AbortSignal }) =>
+    get<{ repos: GitHubRepo[]; total?: number; scoped?: boolean }>(
+      `/github/repos/search?q=${encodeURIComponent(q)}`,
+      { signal: opts?.signal },
+    ),
+  /** Organizations the user belongs to, so the picker can name one it can see
+   *  no repositories in instead of leaving it invisible. */
+  githubOrgs: () => get<{ orgs: { login: string }[]; grantUrl?: string }>("/github/orgs"),
   githubBranches: (fullName: string) =>
     get<{ default: string; branches: string[] }>(`/github/branches?repo=${encodeURIComponent(fullName)}`),
   // connectRepo starts an async connection: the server clones/opens in the

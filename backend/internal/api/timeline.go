@@ -313,16 +313,14 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve each commit once, oldest first, keeping the previous state in hand.
-	states := make(map[string]snapshotState, len(commits))
+	// Resolve every commit in the window. Memoized by (commit, scope) and
+	// computed in parallel for the ones not already known, so a revisit costs
+	// only the commits made since - see snapshotcache.go.
+	shas := make([]string, 0, len(commits))
 	for _, c := range commits {
-		p, cleanup, perr := s.projectAtRef(c.SHA)
-		if perr != nil {
-			continue // a commit we cannot materialize is skipped, not fatal
-		}
-		states[c.SHA] = readSnapshot(p, instance)
-		cleanup()
+		shas = append(shas, c.SHA)
 	}
+	states := s.snapshotsAt(shas, instance)
 
 	entries := make([]TimelineEntry, 0, len(commits))
 	for i, c := range commits {
@@ -414,22 +412,20 @@ func (s *Server) timelineSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	curProj, curClean, err := s.projectAtRef(commits[idx].SHA)
-	if err != nil {
+	// Both states almost always come straight from the cache the list request
+	// filled, so opening a dot no longer walks the history a second time.
+	cur, ok := s.snapshotAt(commits[idx].SHA, instance)
+	if !ok {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "cannot read that snapshot")
 		return
 	}
-	cur := readSnapshot(curProj, instance)
-	curClean()
 
 	var prev snapshotState
 	prevSHA := ""
 	if idx+1 < len(commits) {
-		prevProj, prevClean, perr := s.projectAtRef(commits[idx+1].SHA)
-		if perr == nil {
-			prev = readSnapshot(prevProj, instance)
+		if st, pok := s.snapshotAt(commits[idx+1].SHA, instance); pok {
+			prev = st
 			prevSHA = commits[idx+1].SHA
-			prevClean()
 		}
 	}
 	if prev.values == nil {

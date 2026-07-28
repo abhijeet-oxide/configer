@@ -220,14 +220,22 @@ func applyStructuralPreview(g *Grid, it change.Item) {
 		// defaults to instances/<name> while the previewed files live beside the
 		// source, so the new folder reads as unmanaged and hides from the tree.
 		if meta.Folder == "" {
-			meta.Folder = pendingInstanceFolder(g.Instances, cloneFrom, meta.Name)
+			meta.Folder = PendingInstanceFolder(g.Instances, cloneFrom, meta.Name)
 		}
 		g.Instances = append(g.Instances, meta)
 		for i := range g.Rows {
-			cell := Cell{State: StateNormal, Valid: true, Pending: true}
+			state := cellState(g.Rows[i].Param, meta)
+			cell := Cell{State: state, Valid: true, Pending: true}
 			if src, ok := g.Rows[i].Cells[cloneFrom]; ok && cloneFrom != "" {
 				cell.Value, cell.Set, cell.Source = src.Value, src.Set, src.Source
 			}
+			// A staged instance's cells are editable like any other. Submit
+			// scaffolds the folder BEFORE applying value edits (see
+			// changeset.applyDraft), so adjusting a cloned value before the
+			// change is published is an ordinary edit - it just lands in a
+			// folder that does not exist yet.
+			cell.Editable = state != StateNotApplicable && state != StateDeprecated &&
+				!model.IsTemplateExpression(cell.Value)
 			g.Rows[i].Cells[it.Instance] = cell
 		}
 	case change.ActionRemoveInstance:
@@ -239,12 +247,14 @@ func applyStructuralPreview(g *Grid, it change.Item) {
 	}
 }
 
-// pendingInstanceFolder mirrors the folder a submit will scaffold for a pending
-// instance, so the grid column matches the files the Files preview synthesizes.
-// A clone lands beside its source (dir(sourceFolder)/name, the layout adapter's
-// scaffoldByCopy convention and api.pendingInstanceFiles); anything else (an
-// empty instance) defaults to instances/<name>.
-func pendingInstanceFolder(instances []model.Instance, cloneFrom, name string) string {
+// PendingInstanceFolder mirrors the folder a submit will scaffold for a pending
+// instance, so the grid column matches the files the Files preview synthesizes -
+// and so the write path can resolve a parameter's bindings on an instance that
+// exists only in the draft. A clone lands beside its source
+// (dir(sourceFolder)/name, the layout adapter's scaffoldByCopy convention and
+// api.pendingInstanceFiles); anything else (an empty instance) defaults to
+// instances/<name>.
+func PendingInstanceFolder(instances []model.Instance, cloneFrom, name string) string {
 	if cloneFrom != "" {
 		for _, inst := range instances {
 			if inst.Name == cloneFrom {

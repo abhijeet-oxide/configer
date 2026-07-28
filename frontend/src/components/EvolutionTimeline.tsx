@@ -26,7 +26,7 @@ import {
   LoadingOutlined,
 } from "../icons";
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import {
   api,
@@ -133,9 +133,16 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
   // arriving from another view keeps its context.
   const instance = selectedInstance ?? "";
 
+  // History only moves when someone commits, and the service now memoizes each
+  // snapshot by commit, so re-reading it on every visit (the 5 s default) spent
+  // a round trip to be told the same thing. keepPreviousData holds the current
+  // list on screen while a scope switch loads, instead of blanking to a
+  // skeleton and back.
   const timelineQ = useRepoQuery({
     queryKey: ["timeline", instance],
     queryFn: () => api.timeline({ instance: instance || undefined, limit: 20 }),
+    staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const restore = useMutation({
@@ -161,8 +168,6 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
 
   const snapshots = timelineQ.data?.snapshots ?? [];
   const supported = timelineQ.data?.supported !== false;
-
-  if (timelineQ.isLoading) return <TableSkeleton />;
 
   if (!supported) {
     return (
@@ -218,7 +223,12 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
         nothing changes until you publish it.
       </Text>
 
-      {snapshots.length === 0 ? (
+      {/* The scope control and the explanation are on screen immediately; only
+          the list waits. Skeletoning the whole page meant the chrome the user
+          is about to reach for arrived last. */}
+      {timelineQ.isLoading ? (
+        <TableSkeleton />
+      ) : snapshots.length === 0 ? (
         <Empty description={`No configuration changes recorded yet for ${scopeLabel}.`} />
       ) : (
         <div style={{ position: "relative" }}>
@@ -434,9 +444,14 @@ function SnapshotDetail({
   // Every "undo" below stages a draft, so all of them need edit access; the
   // snapshot itself reads for anyone.
   const { canEdit } = useIdentity();
+  // What changed AT a commit cannot change: the commit is immutable and so is
+  // its comparison against the one before it. Cache it for the session, so
+  // collapsing and reopening a snapshot is free.
   const detailQ = useRepoQuery({
     queryKey: ["timeline-snapshot", sha, instance],
     queryFn: () => api.timelineSnapshot(sha, { instance: instance || undefined, limit: 20 }),
+    staleTime: Infinity,
+    gcTime: 30 * 60_000,
   });
 
   if (detailQ.isLoading) {

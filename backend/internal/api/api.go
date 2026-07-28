@@ -50,6 +50,9 @@ type Server struct {
 	writeMu     sync.Mutex // serializes writes to the working tree + store
 	sync        syncState  // git-liveness status (see sync.go)
 	syncStop    chan struct{}
+	// snapshots memoizes the timeline's per-commit configuration states. A
+	// commit is immutable, so this needs no invalidation (see snapshotcache.go).
+	snapshots *snapshotCache
 }
 
 // branch returns the backend's default working branch (best effort).
@@ -189,6 +192,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *cr
 		Changes:     &changeset.Service{Backend: backend, Store: store, Bot: bot(), Policy: changePolicy()},
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
+		snapshots:   newSnapshotCache(snapshotCacheMax),
 	}
 }
 

@@ -1452,9 +1452,20 @@ paths:
       - Onboarding
   /api/discover:
     post:
+      consumes:
+      - application/json
       description: 'Read-only onboarding proposal: detected layout, instances discovered
         from folders, and deduplicated parameters with JSON-Schema validation attached.
-        Nothing is written; POST /api/init to accept.'
+        Nothing is written; POST /api/init to accept. Send `{"manage":["path"]}` to
+        include files the scan would otherwise pass over (a generated file, a kustomization)
+        - the proposal then treats them like any other.'
+      parameters:
+      - description: 'Optional overrides: manage[] names files to include despite
+          being passed over'
+        in: body
+        name: body
+        schema:
+          type: object
       produces:
       - application/json
       responses:

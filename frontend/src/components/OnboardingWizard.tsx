@@ -30,7 +30,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, type Binding, type Instance, type Parameter, type SkippedFile } from "../api";
-import { groupSkipped, SKIP_EXPLANATIONS, SKIP_REASONS } from "../skipped";
+import { groupSkipped, manageWarning, originSentence, SKIP_EXPLANATIONS, SKIP_REASONS } from "../skipped";
 import { ENV_PRESETS } from "../theme";
 import { useUI } from "../store";
 import { InlineNotice, Stepper } from "./ui";
@@ -207,30 +207,91 @@ function LocationsCell({ p }: { p: Parameter }) {
   );
 }
 
-// SkippedFiles names the files the scan passed over and why. It is the answer
-// to the only question an empty proposal raises - "my repository is not empty,
-// what happened to my files?" - which the API had all along and nothing showed.
-function SkippedFiles({ skipped }: { skipped: SkippedFile[] }) {
-  if (skipped.length === 0) return null;
+// SkippedFiles names the files the scan passed over, what produced each one,
+// and offers to manage it anyway.
+//
+// The default - leave generated files alone - is right for most repositories
+// and wrong for some, and the person looking at their own repository is better
+// placed to judge than a rule is. So this states the case plainly, including
+// what will overwrite their edit, and then lets them decide. Everything
+// specific to a tool comes from the server; adding another generator never
+// touches this component.
+function SkippedFiles({
+  skipped,
+  managed,
+  onManage,
+  onStopManaging,
+  busy,
+}: {
+  skipped: SkippedFile[];
+  managed: SkippedFile[];
+  onManage: (f: SkippedFile) => void;
+  onStopManaging: (file: string) => void;
+  busy: boolean;
+}) {
+  if (skipped.length === 0 && managed.length === 0) return null;
   return (
     <div className="rounded-card-lg bg-surface-2 px-4 py-3">
-      <Typography.Text strong style={{ fontSize: 13 }}>
-        {skipped.length} file{skipped.length === 1 ? "" : "s"} passed over
-      </Typography.Text>
+      {managed.length > 0 && (
+        <div style={{ marginBottom: skipped.length ? 14 : 0 }}>
+          <Typography.Text strong style={{ fontSize: 13 }}>
+            {managed.length} file{managed.length === 1 ? "" : "s"} you chose to manage anyway
+          </Typography.Text>
+          <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
+            {managed.map((f) => (
+              <li key={f.file} style={{ fontSize: 11, marginBottom: 6 }}>
+                <span className="mono" style={{ color: "var(--text-2)" }}>{f.file}</span>{" "}
+                <Button type="link" size="small" style={{ paddingInline: 4, fontSize: 11 }}
+                  onClick={() => onStopManaging(f.file)} disabled={busy}>
+                  leave it alone
+                </Button>
+                {/* The caution stays with the file for as long as it is
+                    managed. It is not a scolding - the user made an informed
+                    choice - it is the one fact that choice depends on. */}
+                {f.reason === "generated" && (
+                  <div style={{ color: "var(--c-pending)", marginTop: 2, maxWidth: 620 }}>
+                    {manageWarning(f.origin)}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {skipped.length > 0 && (
+        <Typography.Text strong style={{ fontSize: 13 }}>
+          {skipped.length} file{skipped.length === 1 ? "" : "s"} passed over
+        </Typography.Text>
+      )}
       {groupSkipped(skipped).map((g) => (
         <div key={g.reason} style={{ marginTop: 10 }}>
           <Typography.Text type="secondary" style={{ fontSize: 12 }}>
             {g.files.length} because {SKIP_REASONS[g.reason]}. {SKIP_EXPLANATIONS[g.reason]}
           </Typography.Text>
-          <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
-            {g.files.slice(0, 8).map((f) => (
-              <li key={f} className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>
-                {f}
+          <ul style={{ margin: "8px 0 0", paddingInlineStart: 18 }}>
+            {g.files.map((f) => (
+              <li key={f.file} style={{ marginBottom: 8 }}>
+                <div className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>{f.file}</div>
+                {f.origin && (
+                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, maxWidth: 620 }}>
+                    {originSentence(f.origin)}
+                    {f.origin.docs && (
+                      <>
+                        {" "}
+                        <Typography.Link href={f.origin.docs} target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>
+                          Their guidance
+                        </Typography.Link>
+                      </>
+                    )}
+                  </div>
+                )}
+                <Button type="link" size="small" style={{ paddingInline: 0, fontSize: 11 }}
+                  onClick={() => onManage(f)} disabled={busy}>
+                  Manage it anyway
+                </Button>
               </li>
             ))}
-            {g.files.length > 8 && (
-              <li style={{ fontSize: 11, color: "var(--text-3)" }}>and {g.files.length - 8} more</li>
-            )}
           </ul>
         </div>
       ))}
@@ -254,7 +315,21 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const [paramQ, setParamQ] = useState("");
   const [treeCollapsed, setTreeCollapsed] = useState(false);
 
-  const discoverQ = useRepoQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
+  // Files the user chose to manage despite the scan passing them over. They are
+  // part of the query key, so choosing one re-proposes with it included rather
+  // than patching the result client-side - the server decides what a file
+  // yields, here as everywhere.
+  // The whole SkippedFile is kept, not just the path: once a file is being
+  // managed the server stops reporting it as passed over, and with it would go
+  // the one thing the user needs to keep seeing - what will overwrite their
+  // edits.
+  const [managed, setManaged] = useState<SkippedFile[]>([]);
+  const managedFiles = useMemo(() => managed.map((m) => m.file), [managed]);
+  const discoverQ = useRepoQuery({
+    queryKey: ["discover", ...managedFiles],
+    queryFn: () => api.discover(managedFiles),
+    staleTime: 60_000,
+  });
   const d = discoverQ.data;
   // A list is read as a list wherever it comes from. A scan that found nothing
   // is an ordinary answer - plenty of repositories hold manifests with no
@@ -385,7 +460,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           title="Nothing to manage in this repository yet"
           subtitle={
             skipped.length > 0
-              ? "Configer read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below."
+              ? "Configer read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below - and you can overrule that for any of them."
               : "Configer read the files and found no settings it can put in a grid. It looks for configuration values in YAML, JSON or XML - usually one folder per environment or cluster."
           }
           actions={
@@ -401,7 +476,13 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         {/* The reason IS the answer here: without it the page says "nothing
             found" about a repository the user knows has files in it. */}
         <div style={{ maxWidth: 720, margin: "8px auto 0" }}>
-          <SkippedFiles skipped={skipped} />
+          <SkippedFiles
+            skipped={skipped}
+            managed={managed}
+            onManage={(f) => setManaged((m) => [...m, f])}
+            onStopManaging={(f) => setManaged((m) => m.filter((x) => x.file !== f))}
+            busy={discoverQ.isFetching}
+          />
         </div>
       </div>
     );
@@ -814,7 +895,13 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       )}
 
       <div style={{ marginTop: 16 }}>
-        <SkippedFiles skipped={skipped} />
+        <SkippedFiles
+          skipped={skipped}
+          managed={managed}
+          onManage={(f) => setManaged((m) => [...m, f])}
+          onStopManaging={(f) => setManaged((m) => m.filter((x) => x.file !== f))}
+          busy={discoverQ.isFetching}
+        />
       </div>
 
       <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>

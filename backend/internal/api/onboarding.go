@@ -27,18 +27,27 @@ func (s *Server) initialized() bool {
 // proposal. Read-only: nothing is written until /api/init.
 //
 // @Summary     Discover an application
-// @Description Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept.
+// @Description Read-only onboarding proposal: detected layout, instances discovered from folders, and deduplicated parameters with JSON-Schema validation attached. Nothing is written; POST /api/init to accept. Send `{"manage":["path"]}` to include files the scan would otherwise pass over (a generated file, a kustomization) - the proposal then treats them like any other.
 // @Tags        Onboarding
+// @Accept      json
 // @Produce     json
+// @Param       body body object false "Optional overrides: manage[] names files to include despite being passed over"
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
 // @Router      /api/discover [post]
-func (s *Server) discover(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) discover(w http.ResponseWriter, r *http.Request) {
 	ignore := discovery.Ignore{}
 	if p, err := s.load(); err == nil {
 		ignore = p.Ignore
 	}
-	res, err := discovery.Discover(s.RepoPath, s.Registry, ignore)
+	// The body is optional: a plain POST is still "propose the defaults".
+	var req struct {
+		Manage []string `json:"manage"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
+	res, err := discovery.DiscoverWith(s.RepoPath, s.Registry, ignore, discovery.Options{Manage: req.Manage})
 	if err != nil {
 		writeErr(w, err)
 		return

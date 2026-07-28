@@ -44,10 +44,29 @@ func nonNil[T any](s []T) []T {
 	return s
 }
 
+// Options steer one discovery run.
+type Options struct {
+	// Manage lists repo-relative files to include even though discovery would
+	// normally pass them over. The defaults are right for most repositories and
+	// wrong for some, and the person looking at their own repository is better
+	// placed to judge than a rule is - so this is their override, per file,
+	// rather than a setting that turns the judgement off everywhere.
+	Manage []string
+}
+
 // Discover scans root and builds the proposal.
 func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result, error) {
+	return DiscoverWith(root, reg, ignore, Options{})
+}
+
+// DiscoverWith is Discover with per-file overrides.
+func DiscoverWith(root string, reg *plugin.Registry, ignore project.Ignore, opts Options) (Result, error) {
+	managed := map[string]bool{}
+	for _, f := range opts.Manage {
+		managed[f] = true
+	}
 	det := layout.Detect(root)
-	scan, err := ingest.Scan(root, reg, ignore)
+	scan, err := ingest.ScanWith(root, reg, ignore, ingest.Options{Manage: opts.Manage})
 	if err != nil {
 		return Result{}, err
 	}
@@ -110,7 +129,7 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 		// repository that is the file Flux's own docs tell you to customize
 		// (flux-system/kustomization.yaml), so the silence pointed the user at
 		// the one file they must NOT edit.
-		if skipFile(fr.File) {
+		if skipFile(fr.File) && !managed[fr.File] {
 			if len(fr.Candidates) > 0 {
 				res.Skipped = append(res.Skipped, ingest.SkippedFile{
 					File: fr.File, Reason: ingest.SkipStructural,

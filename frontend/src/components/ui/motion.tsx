@@ -1,13 +1,17 @@
 import type { CSSProperties, ReactNode } from "react";
-import { motion, useReducedMotion } from "framer-motion";
 
-// The product's motion vocabulary, built on framer-motion and kept deliberately
-// small: content fades in with a gentle rise (FadeIn), and collections cascade
-// with a short stagger (Stagger + StaggerItem). Timing mirrors the CSS motion
-// tokens (--dur-view 300ms, --ease); reduced-motion users get instant content.
-// The virtualized parameter grid stays out of this on purpose.
-
-const EASE = [0.2, 0.8, 0.4, 1] as const;
+// The product's motion vocabulary, kept deliberately small: content fades in
+// with a gentle rise (FadeIn), and collections cascade with a short stagger
+// (Stagger + StaggerItem). The virtualized parameter grid stays out of this on
+// purpose.
+//
+// These are CSS animations (see "Motion vocabulary" in index.css), not a
+// JavaScript animation runtime. Three fades and a stagger did not justify
+// framer-motion, which cost 371 KB (122 KB gzipped) in the ENTRY bundle -
+// downloaded by every visitor before anything renders - to express what
+// @keyframes expresses for nothing. Timing comes from the same motion tokens
+// the rest of the app uses (--dur-view, --ease), so the vocabulary cannot drift
+// from the CSS surfaces, and reduced-motion is handled by the stylesheet.
 
 export function FadeIn({
   children,
@@ -23,28 +27,15 @@ export function FadeIn({
   className?: string;
   style?: CSSProperties;
 }) {
-  const reduce = useReducedMotion();
   return (
-    <motion.div
-      className={className}
-      style={style}
-      initial={reduce ? false : { opacity: 0, y }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3, ease: EASE, delay }}
+    <div
+      className={`cfg-fade-in${className ? ` ${className}` : ""}`}
+      style={{ "--rise": `${y}px`, "--delay": `${delay}s`, ...style } as CSSProperties}
     >
       {children}
-    </motion.div>
+    </div>
   );
 }
-
-const container = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.05 } },
-};
-const item = {
-  hidden: { opacity: 0, y: 8 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.3, ease: EASE } },
-};
 
 export function Stagger({
   children,
@@ -55,18 +46,10 @@ export function Stagger({
   className?: string;
   style?: CSSProperties;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) {
-    return (
-      <div className={className} style={style}>
-        {children}
-      </div>
-    );
-  }
   return (
-    <motion.div className={className} style={style} variants={container} initial="hidden" animate="show">
+    <div className={`cfg-stagger${className ? ` ${className}` : ""}`} style={style}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -79,17 +62,11 @@ export function StaggerItem({
   className?: string;
   style?: CSSProperties;
 }) {
-  const reduce = useReducedMotion();
-  if (reduce) {
-    return (
-      <div className={className} style={style}>
-        {children}
-      </div>
-    );
-  }
+  // The cascade delay comes from this element's position under .cfg-stagger,
+  // so items stay ordinary children and callers pass nothing extra.
   return (
-    <motion.div className={className} style={style} variants={item}>
+    <div className={`cfg-stagger-item${className ? ` ${className}` : ""}`} style={style}>
       {children}
-    </motion.div>
+    </div>
   );
 }

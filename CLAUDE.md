@@ -45,10 +45,20 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
   (Draft→UnderReview→Approved→Published). `changeset.Submit` opens an
-  isolated worktree on `feature/<slug>`, applies draft items (structural
-  instance changes → direct file edits → value edits), commits with a
-  `Changed-by:` trailer, pushes, opens a GitHub PR. CR workflow state lives
-  in a JSON file beside the repo (rebuildable; not the platform DB).
+  isolated worktree on `feature/<slug>-cr-<id>`, applies draft items
+  (structural instance changes → direct file edits → value edits), commits
+  with a `Changed-by:` trailer, pushes, opens a GitHub PR. The change id is
+  always in the branch name: two people naming a change the same thing must
+  not collide on one branch.
+- `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
+  file beside the repo (no dependencies, right for one person); `SQLStore`
+  keeps a row per change request in the platform database (a write touches one
+  row, a read-modify-write is a transaction, two processes share it).
+  `api.crStore` picks: Postgres → SQL, embedded SQLite → file, and
+  `CONFIGER_CR_STORE=sql|file` overrides. An upgrade carries an existing file
+  across once via `SQLStore.Import`. Either way this is WORKFLOW state only -
+  configuration truth stays in Git. **Both stores hand out COPIES**: editing a
+  change request you were given persists nothing, `Update` is the only way in.
 
 **The model:**
 - `model` - `Parameter` (metadata + `Bindings []Binding`), `Instance`
@@ -106,6 +116,24 @@ admin-only; audit trail). Configuration data NEVER goes in the DB.
 per-repo handlers split by resource (`reads.go`, `values.go`,
 `parameters.go`, `instances.go`, `changes.go`, `files.go`, `onboarding.go`,
 `reconcile.go`, `helpers.go`).
+
+**Concurrency (one application, many editors):** ONE working copy per
+application, shared by everyone - never one per user. Two locks, in `locks.go`:
+`treeMu` for the working tree and the git plumbing over it (catalog commits,
+sync, merge, submit, reject), and a per-owner draft lock for read-modify-write
+sequences on the change-request store. A handler needing both takes `treeMu`
+first. Never reach for a single lock again: staging a cell edit must not queue
+behind a colleague's push.
+
+**Reads (`treecache.go`):** never call `project.Load` or build a resolver
+directly in a handler - use `s.load()`, `s.resolve(p)` and `s.buildGrid(p)`.
+They memoize the parsed project and parsed configuration files for as long as
+the files are unchanged, which is what makes a grid over a large estate cheap
+with several people reading it at once. Invalidation is automatic and needs no
+cooperation: each file is revalidated by its own stat, and releasing `treeMu`
+bumps a generation that drops the cache outright. A cached project is SHARED
+and read-only. Anything rooted outside the working tree (a materialized ref, a
+timeline snapshot) parses for itself.
 
 ## Architecture (frontend, `frontend/src/`)
 

@@ -14,7 +14,6 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
-	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
 	"github.com/abhijeet-oxide/configer/backend/internal/parsers"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
@@ -186,15 +185,13 @@ func (h *Hub) open(e workspace.Entry) error {
 				return cerr
 			}
 		}
-		var err error
+		crs, err := h.crStore(e.ID, filepath.Join(e.Path, ".git", "configer", "state.json"))
+		if err != nil {
+			return err
+		}
 		// A folder opened in place may legitimately not be a repository yet
 		// (Configer initializes one); a copy Configer fetched must already be.
-		if e.Local {
-			s, err = New(e.Path)
-		} else {
-			s, err = NewExisting(e.Path)
-		}
-		if err != nil {
+		if s, err = NewWithStore(e.Path, !e.Local, crs); err != nil {
 			return err
 		}
 	}
@@ -228,7 +225,7 @@ func (h *Hub) openRemote(e workspace.Entry) (*Server, error) {
 	}
 	// State lives OUTSIDE the materialized cache so it is never swept into a
 	// commit by the tree diff (the cache is the repo tree, byte for byte).
-	store, err := crstore.New(filepath.Join(h.dataDir, "state", e.ID, "state.json"))
+	store, err := h.crStore(e.ID, filepath.Join(h.dataDir, "state", e.ID, "state.json"))
 	if err != nil {
 		return nil, err
 	}

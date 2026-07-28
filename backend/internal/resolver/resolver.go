@@ -25,6 +25,18 @@ type Resolved struct {
 	Set   bool   // whether any layer (including the default) supplied a value
 }
 
+// Docs supplies parsed documents from a cache that outlives a single request.
+// A Resolver caches parses for its own lifetime, which covers one grid build;
+// a Docs implementation covers every reader of the same unchanged tree, so a
+// file is parsed once for the whole deployment rather than once per request per
+// user. It must return documents that are safe to read concurrently (a parsed
+// pathedit.Document is: Get never mutates it).
+type Docs interface {
+	// Doc returns the parsed document for a repo-relative file, or nil when
+	// the file is missing or unparseable (both resolve to "no value here").
+	Doc(file, format string) *pathedit.Document
+}
+
 // Resolver reads values from a repository working tree. It caches each file's
 // PARSED document, so one Resolver instance is cheap to use across a whole grid
 // build (every cell resolves the same handful of files, and each is parsed only
@@ -37,6 +49,19 @@ type Resolver struct {
 	// (identical to the original behavior).
 	Catalog []model.Parameter
 	docs    map[string]*pathedit.Document // keyed by repo-relative file path
+	// shared, when set, parses through a cache spanning requests. The local
+	// map above stays the first tier: it keeps a whole grid build off the
+	// shared cache's lock once each file has been seen.
+	shared Docs
+}
+
+// WithDocs points the resolver at a cross-request document cache and returns
+// it, so construction stays a single expression. Only ever pass a cache built
+// for the SAME root: a resolver reading a materialized ref must parse that
+// ref's files, not the working tree's.
+func (r *Resolver) WithDocs(d Docs) *Resolver {
+	r.shared = d
+	return r
 }
 
 // New returns a Resolver reading from the working tree rooted at root.
@@ -69,7 +94,9 @@ func (r *Resolver) doc(file, format string) *pathedit.Document {
 		return d
 	}
 	var d *pathedit.Document
-	if b, err := os.ReadFile(filepath.Join(r.Root, file)); err == nil {
+	if r.shared != nil {
+		d = r.shared.Doc(file, format)
+	} else if b, err := os.ReadFile(filepath.Join(r.Root, file)); err == nil {
 		d, _ = pathedit.Parse(b, format) // parse error -> nil doc (treated as empty)
 	}
 	r.docs[file] = d

@@ -61,6 +61,8 @@ func readSnapshot(p *project.Project, instanceFilter string) snapshotState {
 		versions: map[string]string{},
 		insts:    map[string]bool{},
 	}
+	// A snapshot reads a throwaway checkout of one commit, so it parses for
+	// itself; the shared cache belongs to the working tree.
 	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
 	for _, inst := range p.Registry.Instances {
 		if instanceFilter != "" && inst.Name != instanceFilter {

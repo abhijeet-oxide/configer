@@ -311,8 +311,8 @@ func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 
 	p, err := s.load()
 	if err != nil {
@@ -492,8 +492,8 @@ func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	for _, id := range ids {
 		if err := writer.DeleteParameter(s.RepoPath, id, p.Registry.Instances); err != nil {
 			writeErr(w, err)

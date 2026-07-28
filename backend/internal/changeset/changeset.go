@@ -33,7 +33,7 @@ import (
 // tree or a remote repository managed through the Git data API (no clone).
 type Service struct {
 	Backend repobackend.Backend
-	Store   *crstore.Store
+	Store   crstore.Store
 	// Bot is the machine identity (committer). When a human author is known,
 	// the bot is credited on the commit via a Co-authored-by trailer instead
 	// of authoring it.
@@ -67,17 +67,34 @@ func (p Policy) approvalsNeeded() int {
 	return p.MinApprovals
 }
 
+// maxSlug caps the readable half of a branch name. Titles are free text and
+// people paste whole sentences into them; a ref that runs to hundreds of
+// characters is unreadable in every tool that shows it and starts bumping into
+// path limits once git writes it under .git/refs.
+const maxSlug = 60
+
 // branchName turns a change request into a readable feature branch. The user
 // names the change on submit ("Increase prod memory limit"); we slugify that
-// into feature/increase-prod-memory-limit. The id is appended when the slug
-// would otherwise be empty or the generic "unnamed", keeping branches unique
-// on the remote without ever exposing raw git numbering for a named change.
+// into feature/increase-prod-memory-limit-cr-7.
+//
+// The change request id is ALWAYS part of the name, and that is the whole
+// point of it. A branch named only for its title is not unique: two people
+// working the same feature in one application reach for the same words, and
+// two change requests titled "Increase prod memory limit" produced one branch
+// name between them. The second submit then deleted the first one's local
+// branch, rebuilt it from base, and had its push rejected by the remote as a
+// non-fast-forward - reported to the user as a downstream failure with nothing
+// they could act on. Ids are unique per application, so pinning one to every
+// branch makes the collision impossible rather than merely unlikely.
 func branchName(cr *change.ChangeRequest) string {
 	slug := slugify(cr.Title)
-	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
-		return fmt.Sprintf("feature/unnamed-cr-%d", cr.ID)
+	if len(slug) > maxSlug {
+		slug = strings.Trim(slug[:maxSlug], "-")
 	}
-	return "feature/" + slug
+	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
+		slug = "unnamed"
+	}
+	return fmt.Sprintf("feature/%s-cr-%d", slug, cr.ID)
 }
 
 // slugify lowercases a title into a git-ref-safe slug (kept local so the
@@ -206,8 +223,15 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 		prNum, prURL = pr.Number, pr.URL
 	}
 
+	// Everything the submit settled is written back explicitly. Reference and
+	// category used to be missing here and survived anyway, because the store
+	// handed out the very change request it kept and the edits above landed on
+	// it directly. That is no longer true - and was never something to rely on,
+	// since it made "did this persist?" depend on which method the caller had
+	// used to obtain the object.
 	return s.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
 		c.Title, c.Description, c.Author = cr.Title, cr.Description, cr.Author
+		c.Reference, c.Category = cr.Reference, cr.Category
 		c.TargetBranch = cr.TargetBranch
 		c.Branch = branch
 		c.BaseSHA = baseSHA

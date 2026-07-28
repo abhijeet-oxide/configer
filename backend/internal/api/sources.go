@@ -19,7 +19,6 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
-	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
@@ -129,8 +128,8 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	}
 	src := model.Source{ID: id, Name: req.Name, Kind: req.Kind, Secret: req.Secret, Config: req.Config}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if err := writer.AddSource(s.RepoPath, src); err != nil {
 		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return
@@ -163,8 +162,8 @@ func (s *Server) updateSource(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	updated, err := writer.UpdateSource(s.RepoPath, id, writer.SourcePatch{Name: req.Name, Secret: req.Secret, Config: req.Config})
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
@@ -192,8 +191,8 @@ func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request) {
 		Author string `json:"author"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if err := writer.DeleteSource(s.RepoPath, id); err != nil {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
 		return
@@ -302,8 +301,8 @@ func (s *Server) mapParameterSource(w http.ResponseWriter, r *http.Request) {
 		ref = &model.SourceRef{SourceID: req.SourceID, Key: req.Key, Instance: req.Instance}
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if err := writer.MapParameterSource(s.RepoPath, paramID, ref); err != nil {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, err.Error())
 		return
@@ -352,7 +351,7 @@ func (s *Server) incomingChanges(w http.ResponseWriter, r *http.Request) {
 // computeIncoming builds the incoming-change list. Per-source snapshots are
 // fetched lazily (and cached) when absent, so opening the view pulls sources.
 func (s *Server) computeIncoming(ctx context.Context, p *project.Project) []IncomingChange {
-	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+	rv := s.resolve(p)
 	snaps := map[string]map[string]plugin.SourceKV{}
 	out := []IncomingChange{}
 	for _, param := range p.Catalog.Parameters {
@@ -456,8 +455,7 @@ func (s *Server) acceptIncoming(w http.ResponseWriter, r *http.Request) {
 	results := []result{}
 	staged := 0
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)

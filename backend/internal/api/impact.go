@@ -43,9 +43,8 @@ type changeResponse struct {
 }
 
 // withImpact wraps a change request with its blast radius for a response.
-func withImpact(p *project.Project, cr *change.ChangeRequest) changeResponse {
-	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
-	return changeResponse{ChangeRequest: cr, Impact: computeImpact(p, rv, cr)}
+func (s *Server) withImpact(p *project.Project, cr *change.ChangeRequest) changeResponse {
+	return changeResponse{ChangeRequest: cr, Impact: computeImpact(p, s.resolve(p), cr)}
 }
 
 // computeImpact walks a change request's items and returns its blast radius. A

@@ -114,6 +114,22 @@ instances:
 	return workDir, originDir, &Service{Backend: backend, Store: store}
 }
 
+// stage puts pending items into a draft the way the api layer does: through
+// the store's Update. A change request the store hands back is a COPY, so
+// editing one in place stages nothing - which is the whole point of the
+// contract, and is why this helper exists rather than a line of test setup.
+func stage(t *testing.T, svc *Service, id int, items ...change.Item) {
+	t.Helper()
+	if _, err := svc.Store.Update(id, func(cr *change.ChangeRequest) error {
+		for _, it := range items {
+			cr.UpsertItem(it)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The session user is the git AUTHOR of a submitted change; the machine
 // identity stays the committer and is credited via Co-authored-by.
 func TestSubmitAuthorAttribution(t *testing.T) {
@@ -125,7 +141,7 @@ func TestSubmitAuthorAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
 
 	ident := repobackend.Author{Name: "Alice Doe", Email: "alice@example.com"}
 	got, err := svc.Submit(ctx, cr.ID, "Author attribution", "", "alice", "", "", ident)
@@ -156,8 +172,10 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
-	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID,
+		change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()},
+		change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()},
+	)
 
 	// Submit: branch + write-back + commit + push.
 	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature", repobackend.Author{})
@@ -235,7 +253,7 @@ func TestSubmitResetRemovesKey(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("bob", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
 
 	got, err := svc.Submit(ctx, cr.ID, "Drop staging port override", "", "bob", "", "", repobackend.Author{})
 	if err != nil {
@@ -262,14 +280,16 @@ func TestSubmitAddInstance(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("carol", "main")
-	cr.UpsertItem(change.Item{
-		Instance: "dr",
-		Action:   change.ActionAddInstance,
-		Old:      "prod", // clone source
-		New:      map[string]any{"environment": "production", "region": "us-west"},
-	})
+	stage(t, svc, cr.ID,
+		change.Item{
+			Instance: "dr",
+			Action:   change.ActionAddInstance,
+			Old:      "prod", // clone source
+			New:      map[string]any{"environment": "production", "region": "us-west"},
+		},
+	)
 	// A value edit for the new instance rides the same CR.
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
 
 	got, err := svc.Submit(ctx, cr.ID, "Add DR instance", "", "carol", "", "", repobackend.Author{})
 	if err != nil {
@@ -295,7 +315,7 @@ func TestSubmitAddInstance(t *testing.T) {
 
 	// Remove-instance CRs retire folder + registry entry.
 	cr2, _ := svc.Store.Draft("carol", "main")
-	cr2.UpsertItem(change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
+	stage(t, svc, cr2.ID, change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
 	got2, err := svc.Submit(ctx, cr2.ID, "Retire staging", "", "carol", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
@@ -318,9 +338,11 @@ func TestPreviewShowsByteLevelDiff(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
-	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com"})
-	cr.UpsertItem(change.Item{Instance: "dr", Action: change.ActionAddInstance, Old: "prod", New: map[string]any{"environment": "production"}})
+	stage(t, svc, cr.ID,
+		change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()},
+		change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com"},
+		change.Item{Instance: "dr", Action: change.ActionAddInstance, Old: "prod", New: map[string]any{"environment": "production"}},
+	)
 
 	res, err := svc.Preview(ctx, cr.ID)
 	if err != nil {
@@ -372,7 +394,7 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 
 	// Draft rejection deletes it.
 	cr, _ := svc.Store.Draft("bob", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
 	if _, err := svc.Reject(ctx, cr.ID, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +404,7 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 
 	// Submitted CR rejection keeps the record with state rejected.
 	cr2, _ := svc.Store.Draft("bob", "main")
-	cr2.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
+	stage(t, svc, cr2.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
 	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
@@ -404,7 +426,7 @@ func TestGovernancePolicy(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice@example.com", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
 	sub, err := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
 	if err != nil {
 		t.Fatal(err)
@@ -441,7 +463,7 @@ func TestMinApprovals(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice@example.com", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
 	sub, _ := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
 
 	first, err := svc.Approve(ctx, sub.ID, "bob@example.com")
@@ -471,7 +493,7 @@ func TestSubmitDetectsStaleValue(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
 
 	// Someone else changes the same value directly on main after staging.
 	writeFile(t, filepath.Join(workDir, "instances", "staging", "values.yaml"),
@@ -494,5 +516,44 @@ func TestSubmitValidation(t *testing.T) {
 	cr, _ := svc.Store.Draft("bob", "main")
 	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob", "", "", repobackend.Author{}); err == nil {
 		t.Error("expected error submitting empty draft")
+	}
+}
+
+// TestBranchNameIsUniquePerChange pins the property that makes concurrent
+// editing safe: two change requests that happen to carry the same title must
+// never resolve to the same branch. Before the id was part of every name, the
+// second submit of a same-titled change deleted the first one's branch locally
+// and then had its push rejected by the remote.
+func TestBranchNameIsUniquePerChange(t *testing.T) {
+	same := func(a, b *change.ChangeRequest) bool { return branchName(a) == branchName(b) }
+
+	first := &change.ChangeRequest{ID: 7, Title: "Increase prod memory limit"}
+	second := &change.ChangeRequest{ID: 8, Title: "Increase prod memory limit"}
+	if got := branchName(first); got != "feature/increase-prod-memory-limit-cr-7" {
+		t.Fatalf("branch name lost its readable half: %q", got)
+	}
+	if same(first, second) {
+		t.Fatalf("two changes titled alike share branch %q", branchName(first))
+	}
+
+	// An unnamed draft still reads as unnamed, and still cannot collide.
+	blank := &change.ChangeRequest{ID: 3, Title: ""}
+	generic := &change.ChangeRequest{ID: 4, Title: "Draft changes"}
+	if got := branchName(blank); got != "feature/unnamed-cr-3" {
+		t.Fatalf("blank title: got %q", got)
+	}
+	if same(blank, generic) {
+		t.Fatalf("two unnamed changes share branch %q", branchName(blank))
+	}
+
+	// A pasted paragraph is truncated to something a human can read, and the
+	// id survives the truncation (it is what keeps the name unique).
+	long := &change.ChangeRequest{ID: 12, Title: strings.Repeat("very long title ", 20)}
+	got := branchName(long)
+	if len(got) > len("feature/")+maxSlug+len("-cr-12") {
+		t.Fatalf("long title was not capped: %q", got)
+	}
+	if !strings.HasSuffix(got, "-cr-12") {
+		t.Fatalf("truncation dropped the id: %q", got)
 	}
 }

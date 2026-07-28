@@ -20,17 +20,18 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/changeset"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
 	"github.com/abhijeet-oxide/configer/backend/internal/gitengine"
+	"github.com/abhijeet-oxide/configer/backend/internal/grid"
 	"github.com/abhijeet-oxide/configer/backend/internal/parsers"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/provider"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
+	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/sources"
 )
 
@@ -41,18 +42,26 @@ type Server struct {
 	RepoPath string
 	Registry *plugin.Registry
 	Backend  repobackend.Backend
-	Store    *crstore.Store
+	Store    crstore.Store
 	Changes  *changeset.Service
 	// Version and Environment identify this deployment in the UI and API
 	// (CONFIGER_VERSION / CONFIGER_ENV, e.g. "1.4.0" / "production").
 	Version     string
 	Environment string
-	writeMu     sync.Mutex // serializes writes to the working tree + store
-	sync        syncState  // git-liveness status (see sync.go)
-	syncStop    chan struct{}
+	// treeMu serializes writes to the working tree and the git plumbing over
+	// it; drafts serializes read-modify-write sequences on one owner's draft.
+	// See locks.go for why they are separate.
+	treeMu   treeLock
+	drafts   draftLocks
+	sync     syncState // git-liveness status (see sync.go)
+	syncStop chan struct{}
 	// snapshots memoizes the timeline's per-commit configuration states. A
 	// commit is immutable, so this needs no invalidation (see snapshotcache.go).
 	snapshots *snapshotCache
+	// cache memoizes the parsed working tree (project metadata and parsed
+	// configuration files) for as long as the files behind it are unchanged
+	// (see treecache.go).
+	cache *treeCache
 }
 
 // branch returns the backend's default working branch (best effort).
@@ -100,7 +109,7 @@ func changePolicy() changeset.Policy {
 
 // New builds a Server: plugins registered, repo opened (or bootstrapped into
 // git), CR store loaded, PR provider detected from the origin remote.
-func New(repoPath string) (*Server, error) { return newServer(repoPath, false) }
+func New(repoPath string) (*Server, error) { return newServer(repoPath, false, nil) }
 
 // NewExisting opens a tree that MUST already be a git repository - a copy
 // Configer made itself.
@@ -111,9 +120,16 @@ func New(repoPath string) (*Server, error) { return newServer(repoPath, false) }
 // there, the fetch failed, and quietly making a fresh empty repository on top
 // of it buries that. It surfaced as "nothing to commit" from a git command the
 // user never asked for, about a repository that was not theirs.
-func NewExisting(repoPath string) (*Server, error) { return newServer(repoPath, true) }
+func NewExisting(repoPath string) (*Server, error) { return newServer(repoPath, true, nil) }
 
-func newServer(repoPath string, mustExist bool) (*Server, error) {
+// NewWithStore opens a repository using a change-request store the caller
+// picked (see crStore). A nil store falls back to the JSON file beside the
+// repository, which is what single-repo deployments and tests want.
+func NewWithStore(repoPath string, mustExist bool, store crstore.Store) (*Server, error) {
+	return newServer(repoPath, mustExist, store)
+}
+
+func newServer(repoPath string, mustExist bool, crs crstore.Store) (*Server, error) {
 	reg := plugin.NewRegistry()
 	parsers.Register(reg)
 	sources.Register(reg)
@@ -138,9 +154,12 @@ func newServer(repoPath string, mustExist bool) (*Server, error) {
 		return nil, err
 	}
 
-	store, err := crstore.New(filepath.Join(repoPath, ".git", "configer", "state.json"))
-	if err != nil {
-		return nil, err
+	if crs == nil {
+		fileStore, err := crstore.New(filepath.Join(repoPath, ".git", "configer", "state.json"))
+		if err != nil {
+			return nil, err
+		}
+		crs = fileStore
 	}
 
 	var prov provider.Provider
@@ -162,7 +181,7 @@ func newServer(repoPath string, mustExist bool) (*Server, error) {
 	}
 
 	backend := repobackend.NewLocal(repo, prov)
-	return NewWithBackend(reg, backend, store), nil
+	return NewWithBackend(reg, backend, crs), nil
 }
 
 // ensureRepoWritable checks that Configer can write to the repository it was
@@ -200,7 +219,7 @@ func ensureRepoWritable(repoPath string) error {
 
 // NewWithBackend assembles a Server around a prepared backend and store (the
 // remote-mode entry point; New is the local convenience wrapper).
-func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *crstore.Store) *Server {
+func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store crstore.Store) *Server {
 	return &Server{
 		RepoPath:    backend.RootDir(),
 		Registry:    reg,
@@ -210,6 +229,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store *cr
 		Version:     getenv("CONFIGER_VERSION", "dev"),
 		Environment: getenv("CONFIGER_ENV", "development"),
 		snapshots:   newSnapshotCache(snapshotCacheMax),
+		cache:       newTreeCache(backend.RootDir()),
 	}
 }
 
@@ -288,7 +308,57 @@ func (s *Server) Handler() http.Handler {
 	return mux
 }
 
-func (s *Server) load() (*project.Project, error) { return project.Load(s.RepoPath) }
+// lockDraft takes the draft lock for one owner and returns its release, so
+// handlers read `defer s.lockDraft(draftOwner(r))()`.
+func (s *Server) lockDraft(owner string) func() { return s.drafts.lock(owner) }
+
+// lockDraftOf takes the draft lock for whoever owns change request id. Paths
+// that address a change by id (submit, merge, reject) cannot use the caller's
+// own owner: an approver acts on somebody else's change, and it is the author's
+// draft that must hold still.
+func (s *Server) lockDraftOf(id int) func() {
+	owner := ""
+	if cr, err := s.Store.Get(id); err == nil {
+		owner = cr.Author
+	}
+	return s.drafts.lock(owner)
+}
+
+// load returns the project for the working tree, reusing the previous parse
+// while the .configer files behind it are unchanged.
+//
+// The result is SHARED with every other in-flight request and must be treated
+// as read-only. Nothing in the read paths writes through it (metadata changes
+// go through the writer package, which edits the files, and the next load
+// picks them up), so this is a restriction the code already observes.
+func (s *Server) load() (*project.Project, error) {
+	return s.cache.Project(s.treeMu.Gen())
+}
+
+// docs returns the shared parsed-document cache for a project, but only when
+// the project is the working tree this server serves. A project materialized
+// at some other ref has different bytes under the same relative paths, so it
+// parses for itself.
+func (s *Server) docs(p *project.Project) resolver.Docs {
+	if s.cache == nil || p == nil || p.Root != s.cache.root {
+		return nil
+	}
+	return s.cache.docsAt(s.treeMu.Gen())
+}
+
+// resolve builds a resolver for a project, reading through the shared document
+// cache when the project is this server's working tree. Every read path in the
+// api package should construct resolvers here rather than calling the resolver
+// package directly, so none of them silently drops back to re-parsing the whole
+// repository on every request.
+func (s *Server) resolve(p *project.Project) *resolver.Resolver {
+	return resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).WithDocs(s.docs(p))
+}
+
+// buildGrid assembles the grid through the shared document cache.
+func (s *Server) buildGrid(p *project.Project) grid.Grid {
+	return grid.BuildWith(p, s.docs(p))
+}
 
 // loadWithDraft loads the project alongside the caller's draft; grid builders
 // preview the draft's pending items on top via grid.ApplyDraft, so the UI

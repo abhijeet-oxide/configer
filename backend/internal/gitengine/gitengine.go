@@ -109,6 +109,7 @@ func Clone(url, dir, branch, token, name, email string) (*Repo, error) {
 // repository that cannot be fetched shows "Connecting" for as long as the
 // server stays up.
 func CloneContext(ctx context.Context, url, dir, branch, token, name, email string) (*Repo, error) {
+	dir = abs(dir)
 	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return nil, err
 	}
@@ -166,6 +167,24 @@ var (
 	tokenRe   = regexp.MustCompile(`^https?://[^/:@\s]*:([^/@\s]+)@`)
 )
 
+// abs makes a filesystem path absolute, leaving it alone if that is not
+// possible. Every path Configer hands to git as an ARGUMENT goes through this.
+//
+// It is not a tidiness measure. These commands run with the working directory
+// set to somewhere inside the data directory, and git resolves a relative
+// argument against THAT - so a relative destination is applied twice and the
+// clone lands somewhere nobody looks, with git reporting success. Configer's
+// data directory is "./configer-data" by default, so this was the normal case,
+// not an edge one: every repository added to a deployment that had not set an
+// absolute CONFIGER_DATA was copied into a folder inside a folder, and the
+// application it should have become was empty.
+func abs(p string) string {
+	if a, err := filepath.Abs(p); err == nil {
+		return a
+	}
+	return p
+}
+
 // Redact strips embedded credentials from a remote URL for display.
 func Redact(url string) string {
 	return credRe.ReplaceAllString(url, "$1")
@@ -218,6 +237,7 @@ func (r *Repo) OriginURL() string {
 // AddWorktree creates an isolated worktree at path on a fresh branch cut from
 // base. A leftover branch from a previous failed attempt is replaced.
 func (r *Repo) AddWorktree(path, branch, base string) error {
+	path = abs(path)
 	// Clean up any stale state from an earlier crash of the same CR.
 	_, _ = r.git(r.Dir, "worktree", "remove", "--force", path)
 	_, _ = r.git(r.Dir, "worktree", "prune")
@@ -228,6 +248,7 @@ func (r *Repo) AddWorktree(path, branch, base string) error {
 
 // RemoveWorktree detaches and prunes a change-request worktree.
 func (r *Repo) RemoveWorktree(path string) {
+	path = abs(path)
 	_, _ = r.git(r.Dir, "worktree", "remove", "--force", path)
 	_, _ = r.git(r.Dir, "worktree", "prune")
 }
@@ -235,6 +256,7 @@ func (r *Repo) RemoveWorktree(path string) {
 // AddWorktreeDetached checks a ref out into path in DETACHED HEAD (no branch),
 // for read-only materialization of an arbitrary ref (compare / render at ref).
 func (r *Repo) AddWorktreeDetached(path, ref string) error {
+	path = abs(path)
 	_, _ = r.git(r.Dir, "worktree", "remove", "--force", path)
 	_, _ = r.git(r.Dir, "worktree", "prune")
 	_, err := r.git(r.Dir, "worktree", "add", "--detach", path, ref)

@@ -493,3 +493,66 @@ func TestEmptyRepositoryAndBrokenCopyAreDistinguished(t *testing.T) {
 		t.Fatal("fixture should have no repository data")
 	}
 }
+
+// End to end in the shape a real deployment runs in: CONFIGER_DATA defaults to
+// "./configer-data", so the hub's data directory is RELATIVE to wherever the
+// service was started. Every clone destination is derived from it, and git
+// resolved those against its own working directory as well - so the copy landed
+// in a folder inside a folder and the application came out empty. Absolute
+// paths at the door, and this is the ordinary case again.
+func TestConnectingWithARelativeDataDirectory(t *testing.T) {
+	upstream := filepath.Join(t.TempDir(), "upstream.git")
+	seedBare(t, upstream)
+
+	work := t.TempDir()
+	t.Chdir(work)
+
+	hub, err := NewHub(filepath.Join("configer-data"), "", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = hub.Close() })
+	handler := hub.Routes()
+	defer waitForConnects(t, hub)
+
+	id := connectOnce(t, handler, "file://"+upstream, "flux cd")
+	waitForConnects(t, hub)
+
+	e, ok := hub.registry.Get(id)
+	if !ok {
+		hub.mu.Lock()
+		c := hub.connecting[id]
+		hub.mu.Unlock()
+		msg := ""
+		if c != nil {
+			msg = c.Error
+		}
+		t.Fatalf("the repository was not connected: %s", msg)
+	}
+	if _, err := os.Stat(filepath.Join(e.Path, ".git")); err != nil {
+		t.Fatalf("the copy has no repository data: %v", err)
+	}
+	if !gitengine.HasCommits(e.Path) {
+		t.Error("the copy arrived without its history")
+	}
+}
+
+// seedBare makes a bare repository with one commit in it.
+func seedBare(t *testing.T, bare string) {
+	t.Helper()
+	src := t.TempDir()
+	run := func(dir string, args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(src, "values.yaml"), []byte("a: 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	run(src, "init", "-q", "-b", "main")
+	run(src, "add", "-A")
+	run(src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "seed")
+	run(src, "clone", "-q", "--bare", src, bare)
+}

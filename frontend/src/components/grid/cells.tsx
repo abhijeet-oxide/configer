@@ -66,10 +66,22 @@ export function ListChips({ items }: { items: unknown[] }) {
   );
 }
 
-export function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: ChangeItem }) {
+export function CellView({
+  cell,
+  pendingItem,
+  editable,
+}: {
+  cell: Cell;
+  pendingItem?: ChangeItem;
+  /** the cell can still be opened for editing (drives the hover hint) */
+  editable?: boolean;
+}) {
   if (cell.state === "na") return <span className="cell-na">n/a</span>;
 
-  // Pending edits: hovering shows exactly what will change.
+  // Pending edits: hovering shows exactly what will change - and that the cell
+  // is still an ordinary editable value. A staged cell used to lose the
+  // "double-click to edit" hint entirely, which (with the old chip styling)
+  // read as "this is finished now, undo is all you get".
   const pendingTip = pendingItem
     ? `${fmtValue(pendingItem.old)}  →  ${
         pendingItem.action === "exclude"
@@ -77,7 +89,9 @@ export function CellView({ cell, pendingItem }: { cell: Cell; pendingItem?: Chan
           : pendingItem.action === "reset"
             ? "back to inherited"
             : fmtValue(pendingItem.new)
-      }   (pending, not yet sent for review)`
+      }   (pending, not yet sent for review)${
+        editable ? "  ·  double-click to change it again" : ""
+      }`
     : undefined;
 
   if (!cell.set) {

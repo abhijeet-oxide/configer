@@ -22,12 +22,26 @@ import (
 )
 
 // Result is the discovery proposal shown to the user before initializing.
+//
+// Its lists are always lists. A nil slice marshals to JSON `null`, and a client
+// that reasonably expects an array then reads a length off nothing - which is
+// how a repository the scan found nothing in took the whole page down instead
+// of showing an empty proposal. "Found nothing" is a normal answer here: plenty
+// of repositories hold manifests with no configuration Configer can manage.
 type Result struct {
 	Detection   layout.Detection  `json:"detection"`
 	Instances   []model.Instance  `json:"instances"`
 	Parameters  []model.Parameter `json:"parameters"`
 	SharedFiles []string          `json:"sharedFiles,omitempty"`
 	Skipped     []string          `json:"skipped,omitempty"`
+}
+
+// nonNil turns a nil slice into an empty one, so it marshals as [] not null.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 // Discover scans root and builds the proposal.
@@ -280,6 +294,11 @@ func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result,
 	linkResourceConstraints(params)
 
 	res.Parameters = params
+	// Every list leaves as a list, whatever the scan found.
+	res.Parameters = nonNil(res.Parameters)
+	res.Instances = nonNil(res.Instances)
+	res.SharedFiles = nonNil(res.SharedFiles)
+	res.Skipped = nonNil(res.Skipped)
 	return res, nil
 }
 

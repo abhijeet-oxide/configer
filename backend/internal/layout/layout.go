@@ -79,6 +79,12 @@ func Detect(root string) Detection {
 			best = d
 		}
 	}
+	// A repository with no instance folders is an ordinary answer, and it
+	// travels to a client as JSON: a nil slice would arrive as null where an
+	// array is expected, which is not a shape any reader should have to handle.
+	if best.Instances == nil {
+		best.Instances = []Instance{}
+	}
 	return best
 }
 

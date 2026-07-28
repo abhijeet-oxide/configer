@@ -1,6 +1,10 @@
 package discovery
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/layout"
@@ -142,4 +146,34 @@ func keys(m map[string]model.Parameter) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// A list leaves as a list. A nil slice marshals to JSON null, and a client that
+// reasonably expects an array then reads a length off nothing - which took the
+// onboarding page down for a repository the scan found nothing in. Finding
+// nothing is an ordinary answer here.
+func TestDiscoveryListsAreNeverNull(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# nothing here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Discover(root, registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Parameters == nil || res.Instances == nil || res.SharedFiles == nil || res.Skipped == nil {
+		t.Fatalf("a nil list would marshal as null: %+v", res)
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"parameters":null`, `"instances":null`} {
+		if strings.Contains(string(b), field) {
+			t.Errorf("%s reached the client: %s", field, b)
+		}
+	}
+	if !strings.Contains(string(b), `"parameters":[]`) {
+		t.Errorf("an empty proposal should carry an empty list: %s", b)
+	}
 }

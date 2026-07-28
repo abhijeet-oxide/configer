@@ -224,24 +224,28 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
   const discoverQ = useRepoQuery({ queryKey: ["discover"], queryFn: api.discover, staleTime: 60_000 });
   const d = discoverQ.data;
+  // A list is read as a list wherever it comes from. A scan that found nothing
+  // is an ordinary answer - plenty of repositories hold manifests with no
+  // configuration to manage - and it must not be able to take the page down.
+  const found = useMemo(() => d?.parameters ?? [], [d]);
 
   const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
   // Distinct configuration formats found across every discovered parameter -
   // the "3 formats" part of the discovery summary.
   const discoveredFormats = useMemo(() => {
     const s = new Set<string>();
-    for (const p of d?.parameters ?? []) for (const b of bindingsOf(p)) if (b.format) s.add(b.format);
+    for (const p of found) for (const b of bindingsOf(p)) if (b.format) s.add(b.format);
     return [...s].sort();
-  }, [d]);
+  }, [found]);
   const patchInstance = (name: string, patch: Partial<Instance>) =>
     setInstances(insts.map((i) => (i.name === name ? { ...i, ...patch } : i)));
 
   // Map every parameter to the real files it touches, and the full file set.
   const filesByParam = useMemo(() => {
     const m = new Map<string, string[]>();
-    for (const p of d?.parameters ?? []) m.set(p.id, filesOfParam(p, insts));
+    for (const p of found) m.set(p.id, filesOfParam(p, insts));
     return m;
-  }, [d, insts]);
+  }, [found, insts]);
   const allFiles = useMemo(() => {
     const s = new Set<string>();
     for (const files of filesByParam.values()) for (const f of files) s.add(f);
@@ -262,9 +266,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     return files.some((f) => !uncheckedFiles.has(f));
   };
   const fileIncludedParams = useMemo(
-    () => (d?.parameters ?? []).filter(includedByFiles),
+    () => found.filter(includedByFiles),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [d, uncheckedFiles, filesByParam],
+    [found, uncheckedFiles, filesByParam],
   );
   const chosenParams = useMemo(
     () => fileIncludedParams.filter((p) => !deselected.has(p.id)),
@@ -335,6 +339,36 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     );
   }
 
+  // The scan ran and turned up nothing to manage. That is an answer, not a
+  // failure: a repository can hold plenty of YAML - Flux or Argo manifests,
+  // rendered output, CRDs - without holding SETTINGS that belong in a grid.
+  // Walking someone through four steps over zeros, with Next disabled and no
+  // reason given, tells them none of that.
+  if (found.length === 0 && insts.length === 0) {
+    return (
+      <div style={{ paddingTop: 40 }}>
+        <StatePanel
+          art={<ScanArt />}
+          title="Nothing to manage in this repository yet"
+          subtitle={
+            "Configer read the files and did not find settings it can put in a grid. It looks for " +
+            "configuration values in YAML, JSON or XML - usually one folder per environment or cluster. " +
+            "A repository of generated manifests, or one whose settings live somewhere else, will look like this."
+          }
+          actions={
+            <>
+              <Button type="primary" onClick={() => discoverQ.refetch()}>
+                Scan again
+              </Button>
+              <Button onClick={() => setSection("files")}>Browse the files</Button>
+              <Button onClick={() => setSection("workspace")}>Back to Applications</Button>
+            </>
+          }
+        />
+      </div>
+    );
+  }
+
   const steps = [
     { label: "Layout", icon: <FileSearchOutlined /> },
     { label: "Instances", icon: <ApartmentOutlined /> },
@@ -348,6 +382,18 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       : step === 2
         ? chosenParams.length > 0
         : true;
+  // A disabled button with no reason is a dead end. Say which of its conditions
+  // is not met, in the words of the step the user is looking at.
+  const blockedBecause =
+    canNext
+      ? ""
+      : step === 0
+        ? appName.trim() === ""
+          ? "Give the application a name to continue."
+          : "No instance folders were found, so there is nothing to lay out as columns yet. Configer expects one folder per environment or cluster."
+        : step === 2
+          ? "Select at least one setting to manage."
+          : "";
 
   // --- tree interactions ---
   const treeNeedle = treeQ.trim().toLowerCase();
@@ -373,7 +419,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       {/* The "aha": what the scan turned this repository into, stated once and
           up front - messy files become structured, countable configuration. */}
       <DiscoverySummary
-        parameters={d.parameters.length}
+        parameters={found.length}
         instances={insts.length}
         formats={discoveredFormats}
       />
@@ -712,11 +758,20 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
             {step === 0 ? "Cancel" : "Back"}
           </Button>
-          {step < 3 && (
-            <Button type="primary" disabled={!canNext} onClick={() => setStep(step + 1)}>
-              Next
-            </Button>
-          )}
+          {step < 3 &&
+            (blockedBecause ? (
+              <Tooltip title={blockedBecause}>
+                <span style={{ display: "inline-flex" }}>
+                  <Button type="primary" disabled>
+                    Next
+                  </Button>
+                </span>
+              </Tooltip>
+            ) : (
+              <Button type="primary" onClick={() => setStep(step + 1)}>
+                Next
+              </Button>
+            ))}
         </div>
       )}
 

@@ -219,7 +219,7 @@ func stageRestore(cr *change.ChangeRequest, t restoreTarget, pRef *project.Proje
 	if sameAsTyped(t.param, rvCur.Resolve(t.param, t.inst).Value, refRes.Value) {
 		return false, ""
 	}
-	staged, msg := stageSetItem(cr, t.param, t.instance, t.inst, refRes.Value, rvCur)
+	staged, msg := stageSetItem(cr, t.param, t.instance, t.inst, t.inst, refRes.Value, rvCur)
 	return staged, msg
 }
 

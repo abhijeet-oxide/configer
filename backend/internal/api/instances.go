@@ -358,7 +358,7 @@ func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
 			if stringify(sres.Value) == stringify(rv.Resolve(param, tgt).Value) {
 				continue // already identical
 			}
-			if ok, _ := stageSetItem(cr, param, target, tgt, sres.Value, rv); ok {
+			if ok, _ := stageSetItem(cr, param, target, tgt, tgt, sres.Value, rv); ok {
 				staged++
 			}
 		}

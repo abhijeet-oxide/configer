@@ -825,6 +825,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return m;
   }, [draftQ.data]);
 
+  // The one answer to "does THIS cell carry a change of its own?". A global
+  // edit surfaces on every cell it would affect; a staged instance's cells are
+  // marked pending by the preview but have nothing of their own behind them,
+  // which is why they must not be highlighted or offer an undo.
+  const itemFor = useMemo(
+    () => (paramId: string, instance: string, source?: string) =>
+      pendingMap.get(`${paramId}|${instance}`) ??
+      (source === "base" || source === "default" ? pendingMap.get(`${paramId}|`) : undefined),
+    [pendingMap],
+  );
+
   const isAdded = (it: ChangeItem) =>
     (it.old == null || it.old === "") && (!it.action || it.action === "set");
   const isRemoved = (it: ChangeItem) =>
@@ -1178,12 +1189,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       onCell: (r: Row) => ({
         className:
           (selectedInstance === inst.name ? "col-selected" : "") +
-          // A staged change highlights the whole CELL, spreadsheet-style, so the
-          // value inside stays an ordinary value (see .cell-changed in the
-          // stylesheet). Cells of an instance that is itself staged are excluded:
-          // the pending thing there is the instance, and washing 400 cells amber
-          // says the opposite of what the column header already says once.
-          (r.cells[inst.name]?.pending && !pendingInstances.has(inst.name)
+          // The changed marker goes on the CELL (a hairline down its leading
+          // edge, see .cell-changed) and only where a change of this cell's own
+          // exists - so a staged instance's whole column is not marked for a
+          // change that belongs to the instance, not to any cell in it.
+          (itemFor(r.param.id, inst.name, r.cells[inst.name]?.source)
             ? r.cells[inst.name]?.valid === false
               ? " cell-changed cell-changed-bad"
               : " cell-changed"
@@ -1206,12 +1216,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       render: (_v, r) => {
         const key = `${r.param.id}|${inst.name}`;
         const cell = r.cells[inst.name];
-        // a pending global edit surfaces on every cell it would affect
-        const pendingItem =
-          pendingMap.get(key) ??
-          (cell && (cell.source === "base" || cell.source === "default")
-            ? pendingMap.get(`${r.param.id}|`)
-            : undefined);
+        const pendingItem = itemFor(r.param.id, inst.name, cell?.source);
         return (
           <EditableCell
             cell={cell}
@@ -1305,7 +1310,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, pendingMap, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +

@@ -214,7 +214,7 @@ body {
    takes the pending color. */
 .cell-pending {
   color: var(--c-pending);
-  font-weight: 600;
+  font-weight: 550;
 }
 /* The inline undo on a pending cell: a quiet counter-clockwise arrow that sits
    just after the value and lights up on hover. Always present on a changed
@@ -1437,17 +1437,19 @@ body {
   animation: cellSaved 0.9s ease-out;
 }
 
-/* The changed-cell wash: a soft amber field with a left accent bar, on the CELL
-   rather than around the value (see .cell-pending). background-image beats
-   antd's own cell background the same way the column selection does, so it
-   survives hover and the fixed left columns. */
+/* A changed cell is marked by a single hairline down its leading edge - nothing
+   else. A tinted fill was the first attempt and it is the wrong signal here:
+   group-by-value already tints whole rows (one of those bands is amber), so a
+   wash competes with the banding instead of reading on top of it, and filling
+   the cell makes a one-character value look like a block. The rule survives any
+   row background, costs no space, and lines up down the column so a screen of
+   edits reads as a list. The value itself carries the same color (.cell-pending),
+   which is what the eye actually lands on. */
 .param-grid .ant-table-cell.cell-changed {
-  background-image: linear-gradient(var(--c-pending-bg), var(--c-pending-bg)) !important;
-  box-shadow: inset 2px 0 0 var(--c-pending);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--c-pending) 70%, transparent);
 }
 .param-grid .ant-table-cell.cell-changed-bad {
-  background-image: linear-gradient(var(--c-danger-bg), var(--c-danger-bg)) !important;
-  box-shadow: inset 2px 0 0 var(--c-danger);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--c-danger) 70%, transparent);
 }
 
 /* The keyboard-navigation cursor: a crisp ring on the active cell. */

@@ -9,10 +9,45 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/grid"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
+
+// draftInstance resolves an instance that exists only in the caller's draft: one
+// staged by an add-instance item, not yet in the registry. Submit scaffolds the
+// folder BEFORE applying value edits (see changeset.applyDraft), so editing a
+// cell on a pending instance is legitimate - the edit simply lands in a folder
+// that does not exist yet. The folder is derived exactly as the grid preview
+// derives it, so the column the user is editing and the file the edit will
+// reach are the same place.
+//
+// It also reports the clone source, because that - not "absent" - is the
+// baseline a cloned instance's value is changing FROM: scaffolding copies the
+// source folder, then the value edit refines it.
+func draftInstance(draft *change.ChangeRequest, p *project.Project, name string) (inst model.Instance, cloneFrom string, ok bool) {
+	if draft == nil {
+		return model.Instance{}, "", false
+	}
+	for _, it := range draft.Items {
+		if it.Act() != change.ActionAddInstance || it.Instance != name {
+			continue
+		}
+		var meta model.Instance
+		if b, err := json.Marshal(it.New); err == nil {
+			_ = json.Unmarshal(b, &meta)
+		}
+		meta.Name = name
+		src, _ := it.Old.(string)
+		if meta.Folder == "" {
+			meta.Folder = grid.PendingInstanceFolder(p.Registry.Instances, src, name)
+		}
+		return meta, src, true
+	}
+	return model.Instance{}, "", false
+}
 
 // stageValue is the validated write path for a cell edit. Actions:
 //   - set (default): coerce to the declared type (lists per item), validate,
@@ -102,15 +137,25 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		oldVal = res.Value
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
+		// An instance staged in this draft has no registry entry yet; it is
+		// still a real editing target (see draftInstance).
+		baseline := inst
 		if !found {
-			writeError(w, r, http.StatusNotFound, CodeNotFound, "instance not found")
-			return
+			var cloneFrom string
+			inst, cloneFrom, found = draftInstance(s.Store.CurrentDraft(draftOwner(r)), p, req.Instance)
+			if !found {
+				writeError(w, r, http.StatusNotFound, CodeNotFound, "instance not found")
+				return
+			}
+			// Its files do not exist yet, so the value this edit changes FROM is
+			// whatever the clone source holds (scaffolding copies it first).
+			baseline, _ = p.InstanceByName(cloneFrom)
 		}
 		if action == change.ActionSet && len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter lives only in a shared file; use a global edit to change it for everyone")
 			return
 		}
-		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, inst)
+		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, baseline)
 		oldVal = res.Value
 		relInst = inst
 	}
@@ -187,7 +232,11 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 // ("" on success). Setting a value that already matches the committed one
 // cancels the pending edit (staged=false, no error), mirroring the single-cell
 // write path.
-func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName string, inst model.Instance, rawValue any, rv *resolver.Resolver) (staged bool, msg string) {
+// `baseline` is the instance whose committed files supply the "before" value. It
+// is the same instance in every ordinary case, and differs only for an instance
+// that exists just in the draft, where the clone source holds what the value is
+// changing from.
+func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName string, inst, baseline model.Instance, rawValue any, rv *resolver.Resolver) (staged bool, msg string) {
 	if len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
 		return false, "this parameter lives only in a shared file; edit it for everyone instead"
 	}
@@ -204,13 +253,13 @@ func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName 
 			if !ok {
 				return model.Parameter{}, nil, false
 			}
-			return sp, rv.Resolve(sp, inst).Value, true
+			return sp, rv.Resolve(sp, baseline).Value, true
 		}
 		if vr := validate.RelationCheck(param, coerced, related); !vr.Valid {
 			return false, vr.Message
 		}
 	}
-	old := rv.Resolve(param, inst).Value
+	old := rv.Resolve(param, baseline).Value
 	cr.UpsertItem(change.Item{
 		ParamID: param.ID, Instance: instanceName, Action: change.ActionSet,
 		Old: old, New: coerced, UpdatedAt: time.Now().UTC(),
@@ -288,17 +337,25 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+	pendingDraft := s.Store.CurrentDraft(draftOwner(r))
 	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for _, e := range req.Edits {
 			inst, ok := p.InstanceByName(e.Instance)
+			baseline := inst
 			if !ok {
-				results = append(results, result{Instance: e.Instance, Error: "instance not found"})
-				continue
+				// Staged-only instance: a legitimate target (see draftInstance).
+				var cloneFrom string
+				inst, cloneFrom, ok = draftInstance(pendingDraft, p, e.Instance)
+				if !ok {
+					results = append(results, result{Instance: e.Instance, Error: "instance not found"})
+					continue
+				}
+				baseline, _ = p.InstanceByName(cloneFrom)
 			}
 			var errMsg string
 			didStage := false
 			if action == change.ActionSet {
-				didStage, errMsg = stageSetItem(cr, param, e.Instance, inst, e.Value, rv)
+				didStage, errMsg = stageSetItem(cr, param, e.Instance, inst, baseline, e.Value, rv)
 			} else if len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
 				errMsg = "this parameter has no instance override to drop"
 			} else {

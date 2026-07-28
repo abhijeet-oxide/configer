@@ -361,7 +361,7 @@ func (h *Hub) Routes() http.Handler {
 	} else {
 		mux.Handle("/", noWebHandler(os.Getenv("CONFIGER_APP_URL")))
 	}
-	return withObservability(withCORS(withBodyLimit(h.auth.Middleware(mux))), h.log())
+	return withObservability(withCompression(withCORS(withBodyLimit(h.auth.Middleware(mux)))), h.log())
 }
 
 // Close releases the platform database.

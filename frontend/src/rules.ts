@@ -122,6 +122,28 @@ export function validateTyped(value: string, type?: string): string | null {
   }
 }
 
+// validateNumber returns an error message, or null when the value satisfies the
+// numeric rules. It is the reason the number editor never silently rewrites an
+// entry: a value outside min/max (or a fraction where a whole number is
+// required) is REPORTED, not clamped or rounded, so the user sees the rule
+// instead of a number they did not type.
+export function validateNumber(value: string | number, rules: Rules, integer: boolean): string | null {
+  const raw = String(value ?? "").trim();
+  if (raw === "") return rules.required ? "A value is required here" : null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "Needs a number";
+  if (integer && !Number.isInteger(n)) return "Needs a whole number";
+  // A format type (port, percentage, …) names its own range in one sentence,
+  // so it answers before the raw min/max rules do.
+  if (rules.formatType) {
+    const typed = validateTyped(raw, rules.formatType);
+    if (typed) return typed;
+  }
+  if (rules.min != null && n < rules.min) return `Needs to be ${rules.min} or more`;
+  if (rules.max != null && n > rules.max) return `Needs to be ${rules.max} or less`;
+  return null;
+}
+
 // validateString returns an error message, or null when the value satisfies
 // the string-shaped rules. Messages are written for non-technical users:
 // they name the expected format and show an example instead of a regex.

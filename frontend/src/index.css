@@ -2176,3 +2176,87 @@ body {
   font-size: var(--fs-11, 11px);
   color: var(--text-3);
 }
+
+/* --- Motion vocabulary ----------------------------------------------------
+   The animations behind components/ui/motion.tsx (FadeIn, Stagger,
+   StaggerItem) and the Stepper. They live here, in CSS, rather than in a
+   JavaScript animation runtime: the whole vocabulary is opacity + a small
+   rise + a cascade delay, which the compositor does for free and which needs
+   no bytes in the entry bundle. Timing is the shared motion tokens, so these
+   cannot drift from the transitions used elsewhere in this file. */
+@keyframes cfg-rise {
+  from {
+    opacity: 0;
+    transform: translateY(var(--rise, 8px));
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.cfg-fade-in {
+  animation: cfg-rise var(--dur-view) var(--ease) var(--delay, 0s) both;
+}
+
+/* The cascade: each item under a .cfg-stagger starts 50 ms after the previous
+   one. Past the twelfth the delay stops growing - beyond that the entrance
+   would read as a slow wipe rather than a cascade, and long lists are usually
+   scrolled before it finishes. */
+.cfg-stagger > .cfg-stagger-item {
+  animation: cfg-rise var(--dur-view) var(--ease) both;
+}
+.cfg-stagger > .cfg-stagger-item:nth-child(1) { animation-delay: 0ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(2) { animation-delay: 50ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(3) { animation-delay: 100ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(4) { animation-delay: 150ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(5) { animation-delay: 200ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(6) { animation-delay: 250ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(7) { animation-delay: 300ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(8) { animation-delay: 350ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(9) { animation-delay: 400ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(10) { animation-delay: 450ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(11) { animation-delay: 500ms; }
+.cfg-stagger > .cfg-stagger-item:nth-child(n + 12) { animation-delay: 550ms; }
+
+/* Stepper (components/ui/Stepper.tsx): the active node swells slightly, a
+   completed node's check pops in, and the connector fills as the user
+   advances. */
+@keyframes cfg-pop {
+  from {
+    opacity: 0;
+    transform: scale(0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cfg-step-node {
+  transition: transform 0.2s var(--ease), background var(--dur-hover) var(--ease),
+    box-shadow var(--dur-hover) var(--ease);
+}
+.cfg-step-node.is-active {
+  transform: scale(1.06);
+}
+.cfg-step-check {
+  animation: cfg-pop 0.2s ease both;
+}
+.cfg-step-fill {
+  transition: width 0.35s var(--ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cfg-fade-in,
+  .cfg-stagger > .cfg-stagger-item,
+  .cfg-step-check {
+    animation: none;
+  }
+  .cfg-step-node,
+  .cfg-step-fill {
+    transition: none;
+  }
+  .cfg-step-node.is-active {
+    transform: none;
+  }
+}

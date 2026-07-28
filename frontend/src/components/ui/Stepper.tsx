@@ -1,5 +1,4 @@
 import { Tooltip } from "antd";
-import { motion, useReducedMotion } from "framer-motion";
 import { CheckOutlined } from "../../icons";
 
 // Stepper is the product's one progress indicator for every multi-step flow
@@ -36,7 +35,6 @@ export default function Stepper({
   className?: string;
   ariaLabel?: string;
 }) {
-  const reduce = useReducedMotion();
   return (
     <div
       className={`mx-auto flex w-full max-w-[640px] items-start ${className ?? ""}`}
@@ -53,33 +51,25 @@ export default function Stepper({
         const nodeColor = isErr ? "var(--c-danger)" : filled ? "var(--brand)" : "var(--surface-2)";
         const numColor = isErr || filled ? "#fff" : "var(--text-3)";
         const node = (
-          <motion.div
-            className="relative flex size-8 items-center justify-center rounded-full text-[13px] font-semibold"
+          <div
+            className={`cfg-step-node relative flex size-8 items-center justify-center rounded-full text-[13px] font-semibold${active ? " is-active" : ""}`}
             style={{
               background: nodeColor,
               color: numColor,
               border: isErr || filled ? "none" : "1.5px solid var(--border-strong)",
               boxShadow: active ? `0 0 0 4px color-mix(in srgb, ${accent} 18%, transparent)` : undefined,
             }}
-            initial={false}
-            animate={reduce ? {} : { scale: active ? 1.06 : 1 }}
-            transition={{ duration: 0.2, ease: [0.2, 0.8, 0.4, 1] }}
           >
             {done ? (
-              <motion.span
-                initial={reduce ? false : { scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.2 }}
-                className="flex items-center"
-              >
+              <span className="cfg-step-check flex items-center">
                 <CheckOutlined style={{ fontSize: 13 }} />
-              </motion.span>
+              </span>
             ) : s.icon ? (
               <span style={{ fontSize: 14, display: "inline-flex" }}>{s.icon}</span>
             ) : (
               i + 1
             )}
-          </motion.div>
+          </div>
         );
         return (
           // The last step shrinks to its content so the connectors (flex-1)
@@ -108,12 +98,9 @@ export default function Stepper({
             {/* Connector to the next node; fills brand once this step is done. */}
             {!last && (
               <div className="relative mx-1 mt-4 h-0.5 flex-1 overflow-hidden rounded-full" style={{ background: "var(--border)" }}>
-                <motion.div
-                  className="absolute inset-y-0 left-0 rounded-full"
-                  style={{ background: "var(--brand)" }}
-                  initial={false}
-                  animate={{ width: done ? "100%" : "0%" }}
-                  transition={{ duration: reduce ? 0 : 0.35, ease: [0.2, 0.8, 0.4, 1] }}
+                <div
+                  className="cfg-step-fill absolute inset-y-0 left-0 rounded-full"
+                  style={{ background: "var(--brand)", width: done ? "100%" : "0%" }}
                 />
               </div>
             )}

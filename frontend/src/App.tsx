@@ -214,8 +214,13 @@ export default function App() {
     // still false, so gating on `!uninitialized` would fire a grid load against
     // a possibly un-onboarded repo - which reads .configer/parameters.yaml and
     // fails with a spurious "parameter file not found" toast.
-    enabled: readable && projectQ.data?.initialized === true,
-    refetchInterval: online ? false : 10_000,
+    // The grid is the most expensive read the service serves (it resolves every
+    // parameter on every instance from the repository's real files), so it is
+    // never the thing that watches for a connection coming back: this used to
+    // poll it every 10 s while unreachable, which is exactly backwards. The
+    // heartbeat below owns recovery, and flipping back online re-enables the
+    // gated reads (see repoQuery.ts), which refetch on their own.
+    enabled: readable && online && projectQ.data?.initialized === true,
   });
   // Lightweight heartbeat: keeps probing while unreachable so recovery is
   // automatic. The same probe gated the boot (see BootGate), so it is already

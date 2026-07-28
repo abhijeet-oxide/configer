@@ -15,6 +15,7 @@ import {
   type UseQueryOptions,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { useConn } from "./offline";
 import { useUI } from "./store";
 
 export function useRepoQuery<
@@ -31,8 +32,21 @@ export function useRepoQuery<
   // connected" on every request, once per view, forever; the workspace shows
   // that state once instead.
   const readable = useUI((s) => s.repoReadable);
+  // The circuit breaker. A page carries a dozen polling reads, each of which
+  // retries a failure three times with backoff, so an unreachable service used
+  // to receive MORE traffic than a healthy one - 53 requests a minute from a
+  // single tab against 19 when everything was fine, multiplied by every open
+  // tab, led by the most expensive endpoint there is. Hammering a service that
+  // just fell over is how a blip becomes an outage.
+  //
+  // So while the connection is known to be down, the repo-scoped reads stop.
+  // One probe stays alive to watch for recovery (useHealth, 15 s, no retries),
+  // and any successful response anywhere flips the flag back; the queries then
+  // re-enable and refetch on their own. Views keep rendering from cache, and
+  // the connection banner - not a dead read - is what tells the user.
+  const online = useConn((s) => s.online);
   return useQuery({
     ...options,
-    enabled: !!repoId && readable && options.enabled !== false,
+    enabled: !!repoId && readable && online && options.enabled !== false,
   });
 }

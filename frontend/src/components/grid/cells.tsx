@@ -1,9 +1,17 @@
-import { Tag, Tooltip, Input, InputNumber, Select, Popover, Button, Space, Typography } from "antd";
-import { CheckCircleFilled } from "../../icons";
+import { Tag, Tooltip, Input, InputNumber, Select, Popover, Button, Space, Typography, Modal } from "antd";
+import { CheckCircleFilled, FullscreenOutlined } from "../../icons";
 import { useRef, useState } from "react";
 import type { Cell, ChangeItem } from "../../api";
-import { validateNumber, validateString, validateTyped, fmtValue, type Rules } from "../../rules";
+import {
+  validateNumber,
+  validateString,
+  validateTyped,
+  validateUnitChange,
+  fmtValue,
+  type Rules,
+} from "../../rules";
 import { semantic } from "../../theme";
+import ValueDiff from "../ui/ValueDiff";
 
 // Cell rendering and the typed inline editors for the parameter grid. Split
 // out of ParameterGrid so the grid file stays about layout and data flow.
@@ -66,6 +74,13 @@ export function ListChips({ items }: { items: unknown[] }) {
   );
 }
 
+// clip keeps a hover tooltip to a size somebody can actually read. A tooltip is
+// a glance, not a diff: the full before/after, with the changed parts marked,
+// is in the inspector and the review modal.
+function clip(s: string, max = 90): string {
+  return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
 export function CellView({
   cell,
   pendingItem,
@@ -83,12 +98,12 @@ export function CellView({
   // "double-click to edit" hint entirely, which (with the old chip styling)
   // read as "this is finished now, undo is all you get".
   const pendingTip = pendingItem
-    ? `${fmtValue(pendingItem.old)}  →  ${
+    ? `${clip(fmtValue(pendingItem.old))}  →  ${
         pendingItem.action === "exclude"
           ? "removed from this instance"
           : pendingItem.action === "reset"
             ? "back to inherited"
-            : fmtValue(pendingItem.new)
+            : clip(fmtValue(pendingItem.new))
       }   (pending, not yet sent for review)${
         editable ? "  ·  double-click to change it again" : ""
       }`
@@ -212,27 +227,47 @@ function initialNumber(initial: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A value past this length (or carrying a newline) cannot be read, let alone
+ *  edited, in a grid cell. It opens in a proper editor instead. */
+export const BIG_VALUE = 60;
+
+export function isBigValue(v: unknown): boolean {
+  const s = String(v ?? "");
+  return s.length > BIG_VALUE || s.includes("\n");
+}
+
 export function StringEditor({
   initial,
   rules,
   onCommit,
   onCancel,
+  paramName,
 }: {
   initial: unknown;
   rules: Rules;
   onCommit: (v: string) => void;
   onCancel: () => void;
+  /** named in the expanded editor's title so it is clear what is being edited */
+  paramName?: string;
 }) {
   const [val, setVal] = useState(String(initial ?? ""));
+  // A value that cannot fit in a cell opens expanded straight away: making
+  // someone squint at 40 visible characters of a 2,000-character MariaDB block
+  // and then discover the expand button is a worse first move than just
+  // opening the room they need.
+  const [expanded, setExpanded] = useState(() => isBigValue(initial));
   const done = useRef(false);
-  const err = validateString(val, rules);
+  // A dropped CPU/memory unit is only visible against the value being replaced,
+  // so the check needs the committed value the editor opened on.
+  const check = (v: string) => validateString(v, rules) ?? validateUnitChange(v, initial, rules.formatType);
+  const err = check(val);
   const changed = val !== String(initial ?? "");
   // tryFinish commits when valid+changed; on blur an unchanged or invalid
   // value closes the editor without saving (Enter keeps it open to fix).
   const tryFinish = (raw: string, closing: boolean) => {
     if (done.current) return;
     const isChanged = raw !== String(initial ?? "");
-    const invalid = validateString(raw, rules);
+    const invalid = check(raw);
     if (isChanged && !invalid) {
       done.current = true;
       onCommit(raw);
@@ -241,6 +276,27 @@ export function StringEditor({
       onCancel();
     }
   };
+
+  if (expanded) {
+    return (
+      <BigStringEditor
+        initial={initial}
+        value={val}
+        onChange={setVal}
+        rules={rules}
+        paramName={paramName}
+        onCommit={(v) => {
+          done.current = true;
+          onCommit(v);
+        }}
+        onCancel={() => {
+          done.current = true;
+          onCancel();
+        }}
+      />
+    );
+  }
+
   return (
     <Tooltip open={!!err} title={err} color={semantic.danger}>
       <Input
@@ -250,16 +306,32 @@ export function StringEditor({
         value={val}
         status={err ? "error" : undefined}
         suffix={
-          changed && !err ? (
-            <CheckCircleFilled style={{ color: semantic.ok }} />
-          ) : (
-            <span />
-          )
+          <Space size={2}>
+            {changed && !err && <CheckCircleFilled style={{ color: semantic.ok }} />}
+            <Tooltip title="Open in a bigger editor">
+              <Button
+                size="small"
+                type="text"
+                className="cell-expand"
+                aria-label="Open this value in a bigger editor"
+                icon={<FullscreenOutlined style={{ fontSize: 11 }} />}
+                // Mouse-down, not click: blur fires first on click and would
+                // close the inline editor before the expand ever ran.
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setExpanded(true);
+                }}
+              />
+            </Tooltip>
+          </Space>
         }
         maxLength={rules.maxLength}
         onChange={(e) => setVal(e.target.value)}
         onPressEnter={(e) => tryFinish((e.target as HTMLInputElement).value, false)}
-        onBlur={(e) => tryFinish(e.target.value, true)}
+        onBlur={(e) => {
+          if (expanded) return;
+          tryFinish(e.target.value, true);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             done.current = true;
@@ -268,6 +340,71 @@ export function StringEditor({
         }}
       />
     </Tooltip>
+  );
+}
+
+// BigStringEditor is the room a long value needs: a full-width monospace text
+// area that wraps, a live character count against any maxLength, the validation
+// message in full rather than as a tooltip on a 40px input, and an explicit
+// Save. It also shows what will change, because a value long enough to need
+// this editor is long enough that "did I edit the right occurrence?" is a real
+// question before saving rather than after.
+function BigStringEditor({
+  initial,
+  value,
+  onChange,
+  rules,
+  paramName,
+  onCommit,
+  onCancel,
+}: {
+  initial: unknown;
+  value: string;
+  onChange: (v: string) => void;
+  rules: Rules;
+  paramName?: string;
+  onCommit: (v: string) => void;
+  onCancel: () => void;
+}) {
+  const before = String(initial ?? "");
+  const err = validateString(value, rules) ?? validateUnitChange(value, initial, rules.formatType);
+  const changed = value !== before;
+  return (
+    <Modal
+      open
+      title={paramName ? `Edit ${paramName}` : "Edit value"}
+      width={820}
+      onCancel={onCancel}
+      okText="Save"
+      okButtonProps={{ disabled: !!err || !changed }}
+      onOk={() => onCommit(value)}
+      // The grid underneath keeps its own keyboard handling; a modal that
+      // closes on a stray Escape would throw away a long edit.
+      maskClosable={false}
+    >
+      <Input.TextArea
+        autoFocus
+        className="mono"
+        value={value}
+        status={err ? "error" : undefined}
+        autoSize={{ minRows: 8, maxRows: 20 }}
+        maxLength={rules.maxLength}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <div className="big-edit-foot">
+        <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 12 }}>
+          {err ?? `${value.length} characters${rules.maxLength ? ` of ${rules.maxLength}` : ""}`}
+        </Typography.Text>
+      </div>
+      {changed && !err && (
+        <div className="big-edit-diff">
+          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+            WHAT YOU CHANGED
+          </Typography.Text>
+          <ValueDiff before={before} after={value} label={paramName} />
+        </div>
+      )}
+    </Modal>
   );
 }
 

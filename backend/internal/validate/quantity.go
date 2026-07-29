@@ -19,11 +19,21 @@ import (
 var (
 	// CPU: cores ("1", "2.5") or millicores ("500m"). A bare number is cores.
 	cpuRe = regexp.MustCompile(`^\d+(\.\d+)?m?$`)
-	// Memory / byte quantity: a number with an optional binary (Ki..Ei) or
-	// decimal (k/K..E, and milli "m") SI suffix, per resource.Quantity.
-	memoryRe   = regexp.MustCompile(`^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$`)
-	durationRe = regexp.MustCompile(`^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$`)
-	percentRe  = regexp.MustCompile(`^\d+(\.\d+)?%$`)
+	// Memory / byte quantity: a number with a REQUIRED binary (Ki..Ei) or
+	// decimal (k/K..E) SI suffix. resource.Quantity also accepts a bare number
+	// (bytes) and a milli suffix (thousandths of a byte); neither is ever what
+	// somebody writing a memory limit means, and both read as the unit having
+	// been dropped - "350" where "350Mi" belonged is a 367-million-fold cut that
+	// no reviewer would catch in a diff. Discovery only types a parameter
+	// `memory` when its observed value carried a unit, so requiring one here
+	// rejects exactly the values that lost theirs.
+	memoryRe = regexp.MustCompile(`^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE])$`)
+	// memoryMilliRe recognizes the specific mistake of writing a memory amount
+	// in millibytes ("350m") so the message can name it instead of listing the
+	// whole suffix alphabet.
+	memoryMilliRe = regexp.MustCompile(`^\d+(\.\d+)?m$`)
+	durationRe    = regexp.MustCompile(`^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$`)
+	percentRe     = regexp.MustCompile(`^\d+(\.\d+)?%$`)
 )
 
 // binary/decimal SI multipliers for byte quantities.
@@ -61,25 +71,32 @@ func parseMemory(s string) (float64, bool) {
 	if !memoryRe.MatchString(s) {
 		return 0, false
 	}
-	suffix := ""
-	for _, suf := range []string{"Ki", "Mi", "Gi", "Ti", "Pi", "Ei"} {
-		if strings.HasSuffix(s, suf) {
-			suffix = suf
-			break
-		}
-	}
-	if suffix == "" {
-		last := s[len(s)-1:]
-		if _, ok := siMultiplier[last]; ok && (last < "0" || last > "9") {
-			suffix = last
-		}
-	}
+	suffix := memoryUnit(s)
 	num := strings.TrimSuffix(s, suffix)
 	n, err := strconv.ParseFloat(num, 64)
 	if err != nil {
 		return 0, false
 	}
 	return n * siMultiplier[suffix], true
+}
+
+// memoryUnit returns the SI suffix a byte quantity carries, or "" when it is a
+// bare number. It reads the two-character binary suffixes first so "Mi" is
+// never mistaken for a bare "i" or a decimal "M".
+func memoryUnit(s string) string {
+	for _, suf := range []string{"Ki", "Mi", "Gi", "Ti", "Pi", "Ei"} {
+		if strings.HasSuffix(s, suf) {
+			return suf
+		}
+	}
+	if s == "" {
+		return ""
+	}
+	last := s[len(s)-1:]
+	if _, ok := siMultiplier[last]; ok && (last < "0" || last > "9") {
+		return last
+	}
+	return ""
 }
 
 // parseDuration returns a duration in seconds.
@@ -149,7 +166,14 @@ func checkQuantityType(t model.ParamType, v any) (Result, bool) {
 	case model.TypeMemory:
 		n, ok := parseMemory(s)
 		if !ok {
-			return invalid("must be a memory quantity, for example 256Mi or 1Gi"), true
+			if memoryMilliRe.MatchString(strings.TrimSpace(s)) {
+				base := strings.TrimSuffix(strings.TrimSpace(s), "m")
+				return invalid(fmt.Sprintf("%s means %s thousandths of a byte; write the unit you mean, for example %sMi or %sGi", s, base, base, base)), true
+			}
+			if bareNumberRe.MatchString(strings.TrimSpace(s)) {
+				return invalid(fmt.Sprintf("%s has no unit; memory needs one, for example %sMi or %sGi", s, s, s)), true
+			}
+			return invalid("must be a memory quantity with a unit, for example 256Mi or 1Gi"), true
 		}
 		if n <= 0 {
 			return invalid("memory must be greater than zero"), true

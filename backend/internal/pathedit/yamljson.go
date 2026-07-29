@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -143,10 +144,12 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 	// value with another scalar. Splice the new token into the original bytes and
 	// leave every other line untouched, so blank lines, comments and spacing
 	// survive exactly. Re-encoding the whole node tree (below) is correct but
-	// lets yaml.v3 rewrite blank lines - dropping bare ones, adding others - so
-	// it is reserved for structural changes (new keys, removals, list resizes).
-	if !remove && format == "yaml" {
-		if out, ok := setScalarInPlace(doc, path, value); ok {
+	// lets the encoder restate the entire document - yaml.v3 rewrites blank
+	// lines, and JSON re-emission normalizes indentation, number literals and
+	// string escapes - so it is reserved for structural changes (new keys,
+	// removals, list resizes).
+	if !remove {
+		if out, ok := setScalarInPlace(doc, path, value, format); ok {
 			return out, nil
 		}
 	}
@@ -176,7 +179,7 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 
 	if format == "json" {
 		var b strings.Builder
-		if err := emitJSON(&b, top, 0); err != nil {
+		if err := emitJSON(&b, top, 0, strings.Repeat(" ", detectIndent(doc))); err != nil {
 			return "", err
 		}
 		b.WriteString("\n")
@@ -276,7 +279,10 @@ func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (str
 // mapping/sequence/alias, the scalar spans multiple lines or uses a block style
 // (|, >), or the new value is not a scalar. This is what keeps a one-value edit
 // a one-line diff.
-func setScalarInPlace(doc []byte, path string, value any) (string, bool) {
+//
+// format picks how the replacement token is written - a YAML scalar or a JSON
+// literal - so a JSON file gets JSON quoting and escaping rather than YAML's.
+func setScalarInPlace(doc []byte, path string, value any, format string) (string, bool) {
 	if len(doc) == 0 {
 		return "", false
 	}
@@ -322,11 +328,24 @@ func setScalarInPlace(doc []byte, path string, value any) (string, bool) {
 	}
 	line := lines[li]
 	col0 := cur.Column - 1
-	end, ok := scalarTokenExtent(line, col0, cur.Style)
+	var (
+		end int
+		ok  bool
+	)
+	if format == "json" {
+		end, ok = jsonTokenExtent(line, col0, cur.Style)
+	} else {
+		end, ok = scalarTokenExtent(line, col0, cur.Style)
+	}
 	if !ok {
 		return "", false
 	}
-	token, ok := renderScalarToken(value, cur.Style)
+	var token string
+	if format == "json" {
+		token, ok = renderJSONToken(value, cur)
+	} else {
+		token, ok = renderScalarToken(value, cur.Style)
+	}
 	if !ok {
 		return "", false
 	}
@@ -412,6 +431,77 @@ func renderScalarToken(value any, style yaml.Style) (string, bool) {
 		return "", false
 	}
 	return tok, true
+}
+
+// jsonTokenExtent is scalarTokenExtent for JSON syntax. A quoted string ends at
+// its closing quote exactly as in YAML, but an unquoted token (a number, true,
+// false, null) is terminated by the structural characters around it rather than
+// by end of line: "port": 8080, has to yield 8080 and leave the comma alone.
+func jsonTokenExtent(line string, col0 int, style yaml.Style) (int, bool) {
+	if col0 < 0 || col0 > len(line) {
+		return 0, false
+	}
+	if style == yaml.DoubleQuotedStyle || style == yaml.SingleQuotedStyle {
+		return scalarTokenExtent(line, col0, style)
+	}
+	for i := col0; i < len(line); i++ {
+		switch line[i] {
+		case ',', '}', ']', ' ', '\t', '\r':
+			if i == col0 {
+				return 0, false // empty token: not a scalar we can swap
+			}
+			return i, true
+		}
+	}
+	if col0 >= len(line) {
+		return 0, false
+	}
+	return len(line), true
+}
+
+// renderJSONToken encodes value as a single JSON literal to splice in place of
+// the scalar at node.
+//
+// Two things it deliberately does NOT do. It does not escape HTML: Go's default
+// marshaller turns "AT&T" into "AT&T", which is the same string to a parser
+// and a whole changed line to the person reviewing the diff. And it does not
+// re-type a quoted value: a JSON config that stores a port as "8080" keeps the
+// quotes when the port changes, because dropping them changes the file's shape
+// for whatever reads it.
+func renderJSONToken(value any, node *yaml.Node) (string, bool) {
+	quoted := node.Style == yaml.DoubleQuotedStyle || node.Style == yaml.SingleQuotedStyle
+	switch v := value.(type) {
+	case nil, []any, map[string]any, map[any]any:
+		return "", false
+	case string:
+		return jsonString(v), true
+	case bool:
+		if quoted {
+			return jsonString(fmt.Sprintf("%v", v)), true
+		}
+		return fmt.Sprintf("%v", v), true
+	default:
+		s := fmt.Sprintf("%v", v)
+		if quoted {
+			return jsonString(s), true
+		}
+		enc, err := json.Marshal(value)
+		if err != nil {
+			return "", false
+		}
+		return string(enc), true
+	}
+}
+
+// jsonString quotes s as a JSON string without HTML escaping.
+func jsonString(s string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		return strconv.Quote(s)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // EditDoc parses a YAML document, hands the root mapping node to fn for a
@@ -739,15 +829,17 @@ func removeChild(m *yaml.Node, key string) bool {
 // --- JSON emission -----------------------------------------------------------
 
 // emitJSON serializes a yaml.Node tree as pretty-printed JSON, preserving the
-// tree's key order. Scalars are typed by their YAML tag.
-func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
+// tree's key order. Scalars are typed by their YAML tag, and step is the
+// document's own indentation so a structural edit does not re-indent every
+// line of a file that happens not to use two spaces.
+func emitJSON(b *strings.Builder, n *yaml.Node, depth int, step string) error {
 	n = resolveAlias(n)
 	if n == nil {
 		b.WriteString("null")
 		return nil
 	}
-	indent := strings.Repeat("  ", depth)
-	child := strings.Repeat("  ", depth+1)
+	indent := strings.Repeat(step, depth)
+	child := strings.Repeat(step, depth+1)
 
 	switch n.Kind {
 	case yaml.MappingNode:
@@ -760,14 +852,10 @@ func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
 			if i > 0 {
 				b.WriteString(",\n")
 			}
-			key, err := json.Marshal(n.Content[i].Value)
-			if err != nil {
-				return err
-			}
 			b.WriteString(child)
-			b.Write(key)
+			b.WriteString(jsonString(n.Content[i].Value))
 			b.WriteString(": ")
-			if err := emitJSON(b, n.Content[i+1], depth+1); err != nil {
+			if err := emitJSON(b, n.Content[i+1], depth+1, step); err != nil {
 				return err
 			}
 		}
@@ -783,7 +871,7 @@ func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
 				b.WriteString(",\n")
 			}
 			b.WriteString(child)
-			if err := emitJSON(b, el, depth+1); err != nil {
+			if err := emitJSON(b, el, depth+1, step); err != nil {
 				return err
 			}
 		}
@@ -801,6 +889,15 @@ func emitJSONScalar(b *strings.Builder, n *yaml.Node) error {
 	case "!!null":
 		b.WriteString("null")
 	case "!!bool", "!!int", "!!float":
+		// Write the literal the file already carried rather than a value decoded
+		// and re-formatted: round-tripping through float64 turns 1.50 into 1.5
+		// and 1e3 into 1000, which is a changed line for every untouched number
+		// in the document. The token is only normalized when it is not already
+		// valid JSON (YAML accepts forms JSON does not, such as 0x1f or .5).
+		if json.Valid([]byte(n.Value)) {
+			b.WriteString(n.Value)
+			return nil
+		}
 		var v any
 		if err := n.Decode(&v); err != nil {
 			return err
@@ -811,11 +908,7 @@ func emitJSONScalar(b *strings.Builder, n *yaml.Node) error {
 		}
 		b.Write(enc)
 	default:
-		enc, err := json.Marshal(n.Value)
-		if err != nil {
-			return err
-		}
-		b.Write(enc)
+		b.WriteString(jsonString(n.Value))
 	}
 	return nil
 }

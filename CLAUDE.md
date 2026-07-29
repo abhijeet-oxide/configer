@@ -233,7 +233,12 @@ parameters:
     category: Networking/IP     # "/" nests the tree
     type: integer               # string|integer|number|boolean|enum|ipv4|ipv6|cidr|
                                 #   hostname|port|email|url|mac|cpu|memory|duration|
-                                #   percentage|list  (cpu/memory validate positivity)
+                                #   percentage|list
+    # cpu/memory validate positivity AND units. memory always needs one (a bare
+    # number is bytes). CPU accepts both legal Kubernetes spellings (350m, 2), so
+    # the unit rule is applied to the EDIT instead: a value written in millicores
+    # may not lose the "m" (validate.UnitChange, called by the write paths once
+    # the committed value is known - same shape as the AtLeast/AtMost relations).
     # validation may also carry atLeast/atMost: <paramId> for cross-field rules
     # (a resource limit must be at least its request, and vice versa).
     scope: instance             # instance | global (lives in a shared file)

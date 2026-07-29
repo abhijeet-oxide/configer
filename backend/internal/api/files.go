@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
@@ -98,7 +99,18 @@ func instanceFiles(p *project.Project, instanceName string, items []change.Item)
 	folder := inst.FolderOrDefault()
 	root := filepath.Join(p.Root, folder)
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() || !d.Type().IsRegular() {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			// A tool's own directory (.git, .vscode, __pycache__) is not this
+			// instance's configuration; showing it buries the files that are.
+			if path != root && ingest.SkipDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !d.Type().IsRegular() {
 			return nil
 		}
 		rel, rerr := filepath.Rel(p.Root, path)
@@ -171,7 +183,16 @@ func pendingInstanceFiles(p *project.Project, name string, items []change.Item) 
 		inst.Folder = newFolder
 		base := filepath.Join(p.Root, filepath.FromSlash(srcFolder))
 		_ = filepath.WalkDir(base, func(path string, d fs.DirEntry, err error) error {
-			if err != nil || d.IsDir() || !d.Type().IsRegular() {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				if path != base && ingest.SkipDir(d.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !d.Type().IsRegular() {
 				return nil
 			}
 			rel, rerr := filepath.Rel(base, path)
@@ -373,6 +394,10 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				if vr := validate.Value(param, coerced); !vr.Valid {
+					writeFieldErrors(w, r, "a value in this file is not valid", FieldError{Field: param.Name, Message: vr.Message})
+					return
+				}
+				if vr := validate.UnitChange(param, oldV, coerced); !vr.Valid {
 					writeFieldErrors(w, r, "a value in this file is not valid", FieldError{Field: param.Name, Message: vr.Message})
 					return
 				}

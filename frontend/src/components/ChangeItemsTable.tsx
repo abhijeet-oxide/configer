@@ -1,6 +1,7 @@
 import { Table, Tag, Tooltip, Button, Typography, Empty } from "antd";
-import { ArrowRightOutlined, DeleteOutlined } from "../icons";
+import { DeleteOutlined } from "../icons";
 import { describeChange, type ChangeDesc, type ChangeTone } from "../changedesc";
+import ValueDiff from "./ui/ValueDiff";
 import type { ChangeItem } from "../api";
 
 // ChangeItemsTable is the ONE way a draft's individual edits are shown, so the
@@ -24,13 +25,10 @@ const TONE: Record<ChangeTone, string> = {
 // changes.
 function Detail({ d }: { d: ChangeDesc }) {
   if (d.before !== undefined && d.after !== undefined) {
-    return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-        <span className="mono" style={{ opacity: 0.6 }}>{d.before || "(empty)"}</span>
-        <ArrowRightOutlined style={{ fontSize: 10, opacity: 0.45 }} />
-        <span className="mono" style={{ color: "var(--c-ok)" }}>{d.after || "(empty)"}</span>
-      </span>
-    );
+    // A before/after pair is only reviewable if the reader can see which part
+    // moved, so the pair is rendered as a highlighted diff rather than as two
+    // values printed next to each other.
+    return <ValueDiff before={d.before} after={d.after} label={d.subject} />;
   }
   if (d.before !== undefined) {
     return (
@@ -107,10 +105,14 @@ export function ChangeItemsTable({
         },
         {
           title: "What",
+          // A width, because the column holds a diff: without one the table's
+          // max-content sizing lets a long value stretch the row off-screen,
+          // which is the very thing the diff exists to prevent.
+          width: 520,
           render: (_v, it) => {
             const d = describeChange(it);
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, maxWidth: 500 }}>
                 <Subject it={it} d={d} onOpenParam={onOpenParam} />
                 <Detail d={d} />
               </div>

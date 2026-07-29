@@ -40,6 +40,7 @@ import { useUI } from "../store";
 import { relTime } from "./DashboardView";
 import { StatePanel, InSyncArt } from "./illustrations";
 import UserAvatar from "./UserAvatar";
+import ValueDiff from "./ui/ValueDiff";
 import { TableSkeleton } from "./Skeletons";
 import { useIdentity } from "../identity";
 
@@ -78,28 +79,6 @@ const statusMeta: Record<CellChange["status"], { icon: React.ReactNode; hex: str
   removed: { icon: <MinusCircleOutlined />, hex: "var(--c-danger)", label: "Removed" },
   modified: { icon: <EditOutlined />, hex: "var(--c-pending)", label: "Changed" },
 };
-
-/** A value as it reads in the diff; an absent value says so in words. */
-function ValueChip({ value, tone }: { value: string; tone: "before" | "after" }) {
-  const { token } = antdTheme.useToken();
-  const empty = value === "" || value === undefined;
-  return (
-    <code
-      style={{
-        padding: "1px 6px",
-        borderRadius: token.borderRadiusSM,
-        fontSize: 12,
-        background: token.colorFillQuaternary,
-        color: empty ? token.colorTextTertiary : tone === "before" ? token.colorTextSecondary : token.colorText,
-        textDecoration: tone === "before" && !empty ? "line-through" : undefined,
-        opacity: tone === "before" ? 0.75 : 1,
-        wordBreak: "break-all",
-      }}
-    >
-      {empty ? "not set" : value}
-    </code>
-  );
-}
 
 /** Small count chips summarising what a snapshot did. */
 function SummaryChips({ s }: { s: TimelineEntry["summary"] }) {
@@ -582,9 +561,10 @@ function SnapshotDetail({
                   </Tooltip>
                   <Text style={{ fontSize: 12.5, minWidth: 160, flex: "0 1 auto" }}>{c.name || c.paramId}</Text>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
-                    <ValueChip value={c.before} tone="before" />
-                    <span style={{ color: token.colorTextTertiary, fontSize: 11 }}>→</span>
-                    <ValueChip value={c.after} tone="after" />
+                    {/* History answers "what did that commit actually do", which
+                        needs the changed characters, not two long values to
+                        compare by eye. Same diff as the review surfaces. */}
+                    <ValueDiff before={c.before} after={c.after} label={c.name || c.paramId} />
                   </span>
                   {/* One parameter, one instance, back to its earlier value. */}
                   {canUndo && (

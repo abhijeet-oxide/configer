@@ -64,6 +64,7 @@ import {
   scopeColor,
   scopeExplain,
 } from "./grid/cells";
+import ValueDiff from "./ui/ValueDiff";
 import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
 import { envHex } from "../theme";
 import { useIdentity } from "../identity";
@@ -142,7 +143,15 @@ function EditableCell({
     if (param.type === "enum" && rules.enum?.length) {
       return <EnumEditor initial={cell.value} options={rules.enum} onCommit={onCommit} onCancel={onCancel} />;
     }
-    return <StringEditor initial={cell.value} rules={rules} onCommit={onCommit} onCancel={onCancel} />;
+    return (
+      <StringEditor
+        initial={cell.value}
+        rules={rules}
+        paramName={param.displayName || param.name}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />
+    );
   }
 
   // Right-click menu: structural actions beyond plain value edits. Everything
@@ -2005,9 +2014,7 @@ function FindReplaceModal({
             {replace !== "" && (
               <>
                 {": "}
-                <span className="mono" style={{ textDecoration: "line-through", opacity: 0.6 }}>{find}</span>
-                {" → "}
-                <span className="mono" style={{ color: "#389e0d" }}>{replace}</span>
+                <ValueDiff before={find} after={replace} label="the replacement" />
               </>
             )}
           </Typography.Text>

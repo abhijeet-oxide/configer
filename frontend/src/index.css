@@ -2269,3 +2269,159 @@ body {
     transform: none;
   }
 }
+
+/* ------------------------------------------------------- value diff (ValueDiff)
+   Before/after highlighting for a single value. Removed text is red and struck,
+   added text is green - the vocabulary every comparison tool already uses, so a
+   reviewer reads it without being taught. A long value is condensed to its
+   edited stretches (the "…" is identical text, not truncation of the change),
+   and the full pair is one click away. */
+.vd-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.vd-pair-stacked {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+.vd-arrow {
+  font-size: 11px;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+.vd-pair-stacked .vd-arrow {
+  display: none;
+}
+.vd-side {
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vd-condensed {
+  display: inline-block;
+  max-width: 100%;
+}
+.vd-empty {
+  font-size: 12px;
+  opacity: 0.45;
+  font-style: italic;
+}
+.vd-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.vd-more {
+  padding: 0;
+  height: auto;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+/* The marks themselves. `mark` is the right element (it IS highlighted text),
+   but its default yellow has to go. */
+mark.vd-del,
+mark.vd-ins {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: transparent;
+}
+mark.vd-del {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+mark.vd-ins {
+  background: var(--c-ok-bg);
+  color: var(--c-ok);
+}
+
+/* Expanded view: the two values as blocks, each scrollable on its own so a
+   2,000-character value never widens the dialog. */
+.vd-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vd-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vd-block {
+  position: relative;
+  padding: 10px 12px 10px 62px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vd-block-before {
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-bd);
+}
+.vd-block-after {
+  background: var(--c-ok-bg);
+  border-color: var(--c-ok-bd);
+}
+.vd-block-tag {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+/* Inside a tinted block the marks only need the text color: a second fill on
+   top of the block's own tint reads as a highlight-on-a-highlight. */
+.vd-block mark.vd-del,
+.vd-block mark.vd-ins {
+  background: transparent;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .vd-block {
+    padding-left: 12px;
+    padding-top: 26px;
+  }
+}
+
+/* ---------------------------------------------- big value editor (cells.tsx)
+   A long string does not belong in a 40px cell. The inline editor keeps a
+   discreet expand control, and the expanded editor gets the room to read the
+   value, the validation message in words, and a diff of what is about to
+   change before it is saved. */
+.cell-expand {
+  opacity: 0.5;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.cell-expand:hover,
+.cell-expand:focus-visible {
+  opacity: 1;
+}
+.big-edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.big-edit-diff {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}

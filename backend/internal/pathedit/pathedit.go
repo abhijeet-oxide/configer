@@ -3,10 +3,17 @@
 //
 //   - YAML - comment-preserving node-tree edits: only the addressed value
 //     changes; comments, key order, and unmanaged content stay byte-for-byte.
-//   - JSON - the same order-preserving node tree, re-emitted as JSON (Go maps
-//     would re-sort keys and produce noisy diffs).
+//   - JSON - the same, by splicing the new literal over the old one in the
+//     original bytes. A structural edit (a new key, a removal) has to re-emit
+//     the document, and then walks the same order-preserving node tree (Go maps
+//     would re-sort every key), keeping the file's own indentation, number
+//     literals and string escapes.
 //   - XML  - etree-based element/attribute edits; list parameters map to
 //     repeated sibling elements.
+//
+// The byte-for-byte promise is the point, not a nicety: a value edit that
+// re-states lines it did not change buries the one line it did in a review
+// diff hundreds of lines long, and the reviewer approves it anyway.
 //
 // Paths are dotted for YAML/JSON ("$.service.ip", "servers[2]",
 // "rules[name=ssh].port") and XPath-like for XML ("/network/service/ip",

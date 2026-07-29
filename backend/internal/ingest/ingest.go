@@ -1,6 +1,7 @@
 // Package ingest scans a repository working tree, detects configuration files
 // via the registered parser plugins, and extracts candidate parameters. Files
-// matching ignore globs (or living under .configer or .git) are skipped.
+// matching ignore globs, and anything under a tool's own directory (.git,
+// .configer, .vscode, node_modules, __pycache__, …), are skipped.
 package ingest
 
 import (
@@ -59,7 +60,28 @@ type ScanResult struct {
 	Total   int           `json:"total"` // total candidate parameters found
 }
 
-var alwaysSkip = map[string]bool{".git": true, ".configer": true, "node_modules": true}
+// toolDirs are directories that belong to a tool rather than to the
+// configuration: version control, editors, language caches, dependency trees.
+// Nothing in them is a setting anybody manages, and listing them buries the
+// files that are. Every dot-directory is skipped on the same reasoning (that is
+// what the leading dot means by convention, and it covers .vscode, .idea,
+// .terraform, .pytest_cache and whatever the next tool invents); this set names
+// the ones that do not wear a dot.
+var toolDirs = map[string]bool{
+	"node_modules":     true,
+	"__pycache__":      true,
+	"venv":             true,
+	"vendor":           true,
+	"bower_components": true,
+}
+
+// SkipDir reports whether a directory is tool metadata rather than
+// configuration, so every walk over a repository - the import scan, the Files
+// explorer - passes over the same folders. `.configer` is skipped here too: it
+// holds Configer's own metadata, never values.
+func SkipDir(name string) bool {
+	return strings.HasPrefix(name, ".") || toolDirs[name]
+}
 
 // Options steer one scan.
 type Options struct {
@@ -95,7 +117,7 @@ func ScanWith(root string, reg *plugin.Registry, ignore project.Ignore, opts Opt
 		// shared layer (0 instances detected).
 		rel = filepath.ToSlash(rel)
 		if d.IsDir() {
-			if alwaysSkip[d.Name()] {
+			if path != root && SkipDir(d.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

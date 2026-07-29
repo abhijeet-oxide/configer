@@ -731,9 +731,11 @@ export interface RepoSummary {
   remote?: string;
   addedAt: string;
   error?: string;
-  /** "connecting" while a background clone/open runs, "error" when it failed,
-   *  and absent (ready) for a fully connected repository. */
-  status?: "connecting" | "error" | "";
+  /** "connecting" while a repository is first being added, "opening" while an
+   *  already-connected one is being made ready on this process (applications
+   *  open on first use, so a restart shows this briefly), "error" when either
+   *  failed, and absent (ready) for an application that is serving. */
+  status?: "connecting" | "opening" | "error" | "";
   /** the CALLER's capability on this application, and where it came from. A
    *  role belongs to a (person, application) pair - the same person is an
    *  approver on one and a viewer on the next - so it is carried per card. */
@@ -758,6 +760,18 @@ export function isReady(r: RepoSummary): boolean {
 /** The applications a repo-scoped read may address. */
 export function readyRepos(repos: RepoSummary[] | undefined): RepoSummary[] {
   return (repos ?? []).filter(isReady);
+}
+
+/** Whether a proposed change name is free, and the branch it would produce. */
+export interface ChangeNameCheck {
+  title: string;
+  /** false only when a change that is STILL OPEN already has this name. */
+  available: boolean;
+  /** the branch this change would get, shown so the name is never a surprise */
+  branch: string;
+  conflict?: { id: number; title: string; state: string; open: boolean };
+  /** the plain sentence to put under the field, when there is one */
+  message?: string;
 }
 
 export interface Workspace {
@@ -1182,6 +1196,13 @@ export const api = {
   // connectRepo starts an async connection: the server clones/opens in the
   // background and returns 202 with a `status:"connecting"` summary. Use
   // waitForRepoReady to await the result.
+  // Is this change name free, and what branch would it produce? Called while
+  // the user types, so a clash is found before the name becomes a branch.
+  checkChangeName: (title: string, id?: number) =>
+    get<ChangeNameCheck>(
+      rp(`/changes/name-check?title=${encodeURIComponent(title)}${id ? `&id=${id}` : ""}`),
+    ),
+
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>
     send<RepoSummary>("POST", "/repos", p),
   // waitForRepoReady polls the portfolio until the given repository leaves the

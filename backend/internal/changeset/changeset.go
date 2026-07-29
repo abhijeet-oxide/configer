@@ -73,28 +73,112 @@ func (p Policy) approvalsNeeded() int {
 // path limits once git writes it under .git/refs.
 const maxSlug = 60
 
-// branchName turns a change request into a readable feature branch. The user
-// names the change on submit ("Increase prod memory limit"); we slugify that
-// into feature/increase-prod-memory-limit-cr-7.
+// branchBase is the branch a change request WANTS: the person who made it and
+// what they called it, and nothing else.
 //
-// The change request id is ALWAYS part of the name, and that is the whole
-// point of it. A branch named only for its title is not unique: two people
-// working the same feature in one application reach for the same words, and
-// two change requests titled "Increase prod memory limit" produced one branch
-// name between them. The second submit then deleted the first one's local
-// branch, rebuilt it from base, and had its push rejected by the remote as a
-// non-fast-forward - reported to the user as a downstream failure with nothing
-// they could act on. Ids are unique per application, so pinning one to every
-// branch makes the collision impossible rather than merely unlikely.
-func branchName(cr *change.ChangeRequest) string {
-	slug := slugify(cr.Title)
+//	feature/alice/increase-prod-memory-limit
+//
+// Two people reaching for the same words is the ordinary case in one
+// application, and the owner segment separates them without anyone thinking
+// about it - it is also the convention most teams already use by hand, so the
+// branch list stays readable to someone who has never seen Configer.
+//
+// owner is empty when there is no real identity to name (the single-user tool
+// has exactly one person, and stamping their name on every branch is noise), in
+// which case the branch is simply feature/<title>.
+func branchBase(title, owner string) string {
+	slug := slugify(title)
 	if len(slug) > maxSlug {
 		slug = strings.Trim(slug[:maxSlug], "-")
 	}
 	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
 		slug = "unnamed"
 	}
-	return fmt.Sprintf("feature/%s-cr-%d", slug, cr.ID)
+	if who := slugify(owner); who != "" {
+		return "feature/" + who + "/" + slug
+	}
+	return "feature/" + slug
+}
+
+// maxBranchAttempts bounds the search for a free name. Reaching it means
+// something is wrong that another number will not fix.
+const maxBranchAttempts = 50
+
+// branchFor picks the branch a change request will actually get: the one it
+// wants, or the first free variation of it.
+//
+// Disambiguation happens ON CONFLICT, not on principle. An earlier version
+// appended the change request id to every branch, which made collisions
+// impossible and made every branch name worse - "feature/bump-prod-memory-cr-7"
+// asks the reader to know what cr-7 is, on a branch nobody will ever have to
+// tell apart from another. Asking git whether the name is taken costs one local
+// ref lookup, and the answer is almost always no, so almost every branch now
+// reads exactly as the person named it.
+func (s *Service) branchFor(ctx context.Context, cr *change.ChangeRequest, owner string) string {
+	base := branchBase(cr.Title, owner)
+	if !s.Backend.BranchExists(ctx, base) {
+		return base
+	}
+	for n := 2; n < maxBranchAttempts; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if !s.Backend.BranchExists(ctx, candidate) {
+			return candidate
+		}
+	}
+	// Nothing free in fifty tries: fall back to the id, which is unique per
+	// application by construction.
+	return fmt.Sprintf("%s-cr-%d", base, cr.ID)
+}
+
+// NameConflict is an existing change request that already answers to a name.
+type NameConflict struct {
+	ID    int          `json:"id"`
+	Title string       `json:"title"`
+	State change.State `json:"state"`
+	// Open says whether it is still in play (draft, under review, approved).
+	// A published or rejected change sharing a name is history, not a clash.
+	Open bool `json:"open"`
+}
+
+// openState reports whether a change request is still in play.
+func openState(st change.State) bool {
+	return st == change.StateDraft || st == change.StateUnderReview || st == change.StateApproved
+}
+
+// FindNameConflict returns the change request already using a title, ignoring
+// the one being named (exceptID). It matches case-insensitively, because two
+// changes called "Bump prod memory" and "bump prod memory" are the same name to
+// everyone except a computer.
+func (s *Service) FindNameConflict(title string, exceptID int) *NameConflict {
+	want := strings.TrimSpace(title)
+	if want == "" {
+		return nil
+	}
+	var closed *NameConflict
+	for _, cr := range s.Store.List() {
+		if cr.ID == exceptID || !strings.EqualFold(strings.TrimSpace(cr.Title), want) {
+			continue
+		}
+		c := &NameConflict{ID: cr.ID, Title: cr.Title, State: cr.State, Open: openState(cr.State)}
+		if c.Open {
+			return c // a change still in play outranks one that is history
+		}
+		if closed == nil {
+			closed = c
+		}
+	}
+	return closed
+}
+
+// PlannedBranch is the branch a change request would get if it were submitted
+// now under a given title. The UI shows it while the user types, so the name
+// they are choosing is never a surprise after the fact.
+func (s *Service) PlannedBranch(ctx context.Context, cr *change.ChangeRequest, title, owner string) string {
+	probe := *cr
+	if strings.TrimSpace(title) != "" {
+		probe.Title = title
+	}
+	return s.branchFor(ctx, &probe, owner)
 }
 
 // slugify lowercases a title into a git-ref-safe slug (kept local so the
@@ -145,10 +229,32 @@ func commitMessage(cr *change.ChangeRequest, ident, bot repobackend.Author) stri
 	return b.String()
 }
 
+// SubmitRequest is everything naming and classifying a change at submit time.
+// It is a struct rather than eight positional strings because that is what it
+// had become, and one transposed pair there puts the description in the author
+// field of a commit nobody can rewrite.
+type SubmitRequest struct {
+	ID          int
+	Title       string
+	Description string
+	// Author is who the change is attributed to.
+	Author string
+	// Owner is the login the branch is named for ("" when there is no real
+	// identity, e.g. the single-user tool).
+	Owner string
+	// Reference and Category are optional classification recorded as commit
+	// trailers and in the PR body.
+	Reference string
+	Category  string
+	// Ident is the git author identity for the commit.
+	Ident repobackend.Author
+}
+
 // Submit moves a draft CR to under_review: branch, apply, render, commit,
-// push, open PR. Reference and category are optional classification metadata
-// recorded as commit trailers and in the PR body.
-func (s *Service) Submit(ctx context.Context, id int, title, description, author, reference, category string, ident repobackend.Author) (*change.ChangeRequest, error) {
+// push, open PR.
+func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*change.ChangeRequest, error) {
+	id := req.ID
+	ident := req.Ident
 	cr, err := s.Store.Get(id)
 	if err != nil {
 		return nil, err
@@ -159,16 +265,25 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if len(cr.Items) == 0 {
 		return nil, conflictf("change request %d has no pending changes", id)
 	}
-	if title != "" {
-		cr.Title = title
+	if req.Title != "" {
+		cr.Title = req.Title
 	}
-	if description != "" {
-		cr.Description = description
+	if req.Description != "" {
+		cr.Description = req.Description
 	}
-	if author != "" {
-		cr.Author = author
+	if req.Author != "" {
+		cr.Author = req.Author
 	}
-	cr.Reference, cr.Category = reference, category
+	// Two changes in play under one name is a review problem, not a git one:
+	// approvers see the same words twice and cannot tell which is which. It is
+	// refused here as well as offered up front by the name check, because the
+	// clash can appear between someone typing a name and submitting it.
+	if c := s.FindNameConflict(cr.Title, id); c != nil && c.Open {
+		return nil, conflictf(
+			"change request %d is already called %q and is still open (%s). Give this one a different name so the two can be told apart",
+			c.ID, c.Title, c.State)
+	}
+	cr.Reference, cr.Category = req.Reference, req.Category
 	if cr.TargetBranch == "" {
 		if cr.TargetBranch, err = s.Backend.DefaultBranch(ctx); err != nil {
 			return nil, err
@@ -179,7 +294,7 @@ func (s *Service) Submit(ctx context.Context, id int, title, description, author
 	if err != nil {
 		return nil, err
 	}
-	branch := branchName(cr)
+	branch := s.branchFor(ctx, cr, req.Owner)
 
 	// Isolated checkout so readers of the primary tree/cache are never
 	// disturbed (a git worktree locally, a materialized temp dir remotely).

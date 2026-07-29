@@ -239,7 +239,16 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	// change's state. An edit staged in between would be swept into the change
 	// without ever being committed.
 	defer s.lockDraftOf(id)()
-	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, author(r, req.Author), req.Reference, req.Category, identity(r, req.Author))
+	cr, err := s.Changes.Submit(r.Context(), changeset.SubmitRequest{
+		ID:          id,
+		Title:       req.Title,
+		Description: req.Description,
+		Author:      author(r, req.Author),
+		Owner:       branchOwner(r),
+		Reference:   req.Reference,
+		Category:    req.Category,
+		Ident:       identity(r, req.Author),
+	})
 	if err != nil {
 		writeChangeError(w, r, err)
 		return

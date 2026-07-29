@@ -27,6 +27,8 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
+	"github.com/abhijeet-oxide/configer/backend/internal/store"
+	"github.com/abhijeet-oxide/configer/backend/internal/workspace"
 )
 
 // crStore builds the change-request store for one application. statePath is
@@ -74,4 +76,45 @@ func (h *Hub) useSQLCRStore() bool {
 		return false
 	}
 	return h.platform.Dialect() == "postgres"
+}
+
+// openRegistry builds the connected-repository list.
+//
+// It always lives in the platform database, unlike the change-request store,
+// which keeps a file implementation for small deployments. The reasoning that
+// makes the file right there does not apply here: the registry is a handful of
+// rows read when an application opens and written when one is connected, so the
+// database costs nothing, and it is precisely the state that has to be shared
+// for a second replica to know which applications exist or for a restarted pod
+// to find them on an empty disk.
+//
+// An existing workspace.json is read once and imported, so upgrading does not
+// disconnect everything somebody already connected. The file is left in place
+// afterwards rather than deleted: if an operator needs to roll back, it is
+// still the truth for the version they are rolling back to.
+//
+// Note that access tokens for privately connected repositories move with it,
+// from a 0600 file into the database. That is the same protection the platform
+// already gives session tokens, and a deployment sharing a registry between
+// replicas has to share those too, or half of them cannot fetch.
+func openRegistry(dataDir string, platform *store.Store) (workspace.Registry, error) {
+	fileReg, err := workspace.Load(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	if platform == nil {
+		return fileReg, nil
+	}
+	sqlReg, err := workspace.NewSQL(platform.DB(), platform.Dialect())
+	if err != nil {
+		slog.Warn("could not prepare the workspace database; keeping the repository list in a file",
+			slog.Any("error", err))
+		return fileReg, nil
+	}
+	if err := sqlReg.Import(fileReg); err != nil {
+		slog.Warn("could not move the existing repository list into the database; keeping the file",
+			slog.Any("error", err))
+		return fileReg, nil
+	}
+	return sqlReg, nil
 }

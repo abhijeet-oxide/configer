@@ -3,6 +3,12 @@
 // and how they were connected. The registry is operational state (like the
 // change-request store), never configuration truth; each repository remains
 // its own source of truth and can be re-connected from scratch at any time.
+//
+// SQLRegistry (sql.go) is the live implementation: the list belongs in the
+// platform database, so every replica sees the same applications and a restart
+// onto an empty disk still knows what it manages. FileRegistry is the original
+// workspace.json, kept so an existing deployment's list can be read once and
+// imported.
 package workspace
 
 import (
@@ -35,19 +41,35 @@ type Entry struct {
 	AddedAt time.Time `json:"addedAt"`
 }
 
-// Registry is the persisted list of connected repositories.
-type Registry struct {
+// Registry is the connected-repository list.
+type Registry interface {
+	// List returns the entries in connection order (first = default).
+	List() []Entry
+	// Get looks an entry up by id.
+	Get(id string) (Entry, bool)
+	// Add appends a new entry; the id must be unique.
+	Add(e Entry) error
+	// Remove deletes an entry and returns it.
+	Remove(id string) (Entry, bool)
+	// Rename changes an entry's display name, keeping its id.
+	Rename(id, name string) (Entry, bool)
+	// UniqueID derives an unused id from a base slug.
+	UniqueID(base string, taken map[string]bool) string
+}
+
+// FileRegistry is the JSON-file registry (workspace.json).
+type FileRegistry struct {
 	mu      sync.Mutex
 	file    string
 	entries []Entry
 }
 
 // Load reads (or initializes) the registry stored under dataDir.
-func Load(dataDir string) (*Registry, error) {
+func Load(dataDir string) (*FileRegistry, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		return nil, err
 	}
-	reg := &Registry{file: filepath.Join(dataDir, "workspace.json")}
+	reg := &FileRegistry{file: filepath.Join(dataDir, "workspace.json")}
 	b, err := os.ReadFile(reg.file)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -65,7 +87,7 @@ func Load(dataDir string) (*Registry, error) {
 	return reg, nil
 }
 
-func (r *Registry) save() error {
+func (r *FileRegistry) save() error {
 	doc := struct {
 		Repos []Entry `json:"repos"`
 	}{Repos: r.entries}
@@ -81,7 +103,7 @@ func (r *Registry) save() error {
 }
 
 // List returns the entries in connection order (first = default repository).
-func (r *Registry) List() []Entry {
+func (r *FileRegistry) List() []Entry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	out := make([]Entry, len(r.entries))
@@ -90,7 +112,7 @@ func (r *Registry) List() []Entry {
 }
 
 // Get looks an entry up by id.
-func (r *Registry) Get(id string) (Entry, bool) {
+func (r *FileRegistry) Get(id string) (Entry, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, e := range r.entries {
@@ -102,7 +124,7 @@ func (r *Registry) Get(id string) (Entry, bool) {
 }
 
 // Add appends and persists a new entry; the id must be unique.
-func (r *Registry) Add(e Entry) error {
+func (r *FileRegistry) Add(e Entry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, x := range r.entries {
@@ -115,7 +137,7 @@ func (r *Registry) Add(e Entry) error {
 }
 
 // Remove deletes an entry and persists; returns the removed entry.
-func (r *Registry) Remove(id string) (Entry, bool) {
+func (r *FileRegistry) Remove(id string) (Entry, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i, e := range r.entries {
@@ -130,7 +152,7 @@ func (r *Registry) Remove(id string) (Entry, bool) {
 
 // Rename changes an entry's display name (its id stays stable, so deep links
 // and per-repo routes keep working) and persists.
-func (r *Registry) Rename(id, name string) (Entry, bool) {
+func (r *FileRegistry) Rename(id, name string) (Entry, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for i := range r.entries {
@@ -147,7 +169,7 @@ func (r *Registry) Rename(id, name string) (Entry, bool) {
 // that are spoken for outside the registry - a connection still in progress -
 // because an id IS a folder on the server: handing the same one to a second
 // attempt puts two clones in one directory, and they destroy each other's work.
-func (r *Registry) UniqueID(base string, taken map[string]bool) string {
+func (r *FileRegistry) UniqueID(base string, taken map[string]bool) string {
 	if base == "" {
 		base = "repo"
 	}

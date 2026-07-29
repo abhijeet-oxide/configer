@@ -185,7 +185,18 @@ export default function App() {
   // walk around a hidden tab.
   const { canEdit } = useIdentity();
   const deployment = useDeployment();
-  const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, refetchInterval: 30_000 });
+  // The portfolio polls slowly when everything is settled, and quickly while
+  // any application is in a transient state ("connecting" for one being added,
+  // "opening" for one this server has not needed yet). Otherwise a card that
+  // becomes ready in two seconds still reads "Opening…" for another thirty.
+  const wsQ = useQuery({
+    queryKey: ["workspace"],
+    queryFn: api.workspace,
+    refetchInterval: (q) =>
+      (q.state.data?.repos ?? []).some((r) => r.status === "connecting" || r.status === "opening")
+        ? 2_000
+        : 30_000,
+  });
   // The selected application's portfolio entry, and whether it can be read at
   // all: an application still connecting, or one whose connection failed, has
   // no server behind it, so every repo-scoped read must hold off rather than

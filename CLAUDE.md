@@ -44,12 +44,18 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   `rules[name=ssh].port`) or XPath for XML. Never add a second path engine.
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
-  (Draft→UnderReview→Approved→Published). `changeset.Submit` opens an
-  isolated worktree on `feature/<slug>-cr-<id>`, applies draft items
-  (structural instance changes → direct file edits → value edits), commits
-  with a `Changed-by:` trailer, pushes, opens a GitHub PR. The change id is
-  always in the branch name: two people naming a change the same thing must
-  not collide on one branch.
+  (Draft→UnderReview→Approved→Published). `changeset.Submit` takes a
+  `SubmitRequest`, opens an isolated worktree, applies draft items (structural
+  instance changes → direct file edits → value edits), commits with a
+  `Changed-by:` trailer, pushes, opens a GitHub PR.
+- **Branch names read the way people named them**: `feature/<owner>/<slug>`
+  (owner omitted when there is no login, i.e. single-user). A suffix is added
+  ONLY when the name is really taken (`branchFor` asks `Backend.BranchExists`);
+  never decorate a free name. Two changes that are both still OPEN may not
+  share a title: `FindNameConflict` refuses it at submit, and
+  `GET /api/changes/name-check` answers the same question while the user types
+  so the clash is found before it becomes a branch. A title held by a published
+  or rejected change is reusable - history repeating is fine.
 - `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
   file beside the repo (no dependencies, right for one person); `SQLStore`
   keeps a row per change request in the platform database (a write touches one
@@ -103,14 +109,31 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   Kptfile, apiVersion/kind).
 
 **Git plumbing:** `gitengine` (git CLI), `repobackend` (local worktree vs
-GitHub Git-data-API no-clone), `remoterepo`, `provider` (GitHub PRs),
+GitHub Git-data-API no-clone - see `git_remote_clone.md`, that mode is
+unfinished and has no UI), `remoterepo`, `provider` (GitHub PRs),
 `api/sync` (poll fetch+ff), `api/reconcile` (external-commit findings).
 
+Clones are **partial** (`--filter=blob:none`): all commits, trees and branches,
+file contents fetched on demand. Never make them SHALLOW - `--depth` fetches one
+branch and one commit, which silently kills compare, history, the timeline,
+parameter history and restore-from-ref. `CONFIGER_FULL_CLONE=1` opts out for a
+deployment that would rather not depend on the host being reachable.
+
+**Statelessness:** a pod holds nothing it needs to survive. Applications open on
+FIRST USE (`api/lazyopen.go`), never at boot - `NewHub` returns immediately and a
+background warmer opens the rest, so a working copy is a cache: present and
+startup is instant, absent and it is rebuilt. Readiness never waits on a
+repository. The registry lives in the platform DB (`workspace.SQLRegistry`,
+importing an existing `workspace.json` once), so replicas see the same
+applications. Never add per-pod state that a restart cannot rebuild, and never
+put an application open on the startup path.
+
 **Platform (optional, off without OAuth env):** `store` (SQLite default /
-Postgres via DATABASE_URL: users, sessions, app_members, audit_events),
-`auth` (GitHub OAuth, cookie sessions), `api/platform.go` (role enforcement:
-viewer < editor < approver, merge is approver-gated; members endpoints
-admin-only; audit trail). Configuration data NEVER goes in the DB.
+Postgres via DATABASE_URL: users, sessions, app_members, audit_events,
+workspace_repos, change_requests), `auth` (GitHub OAuth, cookie sessions),
+`api/platform.go` (role enforcement: viewer < editor < approver, merge is
+approver-gated; members endpoints admin-only; audit trail). Configuration data
+NEVER goes in the DB - only workflow and operational state.
 
 **HTTP:** `api/hub.go` (workspace: /api/repos/{id}/… + auth + dispatch),
 per-repo handlers split by resource (`reads.go`, `values.go`,

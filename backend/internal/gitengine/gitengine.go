@@ -8,6 +8,7 @@ package gitengine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,16 +115,36 @@ func CloneContext(ctx context.Context, url, dir, branch, token, name, email stri
 		return nil, err
 	}
 	r := &Repo{Dir: dir, Name: name, Email: email}
-	args := []string{
-		"-c", "http.lowSpeedLimit=1000",
-		"-c", "http.lowSpeedTime=60",
-		"clone",
+	run := func(partial bool) error {
+		args := []string{
+			"-c", "http.lowSpeedLimit=1000",
+			"-c", "http.lowSpeedTime=60",
+			"clone",
+		}
+		if partial {
+			args = append(args, "--filter=blob:none")
+		}
+		if branch != "" {
+			args = append(args, "--branch", branch)
+		}
+		args = append(args, AuthURL(url, token), dir)
+		_, err := r.gitCtx(ctx, filepath.Dir(dir), args...)
+		return err
 	}
-	if branch != "" {
-		args = append(args, "--branch", branch)
+
+	err := run(partialClone())
+	if err != nil && partialClone() {
+		// The host may not offer partial clone (an old self-hosted server, a
+		// mirror, a plain http remote). Modern git degrades on its own with a
+		// warning, but not every version and not every server does, so a second
+		// attempt without the filter is the difference between "your repository
+		// could not be fetched" and it simply working.
+		slog.Info("partial clone was refused; fetching the whole repository instead",
+			slog.String("origin", Redact(url)))
+		_ = os.RemoveAll(dir)
+		err = run(false)
 	}
-	args = append(args, AuthURL(url, token), dir)
-	if _, err := r.gitCtx(ctx, filepath.Dir(dir), args...); err != nil {
+	if err != nil {
 		msg := err.Error()
 		if token != "" {
 			// never leak the credential through the git error text
@@ -132,6 +153,33 @@ func CloneContext(ctx context.Context, url, dir, branch, token, name, email stri
 		return nil, fmt.Errorf("clone %s: %s", Redact(url), msg)
 	}
 	return r, nil
+}
+
+// partialClone reports whether clones ask the host to withhold file contents
+// until something reads them (`--filter=blob:none`).
+//
+// This is a PARTIAL clone, and deliberately not a shallow one. Shallow
+// (`--depth`) would be the obvious way to make a clone smaller and it is the
+// wrong tool here twice over: it fetches a single branch, so comparing against
+// another branch has nothing to compare with, and it fetches a single commit,
+// so history, the timeline, parameter history and restoring from a ref all stop
+// working. Those are not edge features of Configer, they are most of what it
+// is for.
+//
+// A partial clone keeps every commit, every tree and every branch. Only file
+// CONTENT is left on the server, and git fetches a blob transparently the first
+// time anything reads it. So the whole product still works; the price is that
+// reading old content needs the host to be reachable, and the first read of it
+// is slower.
+//
+// CONFIGER_FULL_CLONE=1 turns it off, for a deployment that would rather pay
+// the download once and never depend on the network again.
+func partialClone() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("CONFIGER_FULL_CLONE"))) {
+	case "1", "true", "yes", "on":
+		return false
+	}
+	return true
 }
 
 // IsRepo reports whether dir holds git repository data at all. A copy Configer
@@ -217,6 +265,19 @@ func (r *Repo) CurrentBranch() (string, error) {
 // HeadSHA resolves a ref to a commit SHA.
 func (r *Repo) HeadSHA(ref string) (string, error) {
 	return r.git(r.Dir, "rev-parse", ref)
+}
+
+// RefExists reports whether a branch name is already taken, locally or on the
+// origin. Both matter when naming a new branch: a local one blocks creating it,
+// and a remote one turns the eventual push into a rejected non-fast-forward,
+// which is the failure a user can do least about.
+func (r *Repo) RefExists(branch string) bool {
+	for _, ref := range []string{"refs/heads/" + branch, "refs/remotes/origin/" + branch} {
+		if _, err := r.git(r.Dir, "rev-parse", "--verify", "--quiet", ref); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // HasRemote reports whether an "origin" remote is configured.

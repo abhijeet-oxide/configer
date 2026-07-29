@@ -40,7 +40,7 @@ type Hub struct {
 
 	dataDir  string
 	interval time.Duration
-	registry *workspace.Registry
+	registry workspace.Registry
 	platform *store.Store
 	auth     *auth.Service
 
@@ -74,12 +74,20 @@ type Hub struct {
 	// the user can neither see nor fix. An entry outlives its `connecting` row:
 	// dismissing a slow connection stops the waiting, not the git process.
 	cloning map[string]bool
+
+	// opens serializes on-demand opens per application, and openErrs remembers
+	// a failed one for a while so a broken origin is not re-cloned on every
+	// request (see lazyopen.go).
+	opens    keyedLocks
+	openErrs map[string]openFailure
 }
 
-// NewHub loads the workspace registry from dataDir and opens every connected
-// repository. When the registry is empty and seed points at an existing
-// directory, that directory is registered in place (CONFIGER_REPO keeps its
-// meaning as the bootstrap repository).
+// NewHub loads the workspace registry (from the platform database, importing an
+// existing workspace.json once) and returns immediately. Applications open on
+// first use, so starting the service never waits on a repository. When the
+// registry is empty and seed points at an existing directory, that directory is
+// registered in place (CONFIGER_REPO keeps its meaning as the bootstrap
+// repository).
 func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	// Everything derived from here ends up in a registry entry, a git argument
 	// or a log line, and a relative path is wrong in all three: it depends on
@@ -88,14 +96,14 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	if a, aerr := filepath.Abs(dataDir); aerr == nil {
 		dataDir = a
 	}
-	reg, err := workspace.Load(dataDir)
-	if err != nil {
-		return nil, err
-	}
 	// A stopped server can leave a half-copied repository behind. Clearing it
 	// here means nobody ever meets it.
 	sweepIncoming(dataDir)
 	platform, authSvc, err := newPlatform(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	reg, err := openRegistry(dataDir, platform)
 	if err != nil {
 		return nil, err
 	}
@@ -113,6 +121,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		connecting:  map[string]*connecting{},
 		cloning:     map[string]bool{},
 		gitRoles:    newGitRoleCache(),
+		openErrs:    map[string]openFailure{},
 	}
 	// The search index lives in the platform database (SQLite FTS5) with a
 	// bounded in-memory tier; on Postgres it runs memory-only. A single worker
@@ -149,28 +158,38 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 			slog.Info("workspace seeded with local repository", slog.String("id", e.ID), slog.String("path", abs))
 		}
 	}
-	for _, e := range reg.List() {
-		if oerr := h.open(e); oerr != nil {
-			slog.Warn("repository unavailable", slog.String("id", e.ID), slog.Any("error", oerr))
-			h.errs[e.ID] = oerr.Error()
-		}
-	}
-	// Populate the index in the background so startup is not blocked on loading
-	// every app's metadata; the worker rebuilds each one and the index answers
-	// what it has meanwhile.
-	for _, e := range reg.List() {
-		h.enqueueReindex(e.ID)
-	}
+	// Applications are NOT opened here. Opening one means fetching a repository,
+	// and doing that for every application before the process finishes starting
+	// is what made a restart take minutes and made the working copies something
+	// the deployment had to keep on a surviving disk. They open on first use
+	// (see lazyopen.go); this warms them in the background so the portfolio
+	// fills in shortly after start without anything waiting on it.
+	go h.warmAll()
 	return h, nil
 }
 
 // Count reports how many repositories are connected.
 func (h *Hub) Count() int { return len(h.registry.List()) }
 
+// pathFor is where THIS process keeps an application's working copy.
+//
+// The registry is shared between replicas now, so a path recorded by one of
+// them is not a fact about another. It is only meaningful for a repository
+// opened in place (a folder an operator pointed at, on that machine); for a
+// copy Configer fetched, the location is derived from this process's own data
+// directory, which is what makes a row written by one pod usable by the next.
+func (h *Hub) pathFor(e workspace.Entry) string {
+	if e.Local {
+		return e.Path
+	}
+	return filepath.Join(h.dataDir, "repos", e.ID)
+}
+
 // open builds (or rebuilds) the per-repo server and starts its sync loop.
 // Remote repositories are materialized through the API (no clone); cloned
 // repositories whose working tree vanished (ephemeral disk) are re-cloned.
 func (h *Hub) open(e workspace.Entry) error {
+	e.Path = h.pathFor(e)
 	var s *Server
 	if e.Remote {
 		var err error
@@ -316,13 +335,14 @@ func getenvInt(k string, def int) int {
 }
 
 // defaultHandler serves the unscoped legacy routes: the first healthy
-// repository in connection order.
+// repository in connection order, opened on demand if it is not serving yet.
 func (h *Hub) defaultHandler() http.Handler {
-	h.mu.Lock()
-	defer h.mu.Unlock()
 	for _, e := range h.registry.List() {
-		if hd, ok := h.handlers[e.ID]; ok {
-			return hd
+		if h.ensureOpen(e.ID) {
+			_, hd := h.server(e.ID)
+			if hd != nil {
+				return hd
+			}
 		}
 	}
 	return nil
@@ -427,11 +447,17 @@ func (h *Hub) health(w http.ResponseWriter, _ *http.Request) {
 // @Failure     503 {object} StatusResponse
 // @Router      /api/readyz [get]
 func (h *Hub) ready(w http.ResponseWriter, _ *http.Request) {
-	if h.defaultHandler() != nil {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
-		return
-	}
-	writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "no repository connected"})
+	// Readiness means this process can answer requests, and it can: applications
+	// open on first use, so none of them has to be fetched before traffic is
+	// routed here.
+	//
+	// It used to mean "at least one repository is serving", which was wrong in
+	// both directions. It made a restart un-ready for as long as the clones took,
+	// and a brand new deployment - which has no repositories precisely because
+	// nobody can reach it to add one - could never become ready at all.
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "ready", "applications": strconv.Itoa(h.Count()),
+	})
 }
 
 // dispatch rewrites /api/repos/{id}/<rest> to /api/<rest> and serves it with
@@ -439,6 +465,9 @@ func (h *Hub) ready(w http.ResponseWriter, _ *http.Request) {
 // Requests pass role enforcement first and land in the audit trail after.
 func (h *Hub) dispatch(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Open on first use. This is the request that pays for the working copy,
+	// and only for the application it actually asked for.
+	h.ensureOpen(id)
 	_, hd := h.server(id)
 	if hd == nil {
 		h.mu.Lock()
@@ -533,9 +562,12 @@ type RepoSummary struct {
 	Remote       string         `json:"remote,omitempty"`
 	AddedAt      time.Time      `json:"addedAt"`
 	Error        string         `json:"error,omitempty"`
-	// Status is "connecting" while a background clone/open runs, "error" when
-	// it failed, and empty ("" = ready) for a fully connected repository. The
-	// client polls the portfolio until it leaves "connecting".
+	// Status is "connecting" while a repository is first being added,
+	// "opening" while an already-connected one is being made ready on this
+	// process (applications open on first use, so a restart shows this until
+	// the warmer or a request reaches them), "error" when either failed, and
+	// empty ("" = ready) for an application that is serving. The client polls
+	// the portfolio until it leaves "connecting" or "opening".
 	Status string `json:"status,omitempty"`
 	// Role is the CALLER's capability on this application, and RoleSource says
 	// where it came from (see access.go). A role belongs to a (person,
@@ -551,13 +583,16 @@ func (h *Hub) summarize(e workspace.Entry) RepoSummary {
 		ID: e.ID, Name: e.Name, Origin: gitengine.Redact(e.Origin),
 		Local: e.Local, NoClone: e.Remote, AddedAt: e.AddedAt,
 	}
+	// Deliberately a lookup, never an open: listing the portfolio must not be
+	// the thing that fetches every repository in the workspace. An application
+	// nobody has opened yet is a STATE ("opening", the warmer is on its way to
+	// it), not a failure - only a recorded reason makes it an error.
 	s, _ := h.server(e.ID)
 	if s == nil {
-		h.mu.Lock()
-		sum.Error = h.errs[e.ID]
-		h.mu.Unlock()
-		if sum.Error == "" {
-			sum.Error = "repository is not available"
+		if reason := h.openState(e.ID); reason != "" {
+			sum.Status, sum.Error = "error", reason
+		} else {
+			sum.Status = "opening"
 		}
 		return sum
 	}
@@ -789,8 +824,8 @@ func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	if h.index != nil {
 		_ = h.index.RemoveApp(id)
 	}
-	if !e.Local && strings.HasPrefix(e.Path, filepath.Join(h.dataDir, "repos")+string(os.PathSeparator)) {
-		_ = os.RemoveAll(e.Path)
+	if p := h.pathFor(e); !e.Local && strings.HasPrefix(p, filepath.Join(h.dataDir, "repos")+string(os.PathSeparator)) {
+		_ = os.RemoveAll(p)
 	}
 	slog.Info("workspace disconnected repository", slog.String("id", id))
 	h.auditHub(r, id, "Disconnected repository "+e.Name, "DELETE /repos/"+id)

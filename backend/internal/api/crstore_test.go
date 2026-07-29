@@ -81,8 +81,9 @@ func TestDatabaseBackedChangeStoreServesTheWholeFlow(t *testing.T) {
 	if submitted.State != "under_review" {
 		t.Fatalf("state after submit = %q, want under_review", submitted.State)
 	}
-	if submitted.Branch != "feature/bump-ports-cr-"+itoa(draft.Draft.ID) {
-		t.Fatalf("branch = %q, want the title and the change id", submitted.Branch)
+	// Single-user, and the name is free: the branch is just what it was called.
+	if submitted.Branch != "feature/bump-ports" {
+		t.Fatalf("branch = %q, want feature/bump-ports", submitted.Branch)
 	}
 
 	// Classification set at submit time must have been persisted. It used to

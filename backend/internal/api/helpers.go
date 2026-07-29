@@ -222,3 +222,19 @@ func withCORS(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+
+// branchOwner is the login a change request's branch is named for
+// (feature/<owner>/<title>), or "" when there is nobody real to name.
+//
+// It is deliberately the SIGNED-IN user rather than the request body's author
+// field: a branch name is a fact about who made the branch, and the body is
+// attribution the caller supplies. In single-user mode there is one operator
+// and no login, so the branch carries the title alone - stamping the same name
+// on every branch of a deployment with one person in it is noise, not
+// provenance.
+func branchOwner(r *http.Request) string {
+	if u, ok := auth.UserFrom(r.Context()); ok {
+		return u.Login
+	}
+	return ""
+}

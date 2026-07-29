@@ -280,6 +280,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/import/analyze", s.analyzeImport)
 	mux.HandleFunc("GET /api/changes", s.listChanges)
 	mux.HandleFunc("GET /api/changes/draft", s.currentDraft)
+	mux.HandleFunc("GET /api/changes/name-check", s.checkChangeName)
 	mux.HandleFunc("GET /api/changes/{id}", s.getChange)
 	mux.HandleFunc("GET /api/changes/{id}/preview", s.previewChange)
 	mux.HandleFunc("GET /api/changes/{id}/pr-status", s.prStatus)

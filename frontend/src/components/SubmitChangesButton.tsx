@@ -9,11 +9,11 @@ import {
   App as AntApp,
 } from "antd";
 import { PullRequestOutlined, WarningFilled } from "../icons";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, type ChangeItem, type Instance } from "../api";
+import { api, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable } from "./ChangeItemsTable";
 import ChangePreview from "./ChangePreview";
@@ -41,6 +41,31 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const prodTouched = items.some(
     (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
   );
+
+  // The title becomes the branch, and the branch is what every reviewer and CI
+  // run sees from then on. So the name is checked WHILE it is typed: a clash
+  // with a change that is still open is worth knowing before submitting, not
+  // after a submit that gets refused.
+  const [title, setTitle] = useState("");
+  const [nameCheck, setNameCheck] = useState<ChangeNameCheck | null>(null);
+  const draftId = draftQ.data?.draft?.id;
+  useEffect(() => {
+    const t = title.trim();
+    if (!open || !t) {
+      setNameCheck(null);
+      return;
+    }
+    // Debounced: one request per pause, not one per keystroke.
+    const timer = setTimeout(() => {
+      api
+        .checkChangeName(t, draftId)
+        .then(setNameCheck)
+        // A name check that cannot run must never block submitting. The server
+        // refuses a real clash anyway; this is the early warning, not the gate.
+        .catch(() => setNameCheck(null));
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [title, draftId, open]);
 
   const revert = useMutation({
     mutationFn: (it: ChangeItem) =>
@@ -89,7 +114,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         onCancel={() => setOpen(false)}
         onOk={() => form.submit()}
         okText="Submit for review"
-        okButtonProps={{ disabled: pending === 0 }}
+        // A name another OPEN change already holds is refused by the server
+        // too; blocking here means the user finds out while they can still fix
+        // it, rather than through a failed submit.
+        okButtonProps={{ disabled: pending === 0 || nameCheck?.available === false }}
         confirmLoading={submit.isPending}
         width={760}
         afterOpenChange={(o) => o && titleRef.current?.focus()}
@@ -146,8 +174,27 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             name="title"
             label="What is this change about?"
             rules={[{ required: true, message: "Give the change a short title" }]}
+            // The name check is advice, not a form rule: it is about the state
+            // of the workspace rather than the shape of the field, and it can
+            // change between typing and submitting.
+            validateStatus={nameCheck && !nameCheck.available ? "error" : undefined}
+            help={
+              nameCheck?.message ? (
+                <span>{nameCheck.message}</span>
+              ) : nameCheck?.branch ? (
+                // What the name will become, in the words git will use.
+                <span>
+                  Saved to branch <code>{nameCheck.branch}</code>
+                </span>
+              ) : undefined
+            }
           >
-            <Input ref={titleRef} placeholder="e.g. Update staging DNS servers" maxLength={100} />
+            <Input
+              ref={titleRef}
+              placeholder="e.g. Update staging DNS servers"
+              maxLength={100}
+              onChange={(e) => setTitle(e.target.value)}
+            />
           </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="category" label="Change type" initialValue="feature" style={{ flex: 1 }}>

@@ -84,6 +84,10 @@ type Backend interface {
 	HeadSHA(ctx context.Context, ref string) (string, error)
 	// CanPublish reports whether merges/PRs to a remote are possible.
 	CanPublish() bool
+	// BranchExists reports whether a branch name is already taken. Used to name
+	// a change request's branch readably: a name is only disambiguated when it
+	// would actually collide.
+	BranchExists(ctx context.Context, branch string) bool
 	// Provider is the hosted PR provider (nil for pure-git).
 	Provider() provider.Provider
 

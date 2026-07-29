@@ -401,6 +401,47 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/name-check": {
+            "get": {
+                "description": "Whether a proposed change-request title is free, and the branch it would produce. A name held by a still-open change is refused (` + "`" + `available:false` + "`" + `) because two open changes under one name cannot be told apart in review; a name held by a published or rejected change is allowed, with a note. Intended to be called while the user types, so the name is settled before submit.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Check a change request name",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Proposed title",
+                        "name": "title",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Change request being named (excluded from the conflict search)",
+                        "name": "id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ChangeNameCheck"
+                        }
+                    },
+                    "400": {
+                        "description": "Missing title",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes/{id}": {
             "get": {
                 "description": "One change request by id. Refreshes the linked pull-request state (merged/closed/checks) from the host before returning.",
@@ -3770,6 +3811,35 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "api.ChangeNameCheck": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "description": "Available says whether the name can be used as it stands. A name taken by\na change that is finished (published or rejected) is still available:\nhistory is allowed to repeat, only two OPEN changes under one name is a\nproblem, because that is the pair a reviewer cannot tell apart.",
+                    "type": "boolean"
+                },
+                "branch": {
+                    "description": "Branch is the branch this change would get. It is shown, not guessed at,\nso the name someone picks is never a surprise afterwards.",
+                    "type": "string"
+                },
+                "conflict": {
+                    "description": "Conflict is the change already using the name, when there is one.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/changeset.NameConflict"
+                        }
+                    ]
+                },
+                "message": {
+                    "description": "Message is the plain sentence to put under the field. Empty when the name\nis free and unremarkable.",
+                    "type": "string"
+                },
+                "title": {
+                    "description": "Title is the name as it was checked (trimmed).",
+                    "type": "string"
+                }
+            }
+        },
         "api.CommentRequest": {
             "type": "object",
             "properties": {
@@ -4009,7 +4079,7 @@ const docTemplateconfiger = `{
                     "type": "string"
                 },
                 "status": {
-                    "description": "Status is \"connecting\" while a background clone/open runs, \"error\" when\nit failed, and empty (\"\" = ready) for a fully connected repository. The\nclient polls the portfolio until it leaves \"connecting\".",
+                    "description": "Status is \"connecting\" while a repository is first being added,\n\"opening\" while an already-connected one is being made ready on this\nprocess (applications open on first use, so a restart shows this until\nthe warmer or a request reaches them), \"error\" when either failed, and\nempty (\"\" = ready) for an application that is serving. The client polls\nthe portfolio until it leaves \"connecting\" or \"opening\".",
                     "type": "string"
                 },
                 "syncError": {
@@ -4334,6 +4404,24 @@ const docTemplateconfiger = `{
                 "StatePublished",
                 "StateRejected"
             ]
+        },
+        "changeset.NameConflict": {
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "integer"
+                },
+                "open": {
+                    "description": "Open says whether it is still in play (draft, under review, approved).\nA published or rejected change sharing a name is history, not a clash.",
+                    "type": "boolean"
+                },
+                "state": {
+                    "$ref": "#/definitions/change.State"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
         },
         "model.Application": {
             "type": "object",

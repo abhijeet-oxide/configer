@@ -69,8 +69,8 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if !s.requireIfMatch(w, r) {
 		return
 	}
@@ -125,8 +125,8 @@ func (s *Server) deinit(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	dir := filepath.Join(s.RepoPath, ".configer")
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": false})

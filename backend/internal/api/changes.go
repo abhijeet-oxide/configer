@@ -55,7 +55,7 @@ func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
 	// page, so computing each one's blast radius stays cheap.
 	var rv *resolver.Resolver
 	if p, err := s.load(); err == nil {
-		rv = resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+		rv = s.resolve(p)
 		page := Page[changeResponse]{Items: make([]changeResponse, 0, limit)}
 		for _, cr := range all {
 			if afterID > 0 && int64(cr.ID) >= afterID {
@@ -127,7 +127,7 @@ func (s *Server) getChange(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, withImpact(p, cr))
+	writeJSON(w, http.StatusOK, s.withImpact(p, cr))
 }
 
 // previewChange returns the exact per-file before/after content a change
@@ -232,9 +232,23 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
-	cr, err := s.Changes.Submit(r.Context(), id, req.Title, req.Description, author(r, req.Author), req.Reference, req.Category, identity(r, req.Author))
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
+	// The author's draft must hold still for the whole submit: Submit reads
+	// the pending items, writes them into a worktree and only then advances the
+	// change's state. An edit staged in between would be swept into the change
+	// without ever being committed.
+	defer s.lockDraftOf(id)()
+	cr, err := s.Changes.Submit(r.Context(), changeset.SubmitRequest{
+		ID:          id,
+		Title:       req.Title,
+		Description: req.Description,
+		Author:      author(r, req.Author),
+		Owner:       branchOwner(r),
+		Reference:   req.Reference,
+		Category:    req.Category,
+		Ident:       identity(r, req.Author),
+	})
 	if err != nil {
 		writeChangeError(w, r, err)
 		return
@@ -296,8 +310,8 @@ func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid id")
 		return
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	// Remember where HEAD was so we can tell our own merge apart from external
 	// drift below.
 	preHead, _ := s.Backend.HeadSHA(r.Context(), "HEAD")
@@ -429,8 +443,11 @@ func (s *Server) rejectChange(w http.ResponseWriter, r *http.Request) {
 		Author string `json:"author"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
+	// Rejecting a DRAFT deletes it outright, so its owner must not be staging
+	// into it at the same time.
+	defer s.lockDraftOf(id)()
 	cr, err := s.Changes.Reject(r.Context(), id, author(r, req.Author), req.Reason)
 	if err != nil {
 		writeChangeError(w, r, err)

@@ -44,11 +44,27 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   `rules[name=ssh].port`) or XPath for XML. Never add a second path engine.
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
-  (Draft→UnderReview→Approved→Published). `changeset.Submit` opens an
-  isolated worktree on `feature/<slug>`, applies draft items (structural
+  (Draft→UnderReview→Approved→Published). `changeset.Submit` takes a
+  `SubmitRequest`, opens an isolated worktree, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
-  `Changed-by:` trailer, pushes, opens a GitHub PR. CR workflow state lives
-  in a JSON file beside the repo (rebuildable; not the platform DB).
+  `Changed-by:` trailer, pushes, opens a GitHub PR.
+- **Branch names read the way people named them**: `feature/<owner>/<slug>`
+  (owner omitted when there is no login, i.e. single-user). A suffix is added
+  ONLY when the name is really taken (`branchFor` asks `Backend.BranchExists`);
+  never decorate a free name. Two changes that are both still OPEN may not
+  share a title: `FindNameConflict` refuses it at submit, and
+  `GET /api/changes/name-check` answers the same question while the user types
+  so the clash is found before it becomes a branch. A title held by a published
+  or rejected change is reusable - history repeating is fine.
+- `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
+  file beside the repo (no dependencies, right for one person); `SQLStore`
+  keeps a row per change request in the platform database (a write touches one
+  row, a read-modify-write is a transaction, two processes share it).
+  `api.crStore` picks: Postgres → SQL, embedded SQLite → file, and
+  `CONFIGER_CR_STORE=sql|file` overrides. An upgrade carries an existing file
+  across once via `SQLStore.Import`. Either way this is WORKFLOW state only -
+  configuration truth stays in Git. **Both stores hand out COPIES**: editing a
+  change request you were given persists nothing, `Update` is the only way in.
 
 **The model:**
 - `model` - `Parameter` (metadata + `Bindings []Binding`), `Instance`
@@ -93,19 +109,54 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
   Kptfile, apiVersion/kind).
 
 **Git plumbing:** `gitengine` (git CLI), `repobackend` (local worktree vs
-GitHub Git-data-API no-clone), `remoterepo`, `provider` (GitHub PRs),
+GitHub Git-data-API no-clone - see `git_remote_clone.md`, that mode is
+unfinished and has no UI), `remoterepo`, `provider` (GitHub PRs),
 `api/sync` (poll fetch+ff), `api/reconcile` (external-commit findings).
 
+Clones are **partial** (`--filter=blob:none`): all commits, trees and branches,
+file contents fetched on demand. Never make them SHALLOW - `--depth` fetches one
+branch and one commit, which silently kills compare, history, the timeline,
+parameter history and restore-from-ref. `CONFIGER_FULL_CLONE=1` opts out for a
+deployment that would rather not depend on the host being reachable.
+
+**Statelessness:** a pod holds nothing it needs to survive. Applications open on
+FIRST USE (`api/lazyopen.go`), never at boot - `NewHub` returns immediately and a
+background warmer opens the rest, so a working copy is a cache: present and
+startup is instant, absent and it is rebuilt. Readiness never waits on a
+repository. The registry lives in the platform DB (`workspace.SQLRegistry`,
+importing an existing `workspace.json` once), so replicas see the same
+applications. Never add per-pod state that a restart cannot rebuild, and never
+put an application open on the startup path.
+
 **Platform (optional, off without OAuth env):** `store` (SQLite default /
-Postgres via DATABASE_URL: users, sessions, app_members, audit_events),
-`auth` (GitHub OAuth, cookie sessions), `api/platform.go` (role enforcement:
-viewer < editor < approver, merge is approver-gated; members endpoints
-admin-only; audit trail). Configuration data NEVER goes in the DB.
+Postgres via DATABASE_URL: users, sessions, app_members, audit_events,
+workspace_repos, change_requests), `auth` (GitHub OAuth, cookie sessions),
+`api/platform.go` (role enforcement: viewer < editor < approver, merge is
+approver-gated; members endpoints admin-only; audit trail). Configuration data
+NEVER goes in the DB - only workflow and operational state.
 
 **HTTP:** `api/hub.go` (workspace: /api/repos/{id}/… + auth + dispatch),
 per-repo handlers split by resource (`reads.go`, `values.go`,
 `parameters.go`, `instances.go`, `changes.go`, `files.go`, `onboarding.go`,
 `reconcile.go`, `helpers.go`).
+
+**Concurrency (one application, many editors):** ONE working copy per
+application, shared by everyone - never one per user. Two locks, in `locks.go`:
+`treeMu` for the working tree and the git plumbing over it (catalog commits,
+sync, merge, submit, reject), and a per-owner draft lock for read-modify-write
+sequences on the change-request store. A handler needing both takes `treeMu`
+first. Never reach for a single lock again: staging a cell edit must not queue
+behind a colleague's push.
+
+**Reads (`treecache.go`):** never call `project.Load` or build a resolver
+directly in a handler - use `s.load()`, `s.resolve(p)` and `s.buildGrid(p)`.
+They memoize the parsed project and parsed configuration files for as long as
+the files are unchanged, which is what makes a grid over a large estate cheap
+with several people reading it at once. Invalidation is automatic and needs no
+cooperation: each file is revalidated by its own stat, and releasing `treeMu`
+bumps a generation that drops the cache outright. A cached project is SHARED
+and read-only. Anything rooted outside the working tree (a materialized ref, a
+timeline snapshot) parses for itself.
 
 ## Architecture (frontend, `frontend/src/`)
 

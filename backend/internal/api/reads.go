@@ -22,7 +22,6 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
-	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
 
@@ -89,7 +88,7 @@ func (s *Server) projectInfo(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	g := grid.Build(p)
+	g := s.buildGrid(p)
 	if draft != nil {
 		grid.ApplyDraft(&g, draft.Items)
 	}
@@ -137,7 +136,7 @@ func (s *Server) grid(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	g := grid.Build(p)
+	g := s.buildGrid(p)
 	if draft != nil {
 		grid.ApplyDraft(&g, draft.Items)
 	}
@@ -490,7 +489,7 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 		if instance != "" {
 			for _, inst := range p.Registry.Instances {
 				if inst.Name == instance {
-					res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(*param, inst)
+					res := s.resolve(p).Resolve(*param, inst)
 					return valueString(res.Value), true
 				}
 			}

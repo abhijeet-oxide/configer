@@ -30,6 +30,10 @@ func (b *LocalBackend) Origin() string              { return gitengine.Redact(b.
 func (b *LocalBackend) CanPublish() bool            { return b.repo.HasRemote() }
 func (b *LocalBackend) Provider() provider.Provider { return b.prov }
 
+func (b *LocalBackend) BranchExists(_ context.Context, branch string) bool {
+	return b.repo.RefExists(branch)
+}
+
 func (b *LocalBackend) DefaultBranch(_ context.Context) (string, error) {
 	return b.repo.CurrentBranch()
 }

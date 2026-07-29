@@ -94,11 +94,13 @@ func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rvCur := resolver.NewWithCatalog(cur.Root, cur.Catalog.Parameters)
-	rvRef := resolver.NewWithCatalog(pRef.Root, pRef.Catalog.Parameters)
+	// The working tree reads through the shared cache; the materialized ref is
+	// a throwaway checkout with bytes of its own, so it parses for itself
+	// (s.resolve declines to cache anything rooted outside the working tree).
+	rvCur := s.resolve(cur)
+	rvRef := s.resolve(pRef)
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)

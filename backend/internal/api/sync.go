@@ -89,9 +89,9 @@ func (s *Server) syncOnce() RepoStatus {
 		st.Provider = prov.Name()
 	}
 
-	s.writeMu.Lock()
+	s.treeMu.Lock()
 	res, _ := s.Backend.Sync(context.Background(), branch)
-	s.writeMu.Unlock()
+	s.treeMu.Unlock()
 	st.Ahead, st.Behind = res.Ahead, res.Behind
 	st.UpstreamGone = res.UpstreamGone
 	st.SyncError = res.SyncError

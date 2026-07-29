@@ -401,8 +401,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)

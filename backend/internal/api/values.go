@@ -133,7 +133,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter has no shared file location; edit it per instance")
 			return
 		}
-		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, model.Instance{})
+		res := s.resolve(p).Resolve(param, model.Instance{})
 		oldVal = res.Value
 	} else {
 		inst, found := p.InstanceByName(req.Instance)
@@ -155,7 +155,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, "this parameter lives only in a shared file; use a global edit to change it for everyone")
 			return
 		}
-		res := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).Resolve(param, baseline)
+		res := s.resolve(p).Resolve(param, baseline)
 		oldVal = res.Value
 		relInst = inst
 	}
@@ -175,7 +175,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	// and vice versa) can only be checked now that the instance context is
 	// known. The sibling's effective value is read from the committed files.
 	if action == change.ActionSet && (param.Validation.AtLeast != "" || param.Validation.AtMost != "") {
-		rz := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+		rz := s.resolve(p)
 		related := func(id string) (model.Parameter, any, bool) {
 			sp, ok := p.ParamByID(id)
 			if !ok {
@@ -189,8 +189,7 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
@@ -329,14 +328,13 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 	results := make([]result, 0, len(req.Edits))
 	staged := 0
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	rv := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+	rv := s.resolve(p)
 	pendingDraft := s.Store.CurrentDraft(draftOwner(r))
 	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for _, e := range req.Edits {
@@ -406,8 +404,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	paramID := r.URL.Query().Get("paramId")
 	instance := r.URL.Query().Get("instance")
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft := s.Store.CurrentDraft(draftOwner(r))
 	if draft == nil {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "no draft")

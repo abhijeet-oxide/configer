@@ -58,11 +58,17 @@ curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"namespa
 curl -sf -X PUT "$BASE/values" -d '{"scope":"global","paramId":"platform-domain","value":"smoke.example.com","author":"smoke"}' >/dev/null
 
 echo "== submit the draft"
-curl -sf -X POST "$BASE/changes/1/submit" -d '{"title":"Smoke test","author":"smoke"}' | grep -q under_review \
-  || fail "submit did not reach under_review"
+SUBMITTED=$(curl -sf -X POST "$BASE/changes/1/submit" -d '{"title":"Smoke test","author":"smoke"}')
+echo "$SUBMITTED" | grep -q under_review || fail "submit did not reach under_review"
 
-# The change request is named for its title: "Smoke test" -> feature/smoke-test.
-CR_BRANCH="feature/smoke-test"
+# The branch is named for what the change was called, and nothing else while
+# that name is free ("Smoke test" -> feature/smoke-test). A signed-in deployment
+# adds the author (feature/<login>/smoke-test); a name already taken gets a
+# numeric suffix. Read it back rather than reconstructing it.
+CR_BRANCH=$(echo "$SUBMITTED" | sed -n 's/.*"branch":"\([^"]*\)".*/\1/p')
+[ -n "$CR_BRANCH" ] || fail "submit response carried no branch name"
+[ "$CR_BRANCH" = "feature/smoke-test" ] \
+  || fail "expected feature/smoke-test, got $CR_BRANCH"
 
 echo "== assert the CR branch diffs"
 show() { git -C "$WORK/repo" show "$CR_BRANCH:$1"; }

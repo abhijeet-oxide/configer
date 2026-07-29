@@ -25,6 +25,7 @@ export function SyncPill({ r }: { r: RepoSummary }) {
   // APPLICATION itself rather than its sync state, and outranks everything
   // else the pill could say.
   if (r.status === "connecting") return <StatusPill tone="pending">Connecting…</StatusPill>;
+  if (r.status === "opening") return <StatusPill tone="pending">Opening…</StatusPill>;
   if (r.status === "error") return <StatusPill tone="danger">Not connected</StatusPill>;
   if (r.error) return <StatusPill tone="danger">Unavailable</StatusPill>;
   if (r.syncError)
@@ -207,6 +208,13 @@ export default function AppCard({
       {r.status === "connecting" ? (
         <InlineNotice tone="info">
           Reading the repository. This card updates itself when it is ready.
+        </InlineNotice>
+      ) : r.status === "opening" ? (
+        // Not a problem and not a new connection: the application is already
+        // connected, this server just has not needed it yet. Opening it is a
+        // few seconds, and opening it happens by itself.
+        <InlineNotice tone="info">
+          Getting this application ready. It stays usable; this card updates itself.
         </InlineNotice>
       ) : r.status === "error" ? (
         // The message already says what happened and what to do; the Remove

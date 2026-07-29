@@ -57,6 +57,13 @@ func (b *RemoteBackend) Origin() string              { return b.client.Origin() 
 func (b *RemoteBackend) CanPublish() bool            { return true }
 func (b *RemoteBackend) Provider() provider.Provider { return b.prov }
 
+// BranchExists asks the host. A missing ref answers 404, which surfaces here as
+// an error rather than a false negative dressed up as an answer.
+func (b *RemoteBackend) BranchExists(ctx context.Context, branch string) bool {
+	sha, err := b.client.HeadSHA(ctx, branch)
+	return err == nil && sha != ""
+}
+
 func (b *RemoteBackend) DefaultBranch(_ context.Context) (string, error) { return b.branch, nil }
 
 func (b *RemoteBackend) HeadSHA(ctx context.Context, ref string) (string, error) {

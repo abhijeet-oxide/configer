@@ -81,8 +81,14 @@ type CategoryNode struct {
 
 // Build assembles the grid from a loaded project by resolving every cell from
 // the repository's real files.
-func Build(p *project.Project) Grid {
-	r := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters)
+func Build(p *project.Project) Grid { return BuildWith(p, nil) }
+
+// BuildWith is Build reading through a shared document cache. The grid is the
+// heaviest read in the product - it touches every bound file in the repository
+// - so this is where parsing once per unchanged tree, rather than once per
+// request, actually pays. Pass nil for the plain per-build behavior.
+func BuildWith(p *project.Project, docs resolver.Docs) Grid {
+	r := resolver.NewWithCatalog(p.Root, p.Catalog.Parameters).WithDocs(docs)
 
 	// Archived instances are kept in the registry (and shown in the Instances
 	// view) but drop out of the active grid so archiving declutters editing.

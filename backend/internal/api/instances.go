@@ -15,7 +15,6 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
-	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
@@ -140,11 +139,10 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 // owner is the draft owner (see draftOwner), so a structural edit lands in the
 // same author-scoped draft as value edits.
 func (s *Server) stageStructural(w http.ResponseWriter, owner string, it change.Item) {
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
 	if owner == "" {
 		owner = "anonymous"
 	}
+	defer s.lockDraft(owner)()
 	it.UpdatedAt = time.Now().UTC()
 	draft, err := s.Store.Draft(owner, s.branch())
 	if err != nil {
@@ -198,8 +196,7 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	_, committed := p.InstanceByName(name)
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 
 	// Folding into a pending add keeps the new instance one reviewable item.
 	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
@@ -336,14 +333,13 @@ func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	rv := resolver.New(p.Root)
+	rv := s.resolve(p)
 	staged := 0
 	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for i := range p.Catalog.Parameters {

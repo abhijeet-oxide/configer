@@ -92,8 +92,8 @@ func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if s.initialized() {
 		writeError(w, r, http.StatusConflict, CodeConflict, "this repository is already initialized; use the import wizard to add more parameters")
 		return

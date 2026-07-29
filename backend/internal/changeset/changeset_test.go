@@ -2,6 +2,7 @@ package changeset
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,6 +115,22 @@ instances:
 	return workDir, originDir, &Service{Backend: backend, Store: store}
 }
 
+// stage puts pending items into a draft the way the api layer does: through
+// the store's Update. A change request the store hands back is a COPY, so
+// editing one in place stages nothing - which is the whole point of the
+// contract, and is why this helper exists rather than a line of test setup.
+func stage(t *testing.T, svc *Service, id int, items ...change.Item) {
+	t.Helper()
+	if _, err := svc.Store.Update(id, func(cr *change.ChangeRequest) error {
+		for _, it := range items {
+			cr.UpsertItem(it)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // The session user is the git AUTHOR of a submitted change; the machine
 // identity stays the committer and is credited via Co-authored-by.
 func TestSubmitAuthorAttribution(t *testing.T) {
@@ -125,10 +142,10 @@ func TestSubmitAuthorAttribution(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
 
 	ident := repobackend.Author{Name: "Alice Doe", Email: "alice@example.com"}
-	got, err := svc.Submit(ctx, cr.ID, "Author attribution", "", "alice", "", "", ident)
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Author attribution", Author: "alice", Ident: ident})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,11 +173,13 @@ func TestSubmitAndMergePipeline(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
-	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID,
+		change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()},
+		change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com", UpdatedAt: time.Now()},
+	)
 
 	// Submit: branch + write-back + commit + push.
-	got, err := svc.Submit(ctx, cr.ID, "Bump staging port", "Rollout of the new listener", "alice@example.com", "JIRA-42", "feature", repobackend.Author{})
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Bump staging port", Description: "Rollout of the new listener", Author: "alice@example.com", Reference: "JIRA-42", Category: "feature"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,9 +254,9 @@ func TestSubmitResetRemovesKey(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("bob", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Action: change.ActionReset, Old: 8080, UpdatedAt: time.Now()})
 
-	got, err := svc.Submit(ctx, cr.ID, "Drop staging port override", "", "bob", "", "", repobackend.Author{})
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Drop staging port override", Author: "bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,16 +281,18 @@ func TestSubmitAddInstance(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("carol", "main")
-	cr.UpsertItem(change.Item{
-		Instance: "dr",
-		Action:   change.ActionAddInstance,
-		Old:      "prod", // clone source
-		New:      map[string]any{"environment": "production", "region": "us-west"},
-	})
+	stage(t, svc, cr.ID,
+		change.Item{
+			Instance: "dr",
+			Action:   change.ActionAddInstance,
+			Old:      "prod", // clone source
+			New:      map[string]any{"environment": "production", "region": "us-west"},
+		},
+	)
 	// A value edit for the new instance rides the same CR.
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "dr", New: 7443, UpdatedAt: time.Now()})
 
-	got, err := svc.Submit(ctx, cr.ID, "Add DR instance", "", "carol", "", "", repobackend.Author{})
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Add DR instance", Author: "carol"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,8 +316,8 @@ func TestSubmitAddInstance(t *testing.T) {
 
 	// Remove-instance CRs retire folder + registry entry.
 	cr2, _ := svc.Store.Draft("carol", "main")
-	cr2.UpsertItem(change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
-	got2, err := svc.Submit(ctx, cr2.ID, "Retire staging", "", "carol", "", "", repobackend.Author{})
+	stage(t, svc, cr2.ID, change.Item{Instance: "staging", Action: change.ActionRemoveInstance})
+	got2, err := svc.Submit(ctx, SubmitRequest{ID: cr2.ID, Title: "Retire staging", Author: "carol"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -318,9 +339,11 @@ func TestPreviewShowsByteLevelDiff(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
-	cr.UpsertItem(change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com"})
-	cr.UpsertItem(change.Item{Instance: "dr", Action: change.ActionAddInstance, Old: "prod", New: map[string]any{"environment": "production"}})
+	stage(t, svc, cr.ID,
+		change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()},
+		change.Item{ParamID: "p2", Scope: "global", Old: "example.com", New: "corp.example.com"},
+		change.Item{Instance: "dr", Action: change.ActionAddInstance, Old: "prod", New: map[string]any{"environment": "production"}},
+	)
 
 	res, err := svc.Preview(ctx, cr.ID)
 	if err != nil {
@@ -372,7 +395,7 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 
 	// Draft rejection deletes it.
 	cr, _ := svc.Store.Draft("bob", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
 	if _, err := svc.Reject(ctx, cr.ID, "", ""); err != nil {
 		t.Fatal(err)
 	}
@@ -382,8 +405,8 @@ func TestRejectDraftAndSubmitted(t *testing.T) {
 
 	// Submitted CR rejection keeps the record with state rejected.
 	cr2, _ := svc.Store.Draft("bob", "main")
-	cr2.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
-	sub, err := svc.Submit(ctx, cr2.ID, "t", "", "bob", "", "", repobackend.Author{})
+	stage(t, svc, cr2.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
+	sub, err := svc.Submit(ctx, SubmitRequest{ID: cr2.ID, Title: "t", Author: "bob"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,8 +427,8 @@ func TestGovernancePolicy(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice@example.com", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
-	sub, err := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	sub, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Bump port", Author: "alice@example.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -441,8 +464,8 @@ func TestMinApprovals(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice@example.com", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
-	sub, _ := svc.Submit(ctx, cr.ID, "Bump port", "", "alice@example.com", "", "", repobackend.Author{})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000, UpdatedAt: time.Now()})
+	sub, _ := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Bump port", Author: "alice@example.com"})
 
 	first, err := svc.Approve(ctx, sub.ID, "bob@example.com")
 	if err != nil {
@@ -471,14 +494,14 @@ func TestSubmitDetectsStaleValue(t *testing.T) {
 	ctx := context.Background()
 
 	cr, _ := svc.Store.Draft("alice", "main")
-	cr.UpsertItem(change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
+	stage(t, svc, cr.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()})
 
 	// Someone else changes the same value directly on main after staging.
 	writeFile(t, filepath.Join(workDir, "instances", "staging", "values.yaml"),
 		"# Staging values. Hand-maintained comment.\napp:\n  port: 7000 # the listener\n  name: demo\nunmanaged: keep-me\n")
 	sh(t, workDir, "git", "commit", "-am", "ops changed the port directly")
 
-	_, err := svc.Submit(ctx, cr.ID, "Bump staging port", "", "alice", "", "", repobackend.Author{})
+	_, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Bump staging port", Author: "alice"})
 	if err == nil {
 		t.Fatal("expected a conflict submitting against a value that drifted on Git")
 	}
@@ -492,7 +515,140 @@ func TestSubmitValidation(t *testing.T) {
 	ctx := context.Background()
 	// Empty draft cannot be submitted.
 	cr, _ := svc.Store.Draft("bob", "main")
-	if _, err := svc.Submit(ctx, cr.ID, "t", "", "bob", "", "", repobackend.Author{}); err == nil {
+	if _, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "t", Author: "bob"}); err == nil {
 		t.Error("expected error submitting empty draft")
+	}
+}
+
+// Branch names read the way the person named them. The disambiguating suffix
+// exists, but only when the name is genuinely taken - an earlier version put
+// the change id on every branch, which made "feature/bump-prod-memory-cr-7" the
+// normal case and asked every reader to know what cr-7 was.
+func TestBranchBaseIsReadable(t *testing.T) {
+	if got := branchBase("Increase prod memory limit", "alice"); got != "feature/alice/increase-prod-memory-limit" {
+		t.Fatalf("got %q", got)
+	}
+	// No real identity (the single-user tool): the title alone, no noise.
+	if got := branchBase("Increase prod memory limit", ""); got != "feature/increase-prod-memory-limit" {
+		t.Fatalf("got %q", got)
+	}
+	// A login that is not ref-safe is slugified like the title is.
+	if got := branchBase("Bump ports", "Alice O'Brien"); got != "feature/alice-o-brien/bump-ports" {
+		t.Fatalf("got %q", got)
+	}
+	// An unnamed draft still reads as unnamed rather than as an empty ref.
+	for _, title := range []string{"", "Draft changes", "unnamed"} {
+		if got := branchBase(title, "bob"); got != "feature/bob/unnamed" {
+			t.Fatalf("title %q gave %q", title, got)
+		}
+	}
+	// A pasted paragraph is capped to something a human can read.
+	long := branchBase(strings.Repeat("very long title ", 20), "bob")
+	if len(long) > len("feature/bob/")+maxSlug {
+		t.Fatalf("long title was not capped: %q", long)
+	}
+}
+
+// The suffix appears only when the branch is really taken, and then it is the
+// smallest thing that frees the name.
+func TestBranchForDisambiguatesOnlyOnConflict(t *testing.T) {
+	workDir, _, svc := fixture(t)
+	ctx := context.Background()
+	cr := &change.ChangeRequest{ID: 7, Title: "Bump prod memory"}
+
+	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory" {
+		t.Fatalf("a free name was decorated anyway: %q", got)
+	}
+
+	// Take the name for real, and the next one steps around it.
+	sh(t, workDir, "git", "branch", "feature/alice/bump-prod-memory")
+	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory-2" {
+		t.Fatalf("a taken name was not disambiguated: %q", got)
+	}
+	sh(t, workDir, "git", "branch", "feature/alice/bump-prod-memory-2")
+	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory-3" {
+		t.Fatalf("second collision: %q", got)
+	}
+
+	// A different person is not blocked by a colleague's branch at all, which
+	// is the whole reason the owner segment is there.
+	if got := svc.branchFor(ctx, cr, "bob"); got != "feature/bob/bump-prod-memory" {
+		t.Fatalf("bob was blocked by alice's branch: %q", got)
+	}
+}
+
+// Two changes IN PLAY under one name is a review problem: approvers see the
+// same words twice. A finished change with that name is history, and reusing it
+// is allowed.
+func TestNameConflictOnlyBlocksOpenChanges(t *testing.T) {
+	_, _, svc := fixture(t)
+
+	cr, err := svc.Store.Draft("alice", "main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
+		c.Title = "Bump prod memory"
+		c.State = change.StateUnderReview
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	c := svc.FindNameConflict("Bump prod memory", 0)
+	if c == nil || !c.Open || c.ID != cr.ID {
+		t.Fatalf("an open change with the same name was not reported: %+v", c)
+	}
+	// Case is not what tells two names apart.
+	if got := svc.FindNameConflict("bump PROD memory", 0); got == nil {
+		t.Fatal("name matching is case-sensitive; it should not be")
+	}
+	// The change being named does not conflict with itself.
+	if got := svc.FindNameConflict("Bump prod memory", cr.ID); got != nil {
+		t.Fatalf("a change conflicted with itself: %+v", got)
+	}
+	// A different name is free.
+	if got := svc.FindNameConflict("Something else", 0); got != nil {
+		t.Fatalf("an unused name reported a conflict: %+v", got)
+	}
+
+	// Once it is published, the name is reusable - reported, but not refused.
+	if _, err := svc.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
+		c.State = change.StatePublished
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	c = svc.FindNameConflict("Bump prod memory", 0)
+	if c == nil || c.Open {
+		t.Fatalf("a published change should be reported as a closed clash: %+v", c)
+	}
+}
+
+// Submitting under a name another OPEN change already has is refused, with a
+// message that says which change and what to do.
+func TestSubmitRefusesADuplicateOpenName(t *testing.T) {
+	_, _, svc := fixture(t)
+	ctx := context.Background()
+
+	first, _ := svc.Store.Draft("alice", "main")
+	stage(t, svc, first.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9000})
+	if _, err := svc.Submit(ctx, SubmitRequest{ID: first.ID, Title: "Bump prod memory", Author: "alice"}); err != nil {
+		t.Fatal(err)
+	}
+
+	second, _ := svc.Store.Draft("bob", "main")
+	stage(t, svc, second.ID, change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9001})
+	_, err := svc.Submit(ctx, SubmitRequest{ID: second.ID, Title: "Bump prod memory", Author: "bob"})
+	if err == nil {
+		t.Fatal("a second open change was allowed under the same name")
+	}
+	if !strings.Contains(err.Error(), "different name") {
+		t.Fatalf("the refusal does not say what to do: %v", err)
+	}
+	// And it is a conflict, so the UI renders it as a state rather than a fault.
+	var conflict *ConflictError
+	if !errors.As(err, &conflict) {
+		t.Fatalf("expected a conflict error, got %T", err)
 	}
 }

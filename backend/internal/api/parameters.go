@@ -74,8 +74,8 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		req.Bindings = &bs
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	// Optimistic concurrency: reject an edit built on a stale catalog view.
 	if !s.requireIfMatch(w, r) {
 		return
@@ -159,8 +159,8 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 		pm.Category = "Uncategorized"
 	}
 
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
 	if err := writer.AddParameter(s.RepoPath, pm); err != nil {
 		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return
@@ -200,8 +200,11 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
 		return
 	}
-	s.writeMu.Lock()
-	defer s.writeMu.Unlock()
+	// Both locks: this edits .configer AND rewrites the caller's draft. Tree
+	// first, then draft, which is the order every path needing both uses.
+	s.treeMu.Lock()
+	defer s.treeMu.Unlock()
+	defer s.lockDraft(draftOwner(r))()
 	if err := writer.DeleteParameter(s.RepoPath, id, p.Registry.Instances); err != nil {
 		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
 		return

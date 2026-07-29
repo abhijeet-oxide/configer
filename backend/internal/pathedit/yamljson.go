@@ -579,7 +579,7 @@ func ensureDocRoot(doc *yaml.Node) *yaml.Node {
 // resolve. Read-only: never mutates the tree.
 func descend(cur *yaml.Node, seg Seg) *yaml.Node {
 	cur = resolveAlias(cur)
-	if seg.Key != "" {
+	if seg.Key != "" || seg.Quoted {
 		cur = mapValue(cur, seg.Key)
 		if cur == nil {
 			return nil
@@ -641,7 +641,16 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 	for i, seg := range segs {
 		last := i == len(segs)-1
 
-		if seg.Key != "" {
+		// An unquoted empty key is not a key, it is a malformed path - the
+		// residue of a segment that split where it should not have. Writing
+		// through it used to replace whatever stood at that point with an empty
+		// container, destroying the very data the edit was meant to leave
+		// alone, so it is refused before anything is touched.
+		if seg.Key == "" && !seg.Quoted && seg.Index < 0 && seg.SelKey == "" {
+			return fmt.Errorf("path has an empty step; a key containing '.' must be written as ['the.key']")
+		}
+
+		if seg.Key != "" || seg.Quoted {
 			if seg.Index < 0 && seg.SelKey == "" {
 				// plain key step
 				if last {
@@ -649,12 +658,22 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 					return nil
 				}
 				next := segs[i+1]
-				wantSeq := next.Key == "" // a bare [n]/[k=v] follows on the same node
-				cur = childContainer(cur, seg.Key, wantSeq)
+				// A bare [n]/[k=v] follows on the same node. A quoted key is
+				// never that, even when the key itself is empty.
+				wantSeq := next.Key == "" && !next.Quoted
+				child, err := childContainer(cur, seg.Key, wantSeq)
+				if err != nil {
+					return err
+				}
+				cur = child
 				continue
 			}
 			// key + bracket on one segment: descend into the sequence under key
-			cur = childContainer(cur, seg.Key, true)
+			child, err := childContainer(cur, seg.Key, true)
+			if err != nil {
+				return err
+			}
+			cur = child
 		}
 
 		if cur.Kind != yaml.SequenceNode && seg.Key == "" {
@@ -701,7 +720,16 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 
 // childContainer finds (or creates) the container value for key. A value of
 // the wrong kind is replaced so the path can continue.
-func childContainer(m *yaml.Node, key string, wantSeq bool) *yaml.Node {
+func childContainer(m *yaml.Node, key string, wantSeq bool) (*yaml.Node, error) {
+	// Only a mapping has keys. Walking a sequence or a scalar two entries at a
+	// time and appending a key/value pair to it produced a document that no
+	// longer parsed as what it was, from a path that was merely wrong.
+	if m.Kind == 0 {
+		m.Kind = yaml.MappingNode
+	}
+	if m.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("path expects a mapping at %q but the file has a %s there", key, kindName(m.Kind))
+	}
 	kind := yaml.MappingNode
 	if wantSeq {
 		kind = yaml.SequenceNode
@@ -710,17 +738,38 @@ func childContainer(m *yaml.Node, key string, wantSeq bool) *yaml.Node {
 		if m.Content[i].Value == key {
 			v := resolveAlias(m.Content[i+1])
 			if v.Kind != kind {
+				// Replacing a populated node of another kind would delete
+				// whatever it held. Only an empty or null placeholder is
+				// safe to grow into the container the path needs.
+				if v.Kind != 0 && len(v.Content) > 0 || (v.Kind == yaml.ScalarNode && v.Tag != "!!null" && v.Value != "") {
+					return nil, fmt.Errorf("path expects a %s at %q but the file has a %s there", kindName(kind), key, kindName(v.Kind))
+				}
 				nv := &yaml.Node{Kind: kind}
 				m.Content[i+1] = nv
-				return nv
+				return nv, nil
 			}
-			return v
+			return v, nil
 		}
 	}
 	k := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
 	v := &yaml.Node{Kind: kind}
 	m.Content = append(m.Content, k, v)
-	return v
+	return v, nil
+}
+
+// kindName names a node kind in the words a config file's author would use.
+func kindName(k yaml.Kind) string {
+	switch k {
+	case yaml.MappingNode:
+		return "block of keys"
+	case yaml.SequenceNode:
+		return "list"
+	case yaml.ScalarNode:
+		return "single value"
+	case yaml.AliasNode:
+		return "reference"
+	}
+	return "nothing"
 }
 
 // setChild sets key to val in mapping m, replacing an existing value (and
@@ -757,7 +806,7 @@ func removeAt(root *yaml.Node, segs []Seg) {
 		last := i == len(segs)-1
 
 		container := cur
-		if seg.Key != "" {
+		if seg.Key != "" || seg.Quoted {
 			if seg.Index < 0 && seg.SelKey == "" {
 				if last {
 					if !removeChild(container, seg.Key) {

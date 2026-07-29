@@ -25,7 +25,7 @@ import {
   DownOutlined,
   LoadingOutlined,
 } from "../icons";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { keepPreviousData, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import {
@@ -35,12 +35,16 @@ import {
   type SnapshotKind,
   type CellChange,
   type RestoreScope,
+  type ChangeRequest,
+  type ChangeState,
 } from "../api";
 import { useUI } from "../store";
 import { relTime } from "./DashboardView";
 import { StatePanel, InSyncArt } from "./illustrations";
 import UserAvatar from "./UserAvatar";
 import ValueDiff from "./ui/ValueDiff";
+import GraphRail, { type RailRow } from "./GraphRail";
+import { ChangeItemsTable } from "./ChangeItemsTable";
 import { TableSkeleton } from "./Skeletons";
 import { useIdentity } from "../identity";
 
@@ -79,6 +83,21 @@ const statusMeta: Record<CellChange["status"], { icon: React.ReactNode; hex: str
   removed: { icon: <MinusCircleOutlined />, hex: "var(--c-danger)", label: "Removed" },
   modified: { icon: <EditOutlined />, hex: "var(--c-pending)", label: "Changed" },
 };
+
+/** The colour a change in flight is drawn in, matching the status vocabulary
+ *  the rest of the product uses: a draft is pending, a review is under way, an
+ *  approved change is ready. */
+function stateColor(state: ChangeState): string {
+  if (state === "draft") return "var(--c-pending)";
+  if (state === "approved") return "var(--c-ok)";
+  return "var(--c-review)";
+}
+
+function stateWords(state: ChangeState): string {
+  if (state === "draft") return "Your draft, not sent for review yet";
+  if (state === "approved") return "Approved, waiting to be published";
+  return "Under review";
+}
 
 /** Small count chips summarising what a snapshot did. */
 function SummaryChips({ s }: { s: TimelineEntry["summary"] }) {
@@ -145,8 +164,53 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
     onError: (e: Error) => message.error(e.message),
   });
 
-  const snapshots = timelineQ.data?.snapshots ?? [];
+  // Changes that have LEFT the trunk but not landed on it: the draft being
+  // written right now, and anything waiting on a reviewer. They are the part of
+  // the picture a commit list cannot contain - a commit list only knows what
+  // already happened - and leaving them out was why the timeline could show an
+  // application as quiet while two changes were in flight against it.
+  const changesQ = useRepoQuery({
+    queryKey: ["changes"],
+    queryFn: api.changes,
+    refetchInterval: 20_000,
+  });
+  const inFlight = useMemo(
+    () =>
+      (changesQ.data ?? [])
+        .filter((c) => c.state === "draft" || c.state === "under_review" || c.state === "approved")
+        .filter((c) => (c.items?.length ?? 0) > 0)
+        .filter((c) => !instance || (c.items ?? []).some((it) => it.instance === instance))
+        .sort((a, b) => b.id - a.id),
+    [changesQ.data, instance],
+  );
+
+  const snapshots = useMemo(() => timelineQ.data?.snapshots ?? [], [timelineQ.data]);
   const supported = timelineQ.data?.supported !== false;
+
+  // Lanes: the trunk is 0, and each in-flight change gets its own to the right,
+  // in the order they are listed. They all branch from the trunk's tip - which
+  // is what Configer actually does - and curve back into it there.
+  const rails = useMemo(() => {
+    const lanes = inFlight.length + 1;
+    const changeRows: RailRow[] = inFlight.map((c, i) => ({
+      lane: i + 1,
+      kind: "branch" as const,
+      color: stateColor(c.state),
+      // Lanes belonging to changes listed ABOVE this one are already open and
+      // run past this row on their way down to the tip.
+      through: [0, ...inFlight.slice(0, i).map((_, j) => j + 1)],
+      opensLane: true,
+    }));
+    const commitRows: RailRow[] = snapshots.map((snap, i) => ({
+      lane: 0,
+      kind: i === 0 && inFlight.length ? ("merge" as const) : ("trunk" as const),
+      color: kindMeta[snap.kind]?.hex ?? kindMeta.none.hex,
+      through: [],
+      // Every in-flight branch rejoins the trunk at its tip.
+      mergesHere: i === 0 ? inFlight.map((_, j) => j + 1) : undefined,
+    }));
+    return { lanes, changeRows, commitRows };
+  }, [inFlight, snapshots]);
 
   if (!supported) {
     return (
@@ -210,30 +274,115 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
       ) : snapshots.length === 0 ? (
         <Empty description={`No configuration changes recorded yet for ${scopeLabel}.`} />
       ) : (
-        <div style={{ position: "relative" }}>
-          {/* The spine every dot hangs from. */}
-          <div
-            style={{
-              position: "absolute",
-              left: 15,
-              top: 12,
-              bottom: 12,
-              width: 2,
-              background: token.colorBorderSecondary,
-            }}
-          />
-          {snapshots.map((s) => (
-            <SnapshotRow
-              key={s.sha}
-              entry={s}
-              instance={instance}
-              expanded={open === s.sha}
-              onToggle={() => setOpen(open === s.sha ? null : s.sha)}
-              onRestore={(p) => restore.mutate(p)}
-              restoring={restore.isPending}
-              onOpenDraft={() => setSection("config")}
-            />
+        <div>
+          {/* Changes still in flight sit above the trunk's tip, each on its own
+              lane, because that is where they are: branched off and not landed. */}
+          {inFlight.map((cr, i) => (
+            <div key={`cr-${cr.id}`} style={{ display: "flex", alignItems: "stretch", marginBottom: 10 }}>
+              <GraphRail
+                row={rails.changeRows[i]}
+                lanes={rails.lanes}
+                trunkColor={token.colorBorderSecondary}
+                first={i === 0}
+                last={false}
+              />
+              <InFlightRow cr={cr} onOpen={() => setSection(cr.state === "draft" ? "config" : "approvals")} />
+            </div>
           ))}
+          {snapshots.map((s, i) => (
+            <div key={s.sha} style={{ display: "flex", alignItems: "stretch", marginBottom: 10 }}>
+              <GraphRail
+                row={rails.commitRows[i]}
+                lanes={rails.lanes}
+                trunkColor={token.colorBorderSecondary}
+                first={i === 0 && inFlight.length === 0}
+                last={i === snapshots.length - 1}
+              />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <SnapshotRow
+                  entry={s}
+                  instance={instance}
+                  expanded={open === s.sha}
+                  onToggle={() => setOpen(open === s.sha ? null : s.sha)}
+                  onRestore={(p) => restore.mutate(p)}
+                  restoring={restore.isPending}
+                  onOpenDraft={() => setSection("config")}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// InFlightRow is a change that has branched off the trunk and not landed: the
+// draft on this screen right now, or one waiting on a reviewer. It reads like a
+// snapshot card so the eye runs down one column, but it says plainly that
+// nothing here is in the repository's history yet.
+function InFlightRow({ cr, onOpen }: { cr: ChangeRequest; onOpen: () => void }) {
+  const { token } = antdTheme.useToken();
+  const [expanded, setExpanded] = useState(false);
+  const color = stateColor(cr.state);
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        border: `1px dashed ${color}`,
+        borderRadius: token.borderRadius,
+        background: token.colorBgContainer,
+        padding: "10px 12px",
+      }}
+    >
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setExpanded((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setExpanded((v) => !v);
+          }
+        }}
+        style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer" }}
+      >
+        <span style={{ color: token.colorTextTertiary, fontSize: 10, marginTop: 4 }}>
+          {expanded ? <DownOutlined /> : <RightOutlined />}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <Tag color="default" style={{ borderColor: color, color, marginInlineEnd: 0 }}>
+              {stateWords(cr.state)}
+            </Tag>
+            <Text strong style={{ fontSize: 13.5 }}>
+              {cr.number ? `CR-${cr.number}: ` : ""}
+              {cr.title === "Draft changes" ? "Unnamed draft" : cr.title}
+            </Text>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            <UserAvatar name={cr.author} size={18} />
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {cr.author} · {relTime(cr.updatedAt ?? cr.createdAt)} ·{" "}
+              {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"}
+            </Text>
+            {cr.branch ? (
+              <code style={{ fontSize: 11 }}>{cr.branch}</code>
+            ) : (
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                branch created on submit
+              </Text>
+            )}
+          </div>
+        </div>
+        <Button size="small" onClick={(e) => { e.stopPropagation(); onOpen(); }}>
+          {cr.state === "draft" ? "Review & submit" : "Open review"}
+        </Button>
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 10 }}>
+          <ChangeItemsTable items={cr.items} />
         </div>
       )}
     </div>
@@ -267,28 +416,10 @@ function SnapshotRow({
   const scopeWords = instance ? `instance ${instance}` : "every instance";
 
   return (
-    <div style={{ position: "relative", paddingLeft: 44, marginBottom: 10 }}>
-      {/* The dot: color and icon carry the kind of change at a glance. */}
-      <div
-        style={{
-          position: "absolute",
-          left: 4,
-          top: 12,
-          width: 24,
-          height: 24,
-          borderRadius: "50%",
-          background: token.colorBgContainer,
-          border: `2px solid ${meta.hex}`,
-          color: meta.hex,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: 11,
-        }}
-      >
-        {meta.icon}
-      </div>
-
+    // The node on the spine is drawn by the graph rail beside this card, so the
+    // card carries no dot of its own; the kind reads from the tag in its
+    // header, which says it in words.
+    <div style={{ position: "relative" }}>
       <div
         style={{
           border: `1px solid ${token.colorBorderSecondary}`,
@@ -315,7 +446,11 @@ function SnapshotRow({
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <Tag color="default" style={{ borderColor: meta.hex, color: meta.hex, marginInlineEnd: 0 }}>
+              <Tag
+                color="default"
+                icon={meta.icon}
+                style={{ borderColor: meta.hex, color: meta.hex, marginInlineEnd: 0 }}
+              >
                 {meta.label}
               </Tag>
               <Text strong style={{ fontSize: 13.5 }}>

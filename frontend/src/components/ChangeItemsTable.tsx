@@ -24,6 +24,21 @@ const TONE: Record<ChangeTone, string> = {
 // inherited/removed note for reset+exclude, or a plain sentence for structural
 // changes.
 function Detail({ d }: { d: ChangeDesc }) {
+  // A structural change that moves several named settings at once: each one
+  // gets its own before -> after, because "metadata updated" is not something
+  // an approver can say yes or no to.
+  if (d.fields?.length) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        {d.fields.map((f) => (
+          <span key={f.label} style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 12, color: "var(--text-2)", minWidth: 108 }}>{f.label}</span>
+            <ValueDiff before={f.before} after={f.after} label={`${d.subject} · ${f.label}`} />
+          </span>
+        ))}
+      </div>
+    );
+  }
   if (d.before !== undefined && d.after !== undefined) {
     // A before/after pair is only reviewable if the reader can see which part
     // moved, so the pair is rendered as a highlighted diff rather than as two

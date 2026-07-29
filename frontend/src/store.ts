@@ -18,8 +18,12 @@ import {
 // Audit is deliberately NOT here: the trail spans the whole workspace (who did
 // what, across every application), so it is a global level with its own /audit
 // URL, not a tab that forces an application to be selected first.
+// Every application-level section, and every one of them needs a slug below
+// (except overview, the default tab). A section missing from either fell
+// through pathFor to "/home", so the tab bounced the user out of the
+// application the moment they clicked it.
 const APP_SECTIONS_SET = new Set([
-  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "drift", "sources", "import",
+  "overview", "config", "compare", "changes", "drafts", "approvals", "instances", "files", "timeline", "drift", "sources", "import",
 ]);
 // Section <-> URL slug. Overview is intentionally absent: it is the default
 // tab, so its path is just /application/<id> with no suffix.
@@ -28,6 +32,7 @@ const SECTION_TO_SLUG: Record<string, string> = {
   files: "files",
   compare: "compare",
   changes: "history",
+  timeline: "timeline",
   approvals: "approvals",
   instances: "instances",
   drift: "repository-changes",
@@ -247,6 +252,11 @@ interface UIState {
   /** one-shot handoff: the change request Approvals should select on open
    *  (set by Release history's "Review" action, cleared once consumed) */
   reviewCrId: number | null;
+  /** one-shot handoff: open the "Review your changes" dialog as soon as the
+   *  editor mounts. "Review & submit" in the Changes list used to only switch
+   *  tabs, leaving the user on a grid with no sign of what they had just asked
+   *  for. Cleared once the dialog consumes it. */
+  openSubmit: boolean;
   /** the welcome tour is showing (first visit, or replayed from Settings) */
   welcomeOpen: boolean;
   /** the New Application dialog is open; deep-linked via ?new=1 so it has a
@@ -290,6 +300,7 @@ interface UIState {
     } | null,
   ) => void;
   setReviewCr: (id: number | null) => void;
+  setOpenSubmit: (open: boolean) => void;
   setWelcomeOpen: (open: boolean) => void;
   /** Open the dialog. `source` preselects a source step; `stay` keeps the
    *  current section (the import page opens it over itself) instead of rooting
@@ -342,6 +353,7 @@ export const useUI = create<UIState>((set) => ({
   jump: null,
   fileFocus: null,
   reviewCrId: null,
+  openSubmit: false,
   welcomeOpen: false,
   newAppOpen: initialNewApp.open,
   newAppSource: initialNewApp.source,
@@ -428,6 +440,7 @@ export const useUI = create<UIState>((set) => ({
   setFileFocus: (f) =>
     set((s) => ({ fileFocus: f ? { ...f, n: (s.fileFocus?.n ?? 0) + 1 } : null })),
   setReviewCr: (reviewCrId) => set({ reviewCrId }),
+  setOpenSubmit: (openSubmit) => set({ openSubmit }),
   setWelcomeOpen: (welcomeOpen) => set({ welcomeOpen }),
   // Opening roots the backdrop at the Applications collection, so the dialog's
   // URL reads /applications?new=1 - a natural, shareable context.

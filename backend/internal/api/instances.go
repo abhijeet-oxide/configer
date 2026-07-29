@@ -39,6 +39,29 @@ func (r instanceReq) patch() writer.InstancePatch {
 	}
 }
 
+// instanceFieldsFor reads the instance's current value for exactly the fields a
+// patch touches, keyed the same way the patch serializes, so the UI can put the
+// two side by side without knowing anything about instance metadata. Fields the
+// patch leaves alone are omitted: a change request should show what is changing,
+// not restate the whole record.
+func instanceFieldsFor(inst model.Instance, p writer.InstancePatch) map[string]any {
+	out := map[string]any{}
+	add := func(key string, patched bool, current any) {
+		if patched {
+			out[key] = current
+		}
+	}
+	add("environment", p.Environment != nil, inst.Environment)
+	add("region", p.Region != nil, inst.Region)
+	add("zone", p.Zone != nil, inst.Zone)
+	add("site", p.Site != nil, inst.Site)
+	add("softwareVersion", p.SoftwareVersion != nil, inst.SoftwareVersion)
+	add("versionName", p.VersionName != nil, inst.VersionName)
+	add("status", p.Status != nil, inst.Status)
+	add("labels", p.Labels != nil, inst.Labels)
+	return out
+}
+
 func str(p *string) string {
 	if p == nil {
 		return ""
@@ -225,8 +248,16 @@ func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Record what the fields being changed hold TODAY, alongside the patch. A
+	// reviewer asked to approve "metadata updated" has been told nothing; with
+	// both sides they can see production moving to us-west and decide.
+	inst, _ := p.InstanceByName(name)
+	before := instanceFieldsFor(inst, req.patch())
 	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
-		cr.UpsertItem(change.Item{Instance: name, Action: change.ActionUpdateInstance, New: req.patch(), UpdatedAt: time.Now().UTC()})
+		cr.UpsertItem(change.Item{
+			Instance: name, Action: change.ActionUpdateInstance,
+			Old: before, New: req.patch(), UpdatedAt: time.Now().UTC(),
+		})
 		return nil
 	}); err != nil {
 		writeErr(w, err)

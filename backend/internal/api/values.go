@@ -226,6 +226,9 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Setting a cell back to its committed value cancels the pending edit, and
+	// cancelling the only one leaves an empty draft with nothing to review.
+	s.dropEmptyDraft(draftOwner(r))
 	d := s.Store.CurrentDraft(draftOwner(r))
 	pending := 0
 	changeID := draft.ID
@@ -391,6 +394,8 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A bulk set that cancelled every edit it touched leaves nothing staged.
+	s.dropEmptyDraft(draftOwner(r))
 	d := s.Store.CurrentDraft(draftOwner(r))
 	pending, changeID := 0, draft.ID
 	if d != nil {
@@ -430,5 +435,8 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Undoing the last staged edit leaves nothing to review, so the draft goes
+	// with it rather than sitting in Changes as an empty change request.
+	s.dropEmptyDraft(draftOwner(r))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

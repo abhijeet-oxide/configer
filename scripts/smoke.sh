@@ -58,17 +58,19 @@ curl -sf -X PUT "$BASE/values" -d '{"instance":"prod-us-east","paramId":"namespa
 curl -sf -X PUT "$BASE/values" -d '{"scope":"global","paramId":"platform-domain","value":"smoke.example.com","author":"smoke"}' >/dev/null
 
 echo "== submit the draft"
-SUBMITTED=$(curl -sf -X POST "$BASE/changes/1/submit" -d '{"title":"Smoke test","author":"smoke"}')
+SUBMITTED=$(curl -sf -X POST "$BASE/changes/1/submit" -d '{"title":"Smoke test","author":"smoke","category":"hotfix"}')
 echo "$SUBMITTED" | grep -q under_review || fail "submit did not reach under_review"
 
-# The branch is named for what the change was called, and nothing else while
-# that name is free ("Smoke test" -> feature/smoke-test). A signed-in deployment
-# adds the author (feature/<login>/smoke-test); a name already taken gets a
-# numeric suffix. Read it back rather than reconstructing it.
+# A branch says what kind of change it is, whose it is, and which change
+# request, then the words the author used: hotfix/cr-1-smoke-test here (a
+# signed-in deployment adds the author segment, hotfix/<login>/cr-1-...).
+# The CR number arrives at submit, so the first submitted change is CR-1 no
+# matter how many drafts were started and thrown away first.
 CR_BRANCH=$(echo "$SUBMITTED" | sed -n 's/.*"branch":"\([^"]*\)".*/\1/p')
 [ -n "$CR_BRANCH" ] || fail "submit response carried no branch name"
-[ "$CR_BRANCH" = "feature/smoke-test" ] \
-  || fail "expected feature/smoke-test, got $CR_BRANCH"
+[ "$CR_BRANCH" = "hotfix/cr-1-smoke-test" ] \
+  || fail "expected hotfix/cr-1-smoke-test, got $CR_BRANCH"
+echo "$SUBMITTED" | grep -q '"number":1' || fail "submitted change did not get CR number 1"
 
 echo "== assert the CR branch diffs"
 show() { git -C "$WORK/repo" show "$CR_BRANCH:$1"; }

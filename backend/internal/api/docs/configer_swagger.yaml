@@ -441,11 +441,23 @@ definitions:
       description:
         type: string
       id:
+        description: |-
+          ID is the store's own key: stable, internal, and allocated the moment a
+          draft exists so the draft can be addressed at all.
         type: integer
       items:
         items:
           $ref: '#/definitions/change.Item'
         type: array
+      number:
+        description: |-
+          Number is the CR number people say out loud - "CR-7" - and it is handed
+          out at SUBMIT, not at creation. A draft is not a change request yet: it
+          is one person's uncommitted work, and half of them are discarded. Numbering
+          them burned a number per abandoned draft, so the numbers a team actually
+          reviewed arrived full of holes and "CR-3" was the first change anybody
+          had ever seen. Zero means "not submitted yet".
+        type: integer
       prNumber:
         type: integer
       prUrl:
@@ -1448,6 +1460,11 @@ paths:
         in: query
         name: id
         type: integer
+      - description: Change type the branch will be filed under (hotfix, feature,
+          bugfix, …)
+        in: query
+        name: category
+        type: string
       produces:
       - application/json
       responses:

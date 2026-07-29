@@ -50,7 +50,7 @@ export function ItemsTable({ items }: { items: ChangeItem[] | null }) {
 export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const { setSection, setReviewCr } = useUI();
+  const { setSection, setReviewCr, setOpenSubmit } = useUI();
   const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
 
   const invalidate = () => qc.invalidateQueries();
@@ -109,8 +109,18 @@ export default function ChangeRequestsView() {
           {
             title: "Change request",
             dataIndex: "id",
-            width: 110,
-            render: (id) => <span className="mono font-semibold text-brand">CR-{id}</span>,
+            width: 130,
+            // A draft has no CR number yet: it gets one at submit, so that the
+            // numbers a team reviews are the changes a team reviewed, with no
+            // gaps where somebody started an edit and thought better of it.
+            render: (_id, cr) =>
+              cr.number ? (
+                <span className="mono font-semibold text-brand">CR-{cr.number}</span>
+              ) : (
+                <Tooltip title="Not submitted yet. It gets a CR number when you send it for review.">
+                  <Tag style={{ marginInlineEnd: 0 }}>Your draft</Tag>
+                </Tooltip>
+              ),
           },
           {
             title: "Title",
@@ -150,11 +160,17 @@ export default function ChangeRequestsView() {
             width: 240,
             render: (_v, cr) => (
               <Space size={4} wrap>
-                {cr.branch && (
+                {cr.branch ? (
                   <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
                     {cr.branch}
                   </Tag>
-                )}
+                ) : cr.state === "draft" ? (
+                  // Saying nothing here is better than naming a branch that does
+                  // not exist: a placeholder read as a decision already taken.
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    Branch created when you submit
+                  </Typography.Text>
+                ) : null}
                 {cr.prUrl && (
                   <a href={cr.prUrl} target="_blank" rel="noreferrer">
                     <Tag icon={<LinkOutlined />} color="geekblue">PR #{cr.prNumber}</Tag>
@@ -195,12 +211,16 @@ export default function ChangeRequestsView() {
               if (cr.state === "draft") {
                 return (
                   <Space size={4}>
-                    <Tooltip title="Review the pending edits and submit for approval in the Configuration editor">
+                    <Tooltip title="Review the pending edits and submit them for approval">
                       <Button
                         size="small"
                         type="primary"
                         icon={<EditOutlined />}
                         onClick={() => {
+                          // Take them to the editor AND open the review dialog.
+                          // Switching tabs alone landed on a grid with no sign
+                          // of the thing they had just clicked.
+                          setOpenSubmit(true);
                           setSection("config");
                         }}
                       >

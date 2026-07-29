@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"gopkg.in/yaml.v3"
 )
@@ -87,7 +88,11 @@ func flattenNode(n *yaml.Node, path, file, aliasOf string, out *[]plugin.Candida
 	switch n.Kind {
 	case yaml.MappingNode:
 		for i := 0; i+1 < len(n.Content); i += 2 {
-			flattenNode(n.Content[i+1], path+"."+n.Content[i].Value, file, aliasOf, out)
+			// A key carrying a dot ("query.dependencies") or brackets cannot be
+			// joined on with a dot: the path would read as several steps, find
+			// nothing on the way back, and build a nested block on top of the
+			// real key when written. pathedit.JoinKey spells it so it survives.
+			flattenNode(n.Content[i+1], pathedit.JoinKey(path, n.Content[i].Value), file, aliasOf, out)
 		}
 	case yaml.SequenceNode:
 		for i, c := range n.Content {
@@ -153,4 +158,3 @@ func (JSONParser) Extract(file string, content []byte) ([]plugin.Candidate, erro
 	flatten(root, "$", file, "json", &out)
 	return out, nil
 }
-

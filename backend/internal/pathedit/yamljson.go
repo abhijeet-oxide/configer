@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -143,10 +144,12 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 	// value with another scalar. Splice the new token into the original bytes and
 	// leave every other line untouched, so blank lines, comments and spacing
 	// survive exactly. Re-encoding the whole node tree (below) is correct but
-	// lets yaml.v3 rewrite blank lines - dropping bare ones, adding others - so
-	// it is reserved for structural changes (new keys, removals, list resizes).
-	if !remove && format == "yaml" {
-		if out, ok := setScalarInPlace(doc, path, value); ok {
+	// lets the encoder restate the entire document - yaml.v3 rewrites blank
+	// lines, and JSON re-emission normalizes indentation, number literals and
+	// string escapes - so it is reserved for structural changes (new keys,
+	// removals, list resizes).
+	if !remove {
+		if out, ok := setScalarInPlace(doc, path, value, format); ok {
 			return out, nil
 		}
 	}
@@ -176,7 +179,7 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 
 	if format == "json" {
 		var b strings.Builder
-		if err := emitJSON(&b, top, 0); err != nil {
+		if err := emitJSON(&b, top, 0, strings.Repeat(" ", detectIndent(doc))); err != nil {
 			return "", err
 		}
 		b.WriteString("\n")
@@ -276,7 +279,10 @@ func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (str
 // mapping/sequence/alias, the scalar spans multiple lines or uses a block style
 // (|, >), or the new value is not a scalar. This is what keeps a one-value edit
 // a one-line diff.
-func setScalarInPlace(doc []byte, path string, value any) (string, bool) {
+//
+// format picks how the replacement token is written - a YAML scalar or a JSON
+// literal - so a JSON file gets JSON quoting and escaping rather than YAML's.
+func setScalarInPlace(doc []byte, path string, value any, format string) (string, bool) {
 	if len(doc) == 0 {
 		return "", false
 	}
@@ -322,11 +328,24 @@ func setScalarInPlace(doc []byte, path string, value any) (string, bool) {
 	}
 	line := lines[li]
 	col0 := cur.Column - 1
-	end, ok := scalarTokenExtent(line, col0, cur.Style)
+	var (
+		end int
+		ok  bool
+	)
+	if format == "json" {
+		end, ok = jsonTokenExtent(line, col0, cur.Style)
+	} else {
+		end, ok = scalarTokenExtent(line, col0, cur.Style)
+	}
 	if !ok {
 		return "", false
 	}
-	token, ok := renderScalarToken(value, cur.Style)
+	var token string
+	if format == "json" {
+		token, ok = renderJSONToken(value, cur)
+	} else {
+		token, ok = renderScalarToken(value, cur.Style)
+	}
 	if !ok {
 		return "", false
 	}
@@ -414,6 +433,77 @@ func renderScalarToken(value any, style yaml.Style) (string, bool) {
 	return tok, true
 }
 
+// jsonTokenExtent is scalarTokenExtent for JSON syntax. A quoted string ends at
+// its closing quote exactly as in YAML, but an unquoted token (a number, true,
+// false, null) is terminated by the structural characters around it rather than
+// by end of line: "port": 8080, has to yield 8080 and leave the comma alone.
+func jsonTokenExtent(line string, col0 int, style yaml.Style) (int, bool) {
+	if col0 < 0 || col0 > len(line) {
+		return 0, false
+	}
+	if style == yaml.DoubleQuotedStyle || style == yaml.SingleQuotedStyle {
+		return scalarTokenExtent(line, col0, style)
+	}
+	for i := col0; i < len(line); i++ {
+		switch line[i] {
+		case ',', '}', ']', ' ', '\t', '\r':
+			if i == col0 {
+				return 0, false // empty token: not a scalar we can swap
+			}
+			return i, true
+		}
+	}
+	if col0 >= len(line) {
+		return 0, false
+	}
+	return len(line), true
+}
+
+// renderJSONToken encodes value as a single JSON literal to splice in place of
+// the scalar at node.
+//
+// Two things it deliberately does NOT do. It does not escape HTML: Go's default
+// marshaller turns "AT&T" into "AT&T", which is the same string to a parser
+// and a whole changed line to the person reviewing the diff. And it does not
+// re-type a quoted value: a JSON config that stores a port as "8080" keeps the
+// quotes when the port changes, because dropping them changes the file's shape
+// for whatever reads it.
+func renderJSONToken(value any, node *yaml.Node) (string, bool) {
+	quoted := node.Style == yaml.DoubleQuotedStyle || node.Style == yaml.SingleQuotedStyle
+	switch v := value.(type) {
+	case nil, []any, map[string]any, map[any]any:
+		return "", false
+	case string:
+		return jsonString(v), true
+	case bool:
+		if quoted {
+			return jsonString(fmt.Sprintf("%v", v)), true
+		}
+		return fmt.Sprintf("%v", v), true
+	default:
+		s := fmt.Sprintf("%v", v)
+		if quoted {
+			return jsonString(s), true
+		}
+		enc, err := json.Marshal(value)
+		if err != nil {
+			return "", false
+		}
+		return string(enc), true
+	}
+}
+
+// jsonString quotes s as a JSON string without HTML escaping.
+func jsonString(s string) string {
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		return strconv.Quote(s)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
 // EditDoc parses a YAML document, hands the root mapping node to fn for a
 // surgical structural mutation (beyond what a single path edit expresses),
 // and re-encodes with the document's own indentation. It is the same
@@ -489,7 +579,7 @@ func ensureDocRoot(doc *yaml.Node) *yaml.Node {
 // resolve. Read-only: never mutates the tree.
 func descend(cur *yaml.Node, seg Seg) *yaml.Node {
 	cur = resolveAlias(cur)
-	if seg.Key != "" {
+	if seg.Key != "" || seg.Quoted {
 		cur = mapValue(cur, seg.Key)
 		if cur == nil {
 			return nil
@@ -551,7 +641,16 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 	for i, seg := range segs {
 		last := i == len(segs)-1
 
-		if seg.Key != "" {
+		// An unquoted empty key is not a key, it is a malformed path - the
+		// residue of a segment that split where it should not have. Writing
+		// through it used to replace whatever stood at that point with an empty
+		// container, destroying the very data the edit was meant to leave
+		// alone, so it is refused before anything is touched.
+		if seg.Key == "" && !seg.Quoted && seg.Index < 0 && seg.SelKey == "" {
+			return fmt.Errorf("path has an empty step; a key containing '.' must be written as ['the.key']")
+		}
+
+		if seg.Key != "" || seg.Quoted {
 			if seg.Index < 0 && seg.SelKey == "" {
 				// plain key step
 				if last {
@@ -559,12 +658,22 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 					return nil
 				}
 				next := segs[i+1]
-				wantSeq := next.Key == "" // a bare [n]/[k=v] follows on the same node
-				cur = childContainer(cur, seg.Key, wantSeq)
+				// A bare [n]/[k=v] follows on the same node. A quoted key is
+				// never that, even when the key itself is empty.
+				wantSeq := next.Key == "" && !next.Quoted
+				child, err := childContainer(cur, seg.Key, wantSeq)
+				if err != nil {
+					return err
+				}
+				cur = child
 				continue
 			}
 			// key + bracket on one segment: descend into the sequence under key
-			cur = childContainer(cur, seg.Key, true)
+			child, err := childContainer(cur, seg.Key, true)
+			if err != nil {
+				return err
+			}
+			cur = child
 		}
 
 		if cur.Kind != yaml.SequenceNode && seg.Key == "" {
@@ -611,7 +720,16 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 
 // childContainer finds (or creates) the container value for key. A value of
 // the wrong kind is replaced so the path can continue.
-func childContainer(m *yaml.Node, key string, wantSeq bool) *yaml.Node {
+func childContainer(m *yaml.Node, key string, wantSeq bool) (*yaml.Node, error) {
+	// Only a mapping has keys. Walking a sequence or a scalar two entries at a
+	// time and appending a key/value pair to it produced a document that no
+	// longer parsed as what it was, from a path that was merely wrong.
+	if m.Kind == 0 {
+		m.Kind = yaml.MappingNode
+	}
+	if m.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("path expects a mapping at %q but the file has a %s there", key, kindName(m.Kind))
+	}
 	kind := yaml.MappingNode
 	if wantSeq {
 		kind = yaml.SequenceNode
@@ -620,17 +738,38 @@ func childContainer(m *yaml.Node, key string, wantSeq bool) *yaml.Node {
 		if m.Content[i].Value == key {
 			v := resolveAlias(m.Content[i+1])
 			if v.Kind != kind {
+				// Replacing a populated node of another kind would delete
+				// whatever it held. Only an empty or null placeholder is
+				// safe to grow into the container the path needs.
+				if v.Kind != 0 && len(v.Content) > 0 || (v.Kind == yaml.ScalarNode && v.Tag != "!!null" && v.Value != "") {
+					return nil, fmt.Errorf("path expects a %s at %q but the file has a %s there", kindName(kind), key, kindName(v.Kind))
+				}
 				nv := &yaml.Node{Kind: kind}
 				m.Content[i+1] = nv
-				return nv
+				return nv, nil
 			}
-			return v
+			return v, nil
 		}
 	}
 	k := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key}
 	v := &yaml.Node{Kind: kind}
 	m.Content = append(m.Content, k, v)
-	return v
+	return v, nil
+}
+
+// kindName names a node kind in the words a config file's author would use.
+func kindName(k yaml.Kind) string {
+	switch k {
+	case yaml.MappingNode:
+		return "block of keys"
+	case yaml.SequenceNode:
+		return "list"
+	case yaml.ScalarNode:
+		return "single value"
+	case yaml.AliasNode:
+		return "reference"
+	}
+	return "nothing"
 }
 
 // setChild sets key to val in mapping m, replacing an existing value (and
@@ -667,7 +806,7 @@ func removeAt(root *yaml.Node, segs []Seg) {
 		last := i == len(segs)-1
 
 		container := cur
-		if seg.Key != "" {
+		if seg.Key != "" || seg.Quoted {
 			if seg.Index < 0 && seg.SelKey == "" {
 				if last {
 					if !removeChild(container, seg.Key) {
@@ -739,15 +878,17 @@ func removeChild(m *yaml.Node, key string) bool {
 // --- JSON emission -----------------------------------------------------------
 
 // emitJSON serializes a yaml.Node tree as pretty-printed JSON, preserving the
-// tree's key order. Scalars are typed by their YAML tag.
-func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
+// tree's key order. Scalars are typed by their YAML tag, and step is the
+// document's own indentation so a structural edit does not re-indent every
+// line of a file that happens not to use two spaces.
+func emitJSON(b *strings.Builder, n *yaml.Node, depth int, step string) error {
 	n = resolveAlias(n)
 	if n == nil {
 		b.WriteString("null")
 		return nil
 	}
-	indent := strings.Repeat("  ", depth)
-	child := strings.Repeat("  ", depth+1)
+	indent := strings.Repeat(step, depth)
+	child := strings.Repeat(step, depth+1)
 
 	switch n.Kind {
 	case yaml.MappingNode:
@@ -760,14 +901,10 @@ func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
 			if i > 0 {
 				b.WriteString(",\n")
 			}
-			key, err := json.Marshal(n.Content[i].Value)
-			if err != nil {
-				return err
-			}
 			b.WriteString(child)
-			b.Write(key)
+			b.WriteString(jsonString(n.Content[i].Value))
 			b.WriteString(": ")
-			if err := emitJSON(b, n.Content[i+1], depth+1); err != nil {
+			if err := emitJSON(b, n.Content[i+1], depth+1, step); err != nil {
 				return err
 			}
 		}
@@ -783,7 +920,7 @@ func emitJSON(b *strings.Builder, n *yaml.Node, depth int) error {
 				b.WriteString(",\n")
 			}
 			b.WriteString(child)
-			if err := emitJSON(b, el, depth+1); err != nil {
+			if err := emitJSON(b, el, depth+1, step); err != nil {
 				return err
 			}
 		}
@@ -801,6 +938,15 @@ func emitJSONScalar(b *strings.Builder, n *yaml.Node) error {
 	case "!!null":
 		b.WriteString("null")
 	case "!!bool", "!!int", "!!float":
+		// Write the literal the file already carried rather than a value decoded
+		// and re-formatted: round-tripping through float64 turns 1.50 into 1.5
+		// and 1e3 into 1000, which is a changed line for every untouched number
+		// in the document. The token is only normalized when it is not already
+		// valid JSON (YAML accepts forms JSON does not, such as 0x1f or .5).
+		if json.Valid([]byte(n.Value)) {
+			b.WriteString(n.Value)
+			return nil
+		}
 		var v any
 		if err := n.Decode(&v); err != nil {
 			return err
@@ -811,11 +957,7 @@ func emitJSONScalar(b *strings.Builder, n *yaml.Node) error {
 		}
 		b.Write(enc)
 	default:
-		enc, err := json.Marshal(n.Value)
-		if err != nil {
-			return err
-		}
-		b.Write(enc)
+		b.WriteString(jsonString(n.Value))
 	}
 	return nil
 }

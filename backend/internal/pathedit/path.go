@@ -14,6 +14,10 @@ type Seg struct {
 	Index  int    // sequence position, -1 when absent
 	SelKey string // selector key for [k=v], empty when absent
 	SelVal string // selector value for [k=v]
+	// Quoted marks a key that arrived in the ['…'] form. It is what tells a
+	// bare index apart from a deliberately empty key, so the engine can refuse
+	// the first and honor the second instead of guessing from Key == "".
+	Quoted bool
 }
 
 // DocIndex splits an optional leading document selector from a YAML/JSON path.
@@ -42,6 +46,16 @@ func DocIndex(path string) (idx int, rest string, ok bool) {
 // into segments. The leading "$." / "$" is optional. A leading document
 // selector ("[N]$…") is stripped first. XML paths use XPath and are not parsed
 // here.
+//
+// A key that the dotted form cannot express - one containing "." or brackets,
+// or the empty string - is written quoted inside brackets:
+//
+//	$.value['query.dependencies'].dagMaxNumService
+//
+// Without that spelling, "query.dependencies" reads as two steps: the path
+// resolves to nothing, and writing it builds a nested `query: {dependencies:
+// {...}}` on top of the real key. Both failures are silent, which is why the
+// quoted form exists rather than a rule that such keys are unsupported.
 func ParsePath(path string) ([]Seg, error) {
 	if _, rest, ok := DocIndex(path); ok {
 		path = rest
@@ -62,37 +76,91 @@ func ParsePath(path string) ([]Seg, error) {
 			if i < 0 {
 				break
 			}
-			j := strings.Index(key[i:], "]")
+			j := BracketEnd(key, i)
 			if j < 0 {
 				return nil, fmt.Errorf("unclosed '[' in path segment %q", part)
 			}
-			brackets = append(brackets, key[i+1:i+j])
-			key = key[:i] + key[i+j+1:]
+			brackets = append(brackets, key[i+1:j])
+			key = key[:i] + key[j+1:]
 		}
+		// The dotted key, when the part had one ("servers[2]" -> "servers").
 		seg := Seg{Key: key, Index: -1}
-		for n, b := range brackets {
-			// Only the first bracket can ride on this segment; further
-			// brackets ("a[0][1]") become key-less segments of their own.
-			target := &seg
-			if n > 0 {
-				segs = append(segs, *target)
-				seg = Seg{Index: -1}
-				target = &seg
+		started := key != ""
+		flush := func() {
+			segs = append(segs, seg)
+			seg = Seg{Index: -1}
+			started = false
+		}
+		for _, b := range brackets {
+			// A QUOTED bracket is a key, not a subscript: ['a.b'] addresses the
+			// single key "a.b". It always begins a step of its own, because a
+			// key never rides on the same node as the key before it.
+			if q, isQuoted := UnquoteKey(b); isQuoted {
+				if started {
+					flush()
+				}
+				seg = Seg{Key: q, Index: -1, Quoted: true}
+				flush()
+				continue
+			}
+			// A subscript rides on the step it follows; a second one ("a[0][1]")
+			// starts a key-less step of its own.
+			if seg.Index >= 0 || seg.SelKey != "" {
+				flush()
 			}
 			if k, v, ok := strings.Cut(b, "="); ok {
-				target.SelKey = strings.TrimSpace(k)
-				target.SelVal = strings.TrimSpace(v)
+				seg.SelKey = strings.TrimSpace(k)
+				seg.SelVal = strings.TrimSpace(v)
+				started = true
 				continue
 			}
 			idx, err := strconv.Atoi(strings.TrimSpace(b))
 			if err != nil || idx < 0 {
 				return nil, fmt.Errorf("invalid index %q in path segment %q", b, part)
 			}
-			target.Index = idx
+			seg.Index = idx
+			started = true
 		}
-		segs = append(segs, seg)
+		if started || len(brackets) == 0 {
+			segs = append(segs, seg)
+		}
 	}
 	return segs, nil
+}
+
+// UnquoteKey reads the contents of a bracket as a quoted key, reporting
+// whether it was quoted at all. Only the outer quotes are stripped; a key
+// containing a quote of the other kind survives intact.
+func UnquoteKey(b string) (string, bool) {
+	if len(b) >= 2 {
+		q := b[0]
+		if (q == '\'' || q == '"') && b[len(b)-1] == q {
+			inner := b[1 : len(b)-1]
+			return strings.ReplaceAll(inner, `\`+string(q), string(q)), true
+		}
+	}
+	return "", false
+}
+
+// QuoteKey renders one mapping key as a path segment, quoting it when the
+// dotted form cannot carry it. Every producer of a path (the scanners, the
+// path picker) goes through here, so a key with a dot in it is spelled the
+// same way everywhere and the engine can always find it again.
+func QuoteKey(key string) string {
+	if key != "" && !strings.ContainsAny(key, ".[]'\"") {
+		return key
+	}
+	return "['" + strings.ReplaceAll(key, `'`, `\'`) + "']"
+}
+
+// JoinKey appends a mapping key to a path, choosing the separator the key's
+// spelling requires: a quoted key brackets onto the path with no dot.
+func JoinKey(path, key string) string {
+	seg := QuoteKey(key)
+	if strings.HasPrefix(seg, "[") {
+		return path + seg
+	}
+	return path + "." + seg
 }
 
 // splitDots splits on '.' outside brackets, so selector values may contain
@@ -100,8 +168,26 @@ func ParsePath(path string) ([]Seg, error) {
 func splitDots(s string) []string {
 	var parts []string
 	depth, start := 0, 0
-	for i, r := range s {
-		switch r {
+	var quote byte // the quote character currently open inside a bracket, 0 when none
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			// Inside ['…'] nothing is structural: a key is allowed to contain
+			// dots and brackets, which is the whole reason for quoting it.
+			if c == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			if depth > 0 {
+				quote = c
+			}
 		case '[':
 			depth++
 		case ']':
@@ -117,4 +203,30 @@ func splitDots(s string) []string {
 	}
 	parts = append(parts, s[start:])
 	return parts
+}
+
+// BracketEnd returns the index of the ']' that closes the '[' at open,
+// skipping over any quoted key inside it.
+func BracketEnd(s string, open int) int {
+	var quote byte
+	for i := open + 1; i < len(s); i++ {
+		c := s[i]
+		if quote != 0 {
+			if c == '\\' && i+1 < len(s) {
+				i++
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		switch c {
+		case '\'', '"':
+			quote = c
+		case ']':
+			return i
+		}
+	}
+	return -1
 }

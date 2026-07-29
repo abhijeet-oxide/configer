@@ -27,6 +27,50 @@ export interface ChangeDesc {
   /** only for value-shaped edits, so callers can show before -> after */
   before?: string;
   after?: string;
+  /** a structural change that moves several named fields at once (instance
+   *  metadata). "Metadata updated" tells an approver nothing they can act on;
+   *  these are the fields, each with what it holds now and what it becomes. */
+  fields?: { label: string; before: string; after: string }[];
+}
+
+/** Instance metadata fields, in the order they read, with the words the UI
+ *  uses for them elsewhere. */
+const INSTANCE_FIELDS: { key: string; label: string }[] = [
+  { key: "environment", label: "Environment" },
+  { key: "region", label: "Region" },
+  { key: "zone", label: "Zone" },
+  { key: "site", label: "Site" },
+  { key: "softwareVersion", label: "Software version" },
+  { key: "versionName", label: "Version name" },
+  { key: "status", label: "Status" },
+  { key: "labels", label: "Labels" },
+];
+
+// instanceFields pairs the patch (what the edit sets) with the instance's
+// values at the time it was staged (what it holds today), so a reviewer sees
+// the move rather than the destination.
+function instanceFields(oldV: unknown, newV: unknown): ChangeDesc["fields"] {
+  const before = (oldV ?? {}) as Record<string, unknown>;
+  const after = (newV ?? {}) as Record<string, unknown>;
+  const out: NonNullable<ChangeDesc["fields"]> = [];
+  for (const f of INSTANCE_FIELDS) {
+    if (!(f.key in after) || after[f.key] == null) continue;
+    const b = fmtValue(plain(before[f.key]));
+    const a = fmtValue(plain(after[f.key]));
+    if (b === a) continue;
+    out.push({ label: f.label, before: b, after: a });
+  }
+  return out.length ? out : undefined;
+}
+
+// plain renders a labels map as key=value pairs so it compares as one string.
+function plain(v: unknown): unknown {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    return Object.entries(v as Record<string, unknown>)
+      .map(([k, val]) => `${k}=${val}`)
+      .join(", ");
+  }
+  return v;
 }
 
 export function describeChange(it: ChangeItem): ChangeDesc {
@@ -52,12 +96,16 @@ export function describeChange(it: ChangeItem): ChangeDesc {
     };
   }
   if (action === "update-instance") {
+    const fields = instanceFields(it.old, it.new);
     return {
       tag: "Instance settings",
       tone: "review",
       kind: "instance",
       subject: it.instance,
-      what: "metadata updated (environment, region or version)",
+      what: fields
+        ? `${fields.length} setting${fields.length === 1 ? "" : "s"} changed`
+        : "metadata updated (environment, region or version)",
+      fields,
     };
   }
   if (action === "edit-file") {

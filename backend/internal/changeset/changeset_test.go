@@ -520,59 +520,64 @@ func TestSubmitValidation(t *testing.T) {
 	}
 }
 
-// Branch names read the way the person named them. The disambiguating suffix
-// exists, but only when the name is genuinely taken - an earlier version put
-// the change id on every branch, which made "feature/bump-prod-memory-cr-7" the
-// normal case and asked every reader to know what cr-7 was.
-func TestBranchBaseIsReadable(t *testing.T) {
-	if got := branchBase("Increase prod memory limit", "alice"); got != "feature/alice/increase-prod-memory-limit" {
-		t.Fatalf("got %q", got)
+// A branch name answers three questions before anyone opens it: what kind of
+// change this is, whose it is, and which change request. The words the author
+// used follow, so it still reads as English.
+func TestBranchBaseNamesTheChange(t *testing.T) {
+	cr := func(n int, title, category string) *change.ChangeRequest {
+		return &change.ChangeRequest{Number: n, Title: title, Category: category}
 	}
-	// No real identity (the single-user tool): the title alone, no noise.
-	if got := branchBase("Increase prod memory limit", ""); got != "feature/increase-prod-memory-limit" {
-		t.Fatalf("got %q", got)
+	cases := []struct {
+		cr    *change.ChangeRequest
+		owner string
+		want  string
+	}{
+		{cr(12, "Increase prod memory limit", "hotfix"), "alice", "hotfix/alice/cr-12-increase-prod-memory-limit"},
+		{cr(3, "Increase prod memory limit", "feature"), "", "feature/cr-3-increase-prod-memory-limit"},
+		{cr(4, "Bump ports", "bugfix"), "Alice O'Brien", "bugfix/alice-o-brien/cr-4-bump-ports"},
+		// A category nobody chose does not get to masquerade as a feature.
+		{cr(5, "Tidy up", ""), "bob", "change/bob/cr-5-tidy-up"},
+		{cr(6, "Tidy up", "nonsense"), "bob", "change/bob/cr-6-tidy-up"},
 	}
-	// A login that is not ref-safe is slugified like the title is.
-	if got := branchBase("Bump ports", "Alice O'Brien"); got != "feature/alice-o-brien/bump-ports" {
-		t.Fatalf("got %q", got)
+	for _, c := range cases {
+		if got := branchBase(c.cr, c.owner); got != c.want {
+			t.Errorf("branchBase(%+v, %q) = %q, want %q", c.cr, c.owner, got, c.want)
+		}
 	}
-	// An unnamed draft still reads as unnamed rather than as an empty ref.
+	// An unnamed draft is still a well-formed ref: the number carries it.
 	for _, title := range []string{"", "Draft changes", "unnamed"} {
-		if got := branchBase(title, "bob"); got != "feature/bob/unnamed" {
+		if got := branchBase(cr(9, title, "feature"), "bob"); got != "feature/bob/cr-9" {
 			t.Fatalf("title %q gave %q", title, got)
 		}
 	}
 	// A pasted paragraph is capped to something a human can read.
-	long := branchBase(strings.Repeat("very long title ", 20), "bob")
-	if len(long) > len("feature/bob/")+maxSlug {
+	long := branchBase(cr(1, strings.Repeat("very long title ", 20), "feature"), "bob")
+	if len(long) > len("feature/bob/cr-1-")+maxSlug {
 		t.Fatalf("long title was not capped: %q", long)
 	}
 }
 
-// The suffix appears only when the branch is really taken, and then it is the
-// smallest thing that frees the name.
+// The CR number makes a branch unique by construction, so the disambiguating
+// suffix is a backstop for a ref that exists for some other reason (a hand-made
+// branch, a re-submitted change) rather than the everyday case it used to be.
 func TestBranchForDisambiguatesOnlyOnConflict(t *testing.T) {
 	workDir, _, svc := fixture(t)
 	ctx := context.Background()
-	cr := &change.ChangeRequest{ID: 7, Title: "Bump prod memory"}
+	cr := &change.ChangeRequest{ID: 7, Number: 7, Title: "Bump prod memory", Category: "feature"}
 
-	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory" {
+	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/cr-7-bump-prod-memory" {
 		t.Fatalf("a free name was decorated anyway: %q", got)
 	}
 
 	// Take the name for real, and the next one steps around it.
-	sh(t, workDir, "git", "branch", "feature/alice/bump-prod-memory")
-	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory-2" {
+	sh(t, workDir, "git", "branch", "feature/alice/cr-7-bump-prod-memory")
+	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/cr-7-bump-prod-memory-2" {
 		t.Fatalf("a taken name was not disambiguated: %q", got)
-	}
-	sh(t, workDir, "git", "branch", "feature/alice/bump-prod-memory-2")
-	if got := svc.branchFor(ctx, cr, "alice"); got != "feature/alice/bump-prod-memory-3" {
-		t.Fatalf("second collision: %q", got)
 	}
 
 	// A different person is not blocked by a colleague's branch at all, which
 	// is the whole reason the owner segment is there.
-	if got := svc.branchFor(ctx, cr, "bob"); got != "feature/bob/bump-prod-memory" {
+	if got := svc.branchFor(ctx, cr, "bob"); got != "feature/bob/cr-7-bump-prod-memory" {
 		t.Fatalf("bob was blocked by alice's branch: %q", got)
 	}
 }

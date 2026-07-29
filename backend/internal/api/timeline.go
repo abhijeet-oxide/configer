@@ -141,6 +141,11 @@ type TimelineEntry struct {
 	Instances []string       `json:"instances,omitempty"` // instances whose values moved
 	Versions  []VersionMove  `json:"versions,omitempty"`
 	Structure []InstanceMove `json:"structure,omitempty"`
+	// Files is how many repository files moved between this snapshot and the
+	// one it is compared against. The value counts belong to the configuration
+	// model; this is the same change measured in the repository, and a history
+	// row wants both ("3 values, 2 files").
+	Files int `json:"files"`
 }
 
 // diffStates compares two snapshot states and returns the per-cell changes.
@@ -342,6 +347,9 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request) {
 			changes := diffStates(prev, cur)
 			e.Versions, e.Structure = versions, structure
 			e.Kind, e.Summary, e.Instances = classify(changes, versions, structure)
+			if fcs, derr := s.Backend.Diff(r.Context(), e.Previous, c.SHA); derr == nil {
+				e.Files = len(fcs)
+			}
 			break
 		}
 		entries = append(entries, e)

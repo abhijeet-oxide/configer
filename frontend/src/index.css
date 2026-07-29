@@ -2269,3 +2269,388 @@ body {
     transform: none;
   }
 }
+
+/* ------------------------------------------------------- value diff (ValueDiff)
+   Before/after highlighting for a single value. Removed text is red and struck,
+   added text is green - the vocabulary every comparison tool already uses, so a
+   reviewer reads it without being taught. A long value is condensed to its
+   edited stretches (the "…" is identical text, not truncation of the change),
+   and the full pair is one click away. */
+.vd-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.vd-pair-stacked {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+}
+.vd-arrow {
+  font-size: 11px;
+  opacity: 0.45;
+  flex-shrink: 0;
+}
+.vd-pair-stacked .vd-arrow {
+  display: none;
+}
+.vd-side {
+  font-size: 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vd-condensed {
+  display: inline-block;
+  max-width: 100%;
+}
+.vd-empty {
+  font-size: 12px;
+  opacity: 0.45;
+  font-style: italic;
+}
+.vd-wrap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.vd-more {
+  padding: 0;
+  height: auto;
+  font-size: 11.5px;
+  flex-shrink: 0;
+}
+
+/* The marks themselves. `mark` is the right element (it IS highlighted text),
+   but its default yellow has to go. */
+mark.vd-del,
+mark.vd-ins {
+  padding: 0 2px;
+  border-radius: 3px;
+  background: transparent;
+}
+mark.vd-del {
+  background: var(--c-danger-bg);
+  color: var(--c-danger);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+mark.vd-ins {
+  background: var(--c-ok-bg);
+  color: var(--c-ok);
+}
+
+/* Expanded view: the two values as blocks, each scrollable on its own so a
+   2,000-character value never widens the dialog. */
+.vd-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vd-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.vd-block {
+  position: relative;
+  padding: 10px 12px 10px 62px;
+  border-radius: var(--r-md);
+  border: 1px solid var(--border);
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vd-block-before {
+  background: var(--c-danger-bg);
+  border-color: var(--c-danger-bd);
+}
+.vd-block-after {
+  background: var(--c-ok-bg);
+  border-color: var(--c-ok-bd);
+}
+.vd-block-tag {
+  position: absolute;
+  left: 12px;
+  top: 10px;
+  font-size: 10px;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+/* Inside a tinted block the marks only need the text color: a second fill on
+   top of the block's own tint reads as a highlight-on-a-highlight. */
+.vd-block mark.vd-del,
+.vd-block mark.vd-ins {
+  background: transparent;
+  font-weight: 600;
+}
+
+@media (max-width: 560px) {
+  .vd-block {
+    padding-left: 12px;
+    padding-top: 26px;
+  }
+}
+
+/* ---------------------------------------------- big value editor (cells.tsx)
+   A long string does not belong in a 40px cell. The inline editor keeps a
+   discreet expand control, and the expanded editor gets the room to read the
+   value, the validation message in words, and a diff of what is about to
+   change before it is saved. */
+.cell-expand {
+  opacity: 0.5;
+  transition: opacity var(--dur-hover) var(--ease);
+}
+.cell-expand:hover,
+.cell-expand:focus-visible {
+  opacity: 1;
+}
+.big-edit-foot {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 6px;
+}
+.big-edit-diff {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ------------------------------------------------- git graph (EvolutionTimeline)
+   A history is something you SCAN, so a row is one line tall and reads left to
+   right like `git log --graph --oneline`: node, what it was, who and when, the
+   commit id. The rail beside it is a sibling, not a background, and no row
+   carries a margin - that spacing is what used to break the trunk into pieces.
+   Everything that does not fit on the line lives in the panel a row opens. */
+.gg {
+  /* Lane colours. Lane 0 is the line everything is published to and takes the
+     brand's own hue; the rest are distinct from it and from each other, so a
+     branch is identified by its colour and not by counting lanes across. */
+  --gg-lane-0: var(--c-base);
+  --gg-lane-1: #0ea5e9;
+  --gg-lane-2: #f59e0b;
+  --gg-lane-3: #e0679a;
+  --gg-lane-4: #14b8a6;
+  --gg-lane-5: #84cc16;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+  background: var(--surface);
+}
+.gg-row {
+  --gg-accent: var(--c-base);
+  position: relative;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 2px;
+  min-width: 0;
+  cursor: pointer;
+  /* The accent says what KIND of change the row is - a version move, an
+     instance added, a draft, a review - so the column reads as a status stripe
+     before a single word is read. Quiet at rest, solid when the row is in play. */
+  border-left: 2px solid var(--gg-accent);
+  transition: background var(--dur-hover) var(--ease), opacity var(--dur-hover) var(--ease);
+}
+.gg-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 -2px;
+  width: 2px;
+  background: var(--surface);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.gg-row:hover::before,
+.gg-row.is-open::before {
+  opacity: 0;
+}
+.gg-row:hover,
+.gg-row:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+.gg-row.is-open {
+  background: var(--hover);
+}
+/* An open change has not landed anywhere, so its row is drawn as a proposal:
+   a dashed underline rather than the solid rule a commit gets. */
+.gg-row-open {
+  border-bottom: 1px dashed var(--border);
+}
+.gg-caret {
+  width: 12px;
+  flex-shrink: 0;
+  font-size: 9px;
+  opacity: 0.5;
+}
+.gg-kind {
+  display: inline-flex;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.gg-state {
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  border: 1px solid currentColor;
+  line-height: 1.4;
+}
+.gg-subject {
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.gg-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+.gg-tag {
+  font-size: 10.5px;
+  line-height: 16px;
+  margin-inline-end: 0;
+  flex-shrink: 0;
+}
+.gg-ref,
+.gg-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex-shrink: 0;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: var(--c-review-bg);
+  color: var(--c-review);
+  border: 1px solid var(--c-review-bd);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gg-branch.is-muted {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text-3);
+  font-style: italic;
+}
+/* Size of the change, in both currencies: values moved and files touched. */
+.gg-counts {
+  display: inline-flex;
+  gap: 3px;
+  flex-shrink: 0;
+}
+.gg-count {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  background: var(--c-pending-bg);
+  color: var(--c-pending);
+}
+.gg-count-files {
+  background: var(--c-review-bg);
+  color: var(--c-review);
+}
+.gg-author {
+  font-size: 12px;
+  color: var(--text-2);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.gg-when {
+  font-size: 11.5px;
+  color: var(--text-3);
+  flex-shrink: 0;
+  white-space: nowrap;
+  min-width: 62px;
+  text-align: right;
+}
+.gg-sha {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+  min-width: 58px;
+  text-align: center;
+  cursor: pointer;
+  transition: background var(--dur-hover) var(--ease), color var(--dur-hover) var(--ease);
+}
+.gg-sha:hover,
+.gg-sha:focus-visible {
+  background: var(--c-review-bg);
+  color: var(--c-review);
+  outline: none;
+}
+.gg-sha.is-copied {
+  background: var(--c-ok-bg);
+  color: var(--c-ok);
+  border-color: var(--c-ok-bd);
+}
+
+/* The opened row. It is inside the same column as the row, so the rail draws
+   straight past it and the graph stays continuous while a row is open. */
+.gg-detail {
+  padding: 10px 12px 14px 14px;
+  background: var(--hover);
+  border-bottom: 1px solid var(--border);
+}
+.gg-detail-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.gg-detail-msg {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+  flex: 1;
+}
+.gg-detail-meta {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.gg-detail-note {
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+/* Below the phone tier the row sheds what it can spare, newest-first ordering
+   and the subject being the things worth keeping. */
+@media (max-width: 720px) {
+  .gg-author,
+  .gg-counts,
+  .gg-ref {
+    display: none;
+  }
+}

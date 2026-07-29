@@ -73,31 +73,56 @@ func (p Policy) approvalsNeeded() int {
 // path limits once git writes it under .git/refs.
 const maxSlug = 60
 
-// branchBase is the branch a change request WANTS: the person who made it and
-// what they called it, and nothing else.
+// Categories a change can be filed under. The first segment of every branch is
+// one of these, so `git branch --list 'hotfix/*'` answers a real question.
+var branchCategories = map[string]bool{
+	"hotfix": true, "feature": true, "bugfix": true,
+	"maintenance": true, "security": true, "other": true,
+}
+
+// categorySegment is the branch's leading segment: the kind of change it is.
+// An unrecognized or missing category files under "change" rather than
+// pretending the change is a feature.
+func categorySegment(category string) string {
+	c := slugify(category)
+	if branchCategories[c] {
+		return c
+	}
+	return "change"
+}
+
+// branchBase is the branch a change request gets:
 //
-//	feature/alice/increase-prod-memory-limit
+//	hotfix/alice/cr-12-restore-prod-memory-limit
 //
-// Two people reaching for the same words is the ordinary case in one
-// application, and the owner segment separates them without anyone thinking
-// about it - it is also the convention most teams already use by hand, so the
-// branch list stays readable to someone who has never seen Configer.
+// Three things in the order somebody scanning `git branch -a` wants them: what
+// kind of change it is, who owns it, and which change request it is - followed
+// by the words the author used, so the branch is still readable as English.
+//
+// The CR number is what makes the name unique, which matters more than it
+// sounds: an earlier scheme named branches from the title alone and had to ask
+// git whether each one was taken, so the same change could land on a different
+// branch depending on what else existed at the time. Now a change request and
+// its branch are the same fact written twice.
 //
 // owner is empty when there is no real identity to name (the single-user tool
-// has exactly one person, and stamping their name on every branch is noise), in
-// which case the branch is simply feature/<title>.
-func branchBase(title, owner string) string {
-	slug := slugify(title)
+// has exactly one person, and stamping their name on every branch is noise).
+func branchBase(cr *change.ChangeRequest, owner string) string {
+	slug := slugify(cr.Title)
 	if len(slug) > maxSlug {
 		slug = strings.Trim(slug[:maxSlug], "-")
 	}
-	if slug == "" || slug == "unnamed" || slug == "draft-changes" {
-		slug = "unnamed"
+	if slug == "unnamed" || slug == "draft-changes" {
+		slug = ""
+	}
+	name := fmt.Sprintf("cr-%d", cr.Number)
+	if slug != "" {
+		name += "-" + slug
 	}
 	if who := slugify(owner); who != "" {
-		return "feature/" + who + "/" + slug
+		return categorySegment(cr.Category) + "/" + who + "/" + name
 	}
-	return "feature/" + slug
+	return categorySegment(cr.Category) + "/" + name
 }
 
 // maxBranchAttempts bounds the search for a free name. Reaching it means
@@ -115,7 +140,7 @@ const maxBranchAttempts = 50
 // ref lookup, and the answer is almost always no, so almost every branch now
 // reads exactly as the person named it.
 func (s *Service) branchFor(ctx context.Context, cr *change.ChangeRequest, owner string) string {
-	base := branchBase(cr.Title, owner)
+	base := branchBase(cr, owner)
 	if !s.Backend.BranchExists(ctx, base) {
 		return base
 	}
@@ -128,6 +153,21 @@ func (s *Service) branchFor(ctx context.Context, cr *change.ChangeRequest, owner
 	// Nothing free in fifty tries: fall back to the id, which is unique per
 	// application by construction.
 	return fmt.Sprintf("%s-cr-%d", base, cr.ID)
+}
+
+// nextNumber is the CR number to hand the change being submitted: one past the
+// highest ever issued. It is derived from the stored change requests rather
+// than kept as a counter, so it survives an import and cannot drift out of step
+// with what the list actually shows. Submits are serialized by the caller's
+// tree lock, so reading and using it is not a race.
+func (s *Service) nextNumber() int {
+	high := 0
+	for _, cr := range s.Store.List() {
+		if cr.Number > high {
+			high = cr.Number
+		}
+	}
+	return high + 1
 }
 
 // NameConflict is an existing change request that already answers to a name.
@@ -173,10 +213,20 @@ func (s *Service) FindNameConflict(title string, exceptID int) *NameConflict {
 // PlannedBranch is the branch a change request would get if it were submitted
 // now under a given title. The UI shows it while the user types, so the name
 // they are choosing is never a surprise after the fact.
-func (s *Service) PlannedBranch(ctx context.Context, cr *change.ChangeRequest, title, owner string) string {
+func (s *Service) PlannedBranch(ctx context.Context, cr *change.ChangeRequest, title, category, owner string) string {
 	probe := *cr
 	if strings.TrimSpace(title) != "" {
 		probe.Title = title
+	}
+	if strings.TrimSpace(category) != "" {
+		probe.Category = category
+	}
+	// A draft has no number yet - it gets one at submit - so the preview shows
+	// the number it WOULD get. It is the branch's own name, not a decoration:
+	// showing the rest of the ref without it would be showing a different name
+	// from the one that will exist.
+	if probe.Number == 0 {
+		probe.Number = s.nextNumber()
 	}
 	return s.branchFor(ctx, &probe, owner)
 }
@@ -284,6 +334,12 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*change.Change
 			c.ID, c.Title, c.State)
 	}
 	cr.Reference, cr.Category = req.Reference, req.Category
+	// The CR number is handed out HERE, at the moment the change becomes a
+	// change request that other people will see. A draft that never got this
+	// far never consumed one, so the numbers stay dense.
+	if cr.Number == 0 {
+		cr.Number = s.nextNumber()
+	}
 	if cr.TargetBranch == "" {
 		if cr.TargetBranch, err = s.Backend.DefaultBranch(ctx); err != nil {
 			return nil, err
@@ -345,6 +401,7 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*change.Change
 	// since it made "did this persist?" depend on which method the caller had
 	// used to obtain the object.
 	return s.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
+		c.Number = cr.Number
 		c.Title, c.Description, c.Author = cr.Title, cr.Description, cr.Author
 		c.Reference, c.Category = cr.Reference, cr.Category
 		c.TargetBranch = cr.TargetBranch

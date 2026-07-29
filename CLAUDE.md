@@ -41,21 +41,32 @@ Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 - `pathedit` - THE single engine for reading/surgically editing YAML/JSON/XML
   documents. Comment-preserving yaml.Node edits; order-preserving JSON
   emission; XML via etree. Paths: dotted (`$.a.b`, `servers[2]`,
-  `rules[name=ssh].port`) or XPath for XML. Never add a second path engine.
+  `rules[name=ssh].port`) or XPath for XML. A key the dotted form cannot carry
+  (one containing `.` or brackets, or empty) is quoted:
+  `$.value['query.dependencies'].x` - build one with `pathedit.JoinKey`, never
+  by string concatenation, or the path silently resolves to nothing and writes
+  a nested block on top of the real key. Never add a second path engine.
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
   (Draft→UnderReview→Approved→Published). `changeset.Submit` takes a
   `SubmitRequest`, opens an isolated worktree, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
   `Changed-by:` trailer, pushes, opens a GitHub PR.
-- **Branch names read the way people named them**: `feature/<owner>/<slug>`
-  (owner omitted when there is no login, i.e. single-user). A suffix is added
-  ONLY when the name is really taken (`branchFor` asks `Backend.BranchExists`);
-  never decorate a free name. Two changes that are both still OPEN may not
-  share a title: `FindNameConflict` refuses it at submit, and
-  `GET /api/changes/name-check` answers the same question while the user types
-  so the clash is found before it becomes a branch. A title held by a published
-  or rejected change is reusable - history repeating is fine.
+- **A branch says what the change is**: `<category>/<owner>/cr-<n>-<slug>`
+  (owner omitted when there is no login, i.e. single-user; category is the
+  change type - hotfix/feature/bugfix/… - and `change` when none was picked).
+  A suffix is added ONLY when the ref is really taken (`branchFor` asks
+  `Backend.BranchExists`). Two changes that are both still OPEN may not share a
+  title: `FindNameConflict` refuses it at submit, and
+  `GET /api/changes/name-check` answers the same question while the user types.
+  A title held by a published or rejected change is reusable.
+- **A draft is not a change request yet.** `ChangeRequest.ID` is the store's
+  internal key, allocated when a draft first exists; `Number` is the CR number
+  people say out loud and is handed out at SUBMIT (`nextNumber`, one past the
+  highest issued). So discarded drafts leave no holes in the sequence, and a
+  draft has no number and no branch until it is sent for review - the UI says
+  "Your draft" and "branch created when you submit" rather than inventing
+  either. Undoing a draft's last item deletes the draft (`dropEmptyDraft`).
 - `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
   file beside the repo (no dependencies, right for one person); `SQLStore`
   keeps a row per change request in the platform database (a write touches one
@@ -233,7 +244,12 @@ parameters:
     category: Networking/IP     # "/" nests the tree
     type: integer               # string|integer|number|boolean|enum|ipv4|ipv6|cidr|
                                 #   hostname|port|email|url|mac|cpu|memory|duration|
-                                #   percentage|list  (cpu/memory validate positivity)
+                                #   percentage|list
+    # cpu/memory validate positivity AND units. memory always needs one (a bare
+    # number is bytes). CPU accepts both legal Kubernetes spellings (350m, 2), so
+    # the unit rule is applied to the EDIT instead: a value written in millicores
+    # may not lose the "m" (validate.UnitChange, called by the write paths once
+    # the committed value is known - same shape as the AtLeast/AtMost relations).
     # validation may also carry atLeast/atMost: <paramId> for cross-field rules
     # (a resource limit must be at least its request, and vice versa).
     scope: instance             # instance | global (lives in a shared file)

@@ -28,6 +28,7 @@ import { api, type ChangeImpact, type ChangeRequest, type ChangeState } from "..
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
+import ChangePreview from "./ChangePreview";
 import { relTime } from "./DashboardView";
 import { ApprovalsSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState, MonoChip, FadeIn } from "./ui";
@@ -68,6 +69,44 @@ function crActivity(cr: ChangeRequest): { at: string; actor: string; text: strin
 
 // CommentsPanel: the in-app discussion, plus the PR link for the Git-native
 // version of the same conversation.
+// Sha shows a commit id short enough to read and copies it in full on a click.
+// A truncated id is fine for recognizing a commit and useless for doing
+// anything with it, and re-typing forty hex characters off a screen is not a
+// thing anybody should be asked to do.
+function Sha({ label, sha }: { label: string; sha?: string }) {
+  const { message } = AntApp.useApp();
+  if (!sha) return null;
+  return (
+    <Tooltip title={`${sha} - click to copy`}>
+      <span
+        role="button"
+        tabIndex={0}
+        className="mono"
+        style={{
+          cursor: "pointer",
+          padding: "1px 7px",
+          borderRadius: "var(--r-sm)",
+          border: "1px solid var(--border)",
+          fontSize: 11.5,
+        }}
+        onClick={() => {
+          void navigator.clipboard?.writeText(sha);
+          message.success(`${label} commit copied`);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            void navigator.clipboard?.writeText(sha);
+            message.success(`${label} commit copied`);
+          }
+        }}
+      >
+        {label} {sha.slice(0, 7)}
+      </span>
+    </Tooltip>
+  );
+}
+
 function CommentsPanel({ cr }: { cr: ChangeRequest }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
@@ -369,7 +408,7 @@ export default function ApprovalsView() {
                   title: "Change request",
                   dataIndex: "id",
                   width: 110,
-                  render: (id) => <span className="mono font-semibold text-brand">CR-{id}</span>,
+                  render: (_id, cr) => <span className="mono font-semibold text-brand">CR-{cr.number ?? cr.id}</span>,
                 },
                 { title: "Title", dataIndex: "title", ellipsis: true },
                 { title: "Created by", dataIndex: "author", width: 140, ellipsis: true },
@@ -396,7 +435,7 @@ export default function ApprovalsView() {
             <SectionCard>
               {/* Identity row of the selected change request. */}
               <div className="flex flex-wrap items-center gap-2.5 pt-1">
-                <span className="mono text-sm font-semibold text-brand">CR-{selected.id}</span>
+                <span className="mono text-sm font-semibold text-brand">CR-{selected.number ?? selected.id}</span>
                 <span className="text-sm font-semibold text-ink">{selected.title}</span>
                 <StatePill state={selected.state} size="sm" />
                 <span className="text-xs text-ink-3">
@@ -430,6 +469,14 @@ export default function ApprovalsView() {
                         children: <ItemsTable items={selected.items} />,
                       },
                       {
+                        // The same change seen as the repository will see it.
+                        // An approver who wants to check WHERE a value lands
+                        // should not have to leave the review to find out.
+                        key: "files",
+                        label: "Files",
+                        children: <ChangePreview changeId={selected.id} />,
+                      },
+                      {
                         key: "details",
                         label: "Details",
                         children: (
@@ -440,10 +487,12 @@ export default function ApprovalsView() {
                             <div className="flex flex-wrap gap-2 text-xs">
                               {selected.category && <MonoChip>{selected.category}</MonoChip>}
                               {selected.reference && <MonoChip>{selected.reference}</MonoChip>}
-                              {selected.baseSha && <MonoChip title="Base commit">base {selected.baseSha.slice(0, 7)}</MonoChip>}
-                              {selected.commitSha && (
-                                <MonoChip title="Change commit">commit {selected.commitSha.slice(0, 7)}</MonoChip>
-                              )}
+                              {/* Commit ids are for pasting into git, a
+                                  ticket or a chat message, so they copy in
+                                  full on a click rather than only being
+                                  readable seven characters at a time. */}
+                              <Sha label="base" sha={selected.baseSha} />
+                              <Sha label="commit" sha={selected.commitSha} />
                             </div>
                             <CrSteps state={selected.state} />
                           </div>

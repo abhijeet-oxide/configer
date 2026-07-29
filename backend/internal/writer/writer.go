@@ -227,15 +227,20 @@ func DeleteParameter(root, paramID string, instances []model.Instance) error {
 
 // InstancePatch is a partial update to an instance's metadata. Nil fields are
 // left unchanged; Labels replaces the whole map when non-nil.
+// The json tags are load-bearing: a staged update-instance item carries this
+// patch as its "after" side and the instance's current values as its "before",
+// and a reviewer can only be shown the two together if both name their fields
+// the same way. A nil field is omitted, so the item states what is changing
+// rather than restating the whole record.
 type InstancePatch struct {
-	Environment     *string
-	Region          *string
-	Zone            *string
-	Site            *string
-	SoftwareVersion *string
-	VersionName     *string
-	Status          *string
-	Labels          *map[string]string
+	Environment     *string            `json:"environment,omitempty"`
+	Region          *string            `json:"region,omitempty"`
+	Zone            *string            `json:"zone,omitempty"`
+	Site            *string            `json:"site,omitempty"`
+	SoftwareVersion *string            `json:"softwareVersion,omitempty"`
+	VersionName     *string            `json:"versionName,omitempty"`
+	Status          *string            `json:"status,omitempty"`
+	Labels          *map[string]string `json:"labels,omitempty"`
 }
 
 // editRegistry surgically edits .configer/instances.yaml through pathedit's

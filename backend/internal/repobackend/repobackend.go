@@ -41,7 +41,16 @@ type Commit struct {
 	Email   string `json:"email,omitempty"`
 	Date    string `json:"date"`
 	Message string `json:"message"`
+	// Parents are the commit's parent SHAs. More than one means a merge, which
+	// is what a history view needs to draw the shape of what happened rather
+	// than a straight line through it.
+	Parents []string `json:"parents,omitempty"`
+	// Refs are the tag and branch names pointing at this commit, bare.
+	Refs []string `json:"refs,omitempty"`
 }
+
+// IsMerge reports whether the commit brought another line of work back in.
+func (c Commit) IsMerge() bool { return len(c.Parents) > 1 }
 
 // FileChange is one path changed between two commits (reconcile input).
 type FileChange struct {

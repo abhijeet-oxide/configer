@@ -66,6 +66,7 @@ func TestDatabaseBackedChangeStoreServesTheWholeFlow(t *testing.T) {
 	var submitted struct {
 		State  string `json:"state"`
 		Branch string `json:"branch"`
+		Number int    `json:"number"`
 	}
 	// Submit answers 202: the branch, commit and pull request continue on the
 	// host and the client polls for the resulting state.
@@ -81,9 +82,13 @@ func TestDatabaseBackedChangeStoreServesTheWholeFlow(t *testing.T) {
 	if submitted.State != "under_review" {
 		t.Fatalf("state after submit = %q, want under_review", submitted.State)
 	}
-	// Single-user, and the name is free: the branch is just what it was called.
-	if submitted.Branch != "feature/bump-ports" {
-		t.Fatalf("branch = %q, want feature/bump-ports", submitted.Branch)
+	// Single-user, so no owner segment: the kind of change, the CR number it
+	// was just given, and the words the author used.
+	if submitted.Branch != "feature/cr-1-bump-ports" {
+		t.Fatalf("branch = %q, want feature/cr-1-bump-ports", submitted.Branch)
+	}
+	if submitted.Number != 1 {
+		t.Fatalf("number = %d, want the first CR number to be 1", submitted.Number)
 	}
 
 	// Classification set at submit time must have been persisted. It used to

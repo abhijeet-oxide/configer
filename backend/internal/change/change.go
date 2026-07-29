@@ -5,6 +5,7 @@
 package change
 
 import (
+	"strconv"
 	"strings"
 	"time"
 )
@@ -104,7 +105,16 @@ type Approval struct {
 // it accumulates items; on submit it becomes a git branch + commit (+ PR when
 // a provider is configured) and advances through the state machine.
 type ChangeRequest struct {
-	ID          int    `json:"id"`
+	// ID is the store's own key: stable, internal, and allocated the moment a
+	// draft exists so the draft can be addressed at all.
+	ID int `json:"id"`
+	// Number is the CR number people say out loud - "CR-7" - and it is handed
+	// out at SUBMIT, not at creation. A draft is not a change request yet: it
+	// is one person's uncommitted work, and half of them are discarded. Numbering
+	// them burned a number per abandoned draft, so the numbers a team actually
+	// reviewed arrived full of holes and "CR-3" was the first change anybody
+	// had ever seen. Zero means "not submitted yet".
+	Number      int    `json:"number,omitempty"`
 	Title       string `json:"title"`
 	Description string `json:"description,omitempty"`
 	// Reference links this CR to an external ticket/CR id (e.g. JIRA-123).
@@ -131,6 +141,15 @@ type ChangeRequest struct {
 	Approvals []Approval `json:"approvals,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
 	UpdatedAt time.Time  `json:"updatedAt"`
+}
+
+// Label is how this change request is referred to in words: its CR number once
+// it has one, and plainly a draft until then.
+func (cr *ChangeRequest) Label() string {
+	if cr.Number > 0 {
+		return "CR-" + strconv.Itoa(cr.Number)
+	}
+	return "draft"
 }
 
 // HasApprovalFrom reports whether login has already signed off.

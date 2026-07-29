@@ -421,6 +421,12 @@
                         "description": "Change request being named (excluded from the conflict search)",
                         "name": "id",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Change type the branch will be filed under (hotfix, feature, bugfix, …)",
+                        "name": "category",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4297,6 +4303,7 @@
                     "type": "string"
                 },
                 "id": {
+                    "description": "ID is the store's own key: stable, internal, and allocated the moment a\ndraft exists so the draft can be addressed at all.",
                     "type": "integer"
                 },
                 "items": {
@@ -4304,6 +4311,10 @@
                     "items": {
                         "$ref": "#/definitions/change.Item"
                     }
+                },
+                "number": {
+                    "description": "Number is the CR number people say out loud - \"CR-7\" - and it is handed\nout at SUBMIT, not at creation. A draft is not a change request yet: it\nis one person's uncommitted work, and half of them are discarded. Numbering\nthem burned a number per abandoned draft, so the numbers a team actually\nreviewed arrived full of holes and \"CR-3\" was the first change anybody\nhad ever seen. Zero means \"not submitted yet\".",
+                    "type": "integer"
                 },
                 "prNumber": {
                     "type": "integer"

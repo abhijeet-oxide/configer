@@ -65,7 +65,12 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const MAC_RE = /^([0-9a-f]{2}[:-]){5}[0-9a-f]{2}$/i;
 // Kubernetes-style operational quantities, mirrored from the backend.
 const CPU_RE = /^\d+(\.\d+)?m?$/;
-const MEMORY_RE = /^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$/;
+// Memory requires its unit: a bare number is bytes and a trailing "m" is
+// thousandths of a byte, and neither is ever what somebody writing a memory
+// limit meant. See backend/internal/validate/quantity.go.
+const MEMORY_RE = /^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE])$/;
+const MEMORY_MILLI_RE = /^\d+(\.\d+)?m$/;
+const BARE_NUMBER_RE = /^\d+(\.\d+)?$/;
 const DURATION_RE = /^\d+(\.\d+)?(ns|us|ms|s|m|h|d)$/;
 const PERCENT_RE = /^\d+(\.\d+)?%$/;
 
@@ -110,7 +115,12 @@ export function validateTyped(value: string, type?: string): string | null {
       if (!CPU_RE.test(v)) return "Needs a CPU quantity, e.g. 500m or 2";
       return Number(v.replace("m", "")) > 0 ? null : "CPU must be greater than zero";
     case "memory":
-      if (!MEMORY_RE.test(v)) return "Needs a memory quantity, e.g. 256Mi or 1Gi";
+      if (MEMORY_MILLI_RE.test(v)) {
+        const base = v.slice(0, -1);
+        return `${v} means ${base} thousandths of a byte. Write the unit you mean, e.g. ${base}Mi or ${base}Gi`;
+      }
+      if (BARE_NUMBER_RE.test(v)) return `${v} has no unit. Memory needs one, e.g. ${v}Mi or ${v}Gi`;
+      if (!MEMORY_RE.test(v)) return "Needs a memory quantity with a unit, e.g. 256Mi or 1Gi";
       return parseFloat(v) > 0 ? null : "Memory must be greater than zero";
     case "duration": return DURATION_RE.test(v) ? null : "Needs a duration with a unit, e.g. 30s or 5m";
     case "percentage": {
@@ -172,6 +182,48 @@ export function validateString(value: string, rules: Rules): string | null {
     }
   }
   return null;
+}
+
+// unitOf returns the unit a CPU or memory value carries ("" when it is a bare
+// number), and null when the value is not a well-formed quantity of that type.
+function unitOf(type: string | undefined, raw: unknown): string | null {
+  const v = String(raw ?? "").trim();
+  if (!v) return null;
+  if (type === "cpu") {
+    if (!CPU_RE.test(v)) return null;
+    return v.endsWith("m") ? "m" : "";
+  }
+  if (type === "memory") {
+    for (const suf of ["Ki", "Mi", "Gi", "Ti", "Pi", "Ei"]) {
+      if (v.endsWith(suf)) return suf;
+    }
+    const last = v.slice(-1);
+    if ("kKMGTPE".includes(last)) return last;
+    return BARE_NUMBER_RE.test(v) ? "" : null;
+  }
+  return null;
+}
+
+// validateUnitChange mirrors validate.UnitChange on the backend: a CPU or
+// memory value that was written WITH a unit has to keep one.
+//
+// Kubernetes writes CPU two legitimate ways - "350m" and "2" - so no format
+// rule can refuse a bare number without calling every `cpu: "1"` in a real
+// chart wrong. But the two forms are a thousand times apart, and a unit going
+// missing is invisible in a before/after column: "350m" edited to "350" reads
+// like a tidy-up and means 350 whole CPUs. So the rule is about the edit rather
+// than the value, and it only refuses the losing direction - adding or swapping
+// a unit is a change a reviewer can read.
+export function validateUnitChange(value: string, previous: unknown, type?: string): string | null {
+  if (type !== "cpu" && type !== "memory") return null;
+  const oldUnit = unitOf(type, previous);
+  const newUnit = unitOf(type, value);
+  if (oldUnit === null || newUnit === null || oldUnit === "" || newUnit !== "") return null;
+  const v = String(value).trim();
+  if (type === "cpu") {
+    return `This value is written in millicores (${previous}). ${v} has no unit, which means ${v} whole CPUs - write ${v}m to keep the millicores`;
+  }
+  return `This value is written with a unit (${previous}). ${v} has none, which means ${v} bytes - add the unit you mean, e.g. ${v}${oldUnit}`;
 }
 
 // fmtValue renders any cell value (scalars, lists, absence) for humans.

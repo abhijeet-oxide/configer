@@ -48,23 +48,28 @@ func nameFromPath(path string) string {
 		path = rest
 	}
 	s := strings.TrimPrefix(path, "$.")
-	// remove [n] array indices for the display name
+	// Drop [n] array indices for the display name, but keep a QUOTED key: it is
+	// a key the dotted form could not spell, not a subscript, and dropping it
+	// would name the parameter after its parent.
 	var b strings.Builder
-	skip := false
-	for _, r := range s {
-		if r == '[' {
-			skip = true
+	for i := 0; i < len(s); i++ {
+		if s[i] != '[' {
+			b.WriteByte(s[i])
 			continue
 		}
-		if r == ']' {
-			skip = false
-			continue
+		j := pathedit.BracketEnd(s, i)
+		if j < 0 {
+			break
 		}
-		if !skip {
-			b.WriteRune(r)
+		if key, quoted := pathedit.UnquoteKey(s[i+1 : j]); quoted {
+			if b.Len() > 0 {
+				b.WriteByte('.')
+			}
+			b.WriteString(key)
 		}
+		i = j
 	}
-	return b.String()
+	return strings.TrimPrefix(b.String(), ".")
 }
 
 // flatten walks a decoded JSON/YAML value and appends leaf candidates.
@@ -72,11 +77,11 @@ func flatten(node any, path, file, format string, out *[]plugin.Candidate) {
 	switch n := node.(type) {
 	case map[string]any:
 		for k, v := range n {
-			flatten(v, path+"."+k, file, format, out)
+			flatten(v, pathedit.JoinKey(path, k), file, format, out)
 		}
 	case map[any]any: // yaml.v3 can yield this for non-string keys
 		for k, v := range n {
-			flatten(v, fmt.Sprintf("%s.%v", path, k), file, format, out)
+			flatten(v, pathedit.JoinKey(path, fmt.Sprintf("%v", k)), file, format, out)
 		}
 	case []any:
 		for i, v := range n {

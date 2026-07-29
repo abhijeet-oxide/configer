@@ -138,7 +138,7 @@ export default function InboxView() {
               {
                 title: "Change request",
                 width: 110,
-                render: (_v, r) => <span className="mono font-semibold text-brand">CR-{r.cr.id}</span>,
+                render: (_v, r) => <span className="mono font-semibold text-brand">CR-{r.cr.number ?? r.cr.id}</span>,
               },
               { title: "Title", ellipsis: true, render: (_v, r) => r.cr.title },
               {

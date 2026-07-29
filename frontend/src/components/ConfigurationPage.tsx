@@ -89,6 +89,12 @@ export default function ConfigurationPage({
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
+  // The Changes tab lists everything still in play, so its badge counts that -
+  // including your own draft. Counting only what was under review meant the tab
+  // holding your unsent work was the one tab with no badge on it.
+  const openChanges =
+    changesQ.data?.filter((c) => c.state === "draft" || c.state === "under_review" || c.state === "approved")
+      .length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const incoming = incomingQ.data?.changes?.length ?? 0;
   const draftItems = draftQ.data?.draft?.items?.length ?? 0;
@@ -126,7 +132,8 @@ export default function ConfigurationPage({
   const pillOf = (key: string): number =>
     key === "config" ? draftItems
       : key === "files" ? changedFiles
-      : key === "changes" || key === "approvals" ? awaiting
+      : key === "changes" ? openChanges
+      : key === "approvals" ? awaiting
       : key === "drift" ? findings
       : key === "sources" ? incoming : 0;
 
@@ -164,7 +171,7 @@ export default function ConfigurationPage({
     }
     return { visible: vis, overflow: of };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [barW, active, canEdit, draftItems, awaiting, findings, incoming]);
+  }, [barW, active, canEdit, draftItems, awaiting, openChanges, findings, incoming]);
 
   const moreActive = overflow.find((m) => m.key === active);
   // Attention still living inside the folded set surfaces on the More button.
@@ -184,7 +191,7 @@ export default function ConfigurationPage({
             {t.label}
             {t.key === "config" && <CountPill n={draftItems} tone="pending" />}
             {t.key === "files" && <CountPill n={changedFiles} tone="pending" />}
-            {t.key === "changes" && <CountPill n={awaiting} />}
+            {t.key === "changes" && <CountPill n={openChanges} tone={awaiting ? "review" : "pending"} />}
             {t.key === "approvals" && <CountPill n={awaiting} />}
             {t.key === "drift" && <CountPill n={findings} tone="pending" />}
             {t.key === "sources" && <CountPill n={incoming} />}

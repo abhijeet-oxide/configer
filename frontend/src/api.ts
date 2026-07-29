@@ -276,7 +276,12 @@ export interface ChangeImpact {
 }
 
 export interface ChangeRequest {
+  /** the store's own key: stable, internal, used in URLs */
   id: number;
+  /** the CR number people say out loud, handed out at SUBMIT. Absent while
+   *  the change is still a draft, because a draft is not a change request yet
+   *  and numbering every abandoned one left holes in the sequence. */
+  number?: number;
   title: string;
   description?: string;
   /** external ticket / CR id, e.g. JIRA-123 */
@@ -352,6 +357,10 @@ export interface Commit {
   email?: string;
   date: string;
   message: string;
+  /** parent SHAs; more than one means this commit merged another line in */
+  parents?: string[];
+  /** tag and branch names pointing at this commit, bare */
+  refs?: string[];
 }
 
 // One point on a parameter's value timeline.
@@ -406,6 +415,8 @@ export interface TimelineEntry extends Commit {
   instances?: string[] | null;
   versions?: VersionMove[] | null;
   structure?: InstanceMove[] | null;
+  /** repository files that moved between this snapshot and the previous one */
+  files?: number;
 }
 
 /** One snapshot opened up: every parameter that changed at it. */
@@ -1214,9 +1225,12 @@ export const api = {
   // waitForRepoReady to await the result.
   // Is this change name free, and what branch would it produce? Called while
   // the user types, so a clash is found before the name becomes a branch.
-  checkChangeName: (title: string, id?: number) =>
+  checkChangeName: (title: string, id?: number, category?: string) =>
     get<ChangeNameCheck>(
-      rp(`/changes/name-check?title=${encodeURIComponent(title)}${id ? `&id=${id}` : ""}`),
+      rp(
+        `/changes/name-check?title=${encodeURIComponent(title)}${id ? `&id=${id}` : ""}` +
+          (category ? `&category=${encodeURIComponent(category)}` : ""),
+      ),
     ),
 
   connectRepo: (p: { url: string; name?: string; branch?: string; token?: string; mode?: "remote" }) =>

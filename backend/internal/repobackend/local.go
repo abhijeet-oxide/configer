@@ -156,7 +156,10 @@ func (b *LocalBackend) Log(_ context.Context, path string, limit int) ([]Commit,
 		if len(short) > 7 {
 			short = short[:7]
 		}
-		out[i] = Commit{SHA: e.SHA, Short: short, Author: e.Author, Email: e.Email, Date: e.Date, Message: e.Subject}
+		out[i] = Commit{
+			SHA: e.SHA, Short: short, Author: e.Author, Email: e.Email,
+			Date: e.Date, Message: e.Subject, Parents: e.Parents, Refs: e.Refs,
+		}
 	}
 	return out, nil
 }

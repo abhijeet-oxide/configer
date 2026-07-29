@@ -92,15 +92,15 @@ var presets = []PresetRule{
 	},
 	{
 		ID: "cpu", Name: "Kubernetes CPU quantity",
-		Description: "CPU in cores or millicores; must be positive.",
+		Description: "CPU in millicores (500m) or whole cores (2); must be positive. A value already written in millicores has to keep the unit.",
 		Example:     "500m",
 		Pattern:     `^\d+(\.\d+)?m?$`,
 	},
 	{
 		ID: "memory", Name: "Kubernetes memory quantity",
-		Description: "Memory/storage as a binary or decimal SI byte amount; must be positive.",
+		Description: "Memory/storage as a binary or decimal SI byte amount; the unit is required and the amount must be positive.",
 		Example:     "256Mi",
-		Pattern:     `^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE]|m)?$`,
+		Pattern:     `^\d+(\.\d+)?(Ki|Mi|Gi|Ti|Pi|Ei|[kKMGTPE])$`,
 	},
 	{
 		ID: "percentage", Name: "Percentage",

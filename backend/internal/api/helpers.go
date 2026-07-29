@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/auth"
+	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 )
 
@@ -78,6 +79,23 @@ const singleUserAuthor = "Local user"
 // the actor into the request's audit holder.
 func draftOwner(r *http.Request) string {
 	return author(r, "")
+}
+
+// dropEmptyDraft deletes the owner's draft once nothing is staged in it.
+//
+// A draft with no items is not a change anybody is making - it is the residue
+// of edits that were all undone - and leaving it standing put an empty change
+// request in the Changes list that the user had to discard by hand, wondering
+// what it was. Undoing your last edit should leave the workspace exactly as it
+// was before the first one.
+//
+// The caller must already hold the owner's draft lock.
+func (s *Server) dropEmptyDraft(owner string) {
+	d := s.Store.CurrentDraft(owner)
+	if d == nil || len(d.Items) > 0 || d.State != change.StateDraft {
+		return
+	}
+	_ = s.Store.Delete(d.ID)
 }
 
 // identity resolves the git author for a UI-made commit: the authenticated

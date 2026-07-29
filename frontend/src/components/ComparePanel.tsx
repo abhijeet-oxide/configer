@@ -36,10 +36,19 @@ type Pill = "changed" | "all" | "modified" | "added" | "removed";
 
 export default function ComparePanel({ grid }: { grid: Grid }) {
   const { compareLeft, compareRight, setCompare } = useUI();
+  // Both sides always name an instance. An earlier default reached for the
+  // third and then the second instance and fell to undefined on a repository
+  // with fewer than two, which left the right side blank - and a blank side is
+  // not "nothing selected" to a file diff, it is an empty tree, so every file
+  // in the repository showed up as removed on a perfectly healthy import.
+  const single = grid.instances.length < 2;
   const left = compareLeft || grid.instances[0]?.name;
-  const right = compareRight || grid.instances[2]?.name || grid.instances[1]?.name;
+  const right = compareRight || grid.instances[1]?.name || grid.instances[0]?.name;
   const [leftRef, setLeftRef] = useState<string>(WORKING);
-  const [rightRef, setRightRef] = useState<string>(WORKING);
+  // With one instance there is no other instance to compare against, so the
+  // comparison that means something is the same instance over time: what you
+  // have staged against what is committed.
+  const [rightRef, setRightRef] = useState<string>(single ? COMMITTED : WORKING);
   const [pill, setPill] = useState<Pill>("changed");
   const [layout, setLayout] = useState<CompareLayout>(loadLayout);
   const [mode, setMode] = useState<CompareMode>(loadMode);

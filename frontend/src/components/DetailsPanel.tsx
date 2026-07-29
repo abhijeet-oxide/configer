@@ -6,6 +6,7 @@ import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
+import ValueDiff from "./ui/ValueDiff";
 import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
 import { relTime } from "./DashboardView";
@@ -412,16 +413,18 @@ function IdlePanel({ grid }: { grid: Grid }) {
             {draftItems.slice(0, 6).map((it) => (
               <div
                 key={`${it.paramId}|${it.instance}`}
-                style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12 }}
               >
-                <a onClick={() => jumpTo(it.paramId)} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-                  <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {it.paramId} · {it.instance || "global"}
-                  </span>
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                    {fmtValue(it.old)} → {fmtValue(it.new)}
-                  </Typography.Text>
-                </a>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                  <a onClick={() => jumpTo(it.paramId)}>
+                    <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block" }}>
+                      {it.paramId} · {it.instance || "global"}
+                    </span>
+                  </a>
+                  {/* The exact characters that moved, not two values to compare
+                      by eye - the rail is narrow, so the diff is stacked. */}
+                  <ValueDiff before={it.old} after={it.new} layout="stacked" label={it.paramId} />
+                </div>
                 <Tooltip title="Undo this change">
                   <Button
                     size="small"

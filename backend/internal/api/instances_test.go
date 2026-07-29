@@ -45,8 +45,10 @@ func TestAddInstanceStagesAsPendingChange(t *testing.T) {
 		} `json:"draft"`
 	}
 	doJSON(t, h, http.MethodGet, "/api/changes/draft", nil, &draftResp)
-	if draftResp.Draft.Branch != "feature/unnamed" {
-		t.Fatalf("draft should ride feature/unnamed, got %q", draftResp.Draft.Branch)
+	// A draft has no branch: it is named at submit, and showing a placeholder
+	// read as a decision already taken.
+	if draftResp.Draft.Branch != "" {
+		t.Fatalf("a draft should not claim a branch yet, got %q", draftResp.Draft.Branch)
 	}
 	if len(draftResp.Draft.Items) != 1 || draftResp.Draft.Items[0].Action != "add-instance" || draftResp.Draft.Items[0].Instance != "prod" {
 		t.Fatalf("expected one pending add-instance for prod, got %+v", draftResp.Draft.Items)

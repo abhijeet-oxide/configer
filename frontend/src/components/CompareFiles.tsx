@@ -110,6 +110,19 @@ export default function CompareFiles({
   });
   const current = visible.find((r) => r.role === selected) ?? visible[0];
 
+  // A side with no instance has no files, which is not the same thing as an
+  // empty repository - reading it that way reported every file on the other
+  // side as removed. Missing a side is a question to ask, not a diff to draw.
+  if (!left.instance || !right.instance) {
+    return (
+      <EmptyState
+        art={<EmptyArt size={96} />}
+        title="Pick what to compare on both sides"
+        hint={`Choose an instance for the ${left.instance ? "right" : "left"} side to see the file differences.`}
+      />
+    );
+  }
+
   if (leftQ.isLoading || rightQ.isLoading) {
     return (
       <LoadingStage

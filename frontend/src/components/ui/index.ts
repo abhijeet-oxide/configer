@@ -17,3 +17,4 @@ export { FadeIn, Stagger, StaggerItem } from "./motion";
 export { default as Stepper } from "./Stepper";
 export type { StepDef } from "./Stepper";
 export { default as Kbd } from "./Kbd";
+export { default as ValueDiff, InlineValueDiff } from "./ValueDiff";

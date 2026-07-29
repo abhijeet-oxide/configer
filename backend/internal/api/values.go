@@ -171,6 +171,16 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A unit that goes missing off a CPU or memory quantity is a thousand-fold
+	// change wearing the clothes of a small one, and only the committed value
+	// says which unit the parameter was written in - so this check waits for it.
+	if action == change.ActionSet {
+		if vr := validate.UnitChange(param, oldVal, coerced); !vr.Valid {
+			writeFieldErrors(w, r, "the value is not valid for this parameter", FieldError{Field: "value", Message: vr.Message})
+			return
+		}
+	}
+
 	// Cross-parameter relations (a resource limit must be at least its request,
 	// and vice versa) can only be checked now that the instance context is
 	// known. The sibling's effective value is read from the committed files.
@@ -216,6 +226,9 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Setting a cell back to its committed value cancels the pending edit, and
+	// cancelling the only one leaves an empty draft with nothing to review.
+	s.dropEmptyDraft(draftOwner(r))
 	d := s.Store.CurrentDraft(draftOwner(r))
 	pending := 0
 	changeID := draft.ID
@@ -244,6 +257,9 @@ func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName 
 		return false, err.Error()
 	}
 	if vr := validate.Value(param, coerced); !vr.Valid {
+		return false, vr.Message
+	}
+	if vr := validate.UnitChange(param, rv.Resolve(param, baseline).Value, coerced); !vr.Valid {
 		return false, vr.Message
 	}
 	if param.Validation.AtLeast != "" || param.Validation.AtMost != "" {
@@ -378,6 +394,8 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A bulk set that cancelled every edit it touched leaves nothing staged.
+	s.dropEmptyDraft(draftOwner(r))
 	d := s.Store.CurrentDraft(draftOwner(r))
 	pending, changeID := 0, draft.ID
 	if d != nil {
@@ -417,5 +435,8 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
+	// Undoing the last staged edit leaves nothing to review, so the draft goes
+	// with it rather than sitting in Changes as an empty change request.
+	s.dropEmptyDraft(draftOwner(r))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

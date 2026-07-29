@@ -9,7 +9,7 @@ import {
   App as AntApp,
 } from "antd";
 import { PullRequestOutlined, WarningFilled } from "../icons";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -29,24 +29,49 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   // action is absent rather than present-and-disabled.
   const { canEdit } = useIdentity();
   const qc = useQueryClient();
-  const { setSection, selectParam } = useUI();
+  const { setSection, selectParam, openSubmit, setOpenSubmit } = useUI();
   const [open, setOpen] = useState(false);
   const [showDiffs, setShowDiffs] = useState(false);
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
 
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const items = draftQ.data?.draft?.items ?? [];
+  const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   const pending = items.length;
   const prodTouched = items.some(
     (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
   );
+
+  // Arriving from "Review & submit" in the Changes list: open straight onto the
+  // dialog they asked for, and consume the handoff so a later visit does not
+  // reopen it.
+  useEffect(() => {
+    if (openSubmit && pending > 0) {
+      setOpen(true);
+      setOpenSubmit(false);
+    } else if (openSubmit && !draftQ.isLoading) {
+      setOpenSubmit(false);
+    }
+  }, [openSubmit, pending, draftQ.isLoading, setOpenSubmit]);
+
+  // What KIND of change this is, guessed from what it actually does. A draft
+  // that only renames a region or moves an instance to a new version is not a
+  // feature, and defaulting it to one asks the user to correct the form every
+  // time they touch instance settings.
+  const suggestedCategory = useMemo(() => {
+    if (!pending) return "feature";
+    const structural = items.every((it) =>
+      it.action === "update-instance" || it.action === "add-instance" || it.action === "remove-instance",
+    );
+    return structural ? "maintenance" : "feature";
+  }, [items, pending]);
 
   // The title becomes the branch, and the branch is what every reviewer and CI
   // run sees from then on. So the name is checked WHILE it is typed: a clash
   // with a change that is still open is worth knowing before submitting, not
   // after a submit that gets refused.
   const [title, setTitle] = useState("");
+  const [category, setCategory] = useState("feature");
   const [nameCheck, setNameCheck] = useState<ChangeNameCheck | null>(null);
   const draftId = draftQ.data?.draft?.id;
   useEffect(() => {
@@ -58,14 +83,14 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     // Debounced: one request per pause, not one per keystroke.
     const timer = setTimeout(() => {
       api
-        .checkChangeName(t, draftId)
+        .checkChangeName(t, draftId, category)
         .then(setNameCheck)
         // A name check that cannot run must never block submitting. The server
         // refuses a real clash anyway; this is the early warning, not the gate.
         .catch(() => setNameCheck(null));
     }, 350);
     return () => clearTimeout(timer);
-  }, [title, draftId, open]);
+  }, [title, draftId, category, open]);
 
   const revert = useMutation({
     mutationFn: (it: ChangeItem) =>
@@ -82,8 +107,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
       qc.invalidateQueries();
       message.success(
         cr.prUrl
-          ? `Submitted for review as CR-${cr.id}, PR ${cr.prUrl}`
-          : `Submitted for review as CR-${cr.id}`,
+          ? `Submitted for review as CR-${cr.number ?? cr.id}, PR ${cr.prUrl}`
+          : `Submitted for review as CR-${cr.number ?? cr.id}`,
         6,
       );
       setSection("changes");
@@ -120,7 +145,14 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         okButtonProps={{ disabled: pending === 0 || nameCheck?.available === false }}
         confirmLoading={submit.isPending}
         width={760}
-        afterOpenChange={(o) => o && titleRef.current?.focus()}
+        afterOpenChange={(o) => {
+          if (!o) return;
+          titleRef.current?.focus();
+          // Offer the change type that matches what the draft actually does,
+          // every time it opens - the draft can have changed since last time.
+          form.setFieldValue("category", suggestedCategory);
+          setCategory(suggestedCategory);
+        }}
       >
         {prodTouched && (
           <div
@@ -182,9 +214,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
               nameCheck?.message ? (
                 <span>{nameCheck.message}</span>
               ) : nameCheck?.branch ? (
-                // What the name will become, in the words git will use.
+                // What the name will become, in the words git will use - and
+                // that it does not exist yet, so nobody expects to find it.
                 <span>
-                  Saved to branch <code>{nameCheck.branch}</code>
+                  Will create branch <code>{nameCheck.branch}</code> when you submit
                 </span>
               ) : undefined
             }
@@ -197,8 +230,9 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             />
           </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
-            <Form.Item name="category" label="Change type" initialValue="feature" style={{ flex: 1 }}>
+            <Form.Item name="category" label="Change type" style={{ flex: 1 }}>
               <Select
+                onChange={(v) => setCategory(v)}
                 options={[
                   { value: "hotfix", label: "Hotfix (urgent fix)" },
                   { value: "feature", label: "Feature (new capability)" },

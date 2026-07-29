@@ -45,7 +45,8 @@ type ChangeNameCheck struct {
 // @Tags        Editing & change requests
 // @Produce     json
 // @Param       title query string true  "Proposed title"
-// @Param       id    query int    false "Change request being named (excluded from the conflict search)"
+// @Param       id       query int    false "Change request being named (excluded from the conflict search)"
+// @Param       category query string false "Change type the branch will be filed under (hotfix, feature, bugfix, …)"
 // @Success     200 {object} ChangeNameCheck
 // @Failure     400 {object} APIError "Missing title"
 // @Router      /api/changes/name-check [get]
@@ -66,7 +67,7 @@ func (s *Server) checkChangeName(w http.ResponseWriter, r *http.Request) {
 		cr = s.Store.CurrentDraft(draftOwner(r))
 	}
 	if cr != nil {
-		out.Branch = s.Changes.PlannedBranch(r.Context(), cr, title, branchOwner(r))
+		out.Branch = s.Changes.PlannedBranch(r.Context(), cr, title, r.URL.Query().Get("category"), branchOwner(r))
 	}
 
 	if c := s.Changes.FindNameConflict(title, id); c != nil {

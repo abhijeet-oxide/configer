@@ -23,6 +23,7 @@ import phArrowRight from "@iconify-icons/ph/arrow-right";
 import phArrowUp from "@iconify-icons/ph/arrow-up";
 import phBell from "@iconify-icons/ph/bell";
 import phGitBranch from "@iconify-icons/ph/git-branch";
+import phTag from "@iconify-icons/ph/tag";
 import phCheckCircleFill from "@iconify-icons/ph/check-circle-fill";
 import phCheckCircle from "@iconify-icons/ph/check-circle";
 import phCheck from "@iconify-icons/ph/check";
@@ -151,6 +152,8 @@ export const HomeOutlined = make("home", phHouse);
 export const AppstoreOutlined = make("appstore", phSquaresFour);
 export const ApartmentOutlined = make("apartment", phTreeStructure);
 export const PartitionOutlined = make("partition", phGraph);
+// A release tag on a commit, in git's own vocabulary.
+export const TagOutlined = make("tag", phTag);
 export const ClusterOutlined = make("cluster", phStack);
 export const TableOutlined = make("table", phTable);
 export const InboxOutlined = make("inbox", phTray);

@@ -349,17 +349,28 @@ type LogEntry struct {
 	Email   string
 	Date    string // ISO-8601 (author date)
 	Subject string
+	// Parents are the commit's parent SHAs, oldest-first as git lists them. A
+	// commit with more than one is a merge, which is what lets a caller draw
+	// the history's real shape rather than a straight line.
+	Parents []string
+	// Refs are the names pointing AT this commit - tags and branch heads,
+	// already stripped of their "tag: " and "refs/" prefixes.
+	Refs []string
 }
 
 // Log returns the most recent commits, optionally restricted to a path
 // (relative to the repo). limit <= 0 means no cap. Fields are separated by
 // the unit separator (0x1f) so subjects can safely contain any punctuation.
 func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
-	args := []string{"log"}
+	// Topological order, not date order. A history view draws each commit above
+	// its parents, so a parent that happens to carry an older timestamp than its
+	// child - which merges routinely produce - must still come after it, or the
+	// graph has to draw a line going back up the page and cannot.
+	args := []string{"log", "--topo-order"}
 	if limit > 0 {
 		args = append(args, fmt.Sprintf("--max-count=%d", limit))
 	}
-	args = append(args, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s")
+	args = append(args, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%P%x1f%D")
 	if path != "" {
 		args = append(args, "--", path)
 	}
@@ -373,9 +384,56 @@ func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
 		if len(f) < 5 {
 			continue
 		}
-		entries = append(entries, LogEntry{SHA: f[0], Author: f[1], Email: f[2], Date: f[3], Subject: f[4]})
+		e := LogEntry{SHA: f[0], Author: f[1], Email: f[2], Date: f[3], Subject: f[4]}
+		if len(f) > 5 {
+			e.Parents = strings.Fields(f[5])
+		}
+		if len(f) > 6 {
+			e.Refs = parseRefNames(f[6])
+		}
+		entries = append(entries, e)
 	}
 	return entries, nil
+}
+
+// parseRefNames turns git's %D decoration ("HEAD -> main, tag: v1.2, origin/main")
+// into bare names. HEAD's arrow form is reduced to the branch it points at, and
+// the "tag: " marker is dropped - a tag reads as a tag from its own shape in
+// the UI, not from a prefix in the string.
+func parseRefNames(d string) []string {
+	d = strings.TrimSpace(d)
+	if d == "" {
+		return nil
+	}
+	var out []string
+	for _, part := range strings.Split(d, ",") {
+		name := strings.TrimSpace(part)
+		if i := strings.Index(name, "-> "); i >= 0 {
+			name = strings.TrimSpace(name[i+3:])
+		}
+		name = strings.TrimPrefix(name, "tag: ")
+		name = strings.TrimPrefix(name, "refs/tags/")
+		name = strings.TrimPrefix(name, "refs/heads/")
+		if name != "" && name != "HEAD" {
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// ChangedFileCount is how many paths a commit touched against its first parent
+// (the whole tree for a root commit). It is one number per row in a history
+// view, so it is read with --name-only rather than a full diff.
+func (r *Repo) ChangedFileCount(sha string) (int, error) {
+	out, err := r.git(r.Dir, "show", "--first-parent", "--name-only", "--format=", sha)
+	if err != nil {
+		return 0, err
+	}
+	seen := map[string]bool{}
+	for _, ln := range nonEmptyLines(out) {
+		seen[ln] = true
+	}
+	return len(seen), nil
 }
 
 func nonEmptyLines(s string) []string {

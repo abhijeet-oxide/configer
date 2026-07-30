@@ -1578,6 +1578,16 @@ body {
    when not. A hairline in the left margin does the work; the wash behind the
    line is barely there, and neither uses a hue that could be confused with the
    diff's own green and red or with syntax highlighting. */
+/* The VALUE, not its line: a soft tinted pill around the token itself, so the
+   key, the indentation and any trailing comment stay plainly unmarked. The
+   gutter hairline is what makes the marked lines findable at a glance while
+   scrolling; the pill is what says which characters are actually managed. */
+.monaco-editor .cf-managed-value {
+  background: color-mix(in srgb, var(--c-review) 13%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--c-review) 45%, transparent);
+  border-radius: 3px;
+}
+/* Fallback for a value that cannot be narrowed to columns (a block scalar). */
 .monaco-editor .cf-managed-line {
   background: color-mix(in srgb, var(--c-review) 6%, transparent);
 }
@@ -1587,11 +1597,35 @@ body {
   border-radius: 2px;
   background: color-mix(in srgb, var(--c-review) 55%, transparent);
 }
-/* On dark the same tint reads heavier against a dark ground, so it is taken
-   down rather than up. */
+/* On dark the same tints read heavier against a dark ground. */
 :root[data-theme="dark"] .monaco-editor .cf-managed-line,
 .dark .monaco-editor .cf-managed-line {
   background: color-mix(in srgb, var(--c-review) 10%, transparent);
+}
+:root[data-theme="dark"] .monaco-editor .cf-managed-value,
+.dark .monaco-editor .cf-managed-value {
+  background: color-mix(in srgb, var(--c-review) 22%, transparent);
+}
+
+/* The one the reader was sent to. "Show me this parameter in the file" has to
+   end with the eye ON it, so this one is loud - a full-strength ring that
+   pulses twice and then settles into the ordinary quiet mark, which is enough
+   to find and not enough to live with. */
+@keyframes cfManagedFocus {
+  0%   { box-shadow: 0 0 0 2px var(--c-review); background: color-mix(in srgb, var(--c-review) 40%, transparent); }
+  60%  { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 60%, transparent); }
+  100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 0%, transparent); }
+}
+.monaco-editor .cf-managed-focus {
+  border-radius: 3px;
+  animation: cfManagedFocus 2.4s ease-out 2;
+  background: color-mix(in srgb, var(--c-review) 26%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .monaco-editor .cf-managed-focus {
+    animation: none;
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 70%, transparent);
+  }
 }
 
 /* ------------------------------------------------- the review dialog's frame */
@@ -1836,6 +1870,21 @@ body {
 }
 .param-grid .ant-table-cell.cell-changed-bad {
   box-shadow: inset 2px 0 0 color-mix(in srgb, var(--c-danger) 70%, transparent);
+}
+
+/* The pinned shelf: rows held under the header so they stay on screen however
+   far the grid is scrolled. It reads as part of the table (same columns, same
+   scroll) with one line under it saying where the held rows end and the list
+   begins. */
+.param-grid .ant-table-summary .cf-pinned-row > .ant-table-cell {
+  background: color-mix(in srgb, var(--c-review) 5%, var(--grid-bg, #fff)) !important;
+  cursor: pointer;
+}
+.param-grid .ant-table-summary .cf-pinned-last > .ant-table-cell {
+  border-bottom: 2px solid color-mix(in srgb, var(--c-review) 35%, transparent);
+}
+.param-grid .ant-table-summary .cf-pinned-row:hover > .ant-table-cell {
+  background: color-mix(in srgb, var(--c-review) 10%, var(--grid-bg, #fff)) !important;
 }
 
 /* The keyboard-navigation cursor: a crisp ring on the active cell. */

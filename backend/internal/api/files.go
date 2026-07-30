@@ -488,6 +488,12 @@ type ManagedValue struct {
 	Name    string `json:"name"`
 	Path    string `json:"path"`
 	Line    int    `json:"line"`
+	// Col/EndCol bracket the VALUE on that line (1-based, end exclusive), so
+	// the editor can mark "10.0.0.1" rather than the whole of
+	// "  ip: 10.0.0.1  # the service ip". Zero when the value cannot be
+	// narrowed (a block scalar), and the caller marks the line instead.
+	Col    int `json:"col,omitempty"`
+	EndCol int `json:"endCol,omitempty"`
 	Type    string `json:"type,omitempty"`
 	Secret  bool   `json:"secret,omitempty"`
 	// Instance is the instance whose folder this file belongs to, empty for a
@@ -503,7 +509,7 @@ type ManagedValue struct {
 // memory - so a highlight cannot drift a line away from the value it marks.
 //
 // @Summary     Managed values in a file
-// @Description Every value in one file that a catalog parameter is bound to, with the 1-based line it sits on in the draft-applied content the Files explorer shows. Lets the editor mark the lines Configer manages. XML values report line 0 (the engine has no per-node line there).
+// @Description Every value in one file that a catalog parameter is bound to, with the 1-based line it sits on in the draft-applied content the Files explorer shows, and the columns the value itself occupies on that line. Lets the editor mark exactly the managed values. A value that cannot be narrowed (a block scalar) reports columns 0 and is marked by line.
 // @Tags        Files
 // @Produce     json
 // @Param       file     query string true  "Repository-relative file path"
@@ -614,7 +620,7 @@ func addManaged(out *[]ManagedValue, seen map[string]bool, doc *pathedit.Documen
 	if doc == nil {
 		return
 	}
-	line, ok := doc.Line(b.Path)
+	line, col, endCol, ok := doc.Span(b.Path)
 	if !ok || line <= 0 {
 		return
 	}
@@ -624,7 +630,8 @@ func addManaged(out *[]ManagedValue, seen map[string]bool, doc *pathedit.Documen
 	}
 	seen[key] = true
 	*out = append(*out, ManagedValue{
-		ParamID: param.ID, Name: param.Name, Path: b.Path, Line: line,
+		ParamID: param.ID, Name: param.Name, Path: b.Path,
+		Line: line, Col: col, EndCol: endCol,
 		Type: string(param.Type), Secret: param.Secret, Instance: instance,
 	})
 }

@@ -28,6 +28,8 @@ func TestManagedValuesInAFile(t *testing.T) {
 			Name    string `json:"name"`
 			Path    string `json:"path"`
 			Line    int    `json:"line"`
+			Col     int    `json:"col"`
+			EndCol  int    `json:"endCol"`
 		} `json:"values"`
 	}
 	doJSON(t, h, http.MethodGet, "/api/files/managed?file=instances/staging/values.yaml", nil, &res)
@@ -36,8 +38,13 @@ func TestManagedValuesInAFile(t *testing.T) {
 	}
 	v := res.Values[0]
 	// app:\n  port: 8080 - the value is on line 2.
+	// app:\n  port: 8080 - line 2, columns 9..13 ("8080"), which is what lets the
+	// editor mark the value rather than the whole line.
 	if v.ParamID != "p1" || v.Name != "app.port" || v.Path != "$.app.port" || v.Line != 2 {
 		t.Fatalf("located %+v, want p1 app.port at line 2", v)
+	}
+	if v.Col != 9 || v.EndCol != 13 {
+		t.Errorf("columns = %d..%d, want 9..13 (the value alone)", v.Col, v.EndCol)
 	}
 
 	// A file with nothing managed in it answers with an empty list, not an error.
@@ -66,11 +73,17 @@ func TestManagedValuesInXML(t *testing.T) {
 		Values []struct {
 			ParamID string `json:"paramId"`
 			Line    int    `json:"line"`
+			Col     int    `json:"col"`
+			EndCol  int    `json:"endCol"`
 		} `json:"values"`
 	}
 	doJSON(t, s.Routes(), http.MethodGet, "/api/files/managed?file=instances/edge/network.xml", nil, &res)
 	if len(res.Values) != 1 || res.Values[0].ParamID != "x-ip" || res.Values[0].Line != 3 {
 		t.Fatalf("located %+v, want x-ip on line 3", res.Values)
+	}
+	// "    <ip>10.0.0.1</ip>" - the value alone, between the tags.
+	if v := res.Values[0]; v.Col != 9 || v.EndCol != 17 {
+		t.Errorf("columns = %d..%d, want 9..17", v.Col, v.EndCol)
 	}
 }
 

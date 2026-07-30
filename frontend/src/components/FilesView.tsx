@@ -272,14 +272,26 @@ export default function FilesView() {
     enabled: !!current && currentParams.length > 0,
     staleTime: 30_000,
   });
+  // The one the reader was SENT here to look at (from a parameter's "View in
+  // <file>") is marked loudly and briefly on top of the quiet ones - arriving at
+  // a screen of equally-marked values and being left to find yours is not an
+  // answer to "show me this parameter in the file".
+  const focusParam = fileFocus?.param;
   const marks = useMemo(
     () =>
       (managedQ.data?.values ?? []).map((v) => ({
         line: v.line,
+        col: v.col,
+        endCol: v.endCol,
+        focus: !!focusParam && (v.paramId === focusParam || v.name === focusParam),
         label: `**${v.name}** · managed by Configer${v.secret ? " · secret" : ""}\n\n\`${v.path}\``,
       })),
-    [managedQ.data],
+    [managedQ.data, focusParam],
   );
+
+  // Landing on the value itself, not on the top of its line: when the target is
+  // known, the reveal goes to its exact position.
+  const focusMark = useMemo(() => marks.find((m) => m.focus), [marks]);
 
   const save = useMutation({
     mutationFn: (content: string) => {
@@ -639,7 +651,8 @@ export default function FilesView() {
                       original={createdFiles.has(current.path) ? undefined : committed}
                       dark={mode === "dark"}
                       editable={canEdit}
-                      revealLine={reveal}
+                      revealLine={focusMark?.line ?? reveal}
+                      revealColumn={focusMark?.col}
                       marks={dirty === null ? marks : undefined}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
                       onSave={(v) => save.mutate(v)}

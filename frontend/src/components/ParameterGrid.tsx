@@ -602,7 +602,7 @@ function instanceHeader(
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectedParamId, selectParam, inspectParam, togglePin, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, selectedParamId, selectParam, inspectParam, togglePin, unpinAll, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -915,22 +915,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
      
   }, [baseRows, pendingByParam]);
 
-  // Pinned parameters ride at the top, in the order they were pinned, whatever
-  // else the grid is sorted or grouped by: they are the handful somebody is
-  // working on this week and having to find them again each time is the thing
-  // pinning exists to stop.
+  // Pinned parameters are held OUT of the scrolling list and drawn in a sticky
+  // block directly under the header, so they stay on screen however far down the
+  // grid goes. Sorting them to the top was the first attempt and it is not what
+  // pinning means: they scrolled away with everything else, which is exactly the
+  // moment you wanted them.
   const pinnedSet = useMemo(() => new Set(prefs.pinned), [prefs.pinned]);
-  const pinFirst = useCallback(
-    (list: Row[]) => {
-      if (!prefs.pinned.length) return list;
-      const rank = new Map(prefs.pinned.map((id, i) => [id, i]));
-      const top: Row[] = [];
-      const rest: Row[] = [];
-      for (const r of list) (rank.has(r.param.id) ? top : rest).push(r);
-      top.sort((a, b) => (rank.get(a.param.id) ?? 0) - (rank.get(b.param.id) ?? 0));
-      return [...top, ...rest];
-    },
-    [prefs.pinned],
+  const dropPinned = useCallback(
+    (list: Row[]) => (prefs.pinned.length ? list.filter((r) => !pinnedSet.has(r.param.id)) : list),
+    [prefs.pinned.length, pinnedSet],
   );
 
   // Open the file this parameter lives in, at the line it lives on. The exact
@@ -978,7 +971,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (pill === "added") return items.some(isAdded);
       return items.some(isRemoved);
     });
-    if (!prefs.groupByValue) return pinFirst(pilled);
+    if (!prefs.groupByValue) return dropPinned(pilled);
     // Group-by-value: cluster rows that share the same value signature (their
     // per-instance values, identical across the board) adjacently, anchored at
     // each group's first appearance so the overall order stays familiar.
@@ -992,9 +985,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       }
       bySig.get(s)!.push(r);
     }
-    return pinFirst(order.flatMap((s) => bySig.get(s)!));
+    return dropPinned(order.flatMap((s) => bySig.get(s)!));
      
-  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances, pinFirst]);
+  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances, dropPinned]);
 
   // Visual metadata for group-by-value: for each row in a same-value group of
   // more than one, its cycling color and whether it opens/closes the group box.
@@ -1160,6 +1153,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const hlParam = searchScope === "all" || searchScope === "param" ? hlq : "";
   const hlDesc = searchScope === "all" || searchScope === "desc" ? hlq : "";
 
+  // The pinned rows, in the order they were pinned. Taken from the FULL set
+  // rather than the filtered one: a pin means "keep this in front of me", and a
+  // search that happens not to match it should not take it away.
+  const pinnedRows = useMemo(() => {
+    if (!prefs.pinned.length) return [] as Row[];
+    const byId = new Map(baseRows.map((r) => [r.param.id, r]));
+    return prefs.pinned.map((id) => byId.get(id)).filter((r): r is Row => !!r);
+  }, [prefs.pinned, baseRows]);
+
   const columns: ColumnsType<Row> = useMemo(() => {
     const types = [...new Set(grid.rows.map((r) => r.param.type))].sort();
     const scopes = [...new Set(grid.rows.map((r) => r.param.scope))].sort();
@@ -1180,12 +1182,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           <ParamMenu
             canEdit={canEdit}
             pinned={pinnedSet.has(r.param.id)}
+            pinnedCount={prefs.pinned.length}
             fileLabel={fileFor(r.param)?.split("/").pop()}
             onDetails={() => inspectParam(r.param.id, "details")}
             onValidation={() => inspectParam(r.param.id, "validation")}
             onHistory={() => inspectParam(r.param.id, "history")}
             onOpenFile={fileFor(r.param) ? () => void openInFiles(r.param) : undefined}
             onTogglePin={() => togglePin(r.param.id)}
+            onUnpinAll={unpinAll}
             onUnmanage={() => setUnmanaging(r.param)}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
@@ -1195,19 +1199,22 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 </Tooltip>
               )}
               {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
-              <Tooltip title={r.param.name} placement="topLeft">
-                <span
-                  style={{
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    minWidth: 0,
-                    ...(r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : null),
-                  }}
-                >
-                  {hl(r.param.name, hlParam)}
-                </span>
-              </Tooltip>
+              {/* A NATIVE title, not a Tooltip. The floating tooltip opened on
+                  the same pointer that opens the context menu and covered the
+                  first item of it; the browser's own tip waits, and gets out of
+                  the way the moment a menu appears. */}
+              <span
+                title={r.param.name}
+                style={{
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  minWidth: 0,
+                  ...(r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : null),
+                }}
+              >
+                {hl(r.param.name, hlParam)}
+              </span>
               {r.pendingUnmanage && (
                 <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
                   <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
@@ -1542,8 +1549,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
 
   // The editor stays editing-focused: the table fills the available height.
   // Category inventory lives in the Overview dashboard, not here.
+  //
+  // The pinned shelf is part of the table's FIXED half (header + shelf), so its
+  // height comes out of the scrolling body's - otherwise the table grows past
+  // the box it was given and the whole editor gains a scrollbar of its own,
+  // which then carries the toolbar off the top of the screen.
+  const rowH = prefs.density === "compact" ? 39 : 48;
+  const shelfH = pinnedRows.length * rowH;
   const availH = Math.max(bodyH - headerH, 120);
-  const tableY = availH;
+  const tableY = Math.max(availH - shelfH, 120);
 
   // Step through the matching rows, selecting and scrolling to each.
   const gotoMatch = (delta: number) => {
@@ -1678,7 +1692,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           />
         )}
         <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
-          {isFiltered ? `${rows.length} of ${total}` : rows.length}
+          {/* Pinned rows are held out of the list but are still on screen, so
+              they count towards what the reader can see. */}
+          {isFiltered
+            ? `${rows.length + pinnedRows.length} of ${total}`
+            : rows.length + pinnedRows.length}
         </span>
         {isFiltered && (
           <Tooltip title="Clear the category, filters and search - show every parameter">
@@ -1778,6 +1796,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { key: "showScopeCol", label: <Checkbox checked={prefs.showScopeCol}>Scope column</Checkbox> },
               { key: "showDescCol", label: <Checkbox checked={prefs.showDescCol}>Description column</Checkbox> },
               { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
+              ...(prefs.pinned.length
+                ? [{ key: "unpinAll", icon: <PushpinOutlined />, label: `Unpin all (${prefs.pinned.length})` }]
+                : []),
               {
                 key: "showBeforeAfter",
                 label: (
@@ -1797,6 +1818,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 setMoreOpen(false);
               } else if (key === "invalidOnly" || key === "overriddenOnly" || key === "hideNA") {
                 setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>);
+              } else if (key === "unpinAll") {
+                unpinAll();
+                setMoreOpen(false);
               } else if (key === "density") {
                 setPrefs({ density: prefs.density === "comfortable" ? "compact" : "comfortable" });
               } else if (
@@ -2012,6 +2036,38 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             onClick: () => toggleParamPanel(r.param.id),
             style: { cursor: "pointer" },
           })}
+          // Pinned rows ride in the table's sticky top block: the same table, so
+          // the same column widths and the same horizontal scroll, and they stay
+          // under the header however far the list is scrolled. antd calls this
+          // a summary; here it is the "keep these in front of me" shelf.
+          summary={
+            pinnedRows.length
+              ? () => (
+                  <Table.Summary fixed="top">
+                    {pinnedRows.map((r) => (
+                      <Table.Summary.Row
+                        key={r.param.id}
+                        className={
+                          "cf-pinned-row" +
+                          (r.param.id === selectedParamId ? " row-selected" : "") +
+                          (r.param.id === pinnedRows[pinnedRows.length - 1].param.id ? " cf-pinned-last" : "")
+                        }
+                        onClick={() => toggleParamPanel(r.param.id)}
+                      >
+                        {columns.map((col, i) => {
+                          const cell = (col as { onCell?: (r: Row) => { className?: string } }).onCell?.(r);
+                          return (
+                            <Table.Summary.Cell key={col.key ?? i} index={i} className={cell?.className}>
+                              {renderColumn(col, r, i)}
+                            </Table.Summary.Cell>
+                          );
+                        })}
+                      </Table.Summary.Row>
+                    ))}
+                  </Table.Summary>
+                )
+              : undefined
+          }
         />
       </div>
       </div>
@@ -2194,6 +2250,23 @@ function FindReplaceModal({
   );
 }
 
+// renderColumn draws one column's cell for a row OUTSIDE the table body (the
+// pinned shelf), through the column's own render function so a pinned row is
+// the same row, drawn the same way, and never drifts from the list below it.
+function renderColumn(col: ColumnsType<Row>[number], row: Row, index: number): React.ReactNode {
+  const c = col as {
+    render?: (value: unknown, record: Row, index: number) => React.ReactNode;
+    dataIndex?: string | string[];
+  };
+  const value =
+    typeof c.dataIndex === "string"
+      ? (row as unknown as Record<string, unknown>)[c.dataIndex]
+      : Array.isArray(c.dataIndex)
+        ? c.dataIndex.reduce<unknown>((acc, k) => (acc as Record<string, unknown>)?.[k], row)
+        : undefined;
+  return c.render ? c.render(value, row, index) : (value as React.ReactNode);
+}
+
 // ParamMenu is the right-click menu for a PARAMETER (the row), as distinct from
 // the one on a value (the cell). Every entry answers a question about the
 // setting itself and LANDS on the answer: the inspector opens on the tab that
@@ -2202,17 +2275,21 @@ function FindReplaceModal({
 function ParamMenu({
   canEdit,
   pinned,
+  pinnedCount,
   fileLabel,
   onDetails,
   onValidation,
   onHistory,
   onOpenFile,
   onTogglePin,
+  onUnpinAll,
   onUnmanage,
   children,
 }: {
   canEdit: boolean;
   pinned: boolean;
+  /** how many parameters are pinned in total (drives "Unpin all") */
+  pinnedCount: number;
   /** the file this parameter's value lives in, already expanded for the
    *  instance in view (undefined for a design-phase parameter) */
   fileLabel?: string;
@@ -2221,6 +2298,7 @@ function ParamMenu({
   onHistory: () => void;
   onOpenFile?: () => void;
   onTogglePin: () => void;
+  onUnpinAll: () => void;
   onUnmanage: () => void;
   children: React.ReactElement;
 }) {
@@ -2239,6 +2317,9 @@ function ParamMenu({
             icon: <PushpinOutlined />,
             label: pinned ? "Unpin from the top" : "Pin on top",
           },
+          ...(pinnedCount > 1 || (pinnedCount === 1 && !pinned)
+            ? [{ key: "unpinAll", icon: <PushpinOutlined />, label: `Unpin all (${pinnedCount})` }]
+            : []),
           { key: "history", icon: <ClockOutlined />, label: "View change history" },
           ...(canEdit
             ? [
@@ -2260,6 +2341,7 @@ function ParamMenu({
           else if (key === "history") onHistory();
           else if (key === "file") onOpenFile?.();
           else if (key === "pin") onTogglePin();
+          else if (key === "unpinAll") onUnpinAll();
           else if (key === "unmanage") onUnmanage();
         },
       }}

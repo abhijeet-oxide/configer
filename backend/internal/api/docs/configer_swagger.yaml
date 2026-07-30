@@ -1627,8 +1627,9 @@ paths:
     get:
       description: Every value in one file that a catalog parameter is bound to, with
         the 1-based line it sits on in the draft-applied content the Files explorer
-        shows. Lets the editor mark the lines Configer manages. XML values report
-        line 0 (the engine has no per-node line there).
+        shows, and the columns the value itself occupies on that line. Lets the editor
+        mark exactly the managed values. A value that cannot be narrowed (a block
+        scalar) reports columns 0 and is marked by line.
       parameters:
       - description: Repository-relative file path
         in: query

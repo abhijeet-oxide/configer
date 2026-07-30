@@ -218,6 +218,10 @@ export interface ManagedValue {
   name: string;
   path: string;
   line: number;
+  /** 1-based columns bracketing the VALUE on that line (end exclusive); 0 when
+   *  it could not be narrowed and the whole line is the answer */
+  col?: number;
+  endCol?: number;
   type?: string;
   secret?: boolean;
   instance?: string;

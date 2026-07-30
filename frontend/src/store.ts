@@ -299,6 +299,8 @@ interface UIState {
   setInspectorTab: (tab: string) => void;
   /** pin a parameter to the top of the grid, or unpin it */
   togglePin: (id: string) => void;
+  /** clear every pin at once */
+  unpinAll: () => void;
   selectInstance: (name: string | null) => void;
   setCompare: (left: string | null, right: string | null) => void;
   setSearch: (q: string) => void;
@@ -447,6 +449,12 @@ export const useUI = create<UIState>((set) => ({
       return { selectedParamId, inspectorTab, panels };
     }),
   setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+  unpinAll: () =>
+    set((s) => {
+      const prefs = { ...s.prefs, pinned: [] };
+      localStorage.setItem("configer.viewPrefs", JSON.stringify(prefs));
+      return { prefs };
+    }),
   togglePin: (id) =>
     set((s) => {
       const pinned = s.prefs.pinned.includes(id)

@@ -86,6 +86,16 @@ export function describeChange(it: ChangeItem): ChangeDesc {
       what: src ? `cloned from ${src}` : "empty (no values copied)",
     };
   }
+  if (action === "unmanage-parameter") {
+    const name = typeof it.new === "string" && it.new ? it.new : it.paramId;
+    return {
+      tag: "Unmanage",
+      tone: "danger",
+      kind: "instance",
+      subject: name,
+      what: "Configer stops managing it; the value stays in every file",
+    };
+  }
   if (action === "remove-instance") {
     return {
       tag: "Retire instance",

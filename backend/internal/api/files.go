@@ -479,3 +479,152 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": 1, "kind": "file", "managedChanges": len(changes)})
 }
+
+// ManagedValue is one value inside a file that Configer manages: which
+// parameter owns it, where it is in the file, and the line it sits on in the
+// content the Files explorer is showing.
+type ManagedValue struct {
+	ParamID string `json:"paramId"`
+	Name    string `json:"name"`
+	Path    string `json:"path"`
+	Line    int    `json:"line"`
+	Type    string `json:"type,omitempty"`
+	Secret  bool   `json:"secret,omitempty"`
+	// Instance is the instance whose folder this file belongs to, empty for a
+	// shared (base-layer) file that every instance reads.
+	Instance string `json:"instance,omitempty"`
+}
+
+// managedValues answers "which lines of this file does Configer look after".
+//
+// A file in the explorer is mostly ordinary text with a handful of values the
+// product actually manages, and until now nothing said which. The lines are
+// located in the SAME content the explorer renders - the draft applied in
+// memory - so a highlight cannot drift a line away from the value it marks.
+//
+// @Summary     Managed values in a file
+// @Description Every value in one file that a catalog parameter is bound to, with the 1-based line it sits on in the draft-applied content the Files explorer shows. Lets the editor mark the lines Configer manages. XML values report line 0 (the engine has no per-node line there).
+// @Tags        Files
+// @Produce     json
+// @Param       file     query string true  "Repository-relative file path"
+// @Param       instance query string false "Instance whose draft/expansion to use (default: every instance)"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "file is required"
+// @Router      /api/files/managed [get]
+func (s *Server) managedValues(w http.ResponseWriter, r *http.Request) {
+	file := strings.TrimSpace(r.URL.Query().Get("file"))
+	if file == "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "file is required")
+		return
+	}
+	clean := filepath.ToSlash(filepath.Clean(file))
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid file path")
+		return
+	}
+	p, draft, err := s.loadWithDraft(draftOwner(r))
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	var items []change.Item
+	if draft != nil {
+		items = draft.Items
+	}
+
+	// Which instances to expand {folder}/{instance} bindings for: the one in
+	// view, or all of them for the explorer's default "All instances".
+	want := strings.TrimSpace(r.URL.Query().Get("instance"))
+	instances := p.Registry.Instances
+	if want != "" && want != allInstancesSentinel {
+		inst, ok := p.InstanceByName(want)
+		if !ok {
+			writeJSON(w, http.StatusOK, map[string]any{"file": clean, "values": []ManagedValue{}})
+			return
+		}
+		instances = []model.Instance{inst}
+	}
+
+	raw, err := os.ReadFile(filepath.Join(s.RepoPath, filepath.FromSlash(clean)))
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"file": clean, "values": []ManagedValue{}})
+		return
+	}
+	// Apply the draft ONCE per instance and parse the result ONCE per format:
+	// a values file carries dozens of managed keys, and doing either per
+	// parameter is the difference between one pass over the bytes and a hundred.
+	applied := map[string]string{}
+	contentFor := func(inst model.Instance) string {
+		if c, ok := applied[inst.Name]; ok {
+			return c
+		}
+		c, _ := applyDraftToFile(p, inst, clean, string(raw), items)
+		applied[inst.Name] = c
+		return c
+	}
+	docs := map[string]*pathedit.Document{}
+	docFor := func(content, format string) *pathedit.Document {
+		key := format + "\x00" + content
+		if d, ok := docs[key]; ok {
+			return d
+		}
+		d, derr := pathedit.Parse([]byte(content), format)
+		if derr != nil {
+			d = nil
+		}
+		docs[key] = d
+		return d
+	}
+
+	out := make([]ManagedValue, 0)
+	seen := map[string]bool{}
+	for _, param := range p.Catalog.Parameters {
+		for _, b := range param.Bindings {
+			if b.EffectiveLayer() == model.LayerBase {
+				if filepath.ToSlash(b.File) != clean {
+					continue
+				}
+				// A shared file reads the same for everyone: the draft's
+				// global items apply with no instance in hand.
+				addManaged(&out, seen, docFor(contentFor(model.Instance{}), b.Format), param, b, "")
+				continue
+			}
+			for _, inst := range instances {
+				eb := b.ForInstance(inst)
+				if filepath.ToSlash(eb.File) != clean {
+					continue
+				}
+				addManaged(&out, seen, docFor(contentFor(inst), eb.Format), param, eb, inst.Name)
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Line != out[j].Line {
+			return out[i].Line < out[j].Line
+		}
+		return out[i].ParamID < out[j].ParamID
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"file": clean, "values": out})
+}
+
+// addManaged appends one located value, skipping duplicates (a deduplicated
+// parameter can reach the same line through several instances' bindings) and
+// values the file does not actually carry.
+func addManaged(out *[]ManagedValue, seen map[string]bool, doc *pathedit.Document, param model.Parameter, b model.Binding, instance string) {
+	if doc == nil {
+		return
+	}
+	line, ok := doc.Line(b.Path)
+	if !ok || line <= 0 {
+		return
+	}
+	key := param.ID + "\x00" + b.Path
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	*out = append(*out, ManagedValue{
+		ParamID: param.ID, Name: param.Name, Path: b.Path, Line: line,
+		Type: string(param.Type), Secret: param.Secret, Instance: instance,
+	})
+}

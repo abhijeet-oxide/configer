@@ -174,6 +174,12 @@ func structuralSummary(it change.Item) string {
 		return "remove instance " + it.Instance
 	case change.ActionUpdateInstance:
 		return "update instance " + it.Instance
+	case change.ActionUnmanageParameter:
+		name, _ := it.New.(string)
+		if name == "" {
+			name = it.ParamID
+		}
+		return "stop managing " + name
 	}
 	return string(it.Act()) + " " + it.Instance
 }

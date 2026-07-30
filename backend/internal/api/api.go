@@ -267,6 +267,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/compare", s.compare)
 	mux.HandleFunc("GET /api/locate", s.locate)
 	mux.HandleFunc("GET /api/render/{instance}", s.render)
+	mux.HandleFunc("GET /api/files/managed", s.managedValues)
 	mux.HandleFunc("POST /api/scan", s.scan)
 	mux.HandleFunc("GET /api/validation/presets", s.presets)
 	mux.HandleFunc("PUT /api/values", s.stageValue)

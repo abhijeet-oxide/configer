@@ -168,7 +168,8 @@ export type ItemAction =
   | "add-instance"
   | "remove-instance"
   | "update-instance"
-  | "edit-file";
+  | "edit-file"
+  | "unmanage-parameter";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
  *  delta is a formatting artifact, never a configuration change, so diff
@@ -209,6 +210,17 @@ export interface ChangeItem {
   old: unknown;
   new: unknown;
   updatedAt: string;
+}
+
+/** One value inside a file that Configer manages, and the line it is on. */
+export interface ManagedValue {
+  paramId: string;
+  name: string;
+  path: string;
+  line: number;
+  type?: string;
+  secret?: boolean;
+  instance?: string;
 }
 
 /** One file a change request would rewrite, with exact before/after content
@@ -341,6 +353,9 @@ export interface ChangeRequest {
 export interface Row {
   param: Parameter;
   cells: Record<string, Cell>;
+  /** a draft change stops managing this parameter: still here, still editable,
+   *  and leaving the catalog when that change is published */
+  pendingUnmanage?: boolean;
 }
 
 export interface CategoryNode {
@@ -1494,6 +1509,12 @@ export const api = {
     put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
       rp("/files/draft"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
+  /** Every value in one file that a parameter is bound to, with the line it
+   *  sits on in the content the explorer shows. */
+  managedValues: (file: string, instance?: string) =>
+    get<{ file: string; values: ManagedValue[] }>(
+      rp(`/files/managed?file=${encodeURIComponent(file)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}`),
+    ),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
   // Fan a single parameter's edit across many instances in one request. Each
@@ -1527,11 +1548,13 @@ export const api = {
   // the draft lock, and a selection of eighty took long enough to look broken.
   revertValues: (items: { paramId: string; instance: string }[]) =>
     send<{ ok: boolean; removed: number; pending: number }>("DELETE", rp("/values/bulk"), { items }),
-  /** Stop managing a parameter: it leaves the catalog and the grid, and every
-   *  file keeps its value. Not the same as deleteParameter, which also removes
-   *  the value from every file. */
+  /** STAGE "stop managing a parameter" on the draft: when the change is
+   *  published the parameter leaves the catalog and the grid, and every file
+   *  keeps its value. Not the same as deleteParameter, which retires it and
+   *  removes the value from every file. */
   unmanageParameter: (id: string, author?: string) =>
-    send<{ ok: boolean; unmanaged: string }>("POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
+    send<{ ok: boolean; staged: string; pending: number; changeId: number }>(
+      "POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
   updateParameter: (
     id: string,
     patch: {

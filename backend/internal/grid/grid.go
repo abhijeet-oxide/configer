@@ -60,6 +60,10 @@ type Cell struct {
 type Row struct {
 	Param model.Parameter `json:"param"`
 	Cells map[string]Cell `json:"cells"`
+	// PendingUnmanage marks a parameter a draft change stops managing: it is
+	// still here, still editable, and will leave the catalog when that change
+	// is published.
+	PendingUnmanage bool `json:"pendingUnmanage,omitempty"`
 }
 
 // Grid is the full matrix plus the instance (column) list and the category
@@ -248,6 +252,15 @@ func applyStructuralPreview(g *Grid, it change.Item) {
 		for i := range g.Instances {
 			if g.Instances[i].Name == it.Instance {
 				g.Instances[i].Status = "retiring" // pending removal
+			}
+		}
+	case change.ActionUnmanageParameter:
+		// The row stays, marked: the parameter is still managed until the change
+		// is published, and hiding it early would leave the reader wondering
+		// where it went and no way to undo it from the grid.
+		for i := range g.Rows {
+			if g.Rows[i].Param.ID == it.ParamID {
+				g.Rows[i].PendingUnmanage = true
 			}
 		}
 	}

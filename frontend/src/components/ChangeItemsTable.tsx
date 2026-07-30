@@ -99,7 +99,7 @@ export function ChangeItemsTable({
   items,
   onUndo,
   undoingKey,
-  maxHeight,
+  fill,
   onOpenParam,
 }: {
   items: ChangeItem[] | null;
@@ -108,9 +108,9 @@ export function ChangeItemsTable({
   /** itemKey of the row whose undo is in flight - that ONE row spins, and the
    *  others go disabled rather than all pretending to be busy. */
   undoingKey?: string | null;
-  /** cap the list's own height (px) so a hundred changes scroll inside the
-   *  table instead of pushing whatever follows it off the screen. */
-  maxHeight?: number;
+  /** fill the height of the container and scroll inside it (the review dialog),
+   *  rather than growing with the list (a page that scrolls anyway). */
+  fill?: boolean;
   /** when given, parameter subjects become links */
   onOpenParam?: (paramId: string) => void;
 }) {
@@ -118,14 +118,23 @@ export function ChangeItemsTable({
   return (
     <Table<ChangeItem>
       size="small"
+      className={"cf-items" + (fill ? " cf-items-fill" : "")}
       rowKey={itemKey}
       dataSource={items}
       pagination={false}
-      scroll={maxHeight ? { x: "max-content", y: maxHeight } : { x: "max-content" }}
+      // No horizontal scrolling, ever: the columns divide the width they are
+      // given and the long things inside them wrap. A sideways bar under a list
+      // of changes is a second axis to search in for no reason - the values it
+      // would reveal are what the diff already picks out.
+      tableLayout="fixed"
+      // y:1 is a placeholder: it makes antd render the fixed-header/scroll-body
+      // structure, and .cf-items-fill's CSS then lets that body take the height
+      // of whatever box it is in (see index.css).
+      scroll={fill ? { y: 1 } : undefined}
       columns={[
         {
           title: "Change",
-          width: 130,
+          width: 104,
           render: (_v, it) => {
             const d = describeChange(it);
             return <Tag color={TONE[d.tone]} style={{ marginInlineEnd: 0 }}>{d.tag}</Tag>;
@@ -133,14 +142,10 @@ export function ChangeItemsTable({
         },
         {
           title: "What",
-          // A width, because the column holds a diff: without one the table's
-          // max-content sizing lets a long value stretch the row off-screen,
-          // which is the very thing the diff exists to prevent.
-          width: 520,
           render: (_v, it) => {
             const d = describeChange(it);
             return (
-              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, maxWidth: 500 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
                 <Subject it={it} d={d} onOpenParam={onOpenParam} />
                 <Detail d={d} />
               </div>

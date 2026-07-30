@@ -1451,13 +1451,19 @@ body {
   animation: cellFlash 2.4s ease-out;
 }
 
-/* The "you have staged edits" reminder: ONE pill, tucked into the bottom edge.
-   At rest it is a lip carrying the count in words - flush with the edge, so it
-   costs almost no space and never covers the work. Pointing at it (or focusing
-   it, or tapping it) lifts the same pill clear of the edge and opens the rest of
-   its content out to the right. There is deliberately no second pill and no
-   collapse control: the reveal is the hover, and the words at rest are the same
-   words as when it is open. */
+/* The "you have staged edits" reminder: ONE element, anchored to the bottom edge.
+   At rest it is a small ORANGE tab carrying the count in words - the draft's own
+   colour, so it reads as the same thing as the amber cells and the amber badge.
+   Pointing at it opens the rest of it in place: the tab grows UP and OUT while
+   its bottom edge stays put, and the orange fill gives way to the surface so the
+   two actions sit on something quiet.
+
+   Nothing here may animate POSITION. An earlier version lifted the pill 18px off
+   the edge when it opened, which moved it out from under the pointer that opened
+   it - the pill then closed, which put it back under the pointer, which opened it
+   again: a flicker for as long as the mouse sat near the bottom of the window.
+   Growth from a fixed edge cannot do that, because the tab stays inside the open
+   pill's own box. */
 .pending-bar {
   position: fixed;
   left: 50%;
@@ -1466,40 +1472,47 @@ body {
   z-index: 50;
   display: flex;
   align-items: center;
-  gap: 10px;
-  max-width: min(600px, calc(100vw - 24px));
-  padding: 3px 10px 4px;
-  border-radius: 10px 10px 0 0;
-  background: var(--surface);
-  border: 1px solid var(--c-pending-bd);
+  gap: 8px;
+  max-width: min(620px, calc(100vw - 24px));
+  padding: 0 2px;
+  border-radius: 9px 9px 0 0;
+  background: var(--c-pending);
+  border: 1px solid var(--c-pending);
   border-bottom: none;
-  box-shadow: var(--el-2, 0 8px 24px rgba(0, 0, 0, 0.16));
-  color: var(--text);
+  box-shadow: 0 -2px 10px color-mix(in srgb, var(--c-pending) 40%, transparent);
+  color: #fff;
   font-size: 13px;
   animation: pendingBarIn 0.22s ease-out;
-  transition: bottom 0.18s ease, padding 0.18s ease, border-radius 0.18s ease;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease,
+    padding 0.16s ease, box-shadow 0.16s ease;
 }
 .pending-bar.is-open {
-  bottom: 18px;
-  padding: 8px 10px 8px 16px;
-  border-radius: 999px;
-  border-bottom: 1px solid var(--c-pending-bd);
+  padding: 6px 8px 7px 14px;
+  background: var(--surface);
+  border-color: var(--c-pending-bd);
+  color: var(--text);
+  box-shadow: var(--el-2, 0 -8px 24px rgba(0, 0, 0, 0.16));
 }
-/* The always-visible half: the dot and the count, in the words the open pill
-   uses too. It is a button so a tap or the keyboard can open the pill where
-   there is no pointer to hover with. */
-.pending-bar-head {
+/* The tab itself: always visible, always the same words as the open pill. A
+   button, so a tap or the keyboard opens the pill where there is no pointer. */
+.pending-bar-tab {
   display: inline-flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   min-width: 0;
   margin: 0;
-  padding: 2px 2px;
+  padding: 4px 8px;
   border: none;
   background: none;
   color: inherit;
   font: inherit;
+  line-height: 1.3;
   cursor: pointer;
+}
+.pending-bar-tab:focus-visible {
+  outline: 2px solid var(--c-review);
+  outline-offset: 1px;
+  border-radius: 6px;
 }
 .pending-bar-label {
   font-weight: 600;
@@ -1510,9 +1523,9 @@ body {
   font-size: 12px;
   white-space: nowrap;
 }
-/* The revealed half. Hidden by width rather than by unmounting, so it slides
-   open and closed instead of appearing; visibility:hidden also keeps its
-   buttons out of the tab order while they cannot be seen. */
+/* The revealed half. Hidden by width rather than by unmounting, so it opens and
+   closes instead of appearing; visibility:hidden also keeps its buttons out of
+   the tab order while they cannot be seen. */
 .pending-bar-more {
   display: inline-flex;
   align-items: center;
@@ -1524,7 +1537,7 @@ body {
   transition: max-width 0.18s ease, opacity 0.14s ease, visibility 0.18s;
 }
 .pending-bar.is-open .pending-bar-more {
-  max-width: 460px;
+  max-width: 470px;
   opacity: 1;
   visibility: visible;
 }
@@ -1533,21 +1546,193 @@ body {
      actions are what the pill is for. */
   .pending-bar-sub { display: none; }
 }
+/* On the tab the dot is white-on-orange; in the open pill it is the amber dot
+   the rest of the product uses for a pending thing. */
 .pending-bar-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
+  background: #fff;
+  flex-shrink: 0;
+  transition: background 0.16s ease, box-shadow 0.16s ease;
+}
+.pending-bar.is-open .pending-bar-dot {
   background: var(--c-pending);
   box-shadow: 0 0 0 3px var(--c-pending-bg);
-  flex-shrink: 0;
 }
 @keyframes pendingBarIn {
-  from { opacity: 0; transform: translate(-50%, 8px); }
+  from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
   .pending-bar,
+  .pending-bar-dot,
   .pending-bar-more { animation: none; transition: none; }
+}
+
+/* ------------------------------------------------- the review dialog's frame */
+
+/* A dialog is a fixed frame around ONE scrollable region. .cf-fill is that
+   region: it takes the height left after the fixed parts (notice, form, buttons)
+   have had theirs, and holds either the list of changes or the file diff - never
+   both, because two halves of a 250px gap are two things too small to read. */
+.cf-fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 116px;
+  min-width: 0;
+}
+
+/* An antd table that fills its box and scrolls its BODY only. scroll={{y:1}}
+   makes antd split the header from the body; from there the height comes from
+   the flex box this sits in, not from a number a component had to guess. */
+.cf-items-fill,
+.cf-items-fill .ant-spin-nested-loading,
+.cf-items-fill .ant-spin-container,
+.cf-items-fill .ant-table,
+.cf-items-fill .ant-table-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+/* The header keeps its own height: as a shrinkable flex child it collapsed to a
+   2px line under a body that wanted more room, and the columns lost their
+   names. */
+.cf-items-fill .ant-table-header {
+  flex: 0 0 auto;
+}
+.cf-items-fill .ant-table-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+/* Fixed layout means the columns divide the width they are given; the long
+   things inside them have to break rather than demand a sideways scrollbar. */
+.cf-items .ant-table-cell {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.cf-items .ant-table-cell .vd-pair {
+  flex-wrap: wrap;
+}
+
+/* One scrollbar, and it should look like part of the surface it is on: a thin
+   rounded thumb over no track at all, darker while the pointer is in the region
+   it scrolls. The browser default - a full-width grey channel with arrow
+   buttons on Windows - is what made three of them read as a broken dialog. */
+.cf-items-fill .ant-table-body,
+.cf-scroll {
+  scrollbar-gutter: stable;
+}
+.cf-items-fill .ant-table-body::-webkit-scrollbar,
+.cf-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+.cf-items-fill .ant-table-body::-webkit-scrollbar-track,
+.cf-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cf-items-fill .ant-table-body::-webkit-scrollbar-thumb,
+.cf-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid transparent; /* the inset that makes the thumb read as thin */
+  border-radius: 999px;
+  background-clip: padding-box;
+  background-color: color-mix(in srgb, var(--text-3) 40%, transparent);
+}
+.cf-items-fill:hover .ant-table-body::-webkit-scrollbar-thumb,
+.cf-scroll:hover::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--text-3) 70%, transparent);
+}
+.cf-items-fill .ant-table-body::-webkit-scrollbar-thumb:active,
+.cf-scroll::-webkit-scrollbar-thumb:active {
+  background-color: var(--text-2);
+}
+.cf-items-fill .ant-table-body::-webkit-scrollbar-corner,
+.cf-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+}
+/* Firefox has no such pseudo-elements, so it gets the nearest thing the standard
+   properties can say. They live behind a guard because Chromium honours THEM in
+   preference to everything above the moment they are present on the same
+   element - setting both would quietly throw away the rounded thumb. */
+@supports not selector(::-webkit-scrollbar) {
+  .cf-items-fill .ant-table-body,
+  .cf-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-3) 55%, transparent) transparent;
+  }
+}
+
+/* The un-appliable items. Each is one line: what it is, where, and why - the
+   "why" truncated to two lines, because these sentences are long and the reader
+   needs the SET of them, not every word of each. */
+.cf-problems {
+  flex-shrink: 0;
+}
+.cf-problem-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cf-problem {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12.5px;
+  min-width: 0;
+}
+.cf-problem > code {
+  overflow-wrap: anywhere;
+}
+.cf-problem-inst {
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.cf-problem-why {
+  flex: 1 1 100%;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+/* The file-diff panel inside the dialog: header strip, then the diff filling
+   what is left. */
+.cf-preview {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  gap: 8px;
+}
+.cf-preview-files {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+.cf-preview-path {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-preview-diff {
+  flex: 1 1 auto;
+  min-height: 160px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 /* Success pulse after an edit is staged: a brief green wash that fades, so a

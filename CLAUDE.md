@@ -192,26 +192,59 @@ is a horizontal lane with its name on a pill at the left. A change request is
 drawn as a PATH, not an annotation: a thick Bézier leaves the exact commit dot
 it forked from, docks flat into the left edge of its card, and leaves the right
 edge - curving back into a lane only when it actually merged (which may be a
-different lane than it left). Anything still open ends in a small ring; a
-rejected change ends in a crossed node.
+different lane than it left).
 
 Two rules keep it legible and neither may be relaxed:
 
-- **Cards outrank lines.** A card is a neutral surface with a subtle shadow, a
-  monochrome type mark (hotfix/feature/bugfix/security/maintenance/change
-  request - shape and label carry the type, `TYPE_MARK`), the CR number, a
-  two-line title, author and age, and the change count. Hovering one dims every
-  other path and card (`.cf-flow.is-dim`).
+- **Cards outrank lines.** A card carries a monochrome type mark
+  (hotfix/feature/bugfix/security/maintenance/change request - shape and label
+  carry the type, `TYPE_MARK`, and it is shown even on a rejected change: what
+  kind of thing was turned down is the point), the CR number, a two-line title,
+  author and age, then a foot with its STATUS in words and its change count.
+  Hovering one dims every other path and card (`.cf-flow.is-dim`).
 - **Colour means branch or status, nothing else.** A lane's colour IS its
-  identity (`--cf-main`, `--cf-lane-1..4`); red (`--cf-reject`) appears only on
-  a rejected path. A change type never gets a colour, so a red thing on screen
-  always means the same thing.
+  identity (`--cf-main`, `--cf-lane-1..4`). A change type never gets a colour,
+  so a red thing on screen always means the same thing.
+
+**A state is never said in one channel alone** - it is a colour AND a line
+style AND a mark, so the picture survives being small, printed, or read by
+somebody who cannot separate the hues (`STATUS`, `STATUS_COLOR`):
+
+| state | colour | line | ends in |
+|---|---|---|---|
+| draft | `--cf-draft` slate | fine dash | a small ring - it is going nowhere yet |
+| pending review | `--cf-review` amber | dotted | a dashed ring ON the target lane |
+| approved | `--cf-merged` green | long dash | a dashed ring ON the target lane |
+| published | the lane's own colour | solid | the real merge commit |
+| rejected | `--cf-reject` red | broken dash | a crossed node |
+
+Only four status hues, and a fifth would start colliding with the lanes:
+approved deliberately shares published's green because it has the same destiny,
+and its long dash is what says it has not got there yet. A card wears its
+status as a full-strength rail across the top plus the faintest wash of the
+same colour, never as a solid block - the title stays the loudest thing on it.
+
+**A change waiting on a person is the loudest thing in the picture**, because
+"what is waiting on me, and where is it going" is the question this screen
+exists to answer. Its path does not stop at its card: it runs on, dotted, to
+the exact point on the branch it is asking to land (`PROJECT_RUN`), and puts a
+dashed ring there. On the trunk that point is always past HEAD (`HEAD_CLEAR`) -
+a merge happens after the commit it merges onto, and it keeps the ring out from
+under the HEAD pill. Several waiting on one lane queue behind each other
+(`PROJECT_STAGGER`) rather than stacking on one spot.
+
+**The viewer's own unfinished work is picked out** (`Flow.active`, matched
+through `useIdentity`): a halo that slowly breathes, a thicker path, and "Your
+draft" instead of "Draft". A draft's colour is the quietest on the screen by
+design, so motion - not a borrowed hue - is what makes it findable. It is off
+under `prefers-reduced-motion`.
 
 Node SHAPE, not colour, says what a dot is: filled circle = commit, ring +
-core = merge, glowing star = HEAD, crossed circle = rejected. Hovering a dot
-names its commit in full and clicking copies it. Two changes forking from one
-commit leave the same dot; cards fan above and below their lane so several
-simultaneous changes never stack on top of each other.
+core = merge, glowing star = HEAD, dashed ring = a merge that has not happened
+yet, crossed circle = rejected. Hovering a dot names its commit in full and
+clicking copies it. Two changes forking from one commit leave the same dot;
+cards fan above and below their lane so several simultaneous changes never
+stack on top of each other.
 
 The horizontal scale has TWO rules that are easy to break and obvious when
 broken. A stop is per COMMIT, not per instant - a pipeline that lands three

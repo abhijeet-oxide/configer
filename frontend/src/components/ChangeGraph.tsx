@@ -3,14 +3,19 @@ import { Tooltip, App as AntApp } from "antd";
 import {
   BranchesOutlined,
   BugOutlined,
+  CheckCircleOutlined,
   ClockOutlined,
+  CloseCircleOutlined,
   EditOutlined,
+  EyeOutlined,
   FileTextOutlined,
+  RocketOutlined,
   ShieldOutlined,
   ThunderboltOutlined,
   WrenchOutlined,
 } from "../icons";
 import { relTime } from "./DashboardView";
+import { useIdentity } from "../identity";
 import UserAvatar from "./UserAvatar";
 import type { BranchLane, ChangeRequest, ChangeState, Commit, TimelineEntry } from "../api";
 
@@ -29,11 +34,20 @@ import type { BranchLane, ChangeRequest, ChangeState, Commit, TimelineEntry } fr
 //   a lane    is a branch that stays: main, lab, prod. One colour each, named
 //             in a pill at the left where the eye starts.
 //   colour    is ONLY branch identity and status. Red is only ever rejected.
-//   a card    is one change, white and quiet, carrying a monochrome mark for
-//             its type - a type is a word and a glyph, never a colour.
+//   a card    is one change, carrying a monochrome mark for its TYPE - a type
+//             is a word and a glyph, never a colour - and a STATUS accent, in
+//             the one colour that says where the change is in its life.
 //   a node    says what kind of moment it was by its SHAPE: a filled dot is a
 //             commit, a ring is a merge, a crossed circle is a rejection, a
-//             star is where the branch is now.
+//             star is where the branch is now, and a dashed ring is a merge
+//             that has not happened yet.
+//
+// A state is never said in one channel alone: it is a colour AND a line style
+// AND a mark, so the picture still works small, printed, or read by somebody
+// who cannot separate the hues. A change still waiting on a person carries the
+// strongest signal in the picture - a dotted line running on past its card to
+// the exact place on the branch it is asking to land, because "what is waiting
+// on me, and where is it going" is the question this screen exists to answer.
 //
 // Hovering a card lifts that one change's whole path out of the picture and
 // dims the rest, which is how you follow a single story through a busy week.
@@ -50,9 +64,20 @@ const AXIS_H = 52;
 /** The least room a band gets even with no cards in it. */
 const MIN_BAND = 74;
 const CARD_W = 178;
-const CARD_H = 118;
+const CARD_H = 132;
 const CARD_GAP_X = 54;
 const CARD_GAP_Y = 20;
+/** How far a submitted change reaches past its card to show where it is asking
+ *  to land. Long enough to read as a journey, short enough that two of them
+ *  waiting at once do not draw over each other. */
+const PROJECT_RUN = 132;
+/** Room to clear the HEAD marker. Something waiting to merge into the trunk
+ *  lands AFTER where the trunk is now - which is both true and the only way
+ *  its marker is not drawn underneath the HEAD pill. */
+const HEAD_CLEAR = 104;
+/** Two things waiting on the same branch will land one after the other, so
+ *  they are drawn one after the other rather than on the same spot. */
+const PROJECT_STAGGER = 38;
 /** Minimum and maximum horizontal distance between two consecutive moments.
  *  Real elapsed time decides where in between, so a quiet night does not push
  *  the picture a mile wide and a busy minute is still readable. */
@@ -79,19 +104,74 @@ const TYPE_MARK: Record<string, { icon: React.ReactNode; label: string }> = {
 };
 const typeMark = (category?: string) => TYPE_MARK[(category ?? "").toLowerCase()] ?? TYPE_MARK.change;
 
-/** Status, which is the only thing besides a branch that gets a colour - and
- *  red is spent entirely on "this did not happen". */
-type FlowStatus = "open" | "merged" | "rejected";
+/** Where a change is in its life. This is the OTHER thing colour is allowed to
+ *  mean, and every state gets three signals at once - a colour, a line style
+ *  and a mark - so the picture survives being printed, being small, and being
+ *  read by somebody who cannot separate the hues. */
+type FlowStatus = "draft" | "review" | "approved" | "merged" | "rejected";
 const statusOf = (s: ChangeState): FlowStatus =>
-  s === "published" ? "merged" : s === "rejected" ? "rejected" : "open";
+  s === "published"
+    ? "merged"
+    : s === "rejected"
+      ? "rejected"
+      : s === "approved"
+        ? "approved"
+        : s === "under_review"
+          ? "review"
+          : "draft";
 
-const STATUS_WORDS: Record<ChangeState, string> = {
-  draft: "Draft - not sent for review",
-  under_review: "Out for review",
-  approved: "Approved - not published yet",
-  published: "Published",
-  rejected: "Rejected in review",
+interface StatusLook {
+  /** the word on the card's status chip */
+  label: string;
+  /** the sentence a reader gets on hover */
+  words: string;
+  icon: React.ReactNode;
+  /** it has not landed but it is ON ITS WAY: draw where it is headed, dotted,
+   *  so a reviewer can see what is waiting on them and where it will end up */
+  projects?: boolean;
+}
+
+const STATUS: Record<FlowStatus, StatusLook> = {
+  draft: {
+    label: "Draft",
+    words: "Draft - yours, and not sent for review yet",
+    icon: <EditOutlined />,
+  },
+  review: {
+    label: "Pending review",
+    words: "Submitted - waiting for a reviewer",
+    icon: <EyeOutlined />,
+    projects: true,
+  },
+  approved: {
+    label: "Approved",
+    words: "Approved - waiting to be published",
+    icon: <CheckCircleOutlined />,
+    projects: true,
+  },
+  merged: {
+    label: "Published",
+    words: "Published - live in the repository",
+    icon: <RocketOutlined />,
+  },
+  rejected: {
+    label: "Rejected",
+    words: "Rejected in review - it was never published",
+    icon: <CloseCircleOutlined />,
+  },
 };
+
+/** The colour a state is said in. Spelled out rather than built from the state
+ *  name: a token that does not exist resolves to nothing, and a path stroked
+ *  with nothing is simply not drawn. */
+const STATUS_COLOR: Record<FlowStatus, string> = {
+  draft: "var(--cf-draft)",
+  review: "var(--cf-review)",
+  approved: "var(--cf-merged)",
+  merged: "var(--cf-merged)",
+  rejected: "var(--cf-reject)",
+};
+const statusColor = (s: FlowStatus) => STATUS_COLOR[s];
 
 interface Moment {
   t: number;
@@ -112,12 +192,18 @@ interface FlowNode {
 interface Flow {
   cr: ChangeRequest;
   status: FlowStatus;
+  /** the viewer's own work, and still in flight: the one card on this screen
+   *  that is about THEM rather than about the history */
+  active: boolean;
   fromLane: number;
   toLane: number;
   x0: number;
   x1: number;
   cardX: number;
   cardY: number;
+  /** where a change still waiting on somebody is asking to land; unset for one
+   *  that has already landed, been rejected, or not been sent anywhere yet */
+  projectX?: number;
 }
 
 export default function ChangeGraph({
@@ -134,6 +220,13 @@ export default function ChangeGraph({
   onOpenChange: (cr: ChangeRequest) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+
+  // Who is reading. A change of the viewer's OWN that has not landed is the one
+  // thing on this screen they can still do something about, so it gets picked
+  // out - everything else here is history they are only looking at.
+  const me = useIdentity();
+  const isMine = (author: string) =>
+    !!author && (author === me.displayName || author === me.user?.login);
 
   // One lane per standing branch, in the order the service listed them (the
   // trunk first). Lane colour is identity, and identity only.
@@ -293,20 +386,25 @@ export default function ChangeGraph({
     // shallow and reads the way somebody would lay it out by hand.
     const bandCount = lanes.length + 1;
     const rows: [number, number][][][] = Array.from({ length: bandCount }, () => []);
+    /** how many changes are already queued to land on each lane */
+    const pending = new Map<number, number>();
     const placed: {
       cr: ChangeRequest;
       status: FlowStatus;
+      active: boolean;
       fromLane: number;
       toLane: number;
       x0: number;
       x1: number;
       cardX: number;
+      projectX?: number;
       band: number;
       row: number;
     }[] = [];
 
     for (const cr of ordered) {
       const status = statusOf(cr.state);
+      const active = status !== "merged" && status !== "rejected" && isMine(cr.author);
       const fromLane = laneOf.get(cr.baseSha ?? "") ?? laneByName.get(cr.targetBranch) ?? 0;
       const toLane = laneByName.get(cr.targetBranch) ?? fromLane;
       // A draft has no base commit yet, and it is not floating in space: it is
@@ -326,10 +424,27 @@ export default function ChangeGraph({
       const prefer: number[] =
         toLane !== fromLane ? [Math.max(fromLane, toLane)] : [fromLane, fromLane + 1];
 
+      // Where a submitted change is asking to land. On the trunk that has to be
+      // past the head - a merge happens after the commit it merges onto, and it
+      // keeps the marker out from under the HEAD pill. Queued behind whatever
+      // is already waiting on the same lane, because that is the order they
+      // will actually land in and two rings on one spot say nothing.
+      let projectX: number | undefined;
+      if (STATUS[status].projects) {
+        const queued = pending.get(toLane) ?? 0;
+        pending.set(toLane, queued + 1);
+        projectX =
+          Math.max(
+            cardX + CARD_W + PROJECT_RUN,
+            toLane === 0 && headX !== undefined ? headX + HEAD_CLEAR : 0,
+          ) +
+          queued * PROJECT_STAGGER;
+      }
+      // A submitted change reserves the run past its card too, so the dotted
+      // line saying where it is headed never crosses somebody else's card.
+      const reach = projectX ?? cardX + CARD_W;
       const free = (b: number, r: number) =>
-        !(rows[b]?.[r] ?? []).some(
-          ([a, z]) => cardX < z + CARD_GAP_X && a < cardX + CARD_W + CARD_GAP_X,
-        );
+        !(rows[b]?.[r] ?? []).some(([a, z]) => cardX < z + CARD_GAP_X && a < reach + CARD_GAP_X);
 
       let band = prefer[0];
       let row = 0;
@@ -343,8 +458,8 @@ export default function ChangeGraph({
           }
         }
       }
-      ((rows[band] ??= [])[row] ??= []).push([cardX, cardX + CARD_W]);
-      placed.push({ cr, status, fromLane, toLane, x0, x1, cardX, band, row });
+      ((rows[band] ??= [])[row] ??= []).push([cardX, reach]);
+      placed.push({ cr, status, active, fromLane, toLane, x0, x1, cardX, projectX, band, row });
     }
 
     const bandHeight = (b: number) => {
@@ -360,16 +475,18 @@ export default function ChangeGraph({
     const flows: Flow[] = placed.map((d) => ({
       cr: d.cr,
       status: d.status,
+      active: d.active,
       fromLane: d.fromLane,
       toLane: d.toLane,
       x0: d.x0,
       x1: d.x1,
       cardX: d.cardX,
+      projectX: d.projectX,
       cardY: bandStart[d.band] + CARD_GAP_Y + d.row * (CARD_H + CARD_GAP_Y),
     }));
     return { flows, laneYs, bottom };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [changes, lanes, laneOf, nodes, scale]);
+  }, [changes, lanes, laneOf, nodes, scale, me.displayName, me.user?.login]);
 
   const flows = layout.flows;
   const laneY = (i: number) => layout.laneYs[Math.max(0, Math.min(i, layout.laneYs.length - 1))] ?? PAD_TOP;
@@ -377,7 +494,7 @@ export default function ChangeGraph({
   const lastX = Math.max(
     LABEL_W + PLOT_PAD_L + STEP_MIN,
     ...nodes.map((n) => n.x),
-    ...flows.map((f) => Math.max(f.x1, f.cardX + CARD_W)),
+    ...flows.map((f) => Math.max(f.x1, f.projectX ?? f.cardX + CARD_W)),
   );
   const width = lastX + PLOT_PAD_R;
   const height = layout.bottom + AXIS_H;
@@ -516,6 +633,7 @@ function FlowPath({
   const cardMidY = f.cardY + CARD_H / 2;
   const inX = f.cardX;
   const outX = f.cardX + CARD_W;
+  const tone = statusColor(f.status);
   // Both ends are flat, which is what gives the curve its single smooth S with
   // no visible corner. The control points sit halfway along in x normally, and
   // stretch out towards the far end when the drop is steep - at the limit they
@@ -527,25 +645,72 @@ function FlowPath({
     return `M ${ax} ${ay} C ${ax + c} ${ay} ${bx - c} ${by} ${bx} ${by}`;
   };
   const enter = ease(f.x0, y0, inX, cardMidY);
-  // Only a change that LANDED gets a curve back to a lane. One still out, or
-  // one that was rejected, ends where it ended - drawing it rejoining anyway
-  // was the picture telling a story that had not happened.
-  const leave =
-    f.status === "merged"
+
+  // What happens after the card is the whole of the state.
+  //
+  // A change that LANDED curves back into the lane that accepted it, in that
+  // lane's colour, because the journey between real branches is the story.
+  // A change that is WAITING ON SOMEBODY runs on, dotted, to the exact point
+  // on the branch it is asking to land - it has not happened, so the line and
+  // the node it ends on both say "not yet", but it says where it is going,
+  // which is what a reviewer needs. Anything else ends where it ended: a draft
+  // in a small ring, a rejection in a cross.
+  const look = STATUS[f.status];
+  const projectX = f.projectX;
+  const leave = projectX
+    ? ease(outX, cardMidY, projectX, y1)
+    : f.status === "merged"
       ? ease(outX, cardMidY, f.x1, y1)
       : `M ${outX} ${cardMidY} L ${outX + (f.status === "rejected" ? 40 : 20)} ${cardMidY}`;
 
-  const cls = `cf-flow is-${f.status}${dimmed ? " is-dim" : ""}${lifted ? " is-lifted" : ""}`;
+  // Colour follows the same split: landed is branch, unlanded is status.
+  const stroke = f.status === "merged" ? { in: fromColor, out: toColor } : { in: tone, out: tone };
+
+  const cls =
+    `cf-flow is-${f.status}${f.active ? " is-active" : ""}` +
+    `${dimmed ? " is-dim" : ""}${lifted ? " is-lifted" : ""}`;
   return (
     <g className={cls}>
-      <path d={enter} fill="none" style={{ stroke: f.status === "rejected" ? "var(--cf-reject)" : fromColor }} />
-      <path d={leave} fill="none" style={{ stroke: f.status === "rejected" ? "var(--cf-reject)" : toColor }} />
-      {/* Where it ended. A rejection is its own node shape, and the only red
-          thing on screen. An open change simply has no end yet. */}
-      {f.status === "rejected" && <RejectedNode x={outX + 50} y={cardMidY} />}
-      {f.status === "open" && (
-        <circle cx={outX + 26} cy={cardMidY} r={4.5} className="cf-open-end" style={{ stroke: toColor }} />
+      <path d={enter} fill="none" style={{ stroke: stroke.in }} />
+      <path d={leave} fill="none" style={{ stroke: stroke.out }} />
+      {/* Where it ended, or where it is headed. Shape carries it: a dashed ring
+          on the lane is a merge that has not happened, a cross is a rejection,
+          a small ring is work that has not been sent anywhere yet. */}
+      {projectX !== undefined && (
+        <PendingMerge
+          x={projectX}
+          y={y1}
+          color={tone}
+          words={`${look.label} - will merge into ${f.cr.targetBranch}`}
+        />
       )}
+      {f.status === "rejected" && <RejectedNode x={outX + 50} y={cardMidY} />}
+      {f.status === "draft" && (
+        <circle cx={outX + 26} cy={cardMidY} r={4.5} className="cf-open-end" style={{ stroke: tone }} />
+      )}
+    </g>
+  );
+}
+
+/** A merge that has not happened yet: the same ring a real merge gets, drawn
+ *  dashed and hollow. It sits on the lane at the point the change is asking to
+ *  land, so "where will this end up" is answered by looking, not by reading. */
+function PendingMerge({
+  x,
+  y,
+  color,
+  words,
+}: {
+  x: number;
+  y: number;
+  color: string;
+  words: string;
+}) {
+  return (
+    <g className="cf-pending-node" style={{ ["--c" as string]: color }}>
+      <title>{words}</title>
+      <circle cx={x} cy={y} r={7.5} className="cf-pending-ring" />
+      <circle cx={x} cy={y} r={2.4} className="cf-pending-core" />
     </g>
   );
 }
@@ -682,11 +847,23 @@ function FlowCard({
 }) {
   const { cr } = f;
   const mark = typeMark(cr.category);
+  const look = STATUS[f.status];
   const files = cr.items?.length ?? 0;
+  // "Your draft" rather than "Draft": whose it is changes what the reader can
+  // do about it, and that outranks restating the state they can already see.
+  const label = f.active && f.status === "draft" ? "Your draft" : look.label;
   return (
     <div
-      className={`cf-card is-${f.status}${dimmed ? " is-dim" : ""}`}
-      style={{ left: f.cardX, top: y, width: CARD_W, height: CARD_H }}
+      className={
+        `cf-card is-${f.status}${f.active ? " is-active" : ""}${dimmed ? " is-dim" : ""}`
+      }
+      style={{
+        left: f.cardX,
+        top: y,
+        width: CARD_W,
+        height: CARD_H,
+        ["--st" as string]: statusColor(f.status),
+      }}
       role="button"
       tabIndex={0}
       onMouseEnter={onEnter}
@@ -701,13 +878,18 @@ function FlowCard({
         }
       }}
     >
+      {/* The status rail: the card's one stripe of colour, at the top edge
+          where it reads before anything else on the card does. */}
+      <i className="cf-card-rail" aria-hidden />
       <div className="cf-card-head">
-        <Tooltip title={STATUS_WORDS[cr.state]}>
-          <span className="cf-type">
-            {f.status === "rejected" ? <RejectMark /> : mark.icon}
-            {mark.label}
-          </span>
-        </Tooltip>
+        {/* The type, always, and always monochrome. An earlier version swapped
+            this for a cross when the change was rejected, which threw away the
+            fact that it had been a SECURITY change - the one thing you most
+            want to know about a rejected one. Status is said in the foot. */}
+        <span className="cf-type" title={`${mark.label} - ${look.words}`}>
+          {mark.icon}
+          {mark.label}
+        </span>
         <span className="cf-crid">{cr.number ? `CR-${cr.number}` : "draft"}</span>
       </div>
       <div className="cf-card-title" title={cr.title}>
@@ -723,23 +905,21 @@ function FlowCard({
           </span>
         </Tooltip>
       </div>
-      <div className="cf-card-files">
-        <FileTextOutlined style={{ fontSize: 11 }} />
-        {files} change{files === 1 ? "" : "s"}
+      {/* Status in words, next to the size of the change. Together they are the
+          two things somebody deciding whether to open this card needs. */}
+      <div className="cf-card-foot">
+        <Tooltip title={look.words}>
+          <span className="cf-status">
+            {look.icon}
+            {label}
+          </span>
+        </Tooltip>
+        <span className="cf-card-files">
+          <FileTextOutlined style={{ fontSize: 11 }} />
+          {files}
+        </span>
       </div>
     </div>
-  );
-}
-
-/** The rejected mark on a card: the one place a type slot turns red, because
- *  the change never happened and that outranks what kind it was. */
-function RejectMark() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 16 16" className="cf-reject-mark" aria-hidden>
-      <circle cx="8" cy="8" r="6.5" />
-      <line x1="5.6" y1="5.6" x2="10.4" y2="10.4" />
-      <line x1="10.4" y1="5.6" x2="5.6" y2="10.4" />
-    </svg>
   );
 }
 
@@ -773,14 +953,6 @@ function Legend({
         </svg>
         merge
       </span>
-      <span className="cf-legend-item is-reject">
-        <svg width="16" height="16" viewBox="0 0 16 16" className="cf-legend-glyph">
-          <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.6" />
-          <line x1="5.6" y1="5.6" x2="10.4" y2="10.4" stroke="currentColor" strokeWidth="1.6" />
-          <line x1="10.4" y1="5.6" x2="5.6" y2="10.4" stroke="currentColor" strokeWidth="1.6" />
-        </svg>
-        rejected
-      </span>
       <span className="cf-legend-item">
         <svg width="16" height="16" viewBox="0 0 16 16" className="cf-legend-glyph">
           <polygon
@@ -792,6 +964,21 @@ function Legend({
         </svg>
         now
       </span>
+      <span className="cf-legend-div" />
+      {/* Where a change is in its life, in the exact colour and line the
+          picture uses for it. A state is never one signal alone. */}
+      {(["draft", "review", "approved", "merged", "rejected"] as FlowStatus[]).map((s) => (
+        <span
+          key={s}
+          className={`cf-legend-item cf-legend-status is-${s}`}
+          style={{ ["--st" as string]: statusColor(s) }}
+        >
+          <svg width="26" height="10" viewBox="0 0 26 10" className="cf-legend-dash" aria-hidden>
+            <line x1="1" y1="5" x2="25" y2="5" />
+          </svg>
+          {STATUS[s].label}
+        </span>
+      ))}
     </div>
   );
 }

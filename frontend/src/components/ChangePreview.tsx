@@ -4,12 +4,15 @@
 // the Files view uses. It answers "what will this actually change on disk?"
 // with the real bytes, not a value-level summary.
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Alert, Empty, Segmented, Spin, Tag, Typography } from "antd";
+import { Alert, Empty, Select, Spin, Tag, Typography } from "antd";
 import { useRepoQuery } from "../repoQuery";
 import { api, type FilePreview } from "../api";
 import { useUI } from "../store";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
+
+/** How many un-appliable items are named in full before the rest are counted. */
+const PROBLEMS_SHOWN = 4;
 
 function statusColor(status: FilePreview["status"]): string {
   if (status === "added") return "green";
@@ -51,26 +54,35 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
   const current = files[Math.min(active, files.length - 1)];
 
   return (
-    <div>
+    <div className="cf-preview">
       {/* An edit that cannot be written is the most important thing on this
           panel: a submit will refuse it too, so it is named here - which
           parameter, which instance, which file - while the edits that DO apply
-          still show their real diff below. */}
+          still show their real diff below.
+
+          Only the first few, though. Forty of these printed in full is a wall of
+          text that hides both the count and the diff underneath it; the rest are
+          counted, and one line says what to do about all of them. */}
       {problems.length > 0 && (
         <Alert
           type="warning"
           showIcon
-          style={{ marginBottom: 10 }}
+          className="cf-problems"
           message={`${problems.length} change${problems.length === 1 ? "" : "s"} cannot be written yet`}
           description={
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {problems.map((p, i) => (
-                <div key={i} style={{ fontSize: 12.5 }}>
+            <div className="cf-problem-list">
+              {problems.slice(0, PROBLEMS_SHOWN).map((p, i) => (
+                <div key={i} className="cf-problem">
                   <code>{p.paramId || p.file || "change"}</code>
-                  {p.instance && <span style={{ color: "var(--text-2)" }}> on {p.instance}</span>}
-                  <div style={{ color: "var(--text-2)" }}>{p.message}</div>
+                  {p.instance && <span className="cf-problem-inst">on {p.instance}</span>}
+                  <span className="cf-problem-why">{p.message}</span>
                 </div>
               ))}
+              {problems.length > PROBLEMS_SHOWN && (
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  and {problems.length - PROBLEMS_SHOWN} more
+                </Typography.Text>
+              )}
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
                 Undo these in the list above (or fix the file they point at) and the rest can go for
                 review as they are.
@@ -80,7 +92,7 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
         />
       )}
       {structural.length > 0 && (
-        <div style={{ marginBottom: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
+        <div style={{ flexShrink: 0, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {structural.map((s) => (
             <Tag key={s} color="purple">
               {s}
@@ -91,27 +103,38 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
 
       {files.length > 0 && (
         <>
-          <Segmented
-            size="small"
-            value={String(active)}
-            onChange={(v) => setActive(Number(v))}
-            options={files.map((f, i) => ({
-              value: String(i),
-              label: (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                  <Tag color={statusColor(f.status)} style={{ marginInlineEnd: 0 }}>
-                    {f.status}
-                  </Tag>
-                  <code style={{ fontSize: 12 }}>{f.file}</code>
-                  <span style={{ fontSize: 11, color: "var(--c-ok)" }}>+{f.additions}</span>
-                  <span style={{ fontSize: 11, color: "var(--c-danger)" }}>-{f.deletions}</span>
-                </span>
-              ),
-            }))}
-            style={{ marginBottom: 8, overflowX: "auto", maxWidth: "100%" }}
-          />
+          {/* One row for "which file", whether the change touches two files or
+              forty. Tabs across the top were fine for two and became a sideways
+              scrollbar at ten - a second axis to hunt along, above a diff that is
+              already the thing you came to read. A picker names the file, counts
+              what moved in it, and says how many others there are. */}
+          <div className="cf-preview-files">
+            <Select
+              size="small"
+              value={String(active)}
+              onChange={(v) => setActive(Number(v))}
+              popupMatchSelectWidth={false}
+              style={{ flex: 1, minWidth: 0 }}
+              options={files.map((f, i) => ({
+                value: String(i),
+                label: (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <Tag color={statusColor(f.status)} style={{ marginInlineEnd: 0 }}>
+                      {f.status}
+                    </Tag>
+                    <code className="cf-preview-path">{f.file}</code>
+                    <span style={{ fontSize: 11, color: "var(--c-ok)" }}>+{f.additions}</span>
+                    <span style={{ fontSize: 11, color: "var(--c-danger)" }}>-{f.deletions}</span>
+                  </span>
+                ),
+              }))}
+            />
+            <Typography.Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+              {files.length === 1 ? "1 file" : `file ${active + 1} of ${files.length}`}
+            </Typography.Text>
+          </div>
           {current && (
-            <div style={{ height: 320, border: "1px solid var(--border)", borderRadius: 8, overflow: "hidden" }}>
+            <div className="cf-preview-diff">
               <Suspense fallback={<div style={{ padding: 16 }}><Spin /></div>}>
                 <MonacoFileView
                   path={current.file}

@@ -23,13 +23,17 @@ import { useIdentity } from "../identity";
 // the global header): pending-edit badge, review-before-submit modal with
 // per-row undo, change type + reference, and the git-native explanation.
 //
-// The dialog has a FIXED shape whatever the size of the draft: the list of
-// changes scrolls inside itself and the body scrolls under the header, so the
-// title field and "Submit for review" are always on screen. Growing with the
-// draft was the earlier behaviour and it broke at scale in the worst way - a
-// hundred edits pushed the form off the bottom of the viewport, leaving a
-// dialog that could be read but not used.
-const ITEMS_MAX_H = 260;
+// The dialog has a FIXED shape whatever the size of the draft, and exactly ONE
+// thing in it scrolls: the list of changes. Everything else - the production
+// notice, the file-diff panel, the form, the buttons - is laid out to fit inside
+// the dialog's own height, which is capped to the window.
+//
+// It took two goes to get here. First the dialog grew with the draft, so a
+// hundred edits pushed the form off the bottom of the screen. Then the body
+// scrolled, which put THREE bars on screen at once (the body's, the list's, and
+// a sideways one under the table) and made the dialog look broken. A dialog is a
+// fixed frame around one scrollable list; nothing else in it may scroll.
+const BODY_H = "min(700px, calc(100vh - 170px))";
 
 export default function SubmitChangesButton({ instances }: { instances?: Instance[] }) {
   const { message } = AntApp.useApp();
@@ -162,7 +166,19 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         // Pinned near the top and capped to the viewport: the dialog can never
         // be taller than the screen it is on, on a phone or a laptop.
         style={{ top: 24, maxWidth: "calc(100vw - 32px)" }}
-        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", overflowX: "hidden" } }}
+        styles={{
+          body: {
+            height: BODY_H,
+            display: "flex",
+            flexDirection: "column",
+            gap: 12,
+            // The parts below add up to less than this on any normal screen, so
+            // no bar appears here; auto rather than hidden so a very short window
+            // (under ~680px) scrolls instead of clipping the form.
+            overflowY: "auto",
+            overflowX: "hidden",
+          },
+        }}
         afterOpenChange={(o) => {
           if (!o) return;
           titleRef.current?.focus();
@@ -178,7 +194,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
               display: "flex",
               alignItems: "center",
               gap: 8,
-              marginBottom: 12,
+              flexShrink: 0,
               padding: "6px 10px",
               borderRadius: 8,
               fontSize: 12.5,
@@ -193,41 +209,50 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             </span>
           </div>
         )}
-        <div style={{ marginBottom: 14 }}>
-          <ChangeItemsTable
-            items={items}
-            // The list scrolls inside itself. A hundred staged edits used to
-            // make the dialog taller than the screen, pushing the title field
-            // and the submit button out of reach - the one thing this dialog
-            // exists to let you do.
-            maxHeight={ITEMS_MAX_H}
-            onUndo={(it) => {
-              setUndoing(itemKey(it));
-              revert.mutate(it);
-            }}
-            undoingKey={undoing}
-            onOpenParam={(v) => {
-              selectParam(v);
-              setSection("config");
-              setOpen(false);
-            }}
-          />
+        {/* The middle of the dialog holds ONE of two things at a time, and it is
+            the only part that scrolls: the list of changes, or the byte-level
+            diff of the files they rewrite. Showing both meant neither got enough
+            height to be worth reading, and pushed the form off the bottom - and
+            they answer the same question at two altitudes, so the reader wants
+            one or the other, never a sliver of each. */}
+        <div className="cf-fill">
+          {showDiffs && draftQ.data?.draft ? (
+            <ChangePreview changeId={draftQ.data.draft.id} />
+          ) : (
+            <ChangeItemsTable
+              items={items}
+              fill
+              onUndo={(it) => {
+                setUndoing(itemKey(it));
+                revert.mutate(it);
+              }}
+              undoingKey={undoing}
+              onOpenParam={(v) => {
+                selectParam(v);
+                setSection("config");
+                setOpen(false);
+              }}
+            />
+          )}
         </div>
 
         {pending > 0 && draftQ.data?.draft && (
-          <div style={{ marginBottom: 14 }}>
-            <Button
-              type="link"
-              size="small"
-              style={{ paddingLeft: 0 }}
-              onClick={() => setShowDiffs((v) => !v)}
-            >
-              {showDiffs ? "Hide file diffs" : "View exact file changes"}
-            </Button>
-            {showDiffs && <ChangePreview changeId={draftQ.data.draft.id} />}
-          </div>
+          <Button
+            type="link"
+            size="small"
+            style={{ paddingLeft: 0, alignSelf: "flex-start", flexShrink: 0 }}
+            onClick={() => setShowDiffs((v) => !v)}
+          >
+            {showDiffs ? "Back to the list of changes" : "View exact file changes"}
+          </Button>
         )}
-        <Form form={form} layout="vertical" onFinish={(v) => submit.mutate(v)} initialValues={{ title: "" }}>
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={(v) => submit.mutate(v)}
+          initialValues={{ title: "" }}
+          style={{ flexShrink: 0 }}
+        >
           <Form.Item
             name="title"
             label="What is this change about?"
@@ -277,7 +302,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             <Input.TextArea rows={2} placeholder="Shown to the approver, and kept in the Git history" />
           </Form.Item>
         </Form>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
           On Git this saves your edits to a dedicated review branch (named after this
           change) and opens a review; nothing goes live until an approver publishes it.
         </Typography.Text>

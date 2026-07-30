@@ -76,7 +76,56 @@ export function diffValues(before: string, after: string): DiffPart[] {
   push("same", a.slice(0, head).join(""));
   for (const p of lcsDiff(midA, midB)) push(p.op, p.text);
   push("same", a.slice(a.length - tail).join(""));
-  return parts;
+  return shiftEdits(refineRuns(parts));
+}
+
+/** A rewritten run longer than this is left whole: past a certain size the
+ *  characters two values happen to share stop being the story, and marking them
+ *  turns one edit into confetti. */
+const MAX_REFINE = 96;
+
+/** At least this share of the longer run must survive as unchanged text for a
+ *  character-level breakdown to be worth showing. "723" -> "733" keeps two of
+ *  three characters and reads as one digit changing; "ashburn" -> "frankfurt"
+ *  keeps almost nothing and reads better as one value replacing another. */
+const MIN_KEPT = 0.34;
+
+// refineRuns re-diffes a replaced run CHARACTER by character. Token granularity
+// is right for a sentence or a config block, but a cell holds "723" - one token,
+// so the whole value went red and the whole new one green, and the reader was
+// left doing the comparison the diff exists to do for them. This narrows such a
+// pair to the characters that actually moved, and only when what remains is
+// recognisably the same value.
+function refineRuns(parts: DiffPart[]): DiffPart[] {
+  const out: DiffPart[] = [];
+  const push = (op: DiffOp, text: string) => {
+    if (!text) return;
+    const last = out[out.length - 1];
+    if (last && last.op === op) last.text += text;
+    else out.push({ op, text });
+  };
+  for (let i = 0; i < parts.length; i++) {
+    const del = parts[i];
+    const ins = parts[i + 1];
+    const pair =
+      del.op === "del" &&
+      ins?.op === "ins" &&
+      del.text.length <= MAX_REFINE &&
+      ins.text.length <= MAX_REFINE;
+    if (!pair) {
+      push(del.op, del.text);
+      continue;
+    }
+    const chars = lcsDiff([...del.text], [...ins.text]);
+    const kept = chars.reduce((n, p) => (p.op === "same" ? n + p.text.length : n), 0);
+    if (kept / Math.max(del.text.length, ins.text.length) < MIN_KEPT) {
+      push(del.op, del.text);
+      continue;
+    }
+    for (const p of chars) push(p.op, p.text);
+    i++; // the insertion has been consumed by the refinement
+  }
+  return out;
 }
 
 // lcsDiff is the classic longest-common-subsequence table walk over tokens.
@@ -119,6 +168,50 @@ function lcsDiff(a: string[], b: string[]): DiffPart[] {
   while (i < n) push("del", a[i++]);
   while (j < m) push("ins", b[j++]);
   return out;
+}
+
+// shiftEdits slides a change to the earliest position that produces the same two
+// values. "723" -> "733" can be told as "the 2 went and a 3 arrived at the end"
+// or as "the middle digit changed"; both reconstruct both values, and only the
+// second is what the reader sees. Where an edit ends with the text just before
+// it, that text is moved behind the edit, which walks the marks back to where
+// the values actually diverge.
+function shiftEdits(parts: DiffPart[]): DiffPart[] {
+  const out = parts.slice();
+  for (let pass = 0; pass < 8; pass++) {
+    let moved = false;
+    for (let i = 1; i < out.length; i++) {
+      const before = out[i - 1];
+      if (before.op !== "same" || !before.text) continue;
+      // The whole edit group (a removal, an insertion, or both) shifts together,
+      // so the two sides stay aligned on the text they share.
+      let end = i;
+      while (end < out.length && out[end].op !== "same") end++;
+      const group = out.slice(i, end);
+      if (!group.length || !group.every((g) => g.text.endsWith(before.text))) continue;
+      out.splice(
+        i - 1,
+        group.length + 1,
+        ...group.map((g) => ({
+          op: g.op,
+          text: before.text + g.text.slice(0, g.text.length - before.text.length),
+        })),
+        { op: "same" as DiffOp, text: before.text },
+      );
+      moved = true;
+      break;
+    }
+    if (!moved) break;
+  }
+  // Shifting can leave two runs of the same op next to each other.
+  const merged: DiffPart[] = [];
+  for (const p of out) {
+    if (!p.text) continue;
+    const last = merged[merged.length - 1];
+    if (last && last.op === p.op) last.text += p.text;
+    else merged.push({ ...p });
+  }
+  return merged;
 }
 
 /** changedSummary counts how much of the value actually moved, for the "3

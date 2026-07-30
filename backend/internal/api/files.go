@@ -142,10 +142,7 @@ func instanceFiles(p *project.Project, instanceName string, items []change.Item)
 		if err != nil {
 			continue // racing deletion: skip rather than fail the listing
 		}
-		content, err := applyDraftToFile(p, inst, f, string(b), items)
-		if err != nil {
-			return nil, err
-		}
+		content, _ := applyDraftToFile(p, inst, f, string(b), items)
 		out = append(out, FileContent{Path: f, Content: content})
 	}
 	return out, nil
@@ -230,10 +227,7 @@ func pendingInstanceFiles(p *project.Project, name string, items []change.Item) 
 	sort.Strings(paths)
 	out := make([]FileContent, 0, len(paths))
 	for _, f := range paths {
-		content, err := applyDraftToFile(p, inst, f, contents[f], items)
-		if err != nil {
-			content = contents[f]
-		}
+		content, _ := applyDraftToFile(p, inst, f, contents[f], items)
 		out = append(out, FileContent{Path: f, Content: content})
 	}
 	return out, true
@@ -242,7 +236,16 @@ func pendingInstanceFiles(p *project.Project, name string, items []change.Item) 
 // applyDraftToFile applies the draft items that land in file f (for this
 // instance) onto content, in memory: a direct file edit replaces the content
 // wholesale, then staged value items refine on top.
-func applyDraftToFile(p *project.Project, inst model.Instance, f, content string, items []change.Item) (string, error) {
+//
+// An item that CANNOT be written into this file is skipped, and named in the
+// returned list. Every caller here is previewing a file, and a stale mapping
+// (one whose path no longer fits the file) must not blank the explorer or make
+// the file uneditable - which is what returning the error did: one unwritable
+// staged edit answered the whole listing with "index 2 out of range". The review
+// dialog is where such an item is reported by name, and submit is where it is
+// refused.
+func applyDraftToFile(p *project.Project, inst model.Instance, f, content string, items []change.Item) (string, []string) {
+	var skipped []string
 	for _, it := range items {
 		if it.Act() == change.ActionEditFile && it.File == f {
 			if c, ok := it.New.(string); ok {
@@ -269,18 +272,25 @@ func applyDraftToFile(p *project.Project, inst model.Instance, f, content string
 			if b.File != f {
 				continue
 			}
-			var err error
+			var (
+				out string
+				err error
+			)
 			if it.Act() == change.ActionSet {
-				content, err = pathedit.Set([]byte(content), b.Format, b.Path, param.Type, it.New)
+				out, err = pathedit.Set([]byte(content), b.Format, b.Path, param.Type, it.New)
 			} else {
-				content, err = pathedit.Remove([]byte(content), b.Format, b.Path, param.Type)
+				out, err = pathedit.Remove([]byte(content), b.Format, b.Path, param.Type)
 			}
 			if err != nil {
-				return "", err
+				// Keep what the file already had: a half-applied preview would
+				// show the user a file that exists nowhere.
+				skipped = append(skipped, it.ParamID)
+				continue
 			}
+			content = out
 		}
 	}
-	return content, nil
+	return content, skipped
 }
 
 type errInstanceNotFound string
@@ -342,11 +352,10 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
 		items = d.Items
 	}
-	old, err := applyDraftToFile(p, inst, req.Path, committed, items)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
+	// The same baseline the explorer showed, skips and all, so the diff below is
+	// against what the user actually edited rather than against a file they
+	// never saw.
+	old, _ := applyDraftToFile(p, inst, req.Path, committed, items)
 	if old == req.Content {
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": 0, "detail": "no changes"})
 		return

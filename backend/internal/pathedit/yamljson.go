@@ -715,7 +715,13 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 				cur.Content = append(cur.Content, next)
 				cur = next
 			default:
-				return fmt.Errorf("index %d out of range (len %d)", seg.Index, len(cur.Content))
+				// Only an append can grow a list, so a position past the end is
+				// refused rather than padded with blanks. Said in the file's own
+				// terms: "index out of range" is about a slice, not about the
+				// thing the reader has to go and look at.
+				return fmt.Errorf(
+					"the list here holds %d entr%s, so position %d is not there",
+					len(cur.Content), plural(len(cur.Content)), seg.Index)
 			}
 			continue
 		}
@@ -783,6 +789,13 @@ func childContainer(m *yaml.Node, key string, wantSeq bool) (*yaml.Node, error) 
 	v := &yaml.Node{Kind: kind}
 	m.Content = append(m.Content, k, v)
 	return v, nil
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
 }
 
 // stepName names one path step the way the path itself spells it, so an error

@@ -333,6 +333,26 @@ func (r *Repo) Branches() ([]string, error) {
 	return nonEmptyLines(out), nil
 }
 
+// LogRef returns the commits reachable from ref but NOT from notRef, newest
+// first. It is how a long-lived branch's own story is read: `git log prod
+// --not main` is exactly "what prod has that main does not", which is the line
+// a graph draws beside the trunk. An empty notRef logs the ref outright.
+func (r *Repo) LogRef(ref, notRef string, limit int) ([]LogEntry, error) {
+	args := []string{"log", "--topo-order"}
+	if limit > 0 {
+		args = append(args, fmt.Sprintf("--max-count=%d", limit))
+	}
+	args = append(args, "--format=%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%P%x1f%D", ref)
+	if notRef != "" && notRef != ref {
+		args = append(args, "--not", notRef)
+	}
+	out, err := r.git(r.Dir, args...)
+	if err != nil {
+		return nil, err
+	}
+	return parseLog(out), nil
+}
+
 // Tags lists tag names.
 func (r *Repo) Tags() ([]string, error) {
 	out, err := r.git(r.Dir, "tag", "--list")
@@ -378,6 +398,11 @@ func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseLog(out), nil
+}
+
+// parseLog reads the unit-separated log format both log readers use.
+func parseLog(out string) []LogEntry {
 	var entries []LogEntry
 	for _, line := range nonEmptyLines(out) {
 		f := strings.Split(line, "\x1f")
@@ -393,7 +418,7 @@ func (r *Repo) Log(path string, limit int) ([]LogEntry, error) {
 		}
 		entries = append(entries, e)
 	}
-	return entries, nil
+	return entries
 }
 
 // parseRefNames turns git's %D decoration ("HEAD -> main, tag: v1.2, origin/main")

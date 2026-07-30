@@ -291,8 +291,12 @@ export interface ChangeRequest {
   author: string;
   targetBranch: string;
   branch?: string;
+  /** the trunk commit it branched FROM */
   baseSha?: string;
+  /** its own commit */
   commitSha?: string;
+  /** the trunk commit that brought it back in, once published */
+  mergeSha?: string;
   state: ChangeState;
   items: ChangeItem[] | null;
   prNumber?: number;
@@ -417,6 +421,18 @@ export interface TimelineEntry extends Commit {
   structure?: InstanceMove[] | null;
   /** repository files that moved between this snapshot and the previous one */
   files?: number;
+}
+
+/** One standing branch beside the trunk: an environment, not a piece of work. */
+export interface BranchLane {
+  name: string;
+  head: string;
+  /** the branch everything is published to */
+  trunk?: boolean;
+  /** commits this branch has that the trunk does not, newest first */
+  commits?: Commit[] | null;
+  /** commits the trunk has that this branch does not */
+  behind: number;
 }
 
 /** One snapshot opened up: every parameter that changed at it. */
@@ -1373,6 +1389,12 @@ export const api = {
       scope: string;
       instance: string;
       snapshots: TimelineEntry[] | null;
+      /** the branch being published to */
+      branch: string;
+      /** its head commit: where the application is right now */
+      head: string;
+      /** the trunk plus every standing environment branch */
+      lanes: BranchLane[] | null;
       supported: boolean;
     }>(rp(`/timeline${suffix}`));
   },

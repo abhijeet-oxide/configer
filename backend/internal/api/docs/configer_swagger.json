@@ -4277,6 +4277,7 @@
                     "type": "string"
                 },
                 "baseSha": {
+                    "description": "BaseSHA is the trunk commit this change branched FROM; CommitSHA is its\nown commit; MergeSHA is the trunk commit that brought it back in. The\nthree together are what lets a history draw the change's whole arc.",
                     "type": "string"
                 },
                 "branch": {
@@ -4311,6 +4312,9 @@
                     "items": {
                         "$ref": "#/definitions/change.Item"
                     }
+                },
+                "mergeSha": {
+                    "type": "string"
                 },
                 "number": {
                     "description": "Number is the CR number people say out loud - \"CR-7\" - and it is handed\nout at SUBMIT, not at creation. A draft is not a change request yet: it\nis one person's uncommitted work, and half of them are discarded. Numbering\nthem burned a number per abandoned draft, so the numbers a team actually\nreviewed arrived full of holes and \"CR-3\" was the first change anybody\nhad ever seen. Zero means \"not submitted yet\".",

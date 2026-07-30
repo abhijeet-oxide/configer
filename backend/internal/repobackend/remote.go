@@ -95,6 +95,11 @@ func (b *RemoteBackend) ListRefs(_ context.Context) ([]string, []string, error) 
 
 // Log degrades to an empty history for remote repos (a GitHub commits-API
 // fast-follow); the History views render an informative empty state instead.
+// LogRef, like Log, has no history to read on a remote repository.
+func (b *RemoteBackend) LogRef(_ context.Context, _, _ string, _ int) ([]Commit, error) {
+	return nil, nil
+}
+
 func (b *RemoteBackend) Log(_ context.Context, _ string, _ int) ([]Commit, error) {
 	return nil, nil
 }

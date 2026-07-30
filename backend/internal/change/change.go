@@ -121,16 +121,20 @@ type ChangeRequest struct {
 	Reference string `json:"reference,omitempty"`
 	// Category classifies the change: hotfix | feature | bugfix |
 	// maintenance | security | other.
-	Category     string    `json:"category,omitempty"`
-	Author       string    `json:"author"`
-	TargetBranch string    `json:"targetBranch"`
-	Branch       string    `json:"branch,omitempty"`
-	BaseSHA      string    `json:"baseSha,omitempty"`
-	CommitSHA    string    `json:"commitSha,omitempty"`
-	State        State     `json:"state"`
-	Items        []Item    `json:"items"`
-	PRNumber     int       `json:"prNumber,omitempty"`
-	PRURL        string    `json:"prUrl,omitempty"`
+	Category     string `json:"category,omitempty"`
+	Author       string `json:"author"`
+	TargetBranch string `json:"targetBranch"`
+	Branch       string `json:"branch,omitempty"`
+	// BaseSHA is the trunk commit this change branched FROM; CommitSHA is its
+	// own commit; MergeSHA is the trunk commit that brought it back in. The
+	// three together are what lets a history draw the change's whole arc.
+	BaseSHA   string `json:"baseSha,omitempty"`
+	CommitSHA string `json:"commitSha,omitempty"`
+	MergeSHA  string `json:"mergeSha,omitempty"`
+	State     State  `json:"state"`
+	Items     []Item `json:"items"`
+	PRNumber  int    `json:"prNumber,omitempty"`
+	PRURL     string `json:"prUrl,omitempty"`
 	// Reviewers are the logins asked to look at this CR. Display and routing
 	// only: approval rights stay role-based (approver merges).
 	Reviewers []string `json:"reviewers,omitempty"`

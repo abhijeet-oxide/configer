@@ -672,7 +672,7 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 		return nil, conflictf("change request %d must be approved before it can be published", id)
 	}
 
-	msg := fmt.Sprintf("Publish change request #%d: %s", cr.ID, cr.Title)
+	msg := fmt.Sprintf("Publish %s: %s", cr.Label(), cr.Title)
 	if s.Backend.Provider() != nil && cr.PRNumber > 0 {
 		if err := s.Backend.Provider().Merge(ctx, cr.PRNumber, msg); err != nil {
 			return nil, upstream("publish the change", err)
@@ -683,10 +683,15 @@ func (s *Service) Merge(ctx context.Context, id int) (*change.ChangeRequest, err
 	} else if err := s.Backend.MergeBranch(ctx, cr.TargetBranch, cr.Branch, msg); err != nil {
 		return nil, upstream("publish the change", err)
 	}
+	// Where it landed. Without this a published change knows the commit it was
+	// made on and not the one that brought it in, so a history view can draw it
+	// leaving the trunk and has to guess where it came back.
+	mergeSHA, _ := s.Backend.HeadSHA(ctx, cr.TargetBranch)
 	s.Backend.DeleteBranch(ctx, cr.Branch)
 
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		c.State = change.StatePublished
+		c.MergeSHA = mergeSHA
 		return nil
 	})
 }

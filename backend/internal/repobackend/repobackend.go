@@ -126,6 +126,10 @@ type Backend interface {
 	// Log returns the most recent commits, newest first, optionally restricted
 	// to a repo-relative path. Remote backends may degrade to an empty list.
 	Log(ctx context.Context, path string, limit int) ([]Commit, error)
+	// LogRef reads the commits reachable from ref but not from notRef, newest
+	// first: a long-lived branch's own story beside the trunk. A backend with
+	// no local history answers with nothing rather than failing.
+	LogRef(ctx context.Context, ref, notRef string, limit int) ([]Commit, error)
 
 	// Sync brings the read cache / working tree up to date with the remote
 	// and reports the resulting status. No-op-safe when there is no remote.

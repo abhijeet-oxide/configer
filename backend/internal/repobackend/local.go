@@ -150,6 +150,11 @@ func (b *LocalBackend) Log(_ context.Context, path string, limit int) ([]Commit,
 	if err != nil {
 		return nil, err
 	}
+	return toCommits(entries), nil
+}
+
+// toCommits maps the git engine's log rows onto the backend's own commit shape.
+func toCommits(entries []gitengine.LogEntry) []Commit {
 	out := make([]Commit, len(entries))
 	for i, e := range entries {
 		short := e.SHA
@@ -161,7 +166,15 @@ func (b *LocalBackend) Log(_ context.Context, path string, limit int) ([]Commit,
 			Date: e.Date, Message: e.Subject, Parents: e.Parents, Refs: e.Refs,
 		}
 	}
-	return out, nil
+	return out
+}
+
+func (b *LocalBackend) LogRef(_ context.Context, ref, notRef string, limit int) ([]Commit, error) {
+	entries, err := b.repo.LogRef(ref, notRef, limit)
+	if err != nil {
+		return nil, err
+	}
+	return toCommits(entries), nil
 }
 
 func (b *LocalBackend) Diff(_ context.Context, from, to string) ([]FileChange, error) {

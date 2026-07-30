@@ -181,7 +181,47 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `FilesView`+`MonacoFileView` (file mode over real files, saves via
 `PUT /api/files/draft`), `OnboardingWizard` (discover→init),
 `InstancesView`, `SourceControlPanel`/`SubmitChangesButton` (the draft),
-`ComparePanel`, `WorkspaceView`.
+`ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
+the vertical branch picture, or `GraphRail`'s dense commit list).
+
+**The history picture (`ChangeGraph`)** draws the LIFECYCLE OF A CHANGE, not
+git internals - the reader is an approver, not a platform engineer. Time runs
+left to right; every branch that persists (the trunk plus each standing
+environment branch - `prod`, `lab`, `sandbox`, … - see `api.reservedBranches`)
+is a horizontal lane with its name on a pill at the left. A change request is
+drawn as a PATH, not an annotation: a thick Bézier leaves the exact commit dot
+it forked from, docks flat into the left edge of its card, and leaves the right
+edge - curving back into a lane only when it actually merged (which may be a
+different lane than it left). Anything still open ends in a small ring; a
+rejected change ends in a crossed node.
+
+Two rules keep it legible and neither may be relaxed:
+
+- **Cards outrank lines.** A card is a neutral surface with a subtle shadow, a
+  monochrome type mark (hotfix/feature/bugfix/security/maintenance/change
+  request - shape and label carry the type, `TYPE_MARK`), the CR number, a
+  two-line title, author and age, and the change count. Hovering one dims every
+  other path and card (`.cf-flow.is-dim`).
+- **Colour means branch or status, nothing else.** A lane's colour IS its
+  identity (`--cf-main`, `--cf-lane-1..4`); red (`--cf-reject`) appears only on
+  a rejected path. A change type never gets a colour, so a red thing on screen
+  always means the same thing.
+
+Node SHAPE, not colour, says what a dot is: filled circle = commit, ring +
+core = merge, glowing star = HEAD, crossed circle = rejected. Hovering a dot
+names its commit in full and clicking copies it. Two changes forking from one
+commit leave the same dot; cards fan above and below their lane so several
+simultaneous changes never stack on top of each other.
+
+The horizontal scale has TWO rules that are easy to break and obvious when
+broken. A stop is per COMMIT, not per instant - a pipeline that lands three
+changes in the same second is still three commits, and keying x off distinct
+timestamps drew them all on top of one another. And a change's own gaps are
+WIDENED (`LEAD` + `CROSS_LEAD` per lane crossed) until its card plus a run
+either side actually fits, so the commits at both ends really do move apart and
+the curve never falls vertically out of its branch. Everything else - the axis,
+every node, every card - reads its x from that one scale, so the picture stays
+internally honest.
 
 Two levels, and the difference is load-bearing. WORKSPACE-level views (Home,
 Applications, Inbox, Audit, Instances estate, Settings) need no application and

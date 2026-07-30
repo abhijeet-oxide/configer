@@ -2654,3 +2654,335 @@ mark.vd-ins {
     display: none;
   }
 }
+
+/* ------------------------------------------------ change flow (ChangeGraph.tsx)
+   The lifecycle of a change, told as a journey. Time runs left to right; each
+   standing branch is a calm thick lane; each change is a white card sitting ON
+   the path it travelled. Colour is spent only on branch identity and status,
+   and red is spent only on rejection - so a type never has to be decoded from a
+   hue, and nothing on screen competes with the cards. */
+.cf {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+  overflow: hidden;
+
+  /* Branch identity. One hue per lane, the trunk first. */
+  --cf-main: #16a34a;
+  --cf-lane-1: #2563eb;
+  --cf-lane-2: #7c3aed;
+  --cf-lane-3: #0891b2;
+  --cf-lane-4: #c2410c;
+  /* Status. Red is only ever "this did not happen". */
+  --cf-reject: #dc2626;
+  --cf-node: #334155;
+  --cf-axis: var(--border);
+}
+:root[data-theme="dark"] .cf,
+.dark .cf {
+  --cf-main: #4ade80;
+  --cf-lane-1: #60a5fa;
+  --cf-lane-2: #c084fc;
+  --cf-lane-3: #22d3ee;
+  --cf-lane-4: #fb923c;
+  --cf-reject: #f87171;
+  --cf-node: #cbd5e1;
+}
+
+.cf-legend {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.cf-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.cf-legend-line {
+  width: 22px;
+  height: 3px;
+  border-radius: 2px;
+}
+.cf-legend-glyph {
+  color: var(--cf-node);
+  display: block;
+}
+.cf-legend-item.is-reject .cf-legend-glyph {
+  color: var(--cf-reject);
+}
+.cf-legend-div {
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+}
+
+.cf-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+.cf-plot {
+  position: relative;
+}
+.cf-svg {
+  position: absolute;
+  inset: 0;
+}
+
+/* The lanes: roads, not traffic. Thick enough to read as a route, quiet enough
+   that the cards sit on top of them. */
+.cf-lane line {
+  stroke: var(--c);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+.cf-lane-cap {
+  fill: var(--c);
+  opacity: 0.55;
+}
+.cf-lane-name {
+  position: absolute;
+  left: 14px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 108px;
+  padding: 5px 12px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, var(--c) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--c) 34%, transparent);
+  color: var(--c);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-lane-name.is-trunk {
+  font-weight: 700;
+}
+.cf-head {
+  position: absolute;
+  transform: translateY(-50%);
+  padding: 3px 9px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--cf-main) 12%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--cf-main) 40%, transparent);
+  color: var(--cf-main);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* A change's path. Thick, smooth, and dimmed the moment another change is
+   being followed - which is what makes one story readable in a busy week. */
+.cf-flow path {
+  stroke-width: 2.6;
+  stroke-linecap: round;
+  transition: opacity var(--dur-hover) var(--ease), stroke-width var(--dur-hover) var(--ease);
+}
+.cf-flow.is-open path {
+  stroke-dasharray: 7 6;
+}
+.cf-flow.is-rejected path {
+  stroke-dasharray: 7 6;
+}
+.cf-flow.is-dim path,
+.cf-flow.is-dim circle {
+  opacity: 0.16;
+}
+.cf-flow.is-lifted path {
+  stroke-width: 3.4;
+}
+.cf-open-end {
+  fill: var(--surface);
+  stroke-width: 2;
+}
+.cf-reject-node circle {
+  fill: var(--surface);
+  stroke: var(--cf-reject);
+  stroke-width: 2;
+}
+.cf-reject-node line {
+  stroke: var(--cf-reject);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+/* Nodes. Shape carries the meaning: a filled dot happened, a ring joined two
+   lines, a star is now. */
+.cf-node {
+  cursor: pointer;
+}
+.cf-node-hit {
+  fill: transparent;
+}
+.cf-commit {
+  fill: var(--c);
+  transition: r var(--dur-hover) var(--ease);
+}
+.cf-ring {
+  fill: var(--surface);
+  stroke: var(--c);
+  stroke-width: 2.4;
+}
+.cf-ring-core {
+  fill: var(--c);
+}
+.cf-star {
+  fill: var(--surface);
+  stroke: var(--cf-main);
+  stroke-width: 1.8;
+}
+.cf-node:hover .cf-commit {
+  r: 6.5;
+}
+.cf-node.is-dim {
+  opacity: 0.4;
+}
+
+.cf-axis line {
+  stroke: var(--cf-axis);
+  stroke-width: 1;
+  stroke-dasharray: 3 5;
+}
+.cf-axis text {
+  fill: var(--text-3);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The card. White, light, and the most important thing on screen: everything
+   else on the canvas is deliberately quieter than this. */
+.cf-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 6px 16px -6px rgba(16, 24, 40, 0.14);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease),
+    opacity var(--dur-hover) var(--ease);
+}
+:root[data-theme="dark"] .cf-card,
+.dark .cf-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
+}
+.cf-card:hover,
+.cf-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 4px rgba(16, 24, 40, 0.08), 0 14px 30px -10px rgba(16, 24, 40, 0.22);
+  outline: none;
+}
+.cf-card.is-dim {
+  opacity: 0.34;
+}
+.cf-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* The type: a monochrome mark and a word. No colour, ever - a reader should
+   never have to work out whether a hue means urgency or category. */
+.cf-type {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.55px;
+  text-transform: uppercase;
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.cf-card.is-rejected .cf-type {
+  color: var(--cf-reject);
+}
+.cf-reject-mark circle,
+.cf-reject-mark line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.cf-crid {
+  margin-inline-start: auto;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.cf-card-title {
+  /* Exactly two lines. The card is a fixed-size thing in a laid-out picture, so
+     a long title is clamped rather than allowed to push the rest out. */
+  flex: 0 0 auto;
+  height: 2.64em;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.32;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.cf-card-by {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--text-2);
+  min-width: 0;
+}
+.cf-who {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 74px;
+}
+.cf-sep {
+  opacity: 0.45;
+}
+.cf-when {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.cf-card-files {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 5px;
+  border-top: 1px solid var(--border);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+
+@media (max-width: 720px) {
+  .cf-legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+}

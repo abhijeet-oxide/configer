@@ -2673,7 +2673,15 @@ mark.vd-ins {
   --cf-lane-2: #7c3aed;
   --cf-lane-3: #0891b2;
   --cf-lane-4: #c2410c;
-  /* Status. Red is only ever "this did not happen". */
+  /* Status: where a change is in its life. Four hues, no more - a fifth would
+     start colliding with the lanes, and every state already carries a line
+     style and a mark of its own so colour is never doing the job alone.
+     Approved shares "published" green deliberately: it has the same destiny,
+     and its long dash is what says it has not got there yet. Red is only ever
+     "this did not happen". */
+  --cf-draft: #64748b;
+  --cf-review: #d97706;
+  --cf-merged: #15803d;
   --cf-reject: #dc2626;
   --cf-node: #334155;
   --cf-axis: var(--border);
@@ -2685,6 +2693,9 @@ mark.vd-ins {
   --cf-lane-2: #c084fc;
   --cf-lane-3: #22d3ee;
   --cf-lane-4: #fb923c;
+  --cf-draft: #94a3b8;
+  --cf-review: #fbbf24;
+  --cf-merged: #4ade80;
   --cf-reject: #f87171;
   --cf-node: #cbd5e1;
 }
@@ -2716,6 +2727,25 @@ mark.vd-ins {
 }
 .cf-legend-item.is-reject .cf-legend-glyph {
   color: var(--cf-reject);
+}
+/* The status key, drawn in the exact line the picture uses so the legend is a
+   sample rather than a description. */
+.cf-legend-dash line {
+  stroke: var(--st);
+  stroke-width: 2.6;
+  stroke-linecap: round;
+}
+.cf-legend-status.is-draft .cf-legend-dash line {
+  stroke-dasharray: 2 6;
+}
+.cf-legend-status.is-review .cf-legend-dash line {
+  stroke-dasharray: 0.5 6;
+}
+.cf-legend-status.is-approved .cf-legend-dash line {
+  stroke-dasharray: 11 6;
+}
+.cf-legend-status.is-rejected .cf-legend-dash line {
+  stroke-dasharray: 7 6;
 }
 .cf-legend-div {
   width: 1px;
@@ -2791,8 +2821,17 @@ mark.vd-ins {
   stroke-linecap: round;
   transition: opacity var(--dur-hover) var(--ease), stroke-width var(--dur-hover) var(--ease);
 }
-.cf-flow.is-open path {
-  stroke-dasharray: 7 6;
+/* Line style is the second signal every state carries. Solid happened; a dot
+   is waiting on a person; a long dash is cleared but not shipped; a fine dash
+   is not sent anywhere yet; a broken dash never landed. */
+.cf-flow.is-draft path {
+  stroke-dasharray: 2 6;
+}
+.cf-flow.is-review path {
+  stroke-dasharray: 0.5 6;
+}
+.cf-flow.is-approved path {
+  stroke-dasharray: 11 6;
 }
 .cf-flow.is-rejected path {
   stroke-dasharray: 7 6;
@@ -2804,9 +2843,25 @@ mark.vd-ins {
 .cf-flow.is-lifted path {
   stroke-width: 3.4;
 }
+/* The viewer's own unfinished work: thicker, so their eye lands on it first in
+   a picture that is otherwise all history. */
+.cf-flow.is-active path {
+  stroke-width: 3.2;
+}
 .cf-open-end {
   fill: var(--surface);
   stroke-width: 2;
+}
+/* A merge that has not happened: the merge ring, hollow and dashed. */
+.cf-pending-ring {
+  fill: var(--surface);
+  stroke: var(--c);
+  stroke-width: 2.2;
+  stroke-dasharray: 2.6 3;
+}
+.cf-pending-core {
+  fill: var(--c);
+  opacity: 0.55;
 }
 .cf-reject-node circle {
   fill: var(--surface);
@@ -2869,18 +2924,31 @@ mark.vd-ins {
   display: flex;
   flex-direction: column;
   gap: 5px;
-  padding: 10px 12px;
+  padding: 12px 12px 10px;
   border-radius: 10px;
-  background: var(--surface);
-  border: 1px solid var(--border);
+  /* The surface takes the faintest wash of the status colour, and the border a
+     little more of it: enough that a row of cards sorts itself by state at a
+     glance, quiet enough that the card is still a card and the title is still
+     the loudest thing on it. */
+  background: color-mix(in srgb, var(--st) 4%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--st) 26%, var(--border));
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 6px 16px -6px rgba(16, 24, 40, 0.14);
   cursor: pointer;
   overflow: hidden;
   transition: transform var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease),
     opacity var(--dur-hover) var(--ease);
 }
+/* The status rail across the top: the card's one stripe of full-strength
+   colour, read before any of its words are. */
+.cf-card-rail {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--st);
+}
 :root[data-theme="dark"] .cf-card,
 .dark .cf-card {
+  background: color-mix(in srgb, var(--st) 9%, var(--surface));
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 20px -8px rgba(0, 0, 0, 0.6);
 }
 .cf-card:hover,
@@ -2888,6 +2956,43 @@ mark.vd-ins {
   transform: translateY(-2px);
   box-shadow: 0 2px 4px rgba(16, 24, 40, 0.08), 0 14px 30px -10px rgba(16, 24, 40, 0.22);
   outline: none;
+}
+/* The viewer's own unfinished work. A halo in its own status colour, because
+   this is the one card on the screen they can still act on - everything else
+   is history. It is a ring rather than a louder fill so it draws the eye
+   without shouting over the state it is already carrying. */
+.cf-card.is-active {
+  border-color: color-mix(in srgb, var(--st) 58%, transparent);
+  animation: cf-active 2.8s var(--ease) infinite;
+}
+.cf-card.is-active .cf-card-rail {
+  height: 4px;
+}
+/* A slow breath on the halo. A draft's own colour is deliberately the quietest
+   on the screen, so colour alone could not make the viewer's own work stand
+   out; motion does it without borrowing a hue that means something else. */
+@keyframes cf-active {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st) 17%, transparent),
+      0 2px 6px rgba(16, 24, 40, 0.08), 0 10px 24px -8px rgba(16, 24, 40, 0.2);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--st) 7%, transparent),
+      0 2px 6px rgba(16, 24, 40, 0.08), 0 10px 24px -8px rgba(16, 24, 40, 0.2);
+  }
+}
+/* Hover sets its own shadow, so the breath stands aside rather than fighting. */
+.cf-card.is-active:hover,
+.cf-card.is-active:focus-visible {
+  animation: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-card.is-active {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--st) 17%, transparent),
+      0 2px 6px rgba(16, 24, 40, 0.08), 0 10px 24px -8px rgba(16, 24, 40, 0.2);
+  }
 }
 .cf-card.is-dim {
   opacity: 0.34;
@@ -2911,16 +3016,6 @@ mark.vd-ins {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
-}
-.cf-card.is-rejected .cf-type {
-  color: var(--cf-reject);
-}
-.cf-reject-mark circle,
-.cf-reject-mark line {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.7;
-  stroke-linecap: round;
 }
 .cf-crid {
   margin-inline-start: auto;
@@ -2969,15 +3064,40 @@ mark.vd-ins {
   color: var(--text-3);
   white-space: nowrap;
 }
-.cf-card-files {
+/* The foot: what state this is in, and how big it is. */
+.cf-card-foot {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 8px;
   margin-top: auto;
-  padding-top: 5px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
+}
+.cf-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--st);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cf-status .anticon {
+  flex-shrink: 0;
+  font-size: 11px;
+}
+.cf-card-files {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  flex-shrink: 0;
   font-size: 10.5px;
   color: var(--text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 @media (max-width: 720px) {

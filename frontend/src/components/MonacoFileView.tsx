@@ -29,15 +29,25 @@ interface Revealable {
   getModel?: () => { getLineMaxColumn?: (line: number) => number; getLineCount?: () => number } | null;
 }
 
-/** One line the file's owner should be able to see at a glance is looked after
- *  by Configer: the line, and what to say about it on hover. */
+/** One value the file's owner should be able to see at a glance is looked after
+ *  by Configer: where it is, and what to say about it on hover. col/endCol
+ *  bracket the value itself; without them the whole line is marked. */
 export interface LineMark {
   line: number;
+  col?: number;
+  endCol?: number;
   label: string;
+  /** mark this one loudly and briefly: the reader was sent here to look at it */
+  focus?: boolean;
 }
 
 const baseOptions = {
   minimap: { enabled: true },
+  // Monaco's sticky scroll pins the enclosing block over the first lines of the
+  // viewport, which is exactly where a value we have just revealed tends to be:
+  // it covered the thing the reader was sent to look at. A configuration file is
+  // shallow enough that the context it restates is not worth that.
+  stickyScroll: { enabled: false },
   fontSize: 12.5,
   lineNumbers: "on" as const,
   scrollBeyondLastLine: false,
@@ -55,6 +65,7 @@ export default function MonacoFileView({
   original,
   dark,
   revealLine,
+  revealColumn,
   marks,
   editable = false,
   onDirty,
@@ -66,7 +77,9 @@ export default function MonacoFileView({
   original?: string;
   dark: boolean;
   revealLine?: number;
-  /** lines to mark as managed by Configer (quietly - see the effect below) */
+  /** column to land the cursor on within revealLine (the value's own start) */
+  revealColumn?: number;
+  /** values to mark as managed by Configer (quietly - see the effect below) */
   marks?: LineMark[];
   /** allow typing; edits report through onDirty, Ctrl/Cmd-S calls onSave */
   editable?: boolean;
@@ -89,20 +102,24 @@ export default function MonacoFileView({
     cursorRef.current = onCursor;
   });
 
-  const reveal = (line?: number) => {
+  const reveal = (line?: number, column?: number) => {
     if (!line || !edRef.current) return;
     edRef.current.revealLineInCenter(line);
-    edRef.current.setPosition({ lineNumber: line, column: 1 });
-    // Highlight the whole line so the eye lands on it (selecting up to the start
-    // of the next line covers the full row); Monaco clamps at the last line.
-    edRef.current.setSelection?.({ startLineNumber: line, startColumn: 1, endLineNumber: line + 1, endColumn: 1 });
+    edRef.current.setPosition({ lineNumber: line, column: column ?? 1 });
+    // The cursor lands ON the value when we know where it is; the mark below
+    // (cf-managed-focus) is what actually makes it obvious, so nothing here
+    // selects text the reader did not ask to select.
+    if (column === undefined) {
+      edRef.current.setSelection?.({ startLineNumber: line, startColumn: 1, endLineNumber: line + 1, endColumn: 1 });
+    }
     edRef.current.focus();
   };
 
   // Jump to a line when a find-in-files hit is clicked while this file is open.
   useEffect(() => {
-    reveal(revealLine);
-  }, [revealLine]);
+    reveal(revealLine, revealColumn);
+     
+  }, [revealLine, revealColumn]);
 
   // Mark the lines Configer manages. A file is mostly ordinary text with a
   // handful of values the product actually looks after, and nothing in the
@@ -125,16 +142,27 @@ export default function MonacoFileView({
     const lines = ed.getModel?.()?.getLineCount?.() ?? Number.MAX_SAFE_INTEGER;
     const next = (marksRef.current ?? [])
       .filter((m) => m.line > 0 && m.line <= lines)
-      .map((m) => ({
-        range: { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 },
-        options: {
-          isWholeLine: true,
-          className: "cf-managed-line",
-          linesDecorationsClassName: "cf-managed-gutter",
-          hoverMessage: { value: m.label },
-          overviewRuler: { color: "rgba(0, 87, 184, 0.35)", position: 1 },
-        },
-      }));
+      .map((m) => {
+        // The VALUE, where we know its columns: marking the whole line paints
+        // the key, the indentation and the trailing comment as though Configer
+        // owned them too. Only a value that cannot be narrowed (a block scalar)
+        // falls back to the line.
+        const whole = !m.col || !m.endCol;
+        return {
+          range: whole
+            ? { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 }
+            : { startLineNumber: m.line, startColumn: m.col!, endLineNumber: m.line, endColumn: m.endCol! },
+          options: {
+            isWholeLine: whole,
+            className: whole
+              ? `cf-managed-line${m.focus ? " cf-managed-focus" : ""}`
+              : `cf-managed-value${m.focus ? " cf-managed-focus" : ""}`,
+            linesDecorationsClassName: "cf-managed-gutter",
+            hoverMessage: { value: m.label },
+            overviewRuler: { color: m.focus ? "rgba(0, 87, 184, 0.9)" : "rgba(0, 87, 184, 0.35)", position: 1 },
+          },
+        };
+      });
     decoRef.current = ed.deltaDecorations(decoRef.current, next);
   };
   useEffect(() => {
@@ -150,7 +178,7 @@ export default function MonacoFileView({
     editor.onDidChangeCursorPosition?.((e) =>
       cursorRef.current?.(e.position.lineNumber, e.position.column),
     );
-    reveal(revealLine);
+    reveal(revealLine, revealColumn);
     applyMarks();
   };
 

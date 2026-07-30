@@ -177,22 +177,8 @@ func AddParameters(root string, params []model.Parameter) (added int, skipped []
 // and the bound key/element is deleted from every real file it lives in, for
 // every instance, so the setting disappears from the whole repository.
 func DeleteParameter(root, paramID string, instances []model.Instance) error {
-	var param model.Parameter
-	if err := mutateCatalog(root, func(cat *model.Catalog) error {
-		idx := -1
-		for i := range cat.Parameters {
-			if cat.Parameters[i].ID == paramID {
-				idx = i
-				break
-			}
-		}
-		if idx < 0 {
-			return fmt.Errorf("parameter %q not found", paramID)
-		}
-		param = cat.Parameters[idx]
-		cat.Parameters = append(cat.Parameters[:idx], cat.Parameters[idx+1:]...)
-		return nil
-	}); err != nil {
+	param, err := dropFromCatalog(root, paramID)
+	if err != nil {
 		return err
 	}
 
@@ -221,6 +207,58 @@ func DeleteParameter(root, paramID string, instances []model.Instance) error {
 		}
 	}
 	return nil
+}
+
+// dropFromCatalog removes one parameter's entry from .configer/parameters.yaml
+// and returns it. It touches NOTHING in the repository's own files.
+func dropFromCatalog(root, paramID string) (model.Parameter, error) {
+	var param model.Parameter
+	err := mutateCatalog(root, func(cat *model.Catalog) error {
+		idx := -1
+		for i := range cat.Parameters {
+			if cat.Parameters[i].ID == paramID {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return fmt.Errorf("parameter %q not found", paramID)
+		}
+		param = cat.Parameters[idx]
+		cat.Parameters = append(cat.Parameters[:idx], cat.Parameters[idx+1:]...)
+		return nil
+	})
+	return param, err
+}
+
+// UnmanageParameter stops Configer managing a parameter WITHOUT touching the
+// configuration itself: the catalog entry goes, every value stays exactly where
+// it is, and the paths it was bound to are recorded in .configer/ignore.yaml so
+// a later scan does not propose them again.
+//
+// This is the ordinary way a setting leaves the grid. DeleteParameter is the
+// other, far heavier thing - it also deletes the key from every file - and the
+// two must never be reachable by the same words in the UI: one hides a row, the
+// other changes what a cluster runs.
+func UnmanageParameter(root, paramID string) (model.Parameter, error) {
+	param, err := dropFromCatalog(root, paramID)
+	if err != nil {
+		return param, err
+	}
+	paths := make([]string, 0, len(param.Bindings))
+	seen := map[string]bool{}
+	for _, b := range param.Bindings {
+		if b.Path != "" && !seen[b.Path] {
+			seen[b.Path] = true
+			paths = append(paths, b.Path)
+		}
+	}
+	if len(paths) > 0 {
+		if err := AddIgnoreParameters(root, paths); err != nil {
+			return param, err
+		}
+	}
+	return param, nil
 }
 
 // --- instance registry ----------------------------------------------------
@@ -508,6 +546,17 @@ func DeleteInstance(root, name string) error {
 // AddIgnoreFiles appends file globs to .configer/ignore.yaml so the scan
 // skips them (the import wizard's "don't import these" persistence).
 func AddIgnoreFiles(root string, files []string) error {
+	return addIgnore(root, files, nil)
+}
+
+// AddIgnoreParameters appends in-file paths to .configer/ignore.yaml so a later
+// scan stops proposing them - what "stop managing this setting" has to mean if
+// it is to survive the next import.
+func AddIgnoreParameters(root string, paths []string) error {
+	return addIgnore(root, nil, paths)
+}
+
+func addIgnore(root string, files, params []string) error {
 	path := filepath.Join(root, ".configer", "ignore.yaml")
 	var ig struct {
 		Files      []string `yaml:"files"`
@@ -520,15 +569,21 @@ func AddIgnoreFiles(root string, files []string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	have := map[string]bool{}
-	for _, f := range ig.Files {
-		have[f] = true
-	}
-	for _, f := range files {
-		if !have[f] {
-			ig.Files = append(ig.Files, f)
+	add := func(into []string, more []string) []string {
+		have := map[string]bool{}
+		for _, v := range into {
+			have[v] = true
 		}
+		for _, v := range more {
+			if !have[v] {
+				into = append(into, v)
+				have[v] = true
+			}
+		}
+		return into
 	}
+	ig.Files = add(ig.Files, files)
+	ig.Parameters = add(ig.Parameters, params)
 	return writeYAML(path, ig)
 }
 

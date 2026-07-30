@@ -440,3 +440,59 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	s.dropEmptyDraft(draftOwner(r))
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
+
+// revertValues drops MANY pending edits from the draft in one go.
+//
+// One request, one lock, one write. Undoing a selection used to be one DELETE
+// per item, and the draft store is a read-modify-write behind a per-owner lock:
+// eighty-nine of them meant eighty-nine round trips serialized on that lock,
+// which took long enough that the user closed the dialog and watched the changes
+// disappear afterwards, a few at a time.
+//
+// @Summary     Revert several pending edits
+// @Description Drop many pending edits from the current draft in a single write. Each item is identified by paramId + instance (paramId "file:<path>" for a whole-file edit). Unknown items are ignored; the response says how many were actually removed.
+// @Tags        Editing & change requests
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "Items to revert"
+// @Success     200 {object} object
+// @Failure     400 {object} APIError "Invalid request body"
+// @Failure     404 {object} APIError "No draft"
+// @Security    CookieSession
+// @Router      /api/values/bulk [delete]
+func (s *Server) revertValues(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Items []struct {
+			ParamID  string `json:"paramId"`
+			Instance string `json:"instance"`
+		} `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
+		return
+	}
+	defer s.lockDraft(draftOwner(r))()
+	draft := s.Store.CurrentDraft(draftOwner(r))
+	if draft == nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no draft")
+		return
+	}
+	removed := 0
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		for _, it := range req.Items {
+			if cr.RemoveItem(it.ParamID, it.Instance) {
+				removed++
+			}
+		}
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+	s.dropEmptyDraft(draftOwner(r))
+	pending := 0
+	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
+		pending = len(d.Items)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "removed": removed, "pending": pending})
+}

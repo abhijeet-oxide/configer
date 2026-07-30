@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Table, Tag, Tooltip, Button, Typography, Empty, Input, Popconfirm } from "antd";
+import { Table, Tag, Tooltip, Button, Typography, Empty, Input, Popconfirm, Progress, Spin } from "antd";
 import { DeleteOutlined, SearchOutlined } from "../icons";
 import { describeChange, type ChangeDesc, type ChangeTone } from "../changedesc";
 import ValueDiff from "./ui/ValueDiff";
@@ -114,6 +114,7 @@ export function ChangeItemsTable({
   onUndoMany,
   undoingKey,
   bulkBusy,
+  bulkProgress,
   fill,
   onOpenParam,
 }: {
@@ -127,6 +128,8 @@ export function ChangeItemsTable({
   undoingKey?: string | null;
   /** a multi-row undo is in flight */
   bulkBusy?: boolean;
+  /** how far that undo has got, so a long one says so rather than freezing */
+  bulkProgress?: { done: number; total: number } | null;
   /** fill the height of the container and scroll inside it (the review dialog),
    *  rather than growing with the list (a page that scrolls anyway). */
   fill?: boolean;
@@ -152,7 +155,13 @@ export function ChangeItemsTable({
     [all, picked],
   );
 
-  if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
+  // A list with a toolbar keeps its frame even when it empties: the last batch
+  // of a bulk undo removes the final rows, and swapping the whole thing for an
+  // empty state at that moment takes the progress indicator away with it, right
+  // when the user is watching to see it finish.
+  if (!items?.length && !onUndoMany) {
+    return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
+  }
 
   const busy = !!undoingKey || !!bulkBusy;
   const table = (
@@ -164,7 +173,10 @@ export function ChangeItemsTable({
       pagination={false}
       locale={{
         emptyText: (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`Nothing matches "${query}"`} />
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description={query.trim() ? `Nothing matches "${query}"` : "No changes"}
+          />
         ),
       }}
       rowSelection={
@@ -264,40 +276,68 @@ export function ChangeItemsTable({
   return (
     <div className="cf-items-wrap">
       <div className="cf-items-bar">
-        <Input
-          size="small"
-          allowClear
-          prefix={<SearchOutlined style={{ color: "var(--text-3)" }} />}
-          placeholder="Search these changes"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          style={{ maxWidth: 260 }}
-        />
-        <span className="cf-items-count">
-          {query.trim() && shown.length !== all.length
-            ? `${shown.length} of ${all.length}`
-            : `${all.length} change${all.length === 1 ? "" : "s"}`}
-        </span>
-        <span style={{ flex: 1 }} />
-        {picked.length > 0 && (
+        {/* While a bulk undo runs the bar becomes the progress: the count of
+            what is done, a bar that moves, and nothing that invites a second
+            click. Silence during a long operation is what made the last one
+            look broken. */}
+        {bulkProgress ? (
+          <div className="cf-items-progress" role="status" aria-live="polite">
+            <Spin size="small" />
+            <span className="cf-items-progress-label">
+              Undoing {bulkProgress.done} of {bulkProgress.total}…
+            </span>
+            <Progress
+              percent={Math.round((bulkProgress.done / Math.max(1, bulkProgress.total)) * 100)}
+              size="small"
+              status="active"
+              showInfo={false}
+              style={{ flex: 1, minWidth: 120, margin: 0 }}
+            />
+          </div>
+        ) : (
           <>
-            <Button size="small" type="text" onClick={() => setSelected([])} disabled={busy}>
-              Clear
-            </Button>
-            <Popconfirm
-              title={`Undo ${picked.length} change${picked.length === 1 ? "" : "s"}?`}
-              description="They go back to the value the files hold now. Nothing has been written to Git."
-              okText="Undo them"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                onUndoMany(pickedItems);
-                setSelected([]);
-              }}
-            >
-              <Button size="small" danger icon={<DeleteOutlined />} loading={bulkBusy} disabled={!!undoingKey}>
-                Undo {picked.length} selected
-              </Button>
-            </Popconfirm>
+            <Input
+              size="small"
+              allowClear
+              prefix={<SearchOutlined style={{ color: "var(--text-3)" }} />}
+              placeholder="Search these changes"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              style={{ maxWidth: 260 }}
+            />
+            <span className="cf-items-count">
+              {query.trim() && shown.length !== all.length
+                ? `${shown.length} of ${all.length}`
+                : `${all.length} change${all.length === 1 ? "" : "s"}`}
+            </span>
+            <span style={{ flex: 1 }} />
+            {picked.length > 0 && (
+              <>
+                <Button size="small" type="text" onClick={() => setSelected([])} disabled={busy}>
+                  Clear
+                </Button>
+                <Popconfirm
+                  title={`Undo ${picked.length} change${picked.length === 1 ? "" : "s"}?`}
+                  description="They go back to the value the files hold now. Nothing has been written to Git."
+                  okText="Undo them"
+                  okButtonProps={{ danger: true }}
+                  onConfirm={() => {
+                    onUndoMany(pickedItems);
+                    setSelected([]);
+                  }}
+                >
+                  <Button
+                    size="small"
+                    danger
+                    icon={<DeleteOutlined />}
+                    loading={bulkBusy}
+                    disabled={!!undoingKey}
+                  >
+                    Undo {picked.length} selected
+                  </Button>
+                </Popconfirm>
+              </>
+            )}
           </>
         )}
       </div>

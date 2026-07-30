@@ -34,9 +34,13 @@ import {
   DownOutlined,
   MoreOutlined,
   UndoOutlined,
+  InfoCircleOutlined,
+  FileSearchOutlined,
+  CopyOutlined,
+  EyeOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
-import { EmptyState } from "./ui";
+import { EmptyState, InlineNotice } from "./ui";
 import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -724,6 +728,22 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
+  // Stop managing a parameter: it leaves .configer/parameters.yaml and the
+  // grid, and every file keeps its value. The heavier "retire everywhere"
+  // (which also deletes the key from every file) stays where it was, in the
+  // details panel, because the two must never be one slip apart.
+  const [unmanaging, setUnmanaging] = useState<Parameter | null>(null);
+  const unmanage = useMutation({
+    mutationFn: (id: string) => api.unmanageParameter(id, "Local user"),
+    onSuccess: (_r, id) => {
+      setUnmanaging(null);
+      if (selectedParamId === id) selectParam(null);
+      qc.invalidateQueries();
+      message.success("Configer no longer manages this parameter; the value is untouched.");
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
   // Fan-out write: stage the same value on many instances in ONE request (the
   // whole reason a grid beats editing files one by one). The backend reports
   // per-target results, so a rejection on one instance still stages the rest.
@@ -1096,21 +1116,43 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         render: (_v, r) => (
           // The name column is a fixed width; long dotted names must truncate
           // (with the full name on hover) instead of spilling into Type/Scope.
-          <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-            {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
-            <Tooltip title={r.param.name} placement="topLeft">
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
-                {hl(r.param.name, hlParam)}
-              </span>
-            </Tooltip>
-            {bindingsOf(r.param).length === 0 && (
-              <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
-                <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
-                  design
-                </Tag>
+          // Right-clicking it acts on the PARAMETER (the whole row), which is a
+          // different set of actions from right-clicking one of its values.
+          <ParamMenu
+            param={r.param}
+            canEdit={canEdit}
+            onOpen={() => selectParam(r.param.id)}
+            onFind={() => {
+              setSearchScope("param");
+              setLocalQ(r.param.name);
+            }}
+            onOpenFile={
+              bindingsOf(r.param)[0]?.file
+                ? () => {
+                    const b = bindingsOf(r.param)[0];
+                    setFileFocus({ path: b.file, line: b.line || undefined, instance: selectedInstance ?? undefined });
+                    setSection("files");
+                  }
+                : undefined
+            }
+            onUnmanage={() => setUnmanaging(r.param)}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
+              <Tooltip title={r.param.name} placement="topLeft">
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                  {hl(r.param.name, hlParam)}
+                </span>
               </Tooltip>
-            )}
-          </div>
+              {bindingsOf(r.param).length === 0 && (
+                <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
+                  <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                    design
+                  </Tag>
+                </Tooltip>
+              )}
+            </div>
+          </ParamMenu>
         ),
       },
     ];
@@ -1482,16 +1524,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     <div className="param-grid" style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
       {/* ONE toolbar row: context (instance, environment), the draft-status
           pills, search, an overflow menu for everything else, and the primary
-          action. It wraps only when space truly runs out. */}
+          action. It wraps to a second line only when space truly runs out.
+
+          Wrap, not clip. With nowrap + overflow:hidden the row simply cut off
+          whatever did not fit, and what did not fit was the LAST thing on it -
+          "Review N changes", the one button the screen exists to lead to. Every
+          control here holds its width and the search gives way first; when even
+          that is not enough the row takes a second line, which costs 30px and
+          never hides an action. */}
       <div
         ref={barRef}
         style={{
           display: "flex",
           alignItems: "center",
           gap: 8,
+          rowGap: 6,
           padding: "7px 12px",
-          flexWrap: "nowrap",
-          overflow: "hidden",
+          flexWrap: "wrap",
           borderBottom: "1px solid var(--border)",
         }}
       >
@@ -1580,7 +1629,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         )}
         {/* Search grows to fill the gap, keeping the actions flush right, and
             shrinks first (down to its minimum) before anything folds. */}
-        <Space.Compact size="small" style={{ flex: "1 1 auto", minWidth: 180, maxWidth: 460 }}>
+        <Space.Compact size="small" style={{ flex: "1 1 auto", minWidth: 140, maxWidth: 460 }}>
           <Select
             size="small"
             value={searchScope}
@@ -1715,8 +1764,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           />
         </Tooltip>
         {/* Primary action, always visible and never shrinks. Its badge is the
-            single source of truth for how many edits are waiting. */}
-        <SubmitChangesButton instances={grid.instances} />
+            single source of truth for how many edits are waiting. The auto
+            margin keeps it hard right even when the bar has wrapped and it is
+            alone on the second line. */}
+        <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+          <SubmitChangesButton instances={grid.instances} />
+        </span>
       </div>
 
       <Modal
@@ -1752,6 +1805,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           </Typography.Text>
         </div>
       </Modal>
+      {unmanaging && (
+        <UnmanageModal
+          param={unmanaging}
+          instances={grid.instances.length}
+          busy={unmanage.isPending}
+          onCancel={() => setUnmanaging(null)}
+          onConfirm={() => unmanage.mutate(unmanaging.id)}
+        />
+      )}
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
       {bulkSet && (
         <BulkSetModal
@@ -2057,6 +2119,115 @@ function FindReplaceModal({
           </div>
         </>
       )}
+    </Modal>
+  );
+}
+
+// ParamMenu is the right-click menu for a PARAMETER (the row), as distinct from
+// the one on a value (the cell). Everything here is about the setting itself:
+// where it lives, where else it appears, and whether Configer should be looking
+// after it at all.
+function ParamMenu({
+  param,
+  canEdit,
+  onOpen,
+  onFind,
+  onOpenFile,
+  onUnmanage,
+  children,
+}: {
+  param: Parameter;
+  canEdit: boolean;
+  onOpen: () => void;
+  onFind: () => void;
+  onOpenFile?: () => void;
+  onUnmanage: () => void;
+  children: React.ReactElement;
+}) {
+  const b = bindingsOf(param)[0];
+  return (
+    <Dropdown
+      trigger={["contextMenu"]}
+      menu={{
+        items: [
+          { key: "open", icon: <InfoCircleOutlined />, label: "Parameter details" },
+          { key: "find", icon: <SearchOutlined />, label: `Find "${param.name}"` },
+          ...(onOpenFile && b
+            ? [{ key: "file", icon: <FileSearchOutlined />, label: `Open ${b.file.split("/").pop()} in Files` }]
+            : []),
+          { key: "copy", icon: <CopyOutlined />, label: "Copy parameter name" },
+          ...(canEdit
+            ? [
+                { type: "divider" as const },
+                {
+                  key: "unmanage",
+                  icon: <EyeOutlined />,
+                  label: "Stop managing this parameter",
+                },
+              ]
+            : []),
+        ],
+        onClick: ({ key, domEvent }) => {
+          domEvent.stopPropagation();
+          if (key === "open") onOpen();
+          else if (key === "find") onFind();
+          else if (key === "file") onOpenFile?.();
+          else if (key === "copy") void navigator.clipboard?.writeText(param.name);
+          else if (key === "unmanage") onUnmanage();
+        },
+      }}
+    >
+      {children}
+    </Dropdown>
+  );
+}
+
+// UnmanageModal is the one place that says what "stop managing" does and, just
+// as importantly, what it does NOT do. The distinction between this and
+// retiring a parameter (which deletes the value from every file) is the whole
+// reason it is a dialog and not a menu item that fires.
+function UnmanageModal({
+  param,
+  instances,
+  busy,
+  onCancel,
+  onConfirm,
+}: {
+  param: Parameter;
+  instances: number;
+  busy: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const bs = bindingsOf(param);
+  return (
+    <Modal
+      title="Stop managing this parameter?"
+      open
+      onCancel={onCancel}
+      onOk={onConfirm}
+      okText="Stop managing it"
+      okButtonProps={{ danger: true, loading: busy }}
+      width={520}
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div>
+          <div className="mono" style={{ fontWeight: 600 }}>{param.name}</div>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            {bs.length === 0
+              ? "Not attached to a file yet."
+              : `${bs.length} location${bs.length === 1 ? "" : "s"} across ${instances} instance${instances === 1 ? "" : "s"}`}
+          </Typography.Text>
+        </div>
+        <InlineNotice tone="ok">
+          Every value stays exactly where it is. Nothing is written to your configuration files.
+        </InlineNotice>
+        <Typography.Text style={{ fontSize: 13 }}>
+          It leaves <code>.configer/parameters.yaml</code>, so it disappears from the grid, and its
+          paths are remembered in <code>.configer/ignore.yaml</code> so a later scan does not offer it
+          back. Any pending edit to it is dropped. To manage it again, import it from Import settings.
+        </Typography.Text>
+      </div>
     </Modal>
   );
 }

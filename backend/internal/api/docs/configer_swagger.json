@@ -2316,6 +2316,55 @@
                 }
             }
         },
+        "/api/parameters/{id}/unmanage": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Remove a parameter from .configer/parameters.yaml and record its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own files are NOT touched: every value stays exactly where it is. This is the opposite of DELETE /api/parameters/{id}, which also deletes the value from every file.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Grid \u0026 parameters"
+                ],
+                "summary": "Stop managing a parameter",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Parameter id (slug)",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.OKResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown parameter",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Could not update the catalog",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/plugins": {
             "get": {
                 "description": "The registered parser/format plugin manifests (yaml, json, xml).",
@@ -3732,6 +3781,55 @@
                     },
                     "404": {
                         "description": "Parameter not found",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Drop many pending edits from the current draft in a single write. Each item is identified by paramId + instance (paramId \"file:\u003cpath\u003e\" for a whole-file edit). Unknown items are ignored; the response says how many were actually removed.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Revert several pending edits",
+                "parameters": [
+                    {
+                        "description": "Items to revert",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request body",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "No draft",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }

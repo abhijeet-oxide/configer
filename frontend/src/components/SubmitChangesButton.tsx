@@ -35,6 +35,11 @@ import { useIdentity } from "../identity";
 // fixed frame around one scrollable list; nothing else in it may scroll.
 const BODY_H = "min(700px, calc(100vh - 170px))";
 
+/** How many staged edits go back in one request. Big enough that undoing a
+ *  hundred is two or three round trips, small enough that the progress it
+ *  reports moves while the user is watching. */
+const UNDO_BATCH = 40;
+
 export default function SubmitChangesButton({ instances }: { instances?: Instance[] }) {
   const { message } = AntApp.useApp();
   // Submitting is a change. A viewer can never have a draft to submit, so the
@@ -116,22 +121,42 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     onSettled: () => setUndoing(null),
   });
 
-  // Undoing a selection is one action for the person and a sequence for the
-  // store: the draft is read-modify-write per owner, so the items go back one
-  // at a time rather than racing each other through it.
+  // Undoing a selection: one request per BATCH, not per item. The draft store
+  // is a read-modify-write behind a per-owner lock, so ninety single deletes
+  // queued up behind each other for long enough that the dialog looked hung and
+  // the changes drained away after it was closed. Batching also gives the one
+  // honest thing to show while it runs - how many are done - and the list is
+  // trimmed as each batch lands, so the work is visible where it happens.
+  const [undoProgress, setUndoProgress] = useState<{ done: number; total: number } | null>(null);
   const revertMany = useMutation({
     mutationFn: async (its: ChangeItem[]) => {
-      for (const it of its) {
-        await api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance);
+      setUndoProgress({ done: 0, total: its.length });
+      for (let i = 0; i < its.length; i += UNDO_BATCH) {
+        const batch = its.slice(i, i + UNDO_BATCH);
+        await api.revertValues(
+          batch.map((it) => ({
+            paramId: it.action === "edit-file" ? `file:${it.file}` : it.paramId,
+            instance: it.instance,
+          })),
+        );
+        // Take the batch out of the list the moment the server has it, rather
+        // than leaving a hundred rows standing until the very end.
+        const gone = new Set(batch.map(itemKey));
+        qc.setQueryData<{ draft: { items: ChangeItem[] } | null }>(["draft"], (prev) =>
+          prev?.draft
+            ? { ...prev, draft: { ...prev.draft, items: prev.draft.items.filter((x) => !gone.has(itemKey(x))) } }
+            : prev,
+        );
+        setUndoProgress({ done: Math.min(i + batch.length, its.length), total: its.length });
       }
     },
     onSuccess: (_r, its) => {
-      qc.invalidateQueries();
       message.success(`Undid ${its.length} change${its.length === 1 ? "" : "s"}`);
     },
-    onError: (e: Error) => {
+    onError: (e: Error) => message.error(e.message),
+    onSettled: () => {
+      setUndoProgress(null);
       qc.invalidateQueries();
-      message.error(e.message);
     },
   });
 
@@ -152,6 +177,14 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     },
     onError: (e: Error) => message.error(e.message),
   });
+
+  // Undoing the last staged change leaves nothing to review, so the dialog
+  // closes itself rather than sitting over an empty list with a form asking
+  // what the change is about.
+  const nothingLeft = open && pending === 0 && !submit.isPending && !revertMany.isPending;
+  useEffect(() => {
+    if (nothingLeft) setOpen(false);
+  }, [nothingLeft]);
 
   if (!canEdit) return null;
 
@@ -254,6 +287,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             onUndoMany={(its) => revertMany.mutate(its)}
             undoingKey={undoing}
             bulkBusy={revertMany.isPending}
+            bulkProgress={undoProgress}
             onOpenParam={(v) => {
               selectParam(v);
               setSection("config");

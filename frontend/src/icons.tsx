@@ -55,6 +55,8 @@ import phWarningCircle from "@iconify-icons/ph/warning-circle";
 import phArrowSquareOut from "@iconify-icons/ph/arrow-square-out";
 import phEye from "@iconify-icons/ph/eye";
 import phEyeClosed from "@iconify-icons/ph/eye-closed";
+import phPushPin from "@iconify-icons/ph/push-pin";
+import phPushPinFill from "@iconify-icons/ph/push-pin-fill";
 import phFilePlus from "@iconify-icons/ph/file-plus";
 import phFile from "@iconify-icons/ph/file";
 import phFileLock from "@iconify-icons/ph/file-lock";
@@ -222,6 +224,8 @@ export const StarOutlined = make("star", phStar);
 export const StarFilled = make("star-fill", phStarFill);
 export const EyeOutlined = make("eye", phEye);
 export const EyeInvisibleOutlined = make("eye-closed", phEyeClosed);
+export const PushpinOutlined = make("pushpin", phPushPin);
+export const PushpinFilled = make("pushpin-fill", phPushPinFill);
 export const LockOutlined = make("lock", phLock);
 
 // Editing and actions

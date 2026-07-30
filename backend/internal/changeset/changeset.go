@@ -468,7 +468,11 @@ func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProbl
 			continue
 		}
 		if err := applyStructural(wt, proj, it); err != nil {
-			if err = note(it, fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)); err != nil {
+			subject := it.Instance
+			if subject == "" {
+				subject = it.ParamID
+			}
+			if err = note(it, fmt.Errorf("apply %s %s: %w", it.Act(), subject, err)); err != nil {
 				return problems, err
 			}
 			continue
@@ -645,6 +649,9 @@ func applyStructural(root string, proj *project.Project, it change.Item) error {
 			return fmt.Errorf("decode instance patch: %w", err)
 		}
 		_, err := writer.UpdateInstance(root, it.Instance, patch)
+		return err
+	case change.ActionUnmanageParameter:
+		_, err := writer.UnmanageParameter(root, it.ParamID)
 		return err
 	}
 	return fmt.Errorf("unknown structural action %q", it.Act())

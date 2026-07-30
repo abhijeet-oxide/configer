@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
@@ -225,18 +226,19 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 	s.commitCatalogChange(w, r, "Retire parameter "+param.Name, req.Author, map[string]any{"ok": true, "retired": id})
 }
 
-// unmanageParameter stops Configer managing a parameter without touching the
-// configuration: the catalog entry goes, every file keeps its value.
+// unmanageParameter STAGES "stop managing this parameter" on the caller's
+// draft. It is a change like any other - it rewrites .configer/parameters.yaml
+// on the branch - so it travels the same road: draft, review, publish. Nothing
+// happens to the catalog here; the item applies when the change is submitted.
 //
-// @Summary     Stop managing a parameter
-// @Description Remove a parameter from .configer/parameters.yaml and record its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own files are NOT touched: every value stays exactly where it is. This is the opposite of DELETE /api/parameters/{id}, which also deletes the value from every file.
+// @Summary     Stage "stop managing" a parameter
+// @Description Stage a pending change that removes a parameter from .configer/parameters.yaml and records its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own configuration files are NOT touched: every value stays where it is. Staged on the current draft and applied when that change is submitted and published, like every other edit. Compare DELETE /api/parameters/{id}, which retires a parameter and deletes its value from every file.
 // @Tags        Grid & parameters
 // @Accept      json
 // @Produce     json
 // @Param       id path string true "Parameter id (slug)"
-// @Success     200 {object} OKResponse
+// @Success     200 {object} object "Staged; pending is the draft's item count"
 // @Failure     404 {object} APIError "Unknown parameter"
-// @Failure     409 {object} APIError "Could not update the catalog"
 // @Security    CookieSession
 // @Router      /api/parameters/{id}/unmanage [post]
 func (s *Server) unmanageParameter(w http.ResponseWriter, r *http.Request) {
@@ -256,29 +258,35 @@ func (s *Server) unmanageParameter(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
 		return
 	}
-	// Both locks, tree first: this edits .configer AND rewrites the caller's
-	// draft, the same order every path needing both uses.
-	s.treeMu.Lock()
-	defer s.treeMu.Unlock()
+
 	defer s.lockDraft(draftOwner(r))()
-	if _, err := writer.UnmanageParameter(s.RepoPath, id); err != nil {
-		writeError(w, r, http.StatusConflict, CodeConflict, err.Error())
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
-	// Pending edits to a parameter nobody manages any more have nowhere to go.
-	if draft := s.Store.CurrentDraft(draftOwner(r)); draft != nil {
-		_, _ = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
-			kept := cr.Items[:0]
-			for _, it := range cr.Items {
-				if it.ParamID != id {
-					kept = append(kept, it)
-				}
+	pending := 0
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		// A pending edit to a parameter this change stops managing would be
+		// applied and then orphaned, so it goes with it.
+		kept := cr.Items[:0]
+		for _, it := range cr.Items {
+			if it.ParamID != id {
+				kept = append(kept, it)
 			}
-			cr.Items = kept
-			return nil
+		}
+		cr.Items = kept
+		cr.UpsertItem(change.Item{
+			ParamID: id, Action: change.ActionUnmanageParameter,
+			Old: param.Name, New: param.Name, UpdatedAt: time.Now().UTC(),
 		})
-		s.dropEmptyDraft(draftOwner(r))
+		pending = len(cr.Items)
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
 	}
-	s.commitCatalogChange(w, r, "Stop managing "+param.Name, req.Author,
-		map[string]any{"ok": true, "unmanaged": id})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "staged": id, "pending": pending, "changeId": draft.ID,
+	})
 }

@@ -34,22 +34,26 @@ import {
   DownOutlined,
   MoreOutlined,
   UndoOutlined,
-  InfoCircleOutlined,
   FileSearchOutlined,
-  CopyOutlined,
   EyeInvisibleOutlined,
+  InfoCircleOutlined,
+  CheckCircleOutlined,
+  ClockOutlined,
+  PushpinOutlined,
+  PushpinFilled,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import { EmptyState, InlineNotice } from "./ui";
 import SubmitChangesButton from "./SubmitChangesButton";
 import type { ColumnsType } from "antd/es/table";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import {
   api,
   type Cell,
   bindingsOf,
+  expandBinding,
   type ChangeItem,
   type Grid,
   type Instance,
@@ -598,7 +602,7 @@ function instanceHeader(
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectedParamId, selectParam, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, selectedParamId, selectParam, inspectParam, togglePin, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -728,18 +732,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       qc.invalidateQueries({ queryKey: ["render"] });
     },
   });
-  // Stop managing a parameter: it leaves .configer/parameters.yaml and the
-  // grid, and every file keeps its value. The heavier "retire everywhere"
-  // (which also deletes the key from every file) stays where it was, in the
-  // details panel, because the two must never be one slip apart.
+  // Stop managing a parameter. It rewrites .configer/parameters.yaml, so it is
+  // a change like any other: staged on the draft and applied when that change
+  // is published. The heavier "retire everywhere" (which also deletes the key
+  // from every file) stays where it was, in the details panel, because the two
+  // must never be one slip apart.
   const [unmanaging, setUnmanaging] = useState<Parameter | null>(null);
   const unmanage = useMutation({
     mutationFn: (id: string) => api.unmanageParameter(id, "Local user"),
-    onSuccess: (_r, id) => {
+    onSuccess: () => {
       setUnmanaging(null);
-      if (selectedParamId === id) selectParam(null);
       qc.invalidateQueries();
-      message.success("Configer no longer manages this parameter; the value is untouched.");
+      message.success("Staged: it stops being managed when this change is published.");
     },
     onError: (e: Error) => message.error(e.message),
   });
@@ -911,6 +915,61 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
      
   }, [baseRows, pendingByParam]);
 
+  // Pinned parameters ride at the top, in the order they were pinned, whatever
+  // else the grid is sorted or grouped by: they are the handful somebody is
+  // working on this week and having to find them again each time is the thing
+  // pinning exists to stop.
+  const pinnedSet = useMemo(() => new Set(prefs.pinned), [prefs.pinned]);
+  const pinFirst = useCallback(
+    (list: Row[]) => {
+      if (!prefs.pinned.length) return list;
+      const rank = new Map(prefs.pinned.map((id, i) => [id, i]));
+      const top: Row[] = [];
+      const rest: Row[] = [];
+      for (const r of list) (rank.has(r.param.id) ? top : rest).push(r);
+      top.sort((a, b) => (rank.get(a.param.id) ?? 0) - (rank.get(b.param.id) ?? 0));
+      return [...top, ...rest];
+    },
+    [prefs.pinned],
+  );
+
+  // Open the file this parameter lives in, at the line it lives on. The exact
+  // line is resolved from the file itself - a binding records one at scan time,
+  // but the file has been edited since - and a miss opens the file at the top
+  // rather than refusing to go.
+  const openInFiles = async (param: Parameter) => {
+    const file = fileFor(param);
+    const b = bindingsOf(param)[0];
+    if (!file || !b) return;
+    let line: number | undefined = b.line || undefined;
+    try {
+      line = (await api.locate(file, b.path, b.format)).line || line;
+    } catch {
+      // ignore: the file still opens, just not on the line
+    }
+    setFileFocus({
+      path: file,
+      line,
+      instance: viewInstance ?? selectedInstance ?? undefined,
+      param: param.name,
+      allInstances: true,
+    });
+    setSection("files");
+  };
+
+  // Which file a parameter's value lives in, expanded for the instance in view
+  // (a binding's path templates {folder}/{instance}).
+  const fileFor = useCallback(
+    (param: Parameter): string | undefined => {
+      const b = bindingsOf(param)[0];
+      if (!b) return undefined;
+      const name = viewInstance ?? selectedInstance ?? grid.instances[0]?.name;
+      const inst = grid.instances.find((i) => i.name === name);
+      return expandBinding(b, inst);
+    },
+    [grid.instances, viewInstance, selectedInstance],
+  );
+
   const rows = useMemo(() => {
     const pilled = baseRows.filter((r) => {
       if (pill === "all") return true;
@@ -919,7 +978,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (pill === "added") return items.some(isAdded);
       return items.some(isRemoved);
     });
-    if (!prefs.groupByValue) return pilled;
+    if (!prefs.groupByValue) return pinFirst(pilled);
     // Group-by-value: cluster rows that share the same value signature (their
     // per-instance values, identical across the board) adjacently, anchored at
     // each group's first appearance so the overall order stays familiar.
@@ -933,9 +992,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       }
       bySig.get(s)!.push(r);
     }
-    return order.flatMap((s) => bySig.get(s)!);
+    return pinFirst(order.flatMap((s) => bySig.get(s)!));
      
-  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances]);
+  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances, pinFirst]);
 
   // Visual metadata for group-by-value: for each row in a same-value group of
   // more than one, its cycling color and whether it opens/closes the group box.
@@ -1119,31 +1178,43 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           // Right-clicking it acts on the PARAMETER (the whole row), which is a
           // different set of actions from right-clicking one of its values.
           <ParamMenu
-            param={r.param}
             canEdit={canEdit}
-            onOpen={() => selectParam(r.param.id)}
-            onFind={() => {
-              setSearchScope("param");
-              setLocalQ(r.param.name);
-            }}
-            onOpenFile={
-              bindingsOf(r.param)[0]?.file
-                ? () => {
-                    const b = bindingsOf(r.param)[0];
-                    setFileFocus({ path: b.file, line: b.line || undefined, instance: selectedInstance ?? undefined });
-                    setSection("files");
-                  }
-                : undefined
-            }
+            pinned={pinnedSet.has(r.param.id)}
+            fileLabel={fileFor(r.param)?.split("/").pop()}
+            onDetails={() => inspectParam(r.param.id, "details")}
+            onValidation={() => inspectParam(r.param.id, "validation")}
+            onHistory={() => inspectParam(r.param.id, "history")}
+            onOpenFile={fileFor(r.param) ? () => void openInFiles(r.param) : undefined}
+            onTogglePin={() => togglePin(r.param.id)}
             onUnmanage={() => setUnmanaging(r.param)}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              {pinnedSet.has(r.param.id) && (
+                <Tooltip title="Pinned to the top of the grid">
+                  <PushpinFilled style={{ color: "var(--c-review)", fontSize: 11, flexShrink: 0 }} />
+                </Tooltip>
+              )}
               {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
               <Tooltip title={r.param.name} placement="topLeft">
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                    minWidth: 0,
+                    ...(r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : null),
+                  }}
+                >
                   {hl(r.param.name, hlParam)}
                 </span>
               </Tooltip>
+              {r.pendingUnmanage && (
+                <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
+                  <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                    unmanaging
+                  </Tag>
+                </Tooltip>
+              )}
               {bindingsOf(r.param).length === 0 && (
                 <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
                   <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
@@ -1366,7 +1437,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -2124,38 +2195,51 @@ function FindReplaceModal({
 }
 
 // ParamMenu is the right-click menu for a PARAMETER (the row), as distinct from
-// the one on a value (the cell). Everything here is about the setting itself:
-// where it lives, where else it appears, and whether Configer should be looking
-// after it at all.
+// the one on a value (the cell). Every entry answers a question about the
+// setting itself and LANDS on the answer: the inspector opens on the tab that
+// holds it, "view in <file>" opens the file at the line, rather than leaving the
+// reader to find their own way once the menu has closed.
 function ParamMenu({
-  param,
   canEdit,
-  onOpen,
-  onFind,
+  pinned,
+  fileLabel,
+  onDetails,
+  onValidation,
+  onHistory,
   onOpenFile,
+  onTogglePin,
   onUnmanage,
   children,
 }: {
-  param: Parameter;
   canEdit: boolean;
-  onOpen: () => void;
-  onFind: () => void;
+  pinned: boolean;
+  /** the file this parameter's value lives in, already expanded for the
+   *  instance in view (undefined for a design-phase parameter) */
+  fileLabel?: string;
+  onDetails: () => void;
+  onValidation: () => void;
+  onHistory: () => void;
   onOpenFile?: () => void;
+  onTogglePin: () => void;
   onUnmanage: () => void;
   children: React.ReactElement;
 }) {
-  const b = bindingsOf(param)[0];
   return (
     <Dropdown
       trigger={["contextMenu"]}
       menu={{
         items: [
-          { key: "open", icon: <InfoCircleOutlined />, label: "Parameter details" },
-          { key: "find", icon: <SearchOutlined />, label: `Find "${param.name}"` },
-          ...(onOpenFile && b
-            ? [{ key: "file", icon: <FileSearchOutlined />, label: `Open ${b.file.split("/").pop()} in Files` }]
+          { key: "details", icon: <InfoCircleOutlined />, label: "Details" },
+          { key: "validation", icon: <CheckCircleOutlined />, label: "Validations" },
+          ...(onOpenFile && fileLabel
+            ? [{ key: "file", icon: <FileSearchOutlined />, label: `View in ${fileLabel}` }]
             : []),
-          { key: "copy", icon: <CopyOutlined />, label: "Copy parameter name" },
+          {
+            key: "pin",
+            icon: <PushpinOutlined />,
+            label: pinned ? "Unpin from the top" : "Pin on top",
+          },
+          { key: "history", icon: <ClockOutlined />, label: "View change history" },
           ...(canEdit
             ? [
                 { type: "divider" as const },
@@ -2164,7 +2248,6 @@ function ParamMenu({
                   icon: <EyeInvisibleOutlined />,
                   label: "Stop managing this parameter",
                   // Red, like every other action that takes something away.
-                  // It writes to .configer, and the row leaves the grid.
                   danger: true,
                 },
               ]
@@ -2172,10 +2255,11 @@ function ParamMenu({
         ],
         onClick: ({ key, domEvent }) => {
           domEvent.stopPropagation();
-          if (key === "open") onOpen();
-          else if (key === "find") onFind();
+          if (key === "details") onDetails();
+          else if (key === "validation") onValidation();
+          else if (key === "history") onHistory();
           else if (key === "file") onOpenFile?.();
-          else if (key === "copy") void navigator.clipboard?.writeText(param.name);
+          else if (key === "pin") onTogglePin();
           else if (key === "unmanage") onUnmanage();
         },
       }}
@@ -2209,7 +2293,7 @@ function UnmanageModal({
       open
       onCancel={onCancel}
       onOk={onConfirm}
-      okText="Stop managing it"
+      okText="Stage this change"
       okButtonProps={{ danger: true, loading: busy }}
       width={520}
     >
@@ -2226,9 +2310,11 @@ function UnmanageModal({
           Every value stays exactly where it is. Nothing is written to your configuration files.
         </InlineNotice>
         <Typography.Text style={{ fontSize: 13 }}>
-          It leaves <code>.configer/parameters.yaml</code>, so it disappears from the grid, and its
-          paths are remembered in <code>.configer/ignore.yaml</code> so a later scan does not offer it
-          back. Any pending edit to it is dropped. To manage it again, import it from Import settings.
+          This is staged as a change like any other: nothing happens until you submit it and an
+          approver publishes it. When it lands, the parameter leaves{" "}
+          <code>.configer/parameters.yaml</code> and the grid, and its paths are remembered in{" "}
+          <code>.configer/ignore.yaml</code> so a later scan does not offer it back. Any pending edit
+          to it is dropped now. To manage it again, import it from Import settings.
         </Typography.Text>
       </div>
     </Modal>

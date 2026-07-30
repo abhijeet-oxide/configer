@@ -703,9 +703,13 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   // attaching bindings and retiring it are editor actions.
   const { canEdit } = useIdentity();
   const qc = useQueryClient();
-  const { selectedParamId, selectParam } = useUI();
+  // The tab lives in the store, not here: the grid's parameter menu leads
+  // straight to a question ("what are its rules?", "who changed it?"), and the
+  // panel has to open on the answer rather than on its front page.
+  const { selectedParamId, selectParam, inspectorTab, setInspectorTab } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
-  const [tab, setTab] = useState("overview");
+  const tab = inspectorTab;
+  const setTab = setInspectorTab;
   const [editing, setEditing] = useState(false);
   // A newly selected parameter always opens read-only.
   useEffect(() => setEditing(false), [selectedParamId]);

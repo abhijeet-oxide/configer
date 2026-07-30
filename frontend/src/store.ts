@@ -143,6 +143,10 @@ export interface ViewPrefs {
    *  configuration WILL be, and a screen full of pairs is twice the reading for
    *  a fact that is one hover (or this switch) away. */
   showBeforeAfter: boolean;
+  /** parameter ids kept at the top of the grid, in the order they were pinned.
+   *  A fleet has a handful of settings somebody is working on this week; they
+   *  should not have to be searched for every time. */
+  pinned: string[];
 }
 
 const defaultPrefs: ViewPrefs = {
@@ -153,6 +157,7 @@ const defaultPrefs: ViewPrefs = {
   showCompare: true,
   groupByValue: false,
   showBeforeAfter: false,
+  pinned: [],
 };
 
 function loadPrefs(): ViewPrefs {
@@ -218,6 +223,10 @@ interface UIState {
   section: string;
   categoryKey: string | null;
   selectedParamId: string | null;
+  /** which tab the inspector opens on. The grid's parameter menu leads
+   *  straight to a question ("what are its rules?", "who changed it?"), so the
+   *  panel has to open on the answer rather than on its front page. */
+  inspectorTab: string;
   /** instance whose column is highlighted in the grid */
   selectedInstance: string | null;
   compareLeft: string | null;
@@ -285,6 +294,11 @@ interface UIState {
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
   selectParam: (id: string | null) => void;
+  /** select a parameter AND open the inspector on one of its tabs */
+  inspectParam: (id: string, tab: string) => void;
+  setInspectorTab: (tab: string) => void;
+  /** pin a parameter to the top of the grid, or unpin it */
+  togglePin: (id: string) => void;
   selectInstance: (name: string | null) => void;
   setCompare: (left: string | null, right: string | null) => void;
   setSearch: (q: string) => void;
@@ -346,6 +360,7 @@ export const useUI = create<UIState>((set) => ({
   section: initialSection,
   categoryKey: null,
   selectedParamId: initialParam,
+  inspectorTab: "overview",
   selectedInstance: initialInstance,
   compareLeft: null,
   compareRight: null,
@@ -423,6 +438,24 @@ export const useUI = create<UIState>((set) => ({
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),
   selectParam: (selectedParamId) => set({ selectedParamId }),
+  inspectParam: (selectedParamId, inspectorTab) =>
+    set((s) => {
+      // Opening the inspector is part of the request: an answer in a panel
+      // nobody can see is not an answer.
+      const panels = s.panels.right ? s.panels : { ...s.panels, right: true };
+      if (panels !== s.panels) localStorage.setItem("configer.panels", JSON.stringify(panels));
+      return { selectedParamId, inspectorTab, panels };
+    }),
+  setInspectorTab: (inspectorTab) => set({ inspectorTab }),
+  togglePin: (id) =>
+    set((s) => {
+      const pinned = s.prefs.pinned.includes(id)
+        ? s.prefs.pinned.filter((p) => p !== id)
+        : [...s.prefs.pinned, id];
+      const prefs = { ...s.prefs, pinned };
+      localStorage.setItem("configer.viewPrefs", JSON.stringify(prefs));
+      return { prefs };
+    }),
   selectInstance: (selectedInstance) => set({ selectedInstance }),
   setCompare: (compareLeft, compareRight) => set({ compareLeft, compareRight }),
   setSearch: (search) => set({ search }),

@@ -49,13 +49,23 @@ const (
 	// the full new content, Old the baseline, File the repository path.
 	// Applied before value items, so cell edits refine on top.
 	ActionEditFile Action = "edit-file"
+	// ActionUnmanageParameter takes a parameter out of the catalog, leaving
+	// every value where it is. ParamID carries the id; New the parameter's
+	// name (so the change reads as words long after the entry is gone).
+	//
+	// It is a CHANGE like any other: catalogue or configuration, everything
+	// travels the same road - draft, review, publish - so nobody has to know
+	// which kind of edit takes which path, and nothing reaches the default
+	// branch without review.
+	ActionUnmanageParameter Action = "unmanage-parameter"
 )
 
 // Structural reports whether the action changes the instance topology rather
 // than a value; structural items apply before value items on submit.
 func (it Item) Structural() bool {
 	a := it.Act()
-	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance
+	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance ||
+		a == ActionUnmanageParameter
 }
 
 // Item is one pending change: a (parameter, instance) cell edit, a

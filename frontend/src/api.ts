@@ -168,7 +168,8 @@ export type ItemAction =
   | "add-instance"
   | "remove-instance"
   | "update-instance"
-  | "edit-file";
+  | "edit-file"
+  | "unmanage-parameter";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
  *  delta is a formatting artifact, never a configuration change, so diff
@@ -341,6 +342,9 @@ export interface ChangeRequest {
 export interface Row {
   param: Parameter;
   cells: Record<string, Cell>;
+  /** a draft change stops managing this parameter: still here, still editable,
+   *  and leaving the catalog when that change is published */
+  pendingUnmanage?: boolean;
 }
 
 export interface CategoryNode {
@@ -1527,11 +1531,13 @@ export const api = {
   // the draft lock, and a selection of eighty took long enough to look broken.
   revertValues: (items: { paramId: string; instance: string }[]) =>
     send<{ ok: boolean; removed: number; pending: number }>("DELETE", rp("/values/bulk"), { items }),
-  /** Stop managing a parameter: it leaves the catalog and the grid, and every
-   *  file keeps its value. Not the same as deleteParameter, which also removes
-   *  the value from every file. */
+  /** STAGE "stop managing a parameter" on the draft: when the change is
+   *  published the parameter leaves the catalog and the grid, and every file
+   *  keeps its value. Not the same as deleteParameter, which retires it and
+   *  removes the value from every file. */
   unmanageParameter: (id: string, author?: string) =>
-    send<{ ok: boolean; unmanaged: string }>("POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
+    send<{ ok: boolean; staged: string; pending: number; changeId: number }>(
+      "POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
   updateParameter: (
     id: string,
     patch: {

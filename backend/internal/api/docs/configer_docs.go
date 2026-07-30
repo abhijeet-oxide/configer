@@ -2326,7 +2326,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Remove a parameter from .configer/parameters.yaml and record its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own files are NOT touched: every value stays exactly where it is. This is the opposite of DELETE /api/parameters/{id}, which also deletes the value from every file.",
+                "description": "Stage a pending change that removes a parameter from .configer/parameters.yaml and records its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own configuration files are NOT touched: every value stays where it is. Staged on the current draft and applied when that change is submitted and published, like every other edit. Compare DELETE /api/parameters/{id}, which retires a parameter and deletes its value from every file.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2336,7 +2336,7 @@ const docTemplateconfiger = `{
                 "tags": [
                     "Grid \u0026 parameters"
                 ],
-                "summary": "Stop managing a parameter",
+                "summary": "Stage \"stop managing\" a parameter",
                 "parameters": [
                     {
                         "type": "string",
@@ -2348,19 +2348,13 @@ const docTemplateconfiger = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Staged; pending is the draft's item count",
                         "schema": {
-                            "$ref": "#/definitions/api.OKResponse"
+                            "type": "object"
                         }
                     },
                     "404": {
                         "description": "Unknown parameter",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "409": {
-                        "description": "Could not update the catalog",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -4341,7 +4335,8 @@ const docTemplateconfiger = `{
                 "add-instance",
                 "remove-instance",
                 "update-instance",
-                "edit-file"
+                "edit-file",
+                "unmanage-parameter"
             ],
             "x-enum-varnames": [
                 "ActionSet",
@@ -4350,7 +4345,8 @@ const docTemplateconfiger = `{
                 "ActionAddInstance",
                 "ActionRemoveInstance",
                 "ActionUpdateInstance",
-                "ActionEditFile"
+                "ActionEditFile",
+                "ActionUnmanageParameter"
             ]
         },
         "change.Approval": {

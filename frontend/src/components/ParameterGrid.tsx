@@ -37,7 +37,7 @@ import {
   InfoCircleOutlined,
   FileSearchOutlined,
   CopyOutlined,
-  EyeOutlined,
+  EyeInvisibleOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import { EmptyState, InlineNotice } from "./ui";
@@ -2161,8 +2161,11 @@ function ParamMenu({
                 { type: "divider" as const },
                 {
                   key: "unmanage",
-                  icon: <EyeOutlined />,
+                  icon: <EyeInvisibleOutlined />,
                   label: "Stop managing this parameter",
+                  // Red, like every other action that takes something away.
+                  // It writes to .configer, and the row leaves the grid.
+                  danger: true,
                 },
               ]
             : []),

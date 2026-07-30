@@ -84,8 +84,8 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
                 </Typography.Text>
               )}
               <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-                Undo these in the list above (or fix the file they point at) and the rest can go for
-                review as they are.
+                Undo them in the list of changes (or fix the file each one points at); everything
+                else can go for review as it is.
               </Typography.Text>
             </div>
           }
@@ -101,6 +101,12 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
         </div>
       )}
 
+      {files.length === 0 && problems.length > 0 && (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description="Nothing else in this change rewrites a file"
+        />
+      )}
       {files.length > 0 && (
         <>
           {/* One row for "which file", whether the change touches two files or

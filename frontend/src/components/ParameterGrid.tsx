@@ -227,7 +227,8 @@ function EditableCell({
       </span>
     ) : (
       <div
-        style={{ minHeight: 20, cursor: editable ? "text" : undefined, display: "flex", alignItems: "center" }}
+        className="cell-body"
+        style={{ minHeight: 20, cursor: editable ? "text" : undefined }}
         title={
           cell.templated
             ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."

@@ -8,6 +8,7 @@
 package writeback
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -41,7 +42,11 @@ func apply(root, file, format, path string, ptype model.ParamType, value any, re
 		out, err = pathedit.Set(base, format, path, ptype, value)
 	}
 	if err != nil {
-		return err
+		// An edit engine error is about a place in a FILE: which file, and where
+		// in it. Without that, "path expects a list here" reaches the user as a
+		// sentence about nothing they can open, and a parameter mapped into
+		// several files gives no clue which one disagreed.
+		return fmt.Errorf("%s at %s: %w", file, path, err)
 	}
 	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 		return err

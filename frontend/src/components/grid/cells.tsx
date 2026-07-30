@@ -11,7 +11,8 @@ import {
   type Rules,
 } from "../../rules";
 import { semantic } from "../../theme";
-import ValueDiff from "../ui/ValueDiff";
+import { diffValues, type DiffPart } from "../../valuediff";
+import ValueDiff, { InlineValueDiff } from "../ui/ValueDiff";
 
 // Cell rendering and the typed inline editors for the parameter grid. Split
 // out of ParameterGrid so the grid file stays about layout and data flow.
@@ -117,31 +118,67 @@ export function CellView({
     );
   }
 
-  const cls: string[] = [];
+  const cls: string[] = ["cell-inner"];
   if (cell.state === "deprecated") cls.push("cell-deprecated");
   if (cell.state === "new") cls.push("cell-new");
   if (!cell.valid) cls.push("cell-invalid");
   if (cell.pending) cls.push("cell-pending");
 
+  // A staged value edit shows the CHANGE, not only its result. The cell keeps
+  // the pending amber - that is its state, and it is what the eye lands on
+  // scanning a column - and inside it the characters that went are struck in
+  // red and the ones that arrived are marked green, with the identical text
+  // between them condensed to an ellipsis. Those are the same marks the review
+  // modal and the inspector use, so a diff reads the same wherever it is met:
+  // "it says 13c now" and "it used to say 0013c" are different questions and a
+  // reviewer scanning the grid needs both.
+  const diff =
+    pendingItem && pendingItem.action === "set" && cell.set && !Array.isArray(cell.value)
+      ? diffPair(pendingItem.old, cell.value)
+      : null;
+
   let display: React.ReactNode;
-  if (Array.isArray(cell.value)) {
+  if (diff) {
+    display = (
+      <span className="cell-diff">
+        <InlineValueDiff parts={diff} side="before" />
+        <span className="vd-arrow" aria-hidden>
+          →
+        </span>
+        <InlineValueDiff parts={diff} side="after" />
+      </span>
+    );
+  } else if (Array.isArray(cell.value)) {
     display = <ListChips items={cell.value} />;
   } else if (cell.value === undefined || cell.value === null || cell.value === "") {
     display = <span style={{ opacity: 0.3 }}>-</span>;
   } else if (typeof cell.value === "boolean") {
     display = <Tag color={cell.value ? "green" : "default"}>{cell.value ? "on" : "off"}</Tag>;
   } else {
-    display = <span className="mono">{String(cell.value)}</span>;
+    display = <span className="mono cell-value">{String(cell.value)}</span>;
   }
 
+  const tip = pendingTip ?? (!cell.valid ? cell.message : undefined);
+  // A value wider than its column truncates (see .cell-value), so a long one
+  // keeps the whole of itself on hover. Only a long one: a native title on every
+  // cell would shadow the grid's own "double-click to edit" hint for no gain.
+  const full = typeof cell.value === "string" ? cell.value : undefined;
   const inner = (
-    <span className={cls.join(" ")}>
+    <span className={cls.join(" ")} title={!tip && full && full.length > 28 ? full : undefined}>
       {display}
       <SourceBadge cell={cell} />
     </span>
   );
-  const tip = pendingTip ?? (!cell.valid ? cell.message : undefined);
   return tip ? <Tooltip title={tip}>{inner}</Tooltip> : inner;
+}
+
+// diffPair renders a before/after pair as diff parts, or null when nothing
+// actually moved (a re-set to the same value is not a change to draw).
+function diffPair(before: unknown, after: unknown): DiffPart[] | null {
+  const b = fmtValue(before);
+  const a = fmtValue(after);
+  if (b === a) return null;
+  return diffValues(b === "-" ? "" : b, a === "-" ? "" : a);
 }
 
 // --- Typed inline editors -------------------------------------------------

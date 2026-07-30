@@ -422,9 +422,45 @@ func (s *Service) Submit(ctx context.Context, req SubmitRequest) (*change.Change
 // edits refined on top. Both Submit and Preview go through here so what a
 // reviewer previews is byte-for-byte what gets committed.
 func applyDraft(wt string, cr *change.ChangeRequest) error {
+	_, err := applyItems(wt, cr, false)
+	return err
+}
+
+// ItemProblem is one draft item that could not be applied, named the way the
+// person who staged it would recognize it. Preview collects these instead of
+// failing outright: a change of a hundred edits with one broken mapping is worth
+// seeing (and fixing) rather than showing nothing at all, and it is far better
+// to learn which edit will be refused BEFORE submitting than from a failed
+// submit that names one item and hides the rest.
+type ItemProblem struct {
+	ParamID  string `json:"paramId,omitempty"`
+	Instance string `json:"instance,omitempty"`
+	Action   string `json:"action,omitempty"`
+	File     string `json:"file,omitempty"`
+	Message  string `json:"message"`
+}
+
+// applyItems applies a change request's items in the order Submit commits them.
+// When tolerant, an item that cannot be applied is collected and the remaining
+// items still apply; otherwise the first failure stops everything - a SUBMIT
+// that quietly dropped an edit would commit a change nobody reviewed.
+func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProblem, error) {
+	var problems []ItemProblem
+	// note records a failure: it stops the run outright unless we are tolerant.
+	note := func(it change.Item, err error) error {
+		if !tolerant {
+			return err
+		}
+		problems = append(problems, ItemProblem{
+			ParamID: it.ParamID, Instance: it.Instance,
+			Action: string(it.Act()), File: it.File, Message: err.Error(),
+		})
+		return nil
+	}
+
 	proj, err := project.Load(wt)
 	if err != nil {
-		return fmt.Errorf("load project from worktree: %w", err)
+		return problems, fmt.Errorf("load project from worktree: %w", err)
 	}
 	structuralApplied := false
 	for _, it := range cr.Items {
@@ -432,13 +468,16 @@ func applyDraft(wt string, cr *change.ChangeRequest) error {
 			continue
 		}
 		if err := applyStructural(wt, proj, it); err != nil {
-			return fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)
+			if err = note(it, fmt.Errorf("apply %s %s: %w", it.Act(), it.Instance, err)); err != nil {
+				return problems, err
+			}
+			continue
 		}
 		structuralApplied = true
 	}
 	if structuralApplied {
 		if proj, err = project.Load(wt); err != nil {
-			return fmt.Errorf("reload project from worktree: %w", err)
+			return problems, fmt.Errorf("reload project from worktree: %w", err)
 		}
 	}
 	for _, it := range cr.Items {
@@ -448,10 +487,12 @@ func applyDraft(wt string, cr *change.ChangeRequest) error {
 		content, _ := it.New.(string)
 		full := filepath.Join(wt, filepath.FromSlash(it.File))
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
-			return err
+			return problems, err
 		}
 		if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("apply file edit %s: %w", it.File, err)
+			if err = note(it, fmt.Errorf("apply file edit %s: %w", it.File, err)); err != nil {
+				return problems, err
+			}
 		}
 	}
 	for _, it := range cr.Items {
@@ -459,10 +500,12 @@ func applyDraft(wt string, cr *change.ChangeRequest) error {
 			continue
 		}
 		if err := applyItem(wt, proj, it); err != nil {
-			return fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)
+			if err = note(it, fmt.Errorf("apply %s/%s: %w", it.ParamID, it.Instance, err)); err != nil {
+				return problems, err
+			}
 		}
 	}
-	return nil
+	return problems, nil
 }
 
 // applyItem writes one draft item into the repository files inside root.

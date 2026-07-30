@@ -17,6 +17,7 @@ import {
 import { relTime } from "./DashboardView";
 import { useIdentity } from "../identity";
 import UserAvatar from "./UserAvatar";
+import { crRef } from "../api";
 import type { BranchLane, ChangeRequest, ChangeState, Commit, TimelineEntry } from "../api";
 
 // The Change Flow: what has happened to this application, told as a journey
@@ -890,7 +891,10 @@ function FlowCard({
           {mark.icon}
           {mark.label}
         </span>
-        <span className="cf-crid">{cr.number ? `CR-${cr.number}` : "draft"}</span>
+        {/* A number once it has one; otherwise what it is. Keyed off the STATE,
+            never off the absence of a number - a published change from before
+            numbering has none and is not a draft. */}
+        <span className="cf-crid">{crRef(cr) ?? "draft"}</span>
       </div>
       <div className="cf-card-title" title={cr.title}>
         {cr.title === "Draft changes" ? "Unnamed draft" : cr.title}

@@ -34,6 +34,7 @@ import { keepPreviousData, useMutation, useQueryClient } from "@tanstack/react-q
 import { useRepoQuery } from "../repoQuery";
 import {
   api,
+  crRef,
   type Grid,
   type TimelineEntry,
   type SnapshotKind,
@@ -524,7 +525,7 @@ function InFlightRow({ cr, onOpen }: { cr: ChangeRequest; onOpen: () => void }) 
       <span className="gg-caret" />
       <Tooltip title={stateWords(cr.state)}>
         <span className="gg-state" style={{ color, borderColor: color }}>
-          {cr.number ? `CR-${cr.number}` : "draft"}
+          {crRef(cr) ?? "draft"}
         </span>
       </Tooltip>
       <span className="gg-subject" title={cr.title}>

@@ -88,16 +88,29 @@ function Subject({
   return <span className="mono" style={{ fontWeight: 600 }}>{d.subject}</span>;
 }
 
+/** itemKey identifies one draft item across renders. It is the table's row key
+ *  AND what an in-flight undo is tracked by, so "which row is busy" can never
+ *  disagree with "which row was clicked". */
+export function itemKey(it: ChangeItem): string {
+  return `${it.paramId}|${it.instance}|${it.file ?? ""}`;
+}
+
 export function ChangeItemsTable({
   items,
   onUndo,
-  undoLoading,
+  undoingKey,
+  maxHeight,
   onOpenParam,
 }: {
   items: ChangeItem[] | null;
   /** when given, each row shows an undo button */
   onUndo?: (it: ChangeItem) => void;
-  undoLoading?: boolean;
+  /** itemKey of the row whose undo is in flight - that ONE row spins, and the
+   *  others go disabled rather than all pretending to be busy. */
+  undoingKey?: string | null;
+  /** cap the list's own height (px) so a hundred changes scroll inside the
+   *  table instead of pushing whatever follows it off the screen. */
+  maxHeight?: number;
   /** when given, parameter subjects become links */
   onOpenParam?: (paramId: string) => void;
 }) {
@@ -105,10 +118,10 @@ export function ChangeItemsTable({
   return (
     <Table<ChangeItem>
       size="small"
-      rowKey={(it) => `${it.paramId}|${it.instance}|${it.file ?? ""}`}
+      rowKey={itemKey}
       dataSource={items}
       pagination={false}
-      scroll={{ x: "max-content" }}
+      scroll={maxHeight ? { x: "max-content", y: maxHeight } : { x: "max-content" }}
       columns={[
         {
           title: "Change",
@@ -139,19 +152,28 @@ export function ChangeItemsTable({
               {
                 title: "",
                 width: 46,
-                render: (_v: unknown, it: ChangeItem) => (
-                  <Tooltip title="Undo this change">
-                    <Button
-                      size="small"
-                      type="text"
-                      danger
-                      aria-label={`Undo change to ${it.paramId || it.instance || "item"}`}
-                      icon={<DeleteOutlined />}
-                      loading={undoLoading}
-                      onClick={() => onUndo(it)}
-                    />
-                  </Tooltip>
-                ),
+                render: (_v: unknown, it: ChangeItem) => {
+                  // Only the row being undone spins. Every button showing a
+                  // spinner said "all of this is being undone", which is both
+                  // untrue and alarming when the list is a hundred rows long;
+                  // the others go disabled instead, because one undo at a time
+                  // is what the draft store can honor.
+                  const busy = undoingKey === itemKey(it);
+                  return (
+                    <Tooltip title={busy ? "Undoing…" : "Undo this change"}>
+                      <Button
+                        size="small"
+                        type="text"
+                        danger
+                        aria-label={`Undo change to ${it.paramId || it.instance || "item"}`}
+                        icon={<DeleteOutlined />}
+                        loading={busy}
+                        disabled={!!undoingKey && !busy}
+                        onClick={() => onUndo(it)}
+                      />
+                    </Tooltip>
+                  );
+                },
               },
             ]
           : []),

@@ -287,7 +287,6 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
             setReviewCr(cr.id);
             setSection(cr.state === "published" || cr.state === "rejected" ? "changes" : "approvals");
           }}
-          onOpenCommit={(sha) => setOpen(sha)}
         />
         </div>
       ) : (

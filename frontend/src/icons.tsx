@@ -101,6 +101,10 @@ import phArrowsLeftRight from "@iconify-icons/ph/arrows-left-right";
 import phTable from "@iconify-icons/ph/table";
 import phListDashes from "@iconify-icons/ph/list-dashes";
 import phLightning from "@iconify-icons/ph/lightning";
+import phBug from "@iconify-icons/ph/bug";
+import phShield from "@iconify-icons/ph/shield";
+import phWrench from "@iconify-icons/ph/wrench";
+import phClock from "@iconify-icons/ph/clock";
 import phArrowCounterClockwise from "@iconify-icons/ph/arrow-counter-clockwise";
 import phUser from "@iconify-icons/ph/user";
 import phWarningFill from "@iconify-icons/ph/warning-fill";
@@ -205,6 +209,13 @@ export const InfoCircleFilled = make("info-circle-fill", phInfoFill);
 export const QuestionCircleOutlined = make("question-circle", phQuestion);
 export const LoadingOutlined = make("loading", phSpinner, true);
 export const ThunderboltOutlined = make("thunderbolt", phLightning);
+// Change-type marks. They are deliberately monochrome: in the change flow,
+// colour belongs to branch identity and status, and a type is said in an icon
+// plus a word.
+export const BugOutlined = make("bug", phBug);
+export const ShieldOutlined = make("shield", phShield);
+export const WrenchOutlined = make("wrench", phWrench);
+export const ClockOutlined = make("clock", phClock);
 export const RocketOutlined = make("rocket", phRocketLaunch);
 export const StarOutlined = make("star", phStar);
 export const StarFilled = make("star-fill", phStarFill);

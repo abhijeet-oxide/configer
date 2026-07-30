@@ -8,7 +8,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { PullRequestOutlined, WarningFilled } from "../icons";
+import { FileSearchOutlined, PullRequestOutlined, WarningFilled } from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -116,6 +116,25 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     onSettled: () => setUndoing(null),
   });
 
+  // Undoing a selection is one action for the person and a sequence for the
+  // store: the draft is read-modify-write per owner, so the items go back one
+  // at a time rather than racing each other through it.
+  const revertMany = useMutation({
+    mutationFn: async (its: ChangeItem[]) => {
+      for (const it of its) {
+        await api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance);
+      }
+    },
+    onSuccess: (_r, its) => {
+      qc.invalidateQueries();
+      message.success(`Undid ${its.length} change${its.length === 1 ? "" : "s"}`);
+    },
+    onError: (e: Error) => {
+      qc.invalidateQueries();
+      message.error(e.message);
+    },
+  });
+
   const submit = useMutation({
     mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
       api.submitChange(draftQ.data!.draft!.id, { ...v, author: "Local user" }),
@@ -162,6 +181,18 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         // it, rather than through a failed submit.
         okButtonProps={{ disabled: pending === 0 || nameCheck?.available === false }}
         confirmLoading={submit.isPending}
+        // The sentence that explains the buttons sits WITH the buttons, not in
+        // the body: it is fixed text, and every line of it in the body is a line
+        // the list of changes does not get.
+        footer={(buttons) => (
+          <div className="cf-submit-foot">
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Saved to a review branch named after this change; nothing goes live until an
+              approver publishes it.
+            </Typography.Text>
+            <span className="cf-submit-foot-actions">{buttons}</span>
+          </div>
+        )}
         width={760}
         // Pinned near the top and capped to the viewport: the dialog can never
         // be taller than the screen it is on, on a phone or a laptop.
@@ -209,41 +240,41 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             </span>
           </div>
         )}
-        {/* The middle of the dialog holds ONE of two things at a time, and it is
-            the only part that scrolls: the list of changes, or the byte-level
-            diff of the files they rewrite. Showing both meant neither got enough
-            height to be worth reading, and pushed the form off the bottom - and
-            they answer the same question at two altitudes, so the reader wants
-            one or the other, never a sliver of each. */}
+        {/* The list of changes: the one thing in this dialog that scrolls, and
+            searchable, sortable and multi-selectable because at a hundred rows
+            "find the one I got wrong and undo it" is the actual task. */}
         <div className="cf-fill">
-          {showDiffs && draftQ.data?.draft ? (
-            <ChangePreview changeId={draftQ.data.draft.id} />
-          ) : (
-            <ChangeItemsTable
-              items={items}
-              fill
-              onUndo={(it) => {
-                setUndoing(itemKey(it));
-                revert.mutate(it);
-              }}
-              undoingKey={undoing}
-              onOpenParam={(v) => {
-                selectParam(v);
-                setSection("config");
-                setOpen(false);
-              }}
-            />
-          )}
+          <ChangeItemsTable
+            items={items}
+            fill
+            onUndo={(it) => {
+              setUndoing(itemKey(it));
+              revert.mutate(it);
+            }}
+            onUndoMany={(its) => revertMany.mutate(its)}
+            undoingKey={undoing}
+            bulkBusy={revertMany.isPending}
+            onOpenParam={(v) => {
+              selectParam(v);
+              setSection("config");
+              setOpen(false);
+            }}
+          />
         </div>
 
+        {/* The byte diff opens in its OWN window. A code diff needs room, and
+            taking it from a dialog that also holds a form left the diff too
+            short to read and (when the file list grew) painting over the fields
+            under it. Two windows, each the right size for what it holds. */}
         {pending > 0 && draftQ.data?.draft && (
           <Button
             type="link"
             size="small"
+            icon={<FileSearchOutlined />}
             style={{ paddingLeft: 0, alignSelf: "flex-start", flexShrink: 0 }}
-            onClick={() => setShowDiffs((v) => !v)}
+            onClick={() => setShowDiffs(true)}
           >
-            {showDiffs ? "Back to the list of changes" : "View exact file changes"}
+            View exact file changes
           </Button>
         )}
         <Form
@@ -302,10 +333,26 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             <Input.TextArea rows={2} placeholder="Shown to the approver, and kept in the Git history" />
           </Form.Item>
         </Form>
-        <Typography.Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
-          On Git this saves your edits to a dedicated review branch (named after this
-          change) and opens a review; nothing goes live until an approver publishes it.
-        </Typography.Text>
+      </Modal>
+
+      <Modal
+        title="Exactly what will change on disk"
+        open={showDiffs && !!draftQ.data?.draft}
+        onCancel={() => setShowDiffs(false)}
+        footer={null}
+        width={1080}
+        style={{ top: 20, maxWidth: "calc(100vw - 32px)" }}
+        styles={{
+          body: {
+            height: "min(760px, calc(100vh - 130px))",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          },
+        }}
+        destroyOnHidden
+      >
+        {draftQ.data?.draft && <ChangePreview changeId={draftQ.data.draft.id} />}
       </Modal>
     </>
   );

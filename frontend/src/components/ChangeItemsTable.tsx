@@ -1,5 +1,6 @@
-import { Table, Tag, Tooltip, Button, Typography, Empty } from "antd";
-import { DeleteOutlined } from "../icons";
+import { useMemo, useState } from "react";
+import { Table, Tag, Tooltip, Button, Typography, Empty, Input, Popconfirm } from "antd";
+import { DeleteOutlined, SearchOutlined } from "../icons";
 import { describeChange, type ChangeDesc, type ChangeTone } from "../changedesc";
 import ValueDiff from "./ui/ValueDiff";
 import type { ChangeItem } from "../api";
@@ -95,33 +96,89 @@ export function itemKey(it: ChangeItem): string {
   return `${it.paramId}|${it.instance}|${it.file ?? ""}`;
 }
 
+/** haystack is everything about one item a person might type to find it: the
+ *  parameter, the instance, the file, the type of change, and both values. */
+function haystack(it: ChangeItem, d: ChangeDesc): string {
+  return [
+    it.paramId, it.instance, it.file, d.tag, d.subject, d.what, d.before, d.after,
+    ...(d.fields?.flatMap((f) => [f.label, f.before, f.after]) ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 export function ChangeItemsTable({
   items,
   onUndo,
+  onUndoMany,
   undoingKey,
+  bulkBusy,
   fill,
   onOpenParam,
 }: {
   items: ChangeItem[] | null;
   /** when given, each row shows an undo button */
   onUndo?: (it: ChangeItem) => void;
+  /** when given, rows can be selected and undone together */
+  onUndoMany?: (its: ChangeItem[]) => void;
   /** itemKey of the row whose undo is in flight - that ONE row spins, and the
    *  others go disabled rather than all pretending to be busy. */
   undoingKey?: string | null;
+  /** a multi-row undo is in flight */
+  bulkBusy?: boolean;
   /** fill the height of the container and scroll inside it (the review dialog),
    *  rather than growing with the list (a page that scrolls anyway). */
   fill?: boolean;
   /** when given, parameter subjects become links */
   onOpenParam?: (paramId: string) => void;
 }) {
+  // Finding one change among a hundred is a real task on this screen, so the
+  // list searches, sorts and filters like any other table in the product - and
+  // undoing ten of them is one action, not ten.
+  const [query, setQuery] = useState("");
+  const [selected, setSelected] = useState<React.Key[]>([]);
+  const all = useMemo(() => items ?? [], [items]);
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter((it) => haystack(it, describeChange(it)).includes(q));
+  }, [all, query]);
+  // A selection only means anything while the rows it names are still here.
+  const live = useMemo(() => new Set(all.map(itemKey)), [all]);
+  const picked = useMemo(() => selected.filter((k) => live.has(String(k))), [selected, live]);
+  const pickedItems = useMemo(
+    () => all.filter((it) => picked.includes(itemKey(it))),
+    [all, picked],
+  );
+
   if (!items?.length) return <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="No changes" />;
-  return (
+
+  const busy = !!undoingKey || !!bulkBusy;
+  const table = (
     <Table<ChangeItem>
       size="small"
       className={"cf-items" + (fill ? " cf-items-fill" : "")}
       rowKey={itemKey}
-      dataSource={items}
+      dataSource={shown}
       pagination={false}
+      locale={{
+        emptyText: (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={`Nothing matches "${query}"`} />
+        ),
+      }}
+      rowSelection={
+        onUndoMany
+          ? {
+              selectedRowKeys: picked,
+              onChange: (keys) => setSelected(keys),
+              columnWidth: 38,
+              // Selecting while an undo is in flight would name rows that are
+              // about to stop existing.
+              getCheckboxProps: () => ({ disabled: busy }),
+            }
+          : undefined
+      }
       // No horizontal scrolling, ever: the columns divide the width they are
       // given and the long things inside them wrap. A sideways bar under a list
       // of changes is a second axis to search in for no reason - the values it
@@ -134,7 +191,12 @@ export function ChangeItemsTable({
       columns={[
         {
           title: "Change",
-          width: 104,
+          width: 112,
+          sorter: (a, b) => describeChange(a).tag.localeCompare(describeChange(b).tag),
+          filters: [...new Set(all.map((it) => describeChange(it).tag))]
+            .sort()
+            .map((t) => ({ text: t, value: t })),
+          onFilter: (v, it) => describeChange(it).tag === v,
           render: (_v, it) => {
             const d = describeChange(it);
             return <Tag color={TONE[d.tone]} style={{ marginInlineEnd: 0 }}>{d.tag}</Tag>;
@@ -142,6 +204,15 @@ export function ChangeItemsTable({
         },
         {
           title: "What",
+          // Sorted by what the row is ABOUT (the parameter, the instance, the
+          // file), which is the order a reviewer reads a hundred changes in.
+          sorter: (a, b) => {
+            const da = describeChange(a);
+            const db = describeChange(b);
+            return (
+              da.subject.localeCompare(db.subject) || (a.instance ?? "").localeCompare(b.instance ?? "")
+            );
+          },
           render: (_v, it) => {
             const d = describeChange(it);
             return (
@@ -163,17 +234,17 @@ export function ChangeItemsTable({
                   // untrue and alarming when the list is a hundred rows long;
                   // the others go disabled instead, because one undo at a time
                   // is what the draft store can honor.
-                  const busy = undoingKey === itemKey(it);
+                  const mine = undoingKey === itemKey(it);
                   return (
-                    <Tooltip title={busy ? "Undoing…" : "Undo this change"}>
+                    <Tooltip title={mine ? "Undoing…" : "Undo this change"}>
                       <Button
                         size="small"
                         type="text"
                         danger
                         aria-label={`Undo change to ${it.paramId || it.instance || "item"}`}
                         icon={<DeleteOutlined />}
-                        loading={busy}
-                        disabled={!!undoingKey && !busy}
+                        loading={mine}
+                        disabled={busy && !mine}
                         onClick={() => onUndo(it)}
                       />
                     </Tooltip>
@@ -184,5 +255,53 @@ export function ChangeItemsTable({
           : []),
       ]}
     />
+  );
+
+  // No toolbar where the list is a read-only record (the change history, the
+  // approvals detail): searching a list you cannot act on is furniture.
+  if (!onUndoMany) return table;
+
+  return (
+    <div className="cf-items-wrap">
+      <div className="cf-items-bar">
+        <Input
+          size="small"
+          allowClear
+          prefix={<SearchOutlined style={{ color: "var(--text-3)" }} />}
+          placeholder="Search these changes"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          style={{ maxWidth: 260 }}
+        />
+        <span className="cf-items-count">
+          {query.trim() && shown.length !== all.length
+            ? `${shown.length} of ${all.length}`
+            : `${all.length} change${all.length === 1 ? "" : "s"}`}
+        </span>
+        <span style={{ flex: 1 }} />
+        {picked.length > 0 && (
+          <>
+            <Button size="small" type="text" onClick={() => setSelected([])} disabled={busy}>
+              Clear
+            </Button>
+            <Popconfirm
+              title={`Undo ${picked.length} change${picked.length === 1 ? "" : "s"}?`}
+              description="They go back to the value the files hold now. Nothing has been written to Git."
+              okText="Undo them"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                onUndoMany(pickedItems);
+                setSelected([]);
+              }}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} loading={bulkBusy} disabled={!!undoingKey}>
+                Undo {picked.length} selected
+              </Button>
+            </Popconfirm>
+          </>
+        )}
+      </div>
+      {table}
+    </div>
   );
 }

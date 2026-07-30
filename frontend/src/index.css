@@ -1570,6 +1570,30 @@ body {
   .pending-bar-more { animation: none; transition: none; }
 }
 
+/* ------------------------------------------- managed lines in the file editor */
+
+/* A file is mostly ordinary text with a handful of values Configer manages.
+   These mark them, and the whole design brief is RESTRAINT: the reader is here
+   to read code, so the mark has to be visible when looked for and invisible
+   when not. A hairline in the left margin does the work; the wash behind the
+   line is barely there, and neither uses a hue that could be confused with the
+   diff's own green and red or with syntax highlighting. */
+.monaco-editor .cf-managed-line {
+  background: color-mix(in srgb, var(--c-review) 6%, transparent);
+}
+.monaco-editor .cf-managed-gutter {
+  width: 3px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--c-review) 55%, transparent);
+}
+/* On dark the same tint reads heavier against a dark ground, so it is taken
+   down rather than up. */
+:root[data-theme="dark"] .monaco-editor .cf-managed-line,
+.dark .monaco-editor .cf-managed-line {
+  background: color-mix(in srgb, var(--c-review) 10%, transparent);
+}
+
 /* ------------------------------------------------- the review dialog's frame */
 
 /* A dialog is a fixed frame around ONE scrollable region. .cf-fill is that

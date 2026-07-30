@@ -1623,6 +1623,36 @@ paths:
       summary: Stage a file edit
       tags:
       - Files
+  /api/files/managed:
+    get:
+      description: Every value in one file that a catalog parameter is bound to, with
+        the 1-based line it sits on in the draft-applied content the Files explorer
+        shows. Lets the editor mark the lines Configer manages. XML values report
+        line 0 (the engine has no per-node line there).
+      parameters:
+      - description: Repository-relative file path
+        in: query
+        name: file
+        required: true
+        type: string
+      - description: 'Instance whose draft/expansion to use (default: every instance)'
+        in: query
+        name: instance
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: file is required
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Managed values in a file
+      tags:
+      - Files
   /api/fs/browse:
     get:
       description: List the sub-folders of a directory on the server so the New Application

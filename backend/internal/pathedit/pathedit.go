@@ -51,6 +51,9 @@ type Document struct {
 	// carry more than one); a path's document selector picks among them.
 	yamls []*yaml.Node
 	xml   *etree.Document
+	// raw is kept for XML only: etree has no line information, so Line falls
+	// back to a scan of the original bytes (see xmlLine).
+	raw   []byte
 	empty bool
 }
 
@@ -65,7 +68,7 @@ func Parse(doc []byte, format string) (*Document, error) {
 		if err := d.ReadFromBytes(doc); err != nil {
 			return nil, err
 		}
-		return &Document{xml: d}, nil
+		return &Document{xml: d, raw: doc}, nil
 	}
 	docs, err := decodeDocs(doc)
 	if err != nil {
@@ -100,10 +103,17 @@ func (d *Document) Get(path string) (any, bool, error) {
 }
 
 // Line returns the 1-based source line of the value at path from a parsed
-// Document. It supports YAML and JSON (which share the node tree); XML has no
-// per-node line and returns false. Used to jump straight to where a value lives.
+// Document: the node tree for YAML and JSON, a scan of the original bytes for
+// XML (etree keeps no line numbers). Used to jump straight to where a value
+// lives, and to mark the lines a file's managed values sit on.
 func (d *Document) Line(path string) (int, bool) {
-	if d == nil || d.empty || len(d.yamls) == 0 {
+	if d == nil || d.empty {
+		return 0, false
+	}
+	if d.xml != nil {
+		return xmlLine(d.raw, path)
+	}
+	if len(d.yamls) == 0 {
 		return 0, false
 	}
 	root, rest, ok := d.yamlDoc(path)

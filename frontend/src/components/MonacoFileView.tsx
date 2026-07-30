@@ -9,8 +9,13 @@ import { useEffect, useRef } from "react";
 import "../monaco";
 import { languageFor } from "../monacoLang";
 
-// Minimal shape of the Monaco editor instance we use (reveal + cursor), so we
-// avoid importing monaco types into this lazy module's public surface.
+// Minimal shape of the Monaco editor instance we use (reveal, cursor,
+// decorations), so we avoid importing monaco types into this lazy module's
+// public surface.
+interface Decoration {
+  range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number };
+  options: Record<string, unknown>;
+}
 interface Revealable {
   revealLineInCenter: (line: number) => void;
   setPosition: (pos: { lineNumber: number; column: number }) => void;
@@ -20,6 +25,15 @@ interface Revealable {
   onDidChangeModelContent: (cb: () => void) => void;
   addCommand?: (keybinding: number, handler: () => void) => void;
   onDidChangeCursorPosition?: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void;
+  deltaDecorations?: (old: string[], next: Decoration[]) => string[];
+  getModel?: () => { getLineMaxColumn?: (line: number) => number; getLineCount?: () => number } | null;
+}
+
+/** One line the file's owner should be able to see at a glance is looked after
+ *  by Configer: the line, and what to say about it on hover. */
+export interface LineMark {
+  line: number;
+  label: string;
 }
 
 const baseOptions = {
@@ -41,6 +55,7 @@ export default function MonacoFileView({
   original,
   dark,
   revealLine,
+  marks,
   editable = false,
   onDirty,
   onSave,
@@ -51,6 +66,8 @@ export default function MonacoFileView({
   original?: string;
   dark: boolean;
   revealLine?: number;
+  /** lines to mark as managed by Configer (quietly - see the effect below) */
+  marks?: LineMark[];
   /** allow typing; edits report through onDirty, Ctrl/Cmd-S calls onSave */
   editable?: boolean;
   onDirty?: (value: string) => void;
@@ -60,6 +77,7 @@ export default function MonacoFileView({
 }) {
   const language = languageFor(path);
   const theme = dark ? "vs-dark" : "light";
+  const decoRef = useRef<string[]>([]);
   const showDiff = original !== undefined && original !== content;
   const edRef = useRef<Revealable | null>(null);
   const saveRef = useRef(onSave);
@@ -86,6 +104,45 @@ export default function MonacoFileView({
     reveal(revealLine);
   }, [revealLine]);
 
+  // Mark the lines Configer manages. A file is mostly ordinary text with a
+  // handful of values the product actually looks after, and nothing in the
+  // editor said which - so an operator editing by hand had no way to know which
+  // line the grid would fight them over. The mark is deliberately quiet: a
+  // hairline in the margin and the faintest wash (see .cf-managed-line), never
+  // a colour that competes with syntax highlighting or the diff's own green and
+  // red. The hover says which parameter owns the line.
+  //
+  // Applied from BOTH the effect and onMount, because the two arrive in either
+  // order: Monaco mounts asynchronously and the lines are fetched, so whichever
+  // is last has to be the one that paints.
+  const marksRef = useRef(marks);
+  useEffect(() => {
+    marksRef.current = marks;
+  });
+  const applyMarks = () => {
+    const ed = edRef.current;
+    if (!ed?.deltaDecorations) return;
+    const lines = ed.getModel?.()?.getLineCount?.() ?? Number.MAX_SAFE_INTEGER;
+    const next = (marksRef.current ?? [])
+      .filter((m) => m.line > 0 && m.line <= lines)
+      .map((m) => ({
+        range: { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 },
+        options: {
+          isWholeLine: true,
+          className: "cf-managed-line",
+          linesDecorationsClassName: "cf-managed-gutter",
+          hoverMessage: { value: m.label },
+          overviewRuler: { color: "rgba(0, 87, 184, 0.35)", position: 1 },
+        },
+      }));
+    decoRef.current = ed.deltaDecorations(decoRef.current, next);
+  };
+  useEffect(() => {
+    marksRef.current = marks;
+    applyMarks();
+     
+  }, [marks, content, path]);
+
   const wire = (editor: Revealable) => {
     edRef.current = editor;
     editor.onDidChangeModelContent(() => dirtyRef.current?.(editor.getValue()));
@@ -94,6 +151,7 @@ export default function MonacoFileView({
       cursorRef.current?.(e.position.lineNumber, e.position.column),
     );
     reveal(revealLine);
+    applyMarks();
   };
 
   if (showDiff) {

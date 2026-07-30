@@ -212,6 +212,17 @@ export interface ChangeItem {
   updatedAt: string;
 }
 
+/** One value inside a file that Configer manages, and the line it is on. */
+export interface ManagedValue {
+  paramId: string;
+  name: string;
+  path: string;
+  line: number;
+  type?: string;
+  secret?: boolean;
+  instance?: string;
+}
+
 /** One file a change request would rewrite, with exact before/after content
  * (the same bytes the submit will commit) so the UI can render a real diff. */
 export interface FilePreview {
@@ -1498,6 +1509,12 @@ export const api = {
     put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
       rp("/files/draft"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
+  /** Every value in one file that a parameter is bound to, with the line it
+   *  sits on in the content the explorer shows. */
+  managedValues: (file: string, instance?: string) =>
+    get<{ file: string; values: ManagedValue[] }>(
+      rp(`/files/managed?file=${encodeURIComponent(file)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}`),
+    ),
   setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
     put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
   // Fan a single parameter's edit across many instances in one request. Each

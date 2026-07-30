@@ -1166,6 +1166,47 @@
                 }
             }
         },
+        "/api/files/managed": {
+            "get": {
+                "description": "Every value in one file that a catalog parameter is bound to, with the 1-based line it sits on in the draft-applied content the Files explorer shows. Lets the editor mark the lines Configer manages. XML values report line 0 (the engine has no per-node line there).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Managed values in a file",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Repository-relative file path",
+                        "name": "file",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Instance whose draft/expansion to use (default: every instance)",
+                        "name": "instance",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "file is required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/fs/browse": {
             "get": {
                 "security": [

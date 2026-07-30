@@ -262,6 +262,25 @@ export default function FilesView() {
   const committed = current ? committedOf.get(current.path) : undefined;
   const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
 
+  // Which lines of the open file Configer manages. Located server-side against
+  // the same draft-applied content shown here, so a mark sits exactly on the
+  // value it belongs to. Only for a file that carries any: the request is
+  // skipped entirely for ordinary files.
+  const managedQ = useRepoQuery({
+    queryKey: ["managed-values", current?.path ?? "", instance],
+    queryFn: () => api.managedValues(current!.path, instance ?? undefined),
+    enabled: !!current && currentParams.length > 0,
+    staleTime: 30_000,
+  });
+  const marks = useMemo(
+    () =>
+      (managedQ.data?.values ?? []).map((v) => ({
+        line: v.line,
+        label: `**${v.name}** · managed by Configer${v.secret ? " · secret" : ""}\n\n\`${v.path}\``,
+      })),
+    [managedQ.data],
+  );
+
   const save = useMutation({
     mutationFn: (content: string) => {
       // In "All instances" view the selected file's folder tells us which
@@ -621,6 +640,7 @@ export default function FilesView() {
                       dark={mode === "dark"}
                       editable={canEdit}
                       revealLine={reveal}
+                      marks={dirty === null ? marks : undefined}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
                       onSave={(v) => save.mutate(v)}
                       onCursor={(ln, col) => setCursor({ ln, col })}

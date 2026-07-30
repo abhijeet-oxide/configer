@@ -75,22 +75,63 @@ export function ListChips({ items }: { items: unknown[] }) {
   );
 }
 
-// clip keeps a hover tooltip to a size somebody can actually read. A tooltip is
-// a glance, not a diff: the full before/after, with the changed parts marked,
-// is in the inspector and the review modal.
+// clip keeps a plain-text hover to a size somebody can actually read.
 function clip(s: string, max = 90): string {
   return s.length > max ? `${s.slice(0, max)}…` : s;
+}
+
+// StagedTip is what hovering a staged cell says: the value the files hold now,
+// the value this draft gives them, and that neither is live yet. The pair is
+// rendered as a real diff (removed struck in red, added marked green) because
+// this is where the reader comes to ask "what exactly did I change here?" - so
+// the grid itself can stay quiet and show one value.
+function StagedTip({ it, editable }: { it: ChangeItem; editable?: boolean }) {
+  const parts = it.action === "set" ? diffPair(it.old, it.new) : null;
+  return (
+    <div className="cell-tip">
+      {parts ? (
+        <>
+          <div className="cell-tip-row">
+            <span className="cell-tip-k">Now</span>
+            <InlineValueDiff parts={parts} side="before" condensed={false} />
+          </div>
+          <div className="cell-tip-row">
+            <span className="cell-tip-k">Becomes</span>
+            <InlineValueDiff parts={parts} side="after" condensed={false} />
+          </div>
+        </>
+      ) : (
+        <div className="cell-tip-row">
+          <span className="cell-tip-k">{clip(fmtValue(it.old))}</span>
+          <span>
+            →{" "}
+            {it.action === "exclude"
+              ? "removed from this instance"
+              : it.action === "reset"
+                ? "back to inherited"
+                : clip(fmtValue(it.new))}
+          </span>
+        </div>
+      )}
+      <div className="cell-tip-note">
+        Pending, not yet sent for review{editable ? " · double-click to change it again" : ""}
+      </div>
+    </div>
+  );
 }
 
 export function CellView({
   cell,
   pendingItem,
   editable,
+  beforeAfter,
 }: {
   cell: Cell;
   pendingItem?: ChangeItem;
   /** the cell can still be opened for editing (drives the hover hint) */
   editable?: boolean;
+  /** show a staged cell as "old -> new" in the grid itself (view option) */
+  beforeAfter?: boolean;
 }) {
   if (cell.state === "na") return <span className="cell-na">n/a</span>;
 
@@ -98,17 +139,7 @@ export function CellView({
   // is still an ordinary editable value. A staged cell used to lose the
   // "double-click to edit" hint entirely, which (with the old chip styling)
   // read as "this is finished now, undo is all you get".
-  const pendingTip = pendingItem
-    ? `${clip(fmtValue(pendingItem.old))}  →  ${
-        pendingItem.action === "exclude"
-          ? "removed from this instance"
-          : pendingItem.action === "reset"
-            ? "back to inherited"
-            : clip(fmtValue(pendingItem.new))
-      }   (pending, not yet sent for review)${
-        editable ? "  ·  double-click to change it again" : ""
-      }`
-    : undefined;
+  const pendingTip = pendingItem ? <StagedTip it={pendingItem} editable={editable} /> : undefined;
 
   if (!cell.set) {
     return (
@@ -124,21 +155,21 @@ export function CellView({
   if (!cell.valid) cls.push("cell-invalid");
   if (cell.pending) cls.push("cell-pending");
 
-  // A staged value edit shows the CHANGE, not only its result. The cell keeps
-  // the pending amber - that is its state, and it is what the eye lands on
-  // scanning a column - and inside it the characters that went are struck in
-  // red and the ones that arrived are marked green, with the identical text
-  // between them condensed to an ellipsis. Those are the same marks the review
-  // modal and the inspector use, so a diff reads the same wherever it is met:
-  // "it says 13c now" and "it used to say 0013c" are different questions and a
-  // reviewer scanning the grid needs both.
+  // A staged cell shows the value the configuration WILL have - one value, in
+  // the pending amber - with the characters that actually changed marked green
+  // inside it. That is the whole difference the reader needs at a glance ("733,
+  // and it is the middle digit that moved"); what it used to be is on hover.
+  // Showing both values in every changed cell was the first attempt: correct,
+  // and unreadable at a hundred edits, because it doubles the text in a column
+  // sized for one value. It is still available - see the "Before and after in
+  // changed cells" view option - for anyone reading a diff rather than a state.
   const diff =
     pendingItem && pendingItem.action === "set" && cell.set && !Array.isArray(cell.value)
       ? diffPair(pendingItem.old, cell.value)
       : null;
 
   let display: React.ReactNode;
-  if (diff) {
+  if (diff && beforeAfter) {
     display = (
       <span className="cell-diff">
         <InlineValueDiff parts={diff} side="before" />
@@ -146,6 +177,12 @@ export function CellView({
           →
         </span>
         <InlineValueDiff parts={diff} side="after" />
+      </span>
+    );
+  } else if (diff) {
+    display = (
+      <span className="mono cell-value">
+        <InlineValueDiff parts={diff} side="after" condensed={false} />
       </span>
     );
   } else if (Array.isArray(cell.value)) {
@@ -169,7 +206,15 @@ export function CellView({
       <SourceBadge cell={cell} />
     </span>
   );
-  return tip ? <Tooltip title={tip}>{inner}</Tooltip> : inner;
+  return tip ? (
+    // Wide enough for two values, one per line: the default 250px wrapped a
+    // hostname into four lines and the pair stopped reading as a pair.
+    <Tooltip title={tip} overlayStyle={{ maxWidth: 460 }}>
+      {inner}
+    </Tooltip>
+  ) : (
+    inner
+  );
 }
 
 // diffPair renders a before/after pair as diff parts, or null when nothing

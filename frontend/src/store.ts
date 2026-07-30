@@ -138,6 +138,11 @@ export interface ViewPrefs {
   showCompare: boolean;
   /** cluster rows that share the same value across instances, adjacently */
   groupByValue: boolean;
+  /** show a staged cell as "old -> new" rather than as the new value with the
+   *  changed part marked. Off by default: the grid's job is to say what the
+   *  configuration WILL be, and a screen full of pairs is twice the reading for
+   *  a fact that is one hover (or this switch) away. */
+  showBeforeAfter: boolean;
 }
 
 const defaultPrefs: ViewPrefs = {
@@ -147,6 +152,7 @@ const defaultPrefs: ViewPrefs = {
   showDescCol: true,
   showCompare: true,
   groupByValue: false,
+  showBeforeAfter: false,
 };
 
 function loadPrefs(): ViewPrefs {

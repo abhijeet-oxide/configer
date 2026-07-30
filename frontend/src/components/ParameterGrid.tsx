@@ -79,6 +79,7 @@ function EditableCell({
   allInstances,
   presets,
   pendingItem,
+  beforeAfter,
   canEdit,
   revertible,
   editing,
@@ -99,6 +100,8 @@ function EditableCell({
   allInstances: string[];
   presets?: PresetRule[];
   pendingItem?: ChangeItem;
+  /** show a staged cell as "old -> new" rather than just the new value */
+  beforeAfter?: boolean;
   /** this person may change configuration in this application */
   canEdit: boolean;
   /** a draft item exists for THIS cell, so undoing it means something */
@@ -240,7 +243,7 @@ function EditableCell({
         }
         onDoubleClick={editable ? onStartEdit : undefined}
       >
-        <CellView cell={cell} pendingItem={pendingItem} editable={editable} />
+        <CellView cell={cell} pendingItem={pendingItem} editable={editable} beforeAfter={beforeAfter} />
         {undoBtn}
       </div>
     );
@@ -1235,6 +1238,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             allInstances={instanceNames}
             presets={presetsQ.data}
             pendingItem={pendingItem}
+            beforeAfter={prefs.showBeforeAfter}
             canEdit={canEdit}
             revertible={!!pendingItem}
             editing={editing === key}
@@ -1320,7 +1324,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -1654,6 +1658,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { key: "showScopeCol", label: <Checkbox checked={prefs.showScopeCol}>Scope column</Checkbox> },
               { key: "showDescCol", label: <Checkbox checked={prefs.showDescCol}>Description column</Checkbox> },
               { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
+              {
+                key: "showBeforeAfter",
+                label: (
+                  <Checkbox checked={prefs.showBeforeAfter}>Before and after in changed cells</Checkbox>
+                ),
+              },
             ],
             onClick: ({ key }) => {
               if (key === "columns") {
@@ -1669,7 +1679,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 setFilters({ [key]: !filters[key as keyof typeof filters] } as Partial<typeof filters>);
               } else if (key === "density") {
                 setPrefs({ density: prefs.density === "comfortable" ? "compact" : "comfortable" });
-              } else if (key === "showTypeCol" || key === "showScopeCol" || key === "showDescCol" || key === "groupByValue") {
+              } else if (
+                key === "showTypeCol" ||
+                key === "showScopeCol" ||
+                key === "showDescCol" ||
+                key === "groupByValue" ||
+                key === "showBeforeAfter"
+              ) {
                 setPrefs({ [key]: !prefs[key as keyof typeof prefs] } as Partial<typeof prefs>);
               }
             },
@@ -1711,7 +1727,15 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         width={420}
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 12 }}>
-          <span><span className="cell-pending mono">10.0.0.1</span>: your pending change (hover it to see before and after)</span>
+          {/* The legend has to show the mark it is describing, so this is the
+              real thing: a staged value, with the part of it that moved. */}
+          <span>
+            <span className="cell-pending mono cell-value">
+              10.0.<mark className="vd-ins">9</mark>.1
+            </span>
+            : your pending change, with the part that changed marked. Hover it for the value it
+            replaces; the ⋮ menu can show both values in the cell instead.
+          </span>
           <span><span className="cell-new mono">1.2</span>: newly introduced in this software version</span>
           <span><span className="cell-deprecated mono">off</span>: deprecated; no longer editable</span>
           <span><span className="cell-invalid mono">99999</span>: value breaks a rule (hover for why)</span>

@@ -4,7 +4,7 @@
 // the Files view uses. It answers "what will this actually change on disk?"
 // with the real bytes, not a value-level summary.
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Empty, Segmented, Spin, Tag, Typography } from "antd";
+import { Alert, Empty, Segmented, Spin, Tag, Typography } from "antd";
 import { useRepoQuery } from "../repoQuery";
 import { api, type FilePreview } from "../api";
 import { useUI } from "../store";
@@ -27,6 +27,7 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
 
   const files = useMemo(() => previewQ.data?.files ?? [], [previewQ.data]);
   const structural = previewQ.data?.structural ?? [];
+  const problems = previewQ.data?.problems ?? [];
   const [active, setActive] = useState(0);
 
   if (previewQ.isLoading) {
@@ -43,7 +44,7 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
       </Typography.Text>
     );
   }
-  if (files.length === 0 && structural.length === 0) {
+  if (files.length === 0 && structural.length === 0 && problems.length === 0) {
     return <Empty description="No file changes to preview" image={Empty.PRESENTED_IMAGE_SIMPLE} />;
   }
 
@@ -51,6 +52,33 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
 
   return (
     <div>
+      {/* An edit that cannot be written is the most important thing on this
+          panel: a submit will refuse it too, so it is named here - which
+          parameter, which instance, which file - while the edits that DO apply
+          still show their real diff below. */}
+      {problems.length > 0 && (
+        <Alert
+          type="warning"
+          showIcon
+          style={{ marginBottom: 10 }}
+          message={`${problems.length} change${problems.length === 1 ? "" : "s"} cannot be written yet`}
+          description={
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {problems.map((p, i) => (
+                <div key={i} style={{ fontSize: 12.5 }}>
+                  <code>{p.paramId || p.file || "change"}</code>
+                  {p.instance && <span style={{ color: "var(--text-2)" }}> on {p.instance}</span>}
+                  <div style={{ color: "var(--text-2)" }}>{p.message}</div>
+                </div>
+              ))}
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                Undo these in the list above (or fix the file they point at) and the rest can go for
+                review as they are.
+              </Typography.Text>
+            </div>
+          }
+        />
+      )}
       {structural.length > 0 && (
         <div style={{ marginBottom: 10, display: "flex", flexWrap: "wrap", gap: 6 }}>
           {structural.map((s) => (

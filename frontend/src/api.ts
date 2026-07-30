@@ -222,11 +222,22 @@ export interface FilePreview {
   deletions: number;
 }
 
+/** One staged edit the preview could not apply. A submit would refuse it too,
+ * so it is reported next to the diffs the other edits produce. */
+export interface PreviewProblem {
+  paramId?: string;
+  instance?: string;
+  action?: string;
+  file?: string;
+  message: string;
+}
+
 /** The byte-level plan for a change request: files it rewrites plus one-line
  * summaries of structural instance changes. */
 export interface ChangePreview {
   files: FilePreview[] | null;
   structural: string[] | null;
+  problems?: PreviewProblem[] | null;
 }
 
 /** Live pull-request status for a change request (CI checks + mergeability),
@@ -273,6 +284,20 @@ export interface ChangeImpact {
   touchesProduction: boolean;
   /** the change includes a shared (base-layer) edit whose reach is the fleet */
   global: boolean;
+}
+
+/** crRef is what to CALL a change on screen. A change request gets its number
+ *  when a draft is sent for review, so a draft has none and the caller names it
+ *  in its own words ("Your draft").
+ *
+ *  A change that is under review, approved, published or rejected is NEVER a
+ *  draft, whatever its numbering - and reading a missing number as "draft" is
+ *  how a published change came to be labelled "Your draft" long after it went
+ *  live: changes recorded before numbers were handed out carry none. Those keep
+ *  the internal id, which is what they were called at the time. */
+export function crRef(cr: Pick<ChangeRequest, "number" | "id" | "state">): string | null {
+  if (cr.number) return `CR-${cr.number}`;
+  return cr.state === "draft" ? null : `CR-${cr.id}`;
 }
 
 export interface ChangeRequest {

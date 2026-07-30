@@ -20,7 +20,7 @@ import {
 import { EditOutlined } from "../icons";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
+import { api, crRef, type ChangeItem, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { TableSkeleton } from "./Skeletons";
@@ -113,14 +113,17 @@ export default function ChangeRequestsView() {
             // A draft has no CR number yet: it gets one at submit, so that the
             // numbers a team reviews are the changes a team reviewed, with no
             // gaps where somebody started an edit and thought better of it.
-            render: (_id, cr) =>
-              cr.number ? (
-                <span className="mono font-semibold text-brand">CR-{cr.number}</span>
+            // Only a DRAFT may read as one, though - see crRef.
+            render: (_id, cr) => {
+              const ref = crRef(cr);
+              return ref ? (
+                <span className="mono font-semibold text-brand">{ref}</span>
               ) : (
                 <Tooltip title="Not submitted yet. It gets a CR number when you send it for review.">
                   <Tag style={{ marginInlineEnd: 0 }}>Your draft</Tag>
                 </Tooltip>
-              ),
+              );
+            },
           },
           {
             title: "Title",

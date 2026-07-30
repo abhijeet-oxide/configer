@@ -15,13 +15,21 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
-import { ChangeItemsTable } from "./ChangeItemsTable";
+import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
 import ChangePreview from "./ChangePreview";
 import { useIdentity } from "../identity";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
 // the global header): pending-edit badge, review-before-submit modal with
 // per-row undo, change type + reference, and the git-native explanation.
+//
+// The dialog has a FIXED shape whatever the size of the draft: the list of
+// changes scrolls inside itself and the body scrolls under the header, so the
+// title field and "Submit for review" are always on screen. Growing with the
+// draft was the earlier behaviour and it broke at scale in the worst way - a
+// hundred edits pushed the form off the bottom of the viewport, leaving a
+// dialog that could be read but not used.
+const ITEMS_MAX_H = 260;
 
 export default function SubmitChangesButton({ instances }: { instances?: Instance[] }) {
   const { message } = AntApp.useApp();
@@ -92,10 +100,16 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     return () => clearTimeout(timer);
   }, [title, draftId, category, open]);
 
+  // Which row's undo is in flight. A single boolean here put every delete
+  // button in the list into a spinner at once; the identity of the row is what
+  // the table needs to show one busy and the rest merely unavailable.
+  const [undoing, setUndoing] = useState<string | null>(null);
   const revert = useMutation({
     mutationFn: (it: ChangeItem) =>
       api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
     onSuccess: () => qc.invalidateQueries(),
+    onError: (e: Error) => message.error(e.message),
+    onSettled: () => setUndoing(null),
   });
 
   const submit = useMutation({
@@ -145,6 +159,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         okButtonProps={{ disabled: pending === 0 || nameCheck?.available === false }}
         confirmLoading={submit.isPending}
         width={760}
+        // Pinned near the top and capped to the viewport: the dialog can never
+        // be taller than the screen it is on, on a phone or a laptop.
+        style={{ top: 24, maxWidth: "calc(100vw - 32px)" }}
+        styles={{ body: { maxHeight: "calc(100vh - 200px)", overflowY: "auto", overflowX: "hidden" } }}
         afterOpenChange={(o) => {
           if (!o) return;
           titleRef.current?.focus();
@@ -178,8 +196,16 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         <div style={{ marginBottom: 14 }}>
           <ChangeItemsTable
             items={items}
-            onUndo={(it) => revert.mutate(it)}
-            undoLoading={revert.isPending}
+            // The list scrolls inside itself. A hundred staged edits used to
+            // make the dialog taller than the screen, pushing the title field
+            // and the submit button out of reach - the one thing this dialog
+            // exists to let you do.
+            maxHeight={ITEMS_MAX_H}
+            onUndo={(it) => {
+              setUndoing(itemKey(it));
+              revert.mutate(it);
+            }}
+            undoingKey={undoing}
             onOpenParam={(v) => {
               selectParam(v);
               setSection("config");

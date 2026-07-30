@@ -30,6 +30,10 @@ type FilePreview struct {
 type PreviewResult struct {
 	Files      []FilePreview `json:"files"`
 	Structural []string      `json:"structural"`
+	// Problems are the items this change could not apply. They are reported
+	// alongside the diffs the other items do produce, because a submit would
+	// refuse them too and the user needs to know WHICH edit to fix.
+	Problems []ItemProblem `json:"problems,omitempty"`
 }
 
 // Preview builds the change request's edits in a throwaway checkout of the base
@@ -87,7 +91,10 @@ func (s *Service) Preview(ctx context.Context, id int) (*PreviewResult, error) {
 		}
 	}
 
-	if err := applyDraft(dir, cr); err != nil {
+	// Tolerant apply: one item that cannot be written must not cost the reviewer
+	// the preview of the other ninety-nine.
+	problems, err := applyItems(dir, cr, true)
+	if err != nil {
 		return nil, err
 	}
 
@@ -111,7 +118,7 @@ func (s *Service) Preview(ctx context.Context, id int) (*PreviewResult, error) {
 			Additions: adds, Deletions: dels,
 		})
 	}
-	return &PreviewResult{Files: files, Structural: structural}, nil
+	return &PreviewResult{Files: files, Structural: structural, Problems: problems}, nil
 }
 
 // plannedFiles returns, in a stable order, the repository-relative files the

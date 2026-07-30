@@ -163,7 +163,7 @@ func editTree(doc []byte, path string, value any, remove bool, format string) (s
 			return "", err
 		}
 	}
-	top := ensureDocRoot(&root)
+	top := ensureDocRoot(&root, rootKind(segs))
 
 	if remove {
 		removeAt(top, segs)
@@ -253,7 +253,7 @@ func editMultiDoc(doc []byte, idx int, rest string, value any, remove bool) (str
 	if idx >= len(docs) {
 		return "", fmt.Errorf("document index %d out of range (stream has %d)", idx, len(docs))
 	}
-	top := ensureDocRoot(docs[idx])
+	top := ensureDocRoot(docs[idx], rootKind(segs))
 	if remove {
 		removeAt(top, segs)
 	} else {
@@ -517,7 +517,9 @@ func EditDoc(doc []byte, fn func(root *yaml.Node) error) (string, error) {
 			return "", err
 		}
 	}
-	top := ensureDocRoot(&root)
+	// A registry document is always a block of keys; EditDoc is not path-driven,
+	// so there is no first step to read the root's shape from.
+	top := ensureDocRoot(&root, yaml.MappingNode)
 	if err := fn(top); err != nil {
 		return "", err
 	}
@@ -560,19 +562,34 @@ func docRoot(doc *yaml.Node) *yaml.Node {
 	return nil
 }
 
-// ensureDocRoot returns the mapping node at the document root, initializing an
-// empty document (new file) with an empty mapping.
-func ensureDocRoot(doc *yaml.Node) *yaml.Node {
+// ensureDocRoot returns the top-level node of the document, initializing an
+// empty document (a file that does not exist yet, or one holding nothing) with
+// an empty container of the kind the path needs there - see rootKind.
+func ensureDocRoot(doc *yaml.Node, kind yaml.Kind) *yaml.Node {
 	if doc.Kind == 0 {
 		doc.Kind = yaml.DocumentNode
 	}
 	if len(doc.Content) == 0 {
-		doc.Content = []*yaml.Node{{Kind: yaml.MappingNode}}
+		doc.Content = []*yaml.Node{{Kind: kind}}
 	}
 	if doc.Content[0].Kind == 0 {
-		doc.Content[0].Kind = yaml.MappingNode
+		doc.Content[0].Kind = kind
 	}
 	return doc.Content[0]
+}
+
+// rootKind reads the shape of a document's top level off the path's first step.
+// A path that opens with a bare subscript - "$[0].name", "$[name=zts].value" -
+// addresses a document whose top level is a LIST (a Helm/Argo parameters file is
+// commonly written that way), so creating that file with a mapping at the top
+// made the very first step fail with "path indexes into a non-sequence node" and
+// no way for the user to see why. Everything else starts with a key, which only
+// a mapping has.
+func rootKind(segs []Seg) yaml.Kind {
+	if len(segs) > 0 && segs[0].Key == "" && !segs[0].Quoted {
+		return yaml.SequenceNode
+	}
+	return yaml.MappingNode
 }
 
 // descend takes one path step from cur, returning nil when the step does not
@@ -677,7 +694,7 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 		}
 
 		if cur.Kind != yaml.SequenceNode && seg.Key == "" {
-			return fmt.Errorf("path indexes into a non-sequence node")
+			return fmt.Errorf("path expects a list at %s but the file has a %s there", stepName(seg), kindName(cur.Kind))
 		}
 
 		if seg.Index >= 0 {
@@ -705,6 +722,17 @@ func setAt(root *yaml.Node, segs []Seg, val *yaml.Node) error {
 
 		if seg.SelKey != "" {
 			el := selectMatch(cur, seg.SelKey, seg.SelVal)
+			// An EMPTY list is a list nobody has written yet (a file being
+			// created, a section scaffolded a moment ago), so the element the
+			// path names is created - exactly as a missing mapping key is. A
+			// list that HAS entries and still does not match is a stale path,
+			// and guessing which entry was meant would write the value in the
+			// wrong place, so that stays an error.
+			if el == nil && len(cur.Content) == 0 && !last {
+				el = &yaml.Node{Kind: yaml.MappingNode}
+				setChild(el, seg.SelKey, scalarFromText(seg.SelVal))
+				cur.Content = append(cur.Content, el)
+			}
 			if el == nil {
 				return fmt.Errorf("no element matches [%s=%s]", seg.SelKey, seg.SelVal)
 			}
@@ -755,6 +783,31 @@ func childContainer(m *yaml.Node, key string, wantSeq bool) (*yaml.Node, error) 
 	v := &yaml.Node{Kind: kind}
 	m.Content = append(m.Content, k, v)
 	return v, nil
+}
+
+// stepName names one path step the way the path itself spells it, so an error
+// points at a place the user can find in the file.
+func stepName(seg Seg) string {
+	switch {
+	case seg.SelKey != "":
+		return fmt.Sprintf("[%s=%s]", seg.SelKey, seg.SelVal)
+	case seg.Index >= 0:
+		return fmt.Sprintf("position %d", seg.Index)
+	}
+	return "that step"
+}
+
+// scalarFromText builds a scalar node from a path selector's raw text, letting
+// YAML infer its type so [port=8080] writes the number 8080 and [name=zts] the
+// plain string - a quoted "8080" would not match the file's own entry.
+func scalarFromText(s string) *yaml.Node {
+	var doc yaml.Node
+	if err := yaml.Unmarshal([]byte(s), &doc); err == nil &&
+		len(doc.Content) == 1 && doc.Content[0].Kind == yaml.ScalarNode {
+		c := doc.Content[0]
+		return &yaml.Node{Kind: yaml.ScalarNode, Tag: c.Tag, Value: c.Value}
+	}
+	return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: s}
 }
 
 // kindName names a node kind in the words a config file's author would use.

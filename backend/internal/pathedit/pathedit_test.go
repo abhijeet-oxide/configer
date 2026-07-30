@@ -145,6 +145,58 @@ func TestYAMLSetNewFile(t *testing.T) {
 	}
 }
 
+// A document whose TOP LEVEL is a list (the Helm/Argo "parameters file" shape:
+// a series of `- name: x` entries) is addressed by paths that open with a bare
+// subscript. Writing one has to work in an existing file AND in one being
+// created - creating it with a mapping at the top failed on the very first step
+// with "path indexes into a non-sequence node", which is what a fan-out edit to
+// an instance that had no such file yet reported.
+func TestYAMLSetTopLevelList(t *testing.T) {
+	base := `- name: additional-values
+  zts:
+    value:
+      cpu: 100m
+- name: cnfname
+  value: old
+`
+	got, err := Set([]byte(base), "yaml", "$[name=additional-values].zts.value.cpu", model.TypeCPU, "200m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "cpu: 200m") || !strings.Contains(got, "value: old") {
+		t.Errorf("keyed top-level list write wrong:\n%s", got)
+	}
+	if got, err = Set([]byte(base), "yaml", "$[1].value", model.TypeString, "new"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got, "value: new") || !strings.Contains(got, "cpu: 100m") {
+		t.Errorf("positional top-level list write wrong:\n%s", got)
+	}
+
+	// The same path into a file that does not exist yet: the document is created
+	// as a list, and the entry the selector names is created inside it.
+	got, err = Set(nil, "yaml", "$[name=additional-values].zts.value.cpu", model.TypeCPU, "200m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "- name: additional-values\n  zts:\n    value:\n      cpu: 200m\n"
+	if got != want {
+		t.Errorf("new top-level list document:\n--- got ---\n%s\n--- want ---\n%s", got, want)
+	}
+
+	// A list that HAS entries and matches none of them is a stale path, not an
+	// invitation to append: guessing would write the value in the wrong entry.
+	if _, err := Set([]byte(base), "yaml", "$[name=missing].value", model.TypeString, "x"); err == nil {
+		t.Error("a selector matching nothing in a populated list must be refused")
+	}
+	// A file whose top level is a block of keys cannot be addressed positionally,
+	// and the error has to say what was found rather than name a node kind.
+	_, err = Set([]byte("cnfname: x\n"), "yaml", "$[0].value", model.TypeString, "y")
+	if err == nil || !strings.Contains(err.Error(), "block of keys") {
+		t.Errorf("want a plain-words kind mismatch, got %v", err)
+	}
+}
+
 func TestYAMLSetList(t *testing.T) {
 	got, err := Set([]byte("servers: [1.1.1.1]\nkeep: 1\n"), "yaml", "$.servers", model.TypeList, []any{"a", "b"})
 	if err != nil {

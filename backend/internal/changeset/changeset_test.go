@@ -389,6 +389,34 @@ func TestPreviewShowsByteLevelDiff(t *testing.T) {
 	}
 }
 
+// One item that cannot be applied must not cost the reviewer the preview of the
+// others: it is reported as a problem, naming the parameter and the instance,
+// while every other edit still shows its real diff.
+func TestPreviewReportsUnappliableItemAndKeepsTheRest(t *testing.T) {
+	_, _, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("alice", "main")
+	stage(t, svc, cr.ID,
+		change.Item{ParamID: "p1", Instance: "staging", Old: 8080, New: 9443, UpdatedAt: time.Now()},
+		change.Item{ParamID: "does-not-exist", Instance: "staging", New: "x"},
+	)
+
+	res, err := svc.Preview(ctx, cr.ID)
+	if err != nil {
+		t.Fatalf("preview failed outright instead of reporting the bad item: %v", err)
+	}
+	if len(res.Problems) != 1 || res.Problems[0].ParamID != "does-not-exist" {
+		t.Fatalf("problems = %+v, want the one unknown parameter", res.Problems)
+	}
+	if res.Problems[0].Instance != "staging" {
+		t.Errorf("problem does not name the instance: %+v", res.Problems[0])
+	}
+	if len(res.Files) != 1 || res.Files[0].File != "instances/staging/values.yaml" {
+		t.Errorf("the healthy edit lost its diff: %+v", res.Files)
+	}
+}
+
 func TestRejectDraftAndSubmitted(t *testing.T) {
 	_, _, svc := fixture(t)
 	ctx := context.Background()

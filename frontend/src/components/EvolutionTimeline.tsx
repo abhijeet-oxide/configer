@@ -22,6 +22,8 @@ import {
   GlobalOutlined,
   RightOutlined,
   DownOutlined,
+  PartitionOutlined,
+  UnorderedListOutlined,
   LoadingOutlined,
   TagOutlined,
   CheckOutlined,
@@ -46,6 +48,7 @@ import { StatePanel, InSyncArt } from "./illustrations";
 import UserAvatar from "./UserAvatar";
 import ValueDiff from "./ui/ValueDiff";
 import GraphRail, { layoutGraph, ROW_H, type GraphInput, type RailRow } from "./GraphRail";
+import ChangeGraph from "./ChangeGraph";
 import { TableSkeleton } from "./Skeletons";
 import { useIdentity } from "../identity";
 
@@ -68,6 +71,10 @@ import { useIdentity } from "../identity";
 //   - "Restore to this point" brings them back to how they looked AFTER it
 
 const { Text } = Typography;
+
+/** Which reading of the history someone prefers is a stable personal choice,
+ *  so it is remembered rather than reset on every visit. */
+const TIMELINE_VIEW_KEY = "configer.timelineView";
 
 /** How each snapshot kind reads at a glance. Red is reserved for errors, so a
  *  version upgrade and a structural change use their own identity colors. */
@@ -103,8 +110,17 @@ function stateWords(state: ChangeState): string {
 export default function EvolutionTimeline({ grid }: { grid: Grid }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const { selectedInstance, selectInstance, setSection } = useUI();
+  const { selectedInstance, selectInstance, setSection, setReviewCr } = useUI();
   const [open, setOpen] = useState<string | null>(null);
+  // Two readings of the same history, and people want both: the graph answers
+  // "what has been going on", the list answers "what exactly happened when".
+  const [view, setView] = useState<"graph" | "list">(() =>
+    localStorage.getItem(TIMELINE_VIEW_KEY) === "list" ? "list" : "graph",
+  );
+  const changeView = (v: "graph" | "list") => {
+    localStorage.setItem(TIMELINE_VIEW_KEY, v);
+    setView(v);
+  };
 
   // The instance scope doubles as the app-wide instance deep link (?inst=), so
   // arriving from another view keeps its context.
@@ -230,6 +246,14 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
             options={grid.instances.map((i) => ({ label: i.name, value: i.name }))}
           />
         )}
+        <Segmented
+          value={view}
+          onChange={(v) => changeView(v as "graph" | "list")}
+          options={[
+            { value: "graph", label: "Graph", icon: <PartitionOutlined /> },
+            { value: "list", label: "List", icon: <UnorderedListOutlined /> },
+          ]}
+        />
         <Tooltip title="Check for new snapshots">
           <Button
             icon={<ReloadOutlined />}
@@ -251,6 +275,21 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
         <TableSkeleton />
       ) : total === 0 ? (
         <Empty description={`No configuration changes recorded yet for ${scopeLabel}.`} />
+      ) : view === "graph" ? (
+        <div className="vg-scroll">
+        <ChangeGraph
+          snapshots={snapshots}
+          lanes={timelineQ.data?.lanes ?? []}
+          head={timelineQ.data?.head ?? ""}
+          changes={changesQ.data ?? []}
+          onOpenChange={(cr) => {
+            if (cr.state === "draft") return setSection("config");
+            setReviewCr(cr.id);
+            setSection(cr.state === "published" || cr.state === "rejected" ? "changes" : "approvals");
+          }}
+          onOpenCommit={(sha) => setOpen(sha)}
+        />
+        </div>
       ) : (
         <div className="gg">
           {/* Changes still in flight come first: they are the newest thing that

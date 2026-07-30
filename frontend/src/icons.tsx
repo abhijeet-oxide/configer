@@ -99,6 +99,7 @@ import phStarFill from "@iconify-icons/ph/star-fill";
 import phStar from "@iconify-icons/ph/star";
 import phArrowsLeftRight from "@iconify-icons/ph/arrows-left-right";
 import phTable from "@iconify-icons/ph/table";
+import phListDashes from "@iconify-icons/ph/list-dashes";
 import phLightning from "@iconify-icons/ph/lightning";
 import phArrowCounterClockwise from "@iconify-icons/ph/arrow-counter-clockwise";
 import phUser from "@iconify-icons/ph/user";
@@ -156,6 +157,7 @@ export const PartitionOutlined = make("partition", phGraph);
 export const TagOutlined = make("tag", phTag);
 export const ClusterOutlined = make("cluster", phStack);
 export const TableOutlined = make("table", phTable);
+export const UnorderedListOutlined = make("list", phListDashes);
 export const InboxOutlined = make("inbox", phTray);
 export const GlobalOutlined = make("global", phGlobe);
 // Scope glyphs: a filled hemisphere globe for global (shared everywhere) and

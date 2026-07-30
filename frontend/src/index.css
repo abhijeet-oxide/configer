@@ -2654,3 +2654,308 @@ mark.vd-ins {
     display: none;
   }
 }
+
+/* --------------------------------------------- change graph (ChangeGraph.tsx)
+   The history as a picture: the trunk running down the page, the standing
+   environment branches beside it, and every change request as a line that left
+   the trunk and carries a card. Colour is the whole vocabulary - green trunk,
+   orange published, blue in flight, red rejected - so nothing has to be read
+   twice. */
+.vg-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+.vg-wrap {
+  /* Green is the trunk and only the trunk. The rest are the states a change
+     passes through, and one colour per standing environment branch. */
+  --cg-main: #16a34a;
+  --cg-published: #f97316;
+  --cg-open: #2563eb;
+  --cg-rejected: #dc2626;
+  --cg-env-1: #0891b2;
+  --cg-env-2: #9333ea;
+  --cg-env-3: #db2777;
+  --cg-env-4: #ca8a04;
+}
+:root[data-theme="dark"] .vg-wrap,
+.dark .vg-wrap {
+  --cg-main: #4ade80;
+  --cg-published: #fb923c;
+  --cg-open: #60a5fa;
+  --cg-rejected: #f87171;
+  --cg-env-1: #22d3ee;
+  --cg-env-2: #c084fc;
+  --cg-env-3: #f472b6;
+  --cg-env-4: #fbbf24;
+}
+
+.vg-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.vg-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.vg-legend-item i {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.vg-legend-starmark {
+  width: 9px !important;
+  height: 9px !important;
+  border-radius: 0 !important;
+  background: var(--cg-main) !important;
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  box-shadow: 0 0 5px var(--cg-main);
+}
+
+.vg {
+  position: relative;
+  /* Room for the lane names, which sit outside the drawing at both ends and
+     stagger onto two rows so neighbouring lanes never collide. */
+  margin: 52px 0 56px;
+}
+.vg-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+/* A standing line runs the whole height, because that is what standing means. */
+.vg-lane {
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.9;
+}
+.vg-lane-name {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--c);
+  background: var(--surface);
+  padding: 1px 6px;
+  border: 1px solid var(--c);
+  border-radius: var(--r-pill);
+  white-space: nowrap;
+}
+.vg-lane-name.is-bottom {
+  transform: translate(-50%, 4px);
+}
+.vg-behind {
+  font-style: normal;
+  opacity: 0.7;
+  font-weight: 500;
+}
+
+/* A commit. The hit area is generous because the dot is small on purpose. */
+.vg-dot-g {
+  cursor: pointer;
+}
+.vg-dot-hit {
+  fill: transparent;
+}
+.vg-dot {
+  fill: var(--c);
+  stroke: var(--surface);
+  stroke-width: 2.5;
+  transition: r var(--dur-hover) var(--ease);
+}
+.vg-dot.is-merge {
+  fill: var(--surface);
+  stroke: var(--c);
+}
+.vg-dot-g:hover .vg-dot {
+  r: 8;
+}
+.vg-dot.is-copied {
+  fill: var(--c-ok);
+}
+.vg-star {
+  fill: var(--c);
+  stroke: var(--surface);
+  stroke-width: 1;
+}
+/* A release tag sits level with the commit it marks, clear of the lanes so it
+   never has to be read over a line. */
+.vg-tag {
+  position: absolute;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--cg-main);
+  border: 1px solid var(--cg-main);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* One change's line out of the trunk. The little solid dot at the fork sits ON
+   the trunk commit, so the branch and the commit it came from are one event. */
+.vg-cr path {
+  stroke: var(--c);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.vg-fork {
+  fill: var(--c);
+}
+.vg-cross line {
+  stroke: var(--cg-rejected);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* The card sits ON its branch: the line runs into its top edge and out of the
+   bottom, so a change is drawn where it happened rather than beside it. */
+.vg-card {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 11px;
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--c);
+  background: var(--surface);
+  box-shadow: var(--el-1);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--dur-hover) var(--ease), box-shadow var(--dur-hover) var(--ease);
+}
+.vg-card:hover,
+.vg-card:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--el-2);
+  outline: none;
+}
+.vg-card.is-open {
+  border-style: dashed;
+}
+.vg-card-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.vg-cat {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--c);
+}
+.vg-crid {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.vg-state {
+  margin-inline-start: auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: var(--r-pill);
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 12%, transparent);
+  white-space: nowrap;
+}
+.vg-card-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+  height: 1.3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vg-branch {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10.5px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vg-branch.is-muted {
+  font-style: italic;
+  opacity: 0.6;
+}
+.vg-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: auto;
+}
+.vg-who {
+  font-size: 10.5px;
+  color: var(--text-2);
+  max-width: 84px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vg-when {
+  font-size: 10.5px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.vg-grow {
+  flex: 1;
+}
+.vg-n {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--c) 14%, transparent);
+  color: var(--c);
+}
+.vg-sha {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: var(--text-2);
+  padding: 0 5px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+.vg-sha:hover {
+  background: var(--c-review-bg);
+  color: var(--c-review);
+}
+.vg-sha.is-copied {
+  background: var(--c-ok-bg);
+  color: var(--c-ok);
+  border-color: var(--c-ok-bd);
+}
+.vg-note {
+  padding: 10px 12px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+.vg-scroll {
+  overflow-x: auto;
+}

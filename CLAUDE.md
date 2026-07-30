@@ -181,7 +181,19 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `FilesView`+`MonacoFileView` (file mode over real files, saves via
 `PUT /api/files/draft`), `OnboardingWizard` (discover→init),
 `InstancesView`, `SourceControlPanel`/`SubmitChangesButton` (the draft),
-`ComparePanel`, `WorkspaceView`.
+`ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
+the vertical branch picture, or `GraphRail`'s dense commit list).
+
+**The history picture (`ChangeGraph`)** has one vocabulary and nothing in it
+means two things: the trunk is ALWAYS green, published is orange, anything
+still out (draft/review/approved) is blue, rejected is red, and a standing
+environment branch (`prod`, `lab`, `sandbox`, … - see `api.reservedBranches`)
+gets its own colour and its name at both ends of its own line. A dot is a
+commit: hover names it in full, click copies it, and the trunk's head is a
+glowing star. A change request is a card sitting ON its own branch line between
+the commit it forked from and the commit that merged it - so a fork leaves the
+exact dot it was based on and two changes from one commit leave together.
+Anything that never rejoined ends in a cross.
 
 Two levels, and the difference is load-bearing. WORKSPACE-level views (Home,
 Applications, Inbox, Audit, Instances estate, Settings) need no application and

@@ -421,6 +421,10 @@ definitions:
       author:
         type: string
       baseSha:
+        description: |-
+          BaseSHA is the trunk commit this change branched FROM; CommitSHA is its
+          own commit; MergeSHA is the trunk commit that brought it back in. The
+          three together are what lets a history draw the change's whole arc.
         type: string
       branch:
         type: string
@@ -449,6 +453,8 @@ definitions:
         items:
           $ref: '#/definitions/change.Item'
         type: array
+      mergeSha:
+        type: string
       number:
         description: |-
           Number is the CR number people say out loud - "CR-7" - and it is handed

@@ -20,9 +20,11 @@ package api
 // back is an ordinary reviewable draft edit, never a history rewrite.
 
 import (
+	"context"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
@@ -358,12 +360,93 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request) {
 		entries = entries[:limit]
 	}
 
+	// The standing branches beside the trunk, and which commit is its head, so
+	// the graph can draw the parallel lines and mark the tip.
+	trunkName := s.branch()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"scope":     scopeLabel(instance),
 		"instance":  instance,
 		"snapshots": entries,
+		"branch":    trunkName,
+		"head":      headSHA(entries),
+		"lanes":     s.branchLanes(r.Context(), trunkName, limit),
 		"supported": s.Backend.Kind() == "local",
 	})
+}
+
+// reservedBranches are the long-lived branch names a deployment keeps standing
+// beside its trunk: an environment, not a piece of work. They are drawn as
+// parallel lines with their own colours and their name at both ends, because
+// "where is prod relative to main" is a question somebody asks every day and a
+// list of commits cannot answer it.
+//
+// The match is on the branch's own name or its leading segment, so both `prod`
+// and `env/prod` are recognized. Everything else is a change's branch and is
+// drawn as work that left the trunk.
+var reservedBranches = map[string]bool{
+	"prod": true, "production": true, "preprod": true, "pre-prod": true,
+	"staging": true, "stage": true, "lab": true, "sandbox": true,
+	"dev": true, "develop": true, "development": true,
+	"qa": true, "uat": true, "test": true, "integration": true, "release": true,
+}
+
+// isReservedBranch reports whether a branch name is one of the standing
+// environment lines rather than one change's working branch.
+func isReservedBranch(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	if reservedBranches[n] {
+		return true
+	}
+	if i := strings.IndexByte(n, '/'); i > 0 {
+		return reservedBranches[n[:i]] || reservedBranches[n[i+1:]]
+	}
+	return false
+}
+
+// BranchLane is one standing branch drawn beside the trunk: its head, and the
+// commits it carries that the trunk does not.
+type BranchLane struct {
+	Name string `json:"name"`
+	Head string `json:"head"`
+	// Trunk marks the branch everything is published to.
+	Trunk bool `json:"trunk,omitempty"`
+	// Commits are this branch's own, newest first - what it has that the trunk
+	// does not. Empty means the branch is level with the trunk.
+	Commits []repobackend.Commit `json:"commits,omitempty"`
+	// Behind is how many commits the trunk has that this branch does not, which
+	// is the other half of "where is prod relative to main".
+	Behind int `json:"behind"`
+}
+
+// branchLanes builds the standing lines beside the trunk: the trunk itself,
+// then every reserved branch that exists, each with the commits it does not
+// share with the trunk.
+func (s *Server) branchLanes(ctx context.Context, trunkName string, limit int) []BranchLane {
+	branches, _, err := s.Backend.ListRefs(ctx)
+	if err != nil {
+		return nil
+	}
+	head, _ := s.Backend.HeadSHA(ctx, trunkName)
+	lanes := []BranchLane{{Name: trunkName, Head: head, Trunk: true}}
+	sort.Strings(branches)
+	for _, b := range branches {
+		if b == trunkName || !isReservedBranch(b) {
+			continue
+		}
+		h, herr := s.Backend.HeadSHA(ctx, b)
+		if herr != nil {
+			continue
+		}
+		lane := BranchLane{Name: b, Head: h}
+		if ahead, aerr := s.Backend.LogRef(ctx, b, trunkName, limit); aerr == nil {
+			lane.Commits = ahead
+		}
+		if behind, berr := s.Backend.LogRef(ctx, trunkName, b, limit); berr == nil {
+			lane.Behind = len(behind)
+		}
+		lanes = append(lanes, lane)
+	}
+	return lanes
 }
 
 func scopeLabel(instance string) string {
@@ -371,6 +454,15 @@ func scopeLabel(instance string) string {
 		return "all"
 	}
 	return "instance"
+}
+
+// headSHA is the newest commit in view: the trunk's tip, which the graph marks
+// so "where are we now" needs no counting.
+func headSHA(entries []TimelineEntry) string {
+	if len(entries) == 0 {
+		return ""
+	}
+	return entries[0].SHA
 }
 
 // timelineSnapshot opens one dot: every parameter that changed at it.

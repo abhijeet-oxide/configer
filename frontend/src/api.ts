@@ -1523,6 +1523,15 @@ export const api = {
       "DELETE",
       rp(`/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`),
     ),
+  // Undo many at once: ONE request, one write. Per-item DELETEs serialize on
+  // the draft lock, and a selection of eighty took long enough to look broken.
+  revertValues: (items: { paramId: string; instance: string }[]) =>
+    send<{ ok: boolean; removed: number; pending: number }>("DELETE", rp("/values/bulk"), { items }),
+  /** Stop managing a parameter: it leaves the catalog and the grid, and every
+   *  file keeps its value. Not the same as deleteParameter, which also removes
+   *  the value from every file. */
+  unmanageParameter: (id: string, author?: string) =>
+    send<{ ok: boolean; unmanaged: string }>("POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
   updateParameter: (
     id: string,
     patch: {

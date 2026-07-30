@@ -2379,6 +2379,41 @@ paths:
       summary: Map a parameter to a source
       tags:
       - Sources
+  /api/parameters/{id}/unmanage:
+    post:
+      consumes:
+      - application/json
+      description: 'Remove a parameter from .configer/parameters.yaml and record its
+        paths in .configer/ignore.yaml, so Configer stops showing it and a later scan
+        does not propose it again. The repository''s own files are NOT touched: every
+        value stays exactly where it is. This is the opposite of DELETE /api/parameters/{id},
+        which also deletes the value from every file.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Could not update the catalog
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Stop managing a parameter
+      tags:
+      - Grid & parameters
   /api/parameters/retire-file:
     post:
       consumes:
@@ -3360,6 +3395,40 @@ paths:
       tags:
       - Editing & change requests
   /api/values/bulk:
+    delete:
+      consumes:
+      - application/json
+      description: Drop many pending edits from the current draft in a single write.
+        Each item is identified by paramId + instance (paramId "file:<path>" for a
+        whole-file edit). Unknown items are ignored; the response says how many were
+        actually removed.
+      parameters:
+      - description: Items to revert
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No draft
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Revert several pending edits
+      tags:
+      - Editing & change requests
     put:
       consumes:
       - application/json

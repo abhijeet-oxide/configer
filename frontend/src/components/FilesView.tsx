@@ -16,7 +16,6 @@ import {
   FolderAddOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
-  LinkOutlined,
 } from "../icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -73,12 +72,6 @@ export default function FilesView() {
   const [instance, setInstance] = useState<string | null>(ALL_INSTANCES);
   const [selected, setSelected] = useState<string | null>(null);
   const [onlyManaged, setOnlyManaged] = useState(true);
-  // Provenance for the file the user was linked to: which parameter, instance
-  // and version the value was resolved for. Shown as a banner; it does not
-  // filter the explorer. Cleared once the user navigates away by hand.
-  const [focusCtx, setFocusCtx] = useState<
-    { param?: string; instance?: string; version?: string; path: string } | null
-  >(null);
   const [dirty, setDirty] = useState<string | null>(null);
   const [treeQ, setTreeQ] = useState("");
   const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
@@ -202,24 +195,18 @@ export default function FilesView() {
     consumedFocus.current = fileFocus.n;
     if (fileFocus.allInstances) {
       // A parameter link: stay on "All instances" so the file is always
-      // present (a single-instance filter could hide it). The instance and
-      // version ride along as a provenance banner instead of a filter.
+      // present (a single-instance filter could hide it).
+      //
+      // Nothing announces where the link came from. The value itself is marked
+      // in the file, the one you were sent to is highlighted and centred, and
+      // the file's own path is in the header: a strip of prose above the editor
+      // only restated what the editor was already showing, and pushed the code
+      // down to do it.
       setInstance(ALL_INSTANCES);
-      setFocusCtx(
-        fileFocus.path && (fileFocus.instance || fileFocus.version || fileFocus.param)
-          ? {
-              param: fileFocus.param,
-              instance: fileFocus.instance,
-              version: fileFocus.version,
-              path: fileFocus.path,
-            }
-          : null,
-      );
     } else {
       // A folder/instance-scoped handoff (e.g. "view this instance's files"):
       // honor the requested instance filter as before.
       if (fileFocus.instance) setInstance(fileFocus.instance);
-      setFocusCtx(null);
     }
     setOnlyManaged(false);
     setTreeQ("");
@@ -247,8 +234,18 @@ export default function FilesView() {
     // loaded: select the exact file and reveal its line. Until it appears, wait
     // rather than snapping to the first file (which would open the wrong file).
     if (pendingFocus.current) {
-      if (files.some((f) => f.path === pendingFocus.current!.path)) {
-        setSelected(pendingFocus.current.path);
+      const want = pendingFocus.current.path;
+      // The exact file, or the same file under another instance's folder. A
+      // parameter's binding is resolved for ONE instance to build the link, and
+      // that instance may not carry the file (a setting only some of them
+      // have); landing on "Select a file" is the one outcome worse than landing
+      // on a neighbour's copy of it.
+      const tail = "/" + want.split("/").slice(-2).join("/");
+      const hit =
+        files.find((f) => f.path === want) ??
+        files.find((f) => f.path.endsWith(tail));
+      if (hit) {
+        setSelected(hit.path);
         setReveal(pendingFocus.current.line);
         pendingFocus.current = null;
       }
@@ -386,7 +383,6 @@ export default function FilesView() {
           onSelect={(p) => {
             setSelected(p);
             setReveal(undefined);
-            if (p !== focusCtx?.path) setFocusCtx(null);
           }}
           onAdd={addToManaged}
           onRemove={(f) => retire.mutate(f)}
@@ -413,10 +409,7 @@ export default function FilesView() {
             filterOption={(input, opt) =>
               String(opt?.searchText ?? opt?.value ?? "").toLowerCase().includes(input.toLowerCase())
             }
-            onChange={(v) => {
-              setInstance(v);
-              setFocusCtx(null);
-            }}
+            onChange={(v) => setInstance(v)}
             options={[
               {
                 value: ALL_INSTANCES,
@@ -557,39 +550,6 @@ export default function FilesView() {
               the repository yet.
             </span>
           }
-          style={{ padding: "6px 12px" }}
-        />
-      )}
-
-      {focusCtx && selected === focusCtx.path && (
-        <Alert
-          type="info"
-          showIcon
-          icon={<LinkOutlined />}
-          message={
-            <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span>Opened from</span>
-              {focusCtx.param ? (
-                <Tag className="mono" color="processing" style={{ margin: 0 }}>{focusCtx.param}</Tag>
-              ) : (
-                <span>a parameter link</span>
-              )}
-              {focusCtx.instance && (
-                <>
-                  <span>·</span>
-                  <span>
-                    value resolved for <b className="mono">{focusCtx.instance}</b>
-                  </span>
-                </>
-              )}
-              {focusCtx.version && (
-                <Tag style={{ margin: 0, fontSize: 10 }}>{focusCtx.version}</Tag>
-              )}
-              <span className="text-ink-3">· showing all instances</span>
-            </span>
-          }
-          closable
-          onClose={() => setFocusCtx(null)}
           style={{ padding: "6px 12px" }}
         />
       )}

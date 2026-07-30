@@ -49,6 +49,11 @@ export interface Palette {
   pending: string; pendingBg: string; pendingBd: string;
   review: string; reviewBg: string; reviewBd: string;
   danger: string; dangerBg: string; dangerBd: string;
+  // The "you are here" wash: a highlighter over the thing a link led to. It is
+  // not a status - nothing is wrong or pending about a value somebody asked to
+  // be shown - so it gets its own colour rather than borrowing one that means
+  // something.
+  markBg: string; markBd: string;
   // Cell provenance (base = inherited from shared layer, inherit = neutral)
   base: string; baseBg: string; baseBd: string;
   inherit: string; inheritBg: string; inheritBd: string;
@@ -89,6 +94,7 @@ export const VAR_MAP: Array<[keyof Palette, string]> = [
   ["pending", "--c-pending"], ["pendingBg", "--c-pending-bg"], ["pendingBd", "--c-pending-bd"],
   ["review", "--c-review"], ["reviewBg", "--c-review-bg"], ["reviewBd", "--c-review-bd"],
   ["danger", "--c-danger"], ["dangerBg", "--c-danger-bg"], ["dangerBd", "--c-danger-bd"],
+  ["markBg", "--c-mark-bg"], ["markBd", "--c-mark-bd"],
   ["base", "--c-base"], ["baseBg", "--c-base-bg"], ["baseBd", "--c-base-bd"],
   ["inherit", "--c-inherit"], ["inheritBg", "--c-inherit-bg"], ["inheritBd", "--c-inherit-bd"],
 ];
@@ -134,6 +140,7 @@ export const defaultTheme: BrandConfig = {
     canvas: "#eef1f6", surface: "#ffffff", surface2: "#f7f9fc",
     border: "#e7ebf1", borderStrong: "#d5dbe4", illSurface: "#ffffff",
     text: "#101828", text2: "#475467", text3: "#98a2b3",
+    markBg: "#fdf3c8", markBd: "#f0d264",
     ok: "#067647", okBg: "#e2f6ea", okBd: "#b7e6cb",
     pending: "#b54708", pendingBg: "#fcf1dd", pendingBd: "#f4dda4",
     review: "#0057b8", reviewBg: "#e4eefa", reviewBd: "#bdd4ee",
@@ -149,6 +156,7 @@ export const defaultTheme: BrandConfig = {
     canvas: "#101318", surface: "#171b21", surface2: "#1c2129",
     border: "#262b33", borderStrong: "#353b45", illSurface: "#232a33",
     text: "#e6e9ee", text2: "#a5adba", text3: "#6c7684",
+    markBg: "rgba(250, 204, 21, 0.16)", markBd: "rgba(250, 204, 21, 0.42)",
     ok: "#4cc38a", okBg: "rgba(23, 178, 106, 0.14)", okBd: "rgba(23, 178, 106, 0.4)",
     pending: "#f2b13a", pendingBg: "rgba(247, 144, 9, 0.14)", pendingBd: "rgba(247, 144, 9, 0.4)",
     review: "#63a7f0", reviewBg: "rgba(77, 148, 232, 0.14)", reviewBd: "rgba(77, 148, 232, 0.4)",

@@ -1607,25 +1607,18 @@ body {
   background: color-mix(in srgb, var(--c-review) 22%, transparent);
 }
 
-/* The one the reader was sent to. "Show me this parameter in the file" has to
-   end with the eye ON it, so this one is loud - a full-strength ring that
-   pulses twice and then settles into the ordinary quiet mark, which is enough
-   to find and not enough to live with. */
-@keyframes cfManagedFocus {
-  0%   { box-shadow: 0 0 0 2px var(--c-review); background: color-mix(in srgb, var(--c-review) 40%, transparent); }
-  60%  { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 60%, transparent); }
-  100% { box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 0%, transparent); }
+/* The one the reader was sent to: its whole LINE washed in highlighter yellow,
+   the way somebody would mark a page. Quiet enough to read the code through,
+   unmistakable from the other side of the screen, and it stays - "where did I
+   land?" is a question you ask again a minute later. */
+.monaco-editor .cf-focus-line {
+  background: var(--c-mark-bg);
 }
-.monaco-editor .cf-managed-focus {
-  border-radius: 3px;
-  animation: cfManagedFocus 2.4s ease-out 2;
-  background: color-mix(in srgb, var(--c-review) 26%, transparent);
-}
-@media (prefers-reduced-motion: reduce) {
-  .monaco-editor .cf-managed-focus {
-    animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--c-review) 70%, transparent);
-  }
+.monaco-editor .cf-focus-gutter {
+  width: 3px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: var(--c-mark-bd);
 }
 
 /* ------------------------------------------------- the review dialog's frame */

@@ -10,11 +10,16 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
@@ -29,7 +34,15 @@ type instanceReq struct {
 	Status          *string            `json:"status,omitempty"`
 	Labels          *map[string]string `json:"labels,omitempty"`
 	CloneFrom       string             `json:"cloneFrom,omitempty"`
-	Author          string             `json:"author,omitempty"`
+	// Folder adopts a folder the repository ALREADY has, instead of scaffolding
+	// a new one. It is how an instance somebody else created on Git becomes a
+	// managed instance here: nothing is copied, nothing is written into the
+	// tree, only the registry entry that names what is already there. It is
+	// also the only way to manage a folder whose path does not follow the
+	// instances/<name> default (environments/, clusters/eu/site-a, and every
+	// other real convention).
+	Folder string `json:"folder,omitempty"`
+	Author string `json:"author,omitempty"`
 }
 
 func (r instanceReq) patch() writer.InstancePatch {
@@ -85,7 +98,7 @@ func derefLabels(p *map[string]string) map[string]string {
 // pending, and value edits made against it stage in the same draft.
 //
 // @Summary     Create an instance
-// @Description Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance.
+// @Description Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance; `folder` instead ADOPTS a folder the repository already has (nothing is copied), which is how an instance created on Git elsewhere becomes managed here. The two are mutually exclusive.
 // @Tags        Instances
 // @Accept      json
 // @Produce     json
@@ -136,6 +149,19 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	if meta.Status == "" {
 		meta.Status = "active"
 	}
+	if req.Folder != "" {
+		if req.CloneFrom != "" {
+			writeError(w, r, http.StatusBadRequest, CodeBadRequest,
+				"an instance either takes over a folder that already exists or is copied from another instance, not both")
+			return
+		}
+		folder, ferr := s.adoptableFolder(p, req.Folder)
+		if ferr != nil {
+			writeError(w, r, http.StatusBadRequest, CodeBadRequest, ferr.Error())
+			return
+		}
+		meta.Folder = folder
+	}
 	if req.CloneFrom != "" {
 		from, ok := p.InstanceByName(req.CloneFrom)
 		if !ok {
@@ -156,6 +182,27 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 		Old:      req.CloneFrom,
 		New:      meta,
 	})
+}
+
+// adoptableFolder validates a folder an instance is being pointed at: inside
+// the repository, really there, and not already spoken for. Taking over a
+// folder is a promise that the values in it become this instance's values, so
+// the promise has to be checkable before it is staged.
+func (s *Server) adoptableFolder(p *project.Project, folder string) (string, error) {
+	clean := strings.Trim(filepath.ToSlash(filepath.Clean(folder)), "/")
+	if clean == "" || clean == "." || strings.HasPrefix(clean, "../") || filepath.IsAbs(folder) {
+		return "", errors.New("the folder must be a path inside this repository")
+	}
+	for _, inst := range p.Registry.Instances {
+		if strings.Trim(filepath.ToSlash(inst.FolderOrDefault()), "/") == clean {
+			return "", errors.New(clean + " is already managed as " + inst.Name)
+		}
+	}
+	st, err := os.Stat(filepath.Join(s.RepoPath, filepath.FromSlash(clean)))
+	if err != nil || !st.IsDir() {
+		return "", errors.New(clean + " is not a folder in this repository")
+	}
+	return clean, nil
 }
 
 // stageStructural puts a topology item into the caller's draft change request.

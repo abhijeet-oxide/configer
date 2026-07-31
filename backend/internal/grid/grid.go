@@ -149,7 +149,15 @@ func BuildWith(p *project.Project, docs resolver.Docs) Grid {
 // previews on every cell not already supplied by the instance layer. A staged
 // add-instance appears as a new "draft" column (cells copied from its clone
 // source, all pending); a staged remove-instance marks the column "retiring".
-func ApplyDraft(g *Grid, items []change.Item) {
+func ApplyDraft(g *Grid, items []change.Item) { ApplyDraftWith(g, items, nil) }
+
+// ApplyDraftWith is ApplyDraft with a resolver, which matters for one case: an
+// instance that ADOPTS a folder the repository already has. Its values are not
+// copied from anywhere - they are already on disk, put there by whoever
+// created the folder - so the pending column reads them for real instead of
+// standing empty until the change is published. Seeing what a colleague
+// actually configured is the whole reason for taking the folder over.
+func ApplyDraftWith(g *Grid, items []change.Item, r *resolver.Resolver) {
 	if len(items) == 0 {
 		return
 	}
@@ -158,7 +166,7 @@ func ApplyDraft(g *Grid, items []change.Item) {
 	globalItems := map[string]change.Item{}
 	for _, it := range items {
 		if it.Structural() {
-			applyStructuralPreview(g, it)
+			applyStructuralPreview(g, it, r)
 			continue
 		}
 		if it.Scope == "global" {
@@ -207,7 +215,7 @@ func ApplyDraft(g *Grid, items []change.Item) {
 }
 
 // applyStructuralPreview mirrors a staged topology change onto the grid.
-func applyStructuralPreview(g *Grid, it change.Item) {
+func applyStructuralPreview(g *Grid, it change.Item, r *resolver.Resolver) {
 	switch it.Act() {
 	case change.ActionAddInstance:
 		for _, inst := range g.Instances {
@@ -229,6 +237,10 @@ func applyStructuralPreview(g *Grid, it change.Item) {
 		// anything else falls back to instances/<name>. Without this the column
 		// defaults to instances/<name> while the previewed files live beside the
 		// source, so the new folder reads as unmanaged and hides from the tree.
+		// An explicit folder means the instance is taking over one that is
+		// already in the repository; only a scaffolded instance needs the
+		// folder a submit would create.
+		adopted := cloneFrom == "" && meta.Folder != "" && r != nil
 		if meta.Folder == "" {
 			meta.Folder = PendingInstanceFolder(g.Instances, cloneFrom, meta.Name)
 		}
@@ -236,8 +248,15 @@ func applyStructuralPreview(g *Grid, it change.Item) {
 		for i := range g.Rows {
 			state := cellState(g.Rows[i].Param, meta)
 			cell := Cell{State: state, Valid: true, Pending: true}
-			if src, ok := g.Rows[i].Cells[cloneFrom]; ok && cloneFrom != "" {
-				cell.Value, cell.Set, cell.Source = src.Value, src.Set, src.Source
+			switch {
+			case adopted:
+				res := r.Resolve(g.Rows[i].Param, meta)
+				cell.Value, cell.Set, cell.Source = res.Value, res.Set, res.Layer
+				cell.File, cell.Path = res.File, res.Path
+			default:
+				if src, ok := g.Rows[i].Cells[cloneFrom]; ok && cloneFrom != "" {
+					cell.Value, cell.Set, cell.Source = src.Value, src.Set, src.Source
+				}
 			}
 			// A staged instance's cells are editable like any other. Submit
 			// scaffolds the folder BEFORE applying value edits (see

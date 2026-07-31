@@ -71,6 +71,20 @@ export default function FilesView() {
   // files that instance does not own and leave the link highlighting nothing).
   const [instance, setInstance] = useState<string | null>(ALL_INSTANCES);
   const [selected, setSelected] = useState<string | null>(null);
+  // The same value in a ref, updated in the same breath as the state. The
+  // effect that auto-selects a file READS the current selection, and an effect
+  // can run again before React has re-rendered with the state it just set (a
+  // background refetch re-creating the file list, a memo re-computing, React's
+  // own double invocation in development). Reading the state there meant
+  // reading "nothing is selected yet" a moment after selecting something - and
+  // auto-selecting the first file in the folder ON TOP of the file a parameter
+  // link had just opened, which is how "view in <file>" landed in a completely
+  // different file with the other file's line number.
+  const selectedRef = useRef<string | null>(null);
+  const select = (path: string | null) => {
+    selectedRef.current = path;
+    setSelected(path);
+  };
   const [onlyManaged, setOnlyManaged] = useState(true);
   const [dirty, setDirty] = useState<string | null>(null);
   const [treeQ, setTreeQ] = useState("");
@@ -215,11 +229,11 @@ export default function FilesView() {
     // which lands on the first file once the folder renders.
     if (fileFocus.path) {
       pendingFocus.current = { path: fileFocus.path, line: fileFocus.line };
-      setSelected(fileFocus.path);
+      select(fileFocus.path);
       setReveal(fileFocus.line);
     } else {
       pendingFocus.current = null;
-      setSelected(null);
+      select(null);
       setReveal(undefined);
     }
   }, [fileFocus]);
@@ -227,7 +241,7 @@ export default function FilesView() {
   useEffect(() => {
     setDirty(null);
     if (files.length === 0) {
-      setSelected(null);
+      select(null);
       return;
     }
     // Honor a pending cross-nav request once the right instance's files have
@@ -245,14 +259,16 @@ export default function FilesView() {
         files.find((f) => f.path === want) ??
         files.find((f) => f.path.endsWith(tail));
       if (hit) {
-        setSelected(hit.path);
+        select(hit.path);
         setReveal(pendingFocus.current.line);
         pendingFocus.current = null;
       }
       return;
     }
-    if (!selected || !files.some((f) => f.path === selected)) setSelected(files[0].path);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Nothing was asked for: fall back to the first file, but only when the
+    // explorer really is on nothing (or on a file this list no longer has).
+    const on = selectedRef.current;
+    if (!on || !files.some((f) => f.path === on)) select(files[0].path);
   }, [files, instance]);
 
   const current = files.find((f) => f.path === selected);
@@ -381,7 +397,9 @@ export default function FilesView() {
           selected={selected}
           state={{ changed: changedFiles, created: createdFiles, managed }}
           onSelect={(p) => {
-            setSelected(p);
+            // A hand-picked file cancels any link still waiting to be honored.
+            pendingFocus.current = null;
+            select(p);
             setReveal(undefined);
           }}
           onAdd={addToManaged}

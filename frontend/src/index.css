@@ -853,6 +853,56 @@ body {
   border-radius: 0;
 }
 
+/* ------------------------------------------- the parameter name, in two lines
+
+   A dotted name is read from the RIGHT: "failRetryInterval" is what the setting
+   IS, and "additionalValues / zts / value / admin / rebuildSlave" is only where
+   it lives. One truncated line put the ellipsis over the only part worth
+   reading, so the leaf gets a line of its own and the route sits under it,
+   written the way a path is written.
+
+   Both lines are always present, empty route included, so every row in the
+   virtualized body measures the same. */
+.cf-pname {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+.cf-pname-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  line-height: 17px;
+}
+.cf-pname-leaf {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* The ellipsis goes at the START of the route: the segments next to the leaf
+   are the ones that place it, and the outermost are the ones every parameter
+   shares. `direction: rtl` moves the overflow (and its ellipsis) to the left
+   edge; the <bdi> inside keeps the segments themselves in reading order. */
+.cf-pname-route {
+  direction: rtl;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+  height: 13px;
+  font-size: 10px;
+  line-height: 13px;
+  color: var(--c-text-3);
+  letter-spacing: 0.01em;
+}
+.cf-pname-route > bdi {
+  direction: ltr;
+}
+
 /* zebra striping + calm hover for the parameter grid (works with the
    virtualized body, which renders row divs) */
 .param-grid .ant-table-tbody > tr:nth-child(even) > td,

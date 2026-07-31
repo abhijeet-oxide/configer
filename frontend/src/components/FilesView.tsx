@@ -1,5 +1,5 @@
 import {
-  Alert, Button, Dropdown, Input, Select, Switch, Tag, Tooltip, App as AntApp,
+  Alert, Button, Dropdown, Input, Segmented, Select, Switch, Tag, Tooltip, App as AntApp,
 } from "antd";
 import {
   CopyOutlined,
@@ -16,6 +16,8 @@ import {
   FolderAddOutlined,
   DoubleLeftOutlined,
   DoubleRightOutlined,
+  ReadOutlined,
+  CodeOutlined,
 } from "../icons";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,11 +28,12 @@ import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
 import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
-import { languageFor } from "../monacoLang";
+import { isMarkdown, languageFor } from "../monacoLang";
 import FileExplorer from "./FileExplorer";
 import { useIdentity } from "../identity";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
+const MarkdownView = lazy(() => import("./MarkdownView"));
 
 // FilesView is file mode: a focused developer workspace over the instance's
 // REAL repository files (its folder plus shared config). The editor
@@ -90,6 +93,10 @@ export default function FilesView() {
   const [treeQ, setTreeQ] = useState("");
   const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
   const [reveal, setReveal] = useState<number | undefined>(undefined);
+  // How a markdown file is read: as the document it is, or as its source.
+  // Prose defaults to being read as prose; the choice sticks while the session
+  // lasts, so somebody working through several READMEs sets it once.
+  const [mdMode, setMdMode] = useState<"preview" | "raw">("preview");
   const [cursor, setCursor] = useState<{ ln: number; col: number }>({ ln: 1, col: 1 });
 
   const toggleTree = () => {
@@ -272,6 +279,10 @@ export default function FilesView() {
   }, [files, instance]);
 
   const current = files.find((f) => f.path === selected);
+  // Markdown reads as a document unless asked otherwise. A file with unsaved
+  // typing stays in the editor: switching to preview under somebody mid-edit
+  // would hide the thing they are typing into.
+  const showPreview = !!current && isMarkdown(current.path) && mdMode === "preview" && dirty === null;
   const committed = current ? committedOf.get(current.path) : undefined;
   const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
 
@@ -493,6 +504,22 @@ export default function FilesView() {
                 </Tooltip>
               )}
               {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
+              {/* Only for markdown: everything else in a configuration
+                  repository IS its source, and a "raw" switch on a values file
+                  would be a switch between the same thing twice. */}
+              {isMarkdown(current.path) && (
+                <Tooltip title="Read this file as a document, or edit its markdown source">
+                  <Segmented
+                    size="small"
+                    value={mdMode}
+                    onChange={(v) => setMdMode(v as "preview" | "raw")}
+                    options={[
+                      { value: "preview", label: "Preview", icon: <ReadOutlined /> },
+                      { value: "raw", label: "Raw", icon: <CodeOutlined /> },
+                    ]}
+                  />
+                </Tooltip>
+              )}
               {currentParams.length > 0 && (
                 <Tooltip title="Parameters whose values live in this file - open any in Parameters">
                   <Dropdown
@@ -620,7 +647,11 @@ export default function FilesView() {
                 </>
               )}
               <Panel id="editor" order={2} minSize={40}>
-                {current ? (
+                {current && showPreview ? (
+                  <Suspense fallback={<FilesSkeleton />}>
+                    <MarkdownView content={dirty ?? current.content} />
+                  </Suspense>
+                ) : current ? (
                   <Suspense fallback={<FilesSkeleton />}>
                     <MonacoFileView
                       key={`${instance}|${current.path}`}

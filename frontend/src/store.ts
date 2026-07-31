@@ -130,14 +130,18 @@ export function newAppReturnTo(source: NewAppSource | null): string {
 const initialNewApp = parseNewApp(window.location.search);
 
 // View preferences persisted across sessions (the "customizable view").
+export type GroupBy = "none" | "value" | "path";
+
 export interface ViewPrefs {
   density: "compact" | "comfortable";
   showTypeCol: boolean;
   showScopeCol: boolean;
   showDescCol: boolean;
   showCompare: boolean;
-  /** cluster rows that share the same value across instances, adjacently */
-  groupByValue: boolean;
+  /** how the grid clusters rows: not at all, by the value they carry across
+   *  instances (find the odd one out in a fleet), or by the path they live
+   *  under (read the estate the way the parameter tree presents it). */
+  groupBy: GroupBy;
   /** show a staged cell as "old -> new" rather than as the new value with the
    *  changed part marked. Off by default: the grid's job is to say what the
    *  configuration WILL be, and a screen full of pairs is twice the reading for
@@ -155,7 +159,7 @@ const defaultPrefs: ViewPrefs = {
   showScopeCol: true,
   showDescCol: true,
   showCompare: true,
-  groupByValue: false,
+  groupBy: "none",
   showBeforeAfter: false,
   pinned: [],
 };
@@ -163,7 +167,14 @@ const defaultPrefs: ViewPrefs = {
 function loadPrefs(): ViewPrefs {
   try {
     const raw = localStorage.getItem("configer.viewPrefs");
-    if (raw) return { ...defaultPrefs, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<ViewPrefs> & { groupByValue?: boolean };
+      // groupByValue was a checkbox before grouping grew a second mode; carry
+      // anybody who had it on across to the segmented control.
+      if (saved.groupBy === undefined && saved.groupByValue) saved.groupBy = "value";
+      delete saved.groupByValue;
+      return { ...defaultPrefs, ...saved };
+    }
   } catch {
     // corrupted prefs: fall back to defaults
   }

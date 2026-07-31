@@ -13,7 +13,15 @@ export function useElementSize<T extends HTMLElement>() {
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
-      if (box) setSize({ width: Math.round(box.width), height: Math.round(box.height) });
+      if (!box) return;
+      const width = Math.round(box.width);
+      const height = Math.round(box.height);
+      // Keep the SAME object when nothing actually moved. A ResizeObserver
+      // fires for plenty of layout activity that leaves the box where it was,
+      // and a fresh {width, height} every time is a state change every time -
+      // which re-rendered the grid (and re-ran everything measured from it) on
+      // scrolls and reflows that changed nothing.
+      setSize((s) => (s.width === width && s.height === height ? s : { width, height }));
     });
     ro.observe(el);
     return () => ro.disconnect();

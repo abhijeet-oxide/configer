@@ -35,6 +35,15 @@ Backend alone: `cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
 Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 `npx tsc --noEmit`, `npx eslint src`, and the smoke script all green.
 
+**Driving the UI (browser tests, screenshots):** append `?welcome=skip` to the
+first URL you open. The first-run tour is a modal over everything, and clicking
+it away in every script is how a test ends up asserting against a dialog. The
+parameter is read once at boot and recorded on the device, so it holds for the
+whole session even though the router cleans it out of the address bar;
+`?welcome=show` forces the tour back for a screenshot of it. The flag underneath
+is `localStorage["configer.welcomed.v1"]`, so a Playwright `addInitScript` or a
+saved `storageState` does the same thing without a URL.
+
 ## Architecture (backend, `backend/internal/`)
 
 **The edit spine - every write goes through here:**

@@ -41,6 +41,7 @@ import {
   ClockOutlined,
   PushpinOutlined,
   PushpinFilled,
+  HolderOutlined,
 } from "../icons";
 import AddParameterModal from "./AddParameterModal";
 import { EmptyState, InlineNotice } from "./ui";
@@ -77,8 +78,8 @@ import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
 import { envHex } from "../theme";
 import { useIdentity } from "../identity";
 import { enqueueEdit, OfflineError } from "../offline";
-import { useElementSize } from "../hooks";
-import { useUI } from "../store";
+import { useDebounced, useElementSize } from "../hooks";
+import { useUI, type GroupBy } from "../store";
 
 function EditableCell({
   cell,
@@ -128,6 +129,11 @@ function EditableCell({
   /** open the file this cell's value lives in (Files workspace) */
   onOpenFile?: () => void;
 }) {
+  // Whether this cell's context menu has ever been asked for, and whether it is
+  // showing. See the bottom of this component: the menu is not mounted until
+  // the first right-click.
+  const [menu, setMenu] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(true);
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
   // A cell is editable when the PARAMETER allows it (not n/a, not deprecated,
@@ -257,9 +263,30 @@ function EditableCell({
     );
 
   if (!menuItems.length) return body;
+  // A cell's context menu is a whole antd Dropdown, and a sheet puts several
+  // hundred cells on the screen at once: mounting one per cell cost more than
+  // everything else the grid does put together, on every single render. The
+  // menu is mounted when a cell is first right-clicked, and only for that cell
+  // - the wrapper generates no box (display: contents), so nothing about the
+  // cell's layout changes and the event still reaches it from the child.
+  if (!menu) {
+    return (
+      <div
+        style={{ display: "contents" }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setMenu(true);
+        }}
+      >
+        {body}
+      </div>
+    );
+  }
   return (
     <Dropdown
       trigger={["contextMenu"]}
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
       menu={{
         items: menuItems,
         onClick: ({ key, domEvent }) => {
@@ -299,6 +326,63 @@ function matchesValue(r: Row, q: string): boolean {
 // value"), so grouping never fuses rows that merely coincide in one column.
 function valueSig(r: Row, instances: Instance[]): string {
   return JSON.stringify(instances.map((i) => r.cells[i.name]?.value ?? null));
+}
+
+// measureColumns sizes each instance column to the longest value it holds, so
+// "staging.example.internal" is not truncated in a column sized for "true".
+// Measured from ALL rows, not the filtered set, so searching or filtering never
+// re-lays-out the columns (which used to drift the header out of alignment with
+// the body in the virtual table).
+function measureColumns(instances: Instance[], rows: Row[]): Record<string, number> {
+  const px = (s: string) => Math.round(s.length * 7.4) + 46; // approx mono glyphs + padding/badge
+  const need: Record<string, number> = {};
+  for (const inst of instances) {
+    let w = px(inst.name) + 16; // header text + env dot
+    for (const r of rows) {
+      const c = r.cells[inst.name];
+      if (!c || c.value == null || Array.isArray(c.value)) continue;
+      const s = String(c.value);
+      if (s) w = Math.max(w, px(s));
+    }
+    need[inst.name] = Math.min(Math.max(w, 130), 360);
+  }
+  return need;
+}
+
+interface AutoFit {
+  sig: string;
+  rows: number;
+  width: number;
+  widths: Record<string, number>;
+}
+
+// fitColumns is measureColumns plus the one thing that needs the container:
+// any width left over after every column has what it needs is shared out, so a
+// wide screen fills up instead of leaving a gutter. Done once, at fit time.
+function fitColumns(instances: Instance[], rows: Row[], budget: number): Record<string, number> {
+  const need = measureColumns(instances, rows);
+  const sum = Object.values(need).reduce((a, b) => a + b, 0);
+  const extra = budget - sum;
+  if (extra > 0 && instances.length > 0) {
+    const per = Math.floor(extra / instances.length);
+    for (const k of Object.keys(need)) need[k] += per;
+  }
+  return need;
+}
+
+// What the grouping control is doing, said in the words of the question it
+// answers rather than the mechanism.
+const GROUP_HINT: Record<GroupBy, string> = {
+  none: "Rows in their natural order. Group them to compare across the fleet.",
+  value: "Rows that carry the same value across every instance are brought together and boxed, so the one that differs stands out.",
+  path: "Rows are gathered under the path they live at, the way the parameter tree presents them.",
+};
+
+// What a row is grouped BY: the values it carries across the fleet, or the
+// category path it lives under (a parameter with no category groups with the
+// other uncategorized ones).
+function groupSig(r: Row, by: GroupBy, instances: Instance[]): string {
+  return by === "path" ? r.param.category || "\uffffUncategorized" : valueSig(r, instances);
 }
 
 function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
@@ -362,21 +446,24 @@ function hl(text: string | undefined, q: string): React.ReactNode {
 }
 
 // ColumnManager is the popover behind the Columns button: per-instance
-// visibility, order (up/down) and a reset. Resize happens by dragging the
-// header edge, so this stays a compact list, not a width editor.
+// visibility, order and a reset. Order is a DRAG - the same gesture as
+// dragging the column itself, and the reason this list exists is that dragging
+// a column that is scrolled off the screen is not possible. Up/down buttons
+// were two clicks per position and said nothing about where a column would
+// land. Resize happens on the header edge, so this stays a compact list.
 function ColumnManager({
   instances,
   hidden,
   widths,
   onToggle,
-  onMove,
+  onReorder,
   onReset,
 }: {
   instances: Instance[];
   hidden: Set<string>;
   widths: Record<string, number>;
   onToggle: (name: string) => void;
-  onMove: (name: string, dir: 1 | -1) => void;
+  onReorder: (from: string, to: string) => void;
   onReset: () => void;
 }) {
   const dirty = hidden.size > 0 || Object.keys(widths).length > 0;
@@ -389,13 +476,15 @@ function ColumnManager({
         </a>
       </div>
       <div style={{ maxHeight: 300, overflow: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-        {instances.map((inst, i) => {
+        {instances.map((inst) => {
           const shown = !hidden.has(inst.name);
           return (
             <div
               key={inst.name}
-              style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 2px" }}
+              className="cf-col-row"
+              {...dragProps("inst", inst.name, onReorder)}
             >
+              <HolderOutlined className="cf-col-grip" />
               <Checkbox checked={shown} onChange={() => onToggle(inst.name)} />
               <span
                 style={{
@@ -413,14 +502,13 @@ function ColumnManager({
               >
                 {inst.name}
               </span>
-              <Button size="small" type="text" icon={<UpOutlined style={{ fontSize: 10 }} />} disabled={i === 0} onClick={() => onMove(inst.name, -1)} />
-              <Button size="small" type="text" icon={<DownOutlined style={{ fontSize: 10 }} />} disabled={i === instances.length - 1} onClick={() => onMove(inst.name, 1)} />
             </div>
           );
         })}
       </div>
       <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }}>
-        Drag a column header's right edge to resize it.
+        Drag a row to reorder. In the grid itself, drag a column header to move it and its right
+        edge to resize it.
       </div>
     </div>
   );
@@ -523,15 +611,119 @@ function BulkSetModal({
   );
 }
 
+// What a person may do to the grid's columns, per application, kept in
+// localStorage so a curated view survives a reload: which instance columns are
+// hidden, the order of the instance columns and of the metadata columns, and
+// any width they dragged (instance columns and metadata columns alike).
+interface ColLayout {
+  hidden: string[];
+  order: string[];
+  metaOrder: string[];
+  widths: Record<string, number>;
+  meta: Record<string, number>;
+}
+const emptyColLayout: ColLayout = { hidden: [], order: [], metaOrder: [], widths: {}, meta: {} };
+
+// Resize limits. Below the minimum a column cannot show even a short value and
+// the header controls collide; above the maximum one column starts pushing the
+// rest of the fleet off the screen, which is the opposite of what the grid is
+// for. Both are enforced during the drag, so the handle simply stops.
+const COL_MIN = 96;
+const COL_MAX = 560;
+const clampCol = (w: number) => Math.min(Math.max(Math.round(w), COL_MIN), COL_MAX);
+
+// The metadata columns, their default widths, and their default order. Only
+// these three move: the parameter name is the row's identity and stays first
+// (it is the fixed-left column the rest scrolls under).
+const META_DEFAULTS: Record<string, number> = { param: 240, type: 104, scope: 96, desc: 140 };
+const META_MOVABLE = ["type", "scope", "desc"];
+
+// metaHeader wraps a plain column title with the same resize strip the instance
+// headers carry, and makes the movable ones draggable.
+function metaHeader(
+  label: string,
+  onResizeStart: (e: React.MouseEvent) => void,
+  drag?: DragProps,
+) {
+  return (
+    <div className="cf-col-head" {...(drag ?? {})}>
+      <span>{label}</span>
+      <span
+        className="col-resize-handle"
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          onResizeStart(e);
+        }}
+        onClick={(e) => e.stopPropagation()}
+        title="Drag to resize this column"
+      />
+    </div>
+  );
+}
+
+// The handful of DOM props that make a header a drag source and a drop target.
+// Reordering is one gesture in two places - the header itself and the column
+// manager's list - so both build their handlers from the same helper.
+type DragProps = {
+  draggable: true;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: (e: React.DragEvent) => void;
+  onDrop: (e: React.DragEvent) => void;
+  onDragEnd: (e: React.DragEvent) => void;
+};
+function dragProps(group: string, key: string, onReorder: (from: string, to: string) => void): DragProps {
+  const mark = (el: EventTarget | null, on: boolean) => {
+    const box = (el as HTMLElement | null)?.closest<HTMLElement>("[draggable]");
+    box?.classList.toggle("cf-drop-target", on);
+  };
+  return {
+    draggable: true,
+    onDragStart: (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", `${group}:${key}`);
+    },
+    onDragOver: (e) => {
+      if (!e.dataTransfer.types.includes("text/plain")) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      mark(e.currentTarget, true);
+    },
+    onDragLeave: (e) => mark(e.currentTarget, false),
+    onDragEnd: (e) => mark(e.currentTarget, false),
+    onDrop: (e) => {
+      mark(e.currentTarget, false);
+      const raw = e.dataTransfer.getData("text/plain");
+      const [g, ...rest] = raw.split(":");
+      const from = rest.join(":");
+      if (g !== group || !from || from === key) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onReorder(from, key);
+    },
+  };
+}
+
+// move puts `from` where `to` is, keeping everything else in order.
+function moveBefore(list: string[], from: string, to: string): string[] {
+  const next = list.filter((k) => k !== from);
+  const at = next.indexOf(to);
+  if (at < 0) return list;
+  next.splice(at, 0, from);
+  return next;
+}
+
 function instanceHeader(
   inst: Instance,
   onResizeStart?: (e: React.MouseEvent) => void,
   /** the column exists only in the draft: staged to be added, or to be retired */
   staged?: "added" | "retiring",
   onDropStaged?: () => void,
+  /** makes the header a drag handle for reordering the instance columns */
+  drag?: DragProps,
 ) {
   return (
-    <div style={{ lineHeight: 1.25, position: "relative" }}>
+    <div style={{ lineHeight: 1.25, position: "relative" }} {...(drag ?? {})} title={drag ? "Drag to reorder this column" : undefined}>
       <Space size={5}>
         <span
           style={{
@@ -622,7 +814,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // Clicking a parameter row opens the details panel on it; clicking the same
   // parameter again collapses the panel. Value cells stop propagation (they
   // own click-to-edit), so editing a cell never toggles the panel.
-  const toggleParamPanel = (id: string) => {
+  const toggleParamPanel = useCallback((id: string) => {
     if (selectedParamId === id && panels.right) {
       togglePanel("right");
       selectParam(null);
@@ -630,7 +822,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       selectParam(id);
       if (!panels.right) togglePanel("right");
     }
-  };
+  }, [selectedParamId, panels.right, togglePanel, selectParam]);
   const { message } = AntApp.useApp();
   const { token } = antdTheme.useToken();
   // What this person may do here. A viewer gets the grid without a single edit
@@ -673,20 +865,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // applications never leaks one layout onto another.
   const repoId = useUI.getState().repoId ?? "default";
   const COLS_KEY = `configer.cols.${repoId}`;
-  const [colLayout, setColLayout] = useState<{
-    hidden: string[];
-    order: string[];
-    widths: Record<string, number>;
-  }>(() => {
+  const [colLayout, setColLayout] = useState<ColLayout>(() => {
     try {
       const raw = localStorage.getItem(COLS_KEY);
-      if (raw) return { hidden: [], order: [], widths: {}, ...JSON.parse(raw) };
+      if (raw) return { ...emptyColLayout, ...JSON.parse(raw) };
     } catch {
       // corrupted layout: start fresh
     }
-    return { hidden: [], order: [], widths: {} };
+    return emptyColLayout;
   });
-  const patchColLayout = (p: Partial<typeof colLayout>) =>
+  const patchColLayout = (p: Partial<ColLayout>) =>
     setColLayout((c) => {
       const next = { ...c, ...p };
       localStorage.setItem(COLS_KEY, JSON.stringify(next));
@@ -841,6 +1029,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       (a, b) => (pos.get(a.name) ?? 1e9) - (pos.get(b.name) ?? 1e9),
     );
   }, [grid.instances, colLayout.order]);
+  // The movable metadata columns in the user's order, with any newly added one
+  // appended (and anything stale dropped).
+  const metaOrder = useMemo(() => {
+    const saved = colLayout.metaOrder.filter((k) => META_MOVABLE.includes(k));
+    return [...saved, ...META_MOVABLE.filter((k) => !saved.includes(k))];
+  }, [colLayout.metaOrder]);
   const visibleInstances = useMemo(
     () =>
       (viewInstance ? grid.instances : orderedInstances).filter(
@@ -893,7 +1087,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     it.action === "exclude" || it.action === "reset" || it.action === "remove-instance";
 
   const q = search.trim().toLowerCase();
-  const lq = localQ.trim().toLowerCase();
+  // What the grid acts on: the search box stays instant to type in, but
+  // filtering 800 rows, rebuilding every column and re-rendering the sheet on
+  // each keystroke made the box itself feel like treacle. The pause is the one
+  // a person makes between typing and expecting an answer.
+  const lq = useDebounced(localQ, 140).trim().toLowerCase();
   const baseRows = useMemo(() => {
     const filtered = grid.rows.filter((r) => {
       // categoryKey is a dotted NAME prefix selected in the tree.
@@ -985,30 +1183,33 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (pill === "added") return items.some(isAdded);
       return items.some(isRemoved);
     });
-    if (!prefs.groupByValue) return dropPinned(pilled);
-    // Group-by-value: cluster rows that share the same value signature (their
-    // per-instance values, identical across the board) adjacently, anchored at
-    // each group's first appearance so the overall order stays familiar.
+    if (prefs.groupBy === "none") return dropPinned(pilled);
+    // Clustering: rows that share a signature are brought next to each other.
+    // By VALUE the signature is what the parameter is set to across the fleet,
+    // and groups keep the order they first appear in so the list stays
+    // familiar. By PATH it is the category the parameter lives under, and the
+    // groups are sorted, so the grid reads the way the parameter tree does.
     const bySig = new Map<string, Row[]>();
     const order: string[] = [];
     for (const r of pilled) {
-      const s = valueSig(r, grid.instances);
+      const s = groupSig(r, prefs.groupBy, grid.instances);
       if (!bySig.has(s)) {
         bySig.set(s, []);
         order.push(s);
       }
       bySig.get(s)!.push(r);
     }
+    if (prefs.groupBy === "path") order.sort((a, b) => a.localeCompare(b));
     return dropPinned(order.flatMap((s) => bySig.get(s)!));
-     
-  }, [baseRows, pill, pendingByParam, prefs.groupByValue, grid.instances, dropPinned]);
+  }, [baseRows, pill, pendingByParam, prefs.groupBy, grid.instances, dropPinned]);
 
-  // Visual metadata for group-by-value: for each row in a same-value group of
-  // more than one, its cycling color and whether it opens/closes the group box.
+  // Visual metadata for grouping: for each row in a group of more than one, its
+  // cycling colour and whether it opens or closes the group's box. A group of
+  // one is not banded - a band around a single row says nothing.
   const groupMeta = useMemo(() => {
-    if (!prefs.groupByValue) return null;
+    if (prefs.groupBy === "none") return null;
     const counts = new Map<string, number>();
-    const sigs = rows.map((r) => valueSig(r, grid.instances));
+    const sigs = rows.map((r) => groupSig(r, prefs.groupBy, grid.instances));
     for (const s of sigs) counts.set(s, (counts.get(s) ?? 0) + 1);
     const meta = new Map<string, { color: number; top: boolean; bot: boolean }>();
     let color = -1;
@@ -1021,69 +1222,95 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       meta.set(rows[i].param.id, { color, top, bot });
     }
     return meta;
-  }, [rows, prefs.groupByValue, grid.instances]);
+  }, [rows, prefs.groupBy, grid.instances]);
 
-  // Auto-fit: each instance column gets at least what its longest visible
-  // value needs (so "staging.example.internal" never truncates), and any
-  // remaining container width is distributed evenly so wide screens fill up.
-  // Metadata columns are kept tight so the instance columns (the point of the
-  // grid) get the width budget. Type/Scope hold short tags; Description is a
-  // supporting hint (the full text is always in the details panel), so it stays
-  // narrow and truncates.
-  const PARAM_W = 240;
-  const TYPE_W = prefs.showTypeCol ? 104 : 0; // fits "list<ipv4>" + sort/filter icons
-  const SCOPE_W = prefs.showScopeCol ? 96 : 0; // fits "Scope" + sort/filter icons
-  const DESC_W = prefs.showDescCol ? 140 : 0;
+  // Metadata column widths: the user's if they have dragged one, otherwise the
+  // default. Type/Scope hold short tags; Description is a supporting hint (the
+  // full text is always in the details panel), so both stay narrow by default
+  // and the instance columns - the point of the grid - get the width budget.
+  const metaW = (key: string) => (resizing?.name === key ? resizing.width : colLayout.meta[key] ?? META_DEFAULTS[key]);
+  const PARAM_W = metaW("param");
+  const TYPE_W = prefs.showTypeCol ? metaW("type") : 0;
+  const SCOPE_W = prefs.showScopeCol ? metaW("scope") : 0;
+  const DESC_W = prefs.showDescCol ? metaW("desc") : 0;
+  const fixedW = PARAM_W + TYPE_W + SCOPE_W + DESC_W;
+
+  // Auto-fit, ONCE. Sizing every instance column to its longest value is a pass
+  // over the whole grid (instances x rows), and it used to run again on every
+  // edit, every refetch and every pixel of a window resize - each one throwing
+  // away the widths object and re-rendering every column behind it. It now runs
+  // when the estate's SHAPE changes (an instance arrives or leaves) and not one
+  // time more; in between, the same object is handed back, so nothing
+  // downstream re-computes. Widths staying put while you work is also simply
+  // what a sheet should do.
+  const instSig = useMemo(() => grid.instances.map((i) => i.name).join("\u0000"), [grid.instances]);
+  const [autoFit, setAutoFit] = useState<AutoFit>(() => ({ sig: "", rows: 0, width: 0, widths: {} }));
+  useEffect(() => {
+    // Fit when there is something to fit: a new instance set, the rows finally
+    // arriving, or the container reporting a real width for the first time.
+    // Never on a later resize - the widths a person is working with must not
+    // shuffle under them because the window moved, and rebuilding the columns
+    // on every pixel of a drag re-renders every cell in the sheet, which is
+    // where the slowness came from.
+    const fresh = autoFit.sig !== instSig || (autoFit.rows === 0 && grid.rows.length > 0) || (autoFit.width === 0 && bodyW > 0);
+    if (!fresh) return;
+    setAutoFit({
+      sig: instSig,
+      rows: grid.rows.length,
+      width: bodyW,
+      widths: fitColumns(grid.instances, grid.rows, bodyW - fixedW),
+    });
+    // fixedW is the metadata columns' share; it is read at fit time on purpose,
+    // so dragging one later does not re-fit the instance columns.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instSig, autoFit.sig, autoFit.rows, autoFit.width, grid.instances, grid.rows, bodyW]);
+  const autoWidths = autoFit.widths;
+
+  // The widths actually used: the fitted ones, with a dragged width winning
+  // over the fit and the live drag winning over both, so header, body and
+  // scroll math move together. One pass over the instances, and it only re-runs
+  // when a width really changes.
   const instWidths = useMemo(() => {
-    const px = (s: string) => Math.round(s.length * 7.4) + 46; // approx mono glyphs + padding/badge
-    const need: Record<string, number> = {};
-    // Size from ALL rows, not the filtered set, so column widths are stable:
-    // searching or filtering never re-lays-out the columns (which used to drift
-    // the header out of alignment with the body in the virtual table).
-    for (const inst of grid.instances) {
-      let w = px(inst.name) + 16; // header text + env dot
-      for (const r of grid.rows) {
-        const c = r.cells[inst.name];
-        if (!c || c.value == null || Array.isArray(c.value)) continue;
-        const s = String(c.value);
-        if (s) w = Math.max(w, px(s));
-      }
-      need[inst.name] = Math.min(Math.max(w, 130), 360);
-    }
-    const fixed = PARAM_W + TYPE_W + SCOPE_W + DESC_W;
-    const sum = Object.values(need).reduce((a, b) => a + b, 0);
-    const extra = bodyW - fixed - sum;
-    if (extra > 0 && grid.instances.length > 0) {
-      const per = Math.floor(extra / grid.instances.length);
-      for (const k of Object.keys(need)) need[k] += per;
-    }
-    // A manually resized column wins over the auto width (and the live drag
-    // width wins over both), so the user's chosen widths are authoritative
-    // for the scroll math, the header and the body alike.
+    const need = { ...autoWidths };
     for (const [k, w] of Object.entries(colLayout.widths)) need[k] = w;
     if (resizing) need[resizing.name] = resizing.width;
     return need;
-  }, [grid.instances, grid.rows, bodyW, TYPE_W, SCOPE_W, DESC_W, colLayout.widths, resizing]);
+  }, [autoWidths, colLayout.widths, resizing]);
 
   // startResize begins a column-width drag: track the pointer, feed the live
-  // width into instWidths (so header + body + scroll math stay in lockstep),
-  // and commit to the persisted layout on mouse-up.
-  const startResize = (name: string, startWidth: number) => (e: React.MouseEvent) => {
+  // width through (so header + body + scroll math move together), and commit to
+  // the persisted layout on mouse-up. `meta` says which bucket it belongs to;
+  // both are clamped to the same limits.
+  const startResize = (name: string, startWidth: number, meta = false) => (e: React.MouseEvent) => {
     e.preventDefault();
     const startX = e.clientX;
     let liveWidth = startWidth;
     const onMove = (ev: MouseEvent) => {
-      liveWidth = Math.min(Math.max(startWidth + (ev.clientX - startX), 110), 520);
+      liveWidth = clampCol(startWidth + (ev.clientX - startX));
       setResizing({ name, width: liveWidth });
     };
     const onUp = () => {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      patchColLayout({ widths: { ...colLayout.widths, [name]: Math.round(liveWidth) } });
+      patchColLayout(
+        meta
+          ? { meta: { ...colLayout.meta, [name]: Math.round(liveWidth) } }
+          : { widths: { ...colLayout.widths, [name]: Math.round(liveWidth) } },
+      );
       setResizing(null);
     };
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  };
+
+  // Reordering, from a header drag or from the column manager's list.
+  const reorderInstances = (from: string, to: string) => {
+    const current = orderedInstances.map((i) => i.name);
+    patchColLayout({ order: moveBefore(current, from, to) });
+  };
+  const reorderMeta = (from: string, to: string) => {
+    const current = metaOrder;
+    patchColLayout({ metaOrder: moveBefore(current, from, to) });
   };
 
   // routeCommit: a value for a global-scope parameter that is still fed by
@@ -1181,7 +1408,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     const scopes = [...new Set(grid.rows.map((r) => r.param.scope))].sort();
     const base: ColumnsType<Row> = [
       {
-        title: "Parameter",
+        title: metaHeader("Parameter", startResize("param", PARAM_W, true)),
         dataIndex: ["param", "name"],
         key: "param",
         fixed: "left",
@@ -1251,9 +1478,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         ),
       },
     ];
+    const meta: Record<string, ColumnsType<Row>[number]> = {};
     if (prefs.showTypeCol) {
-      base.push({
-        title: "Type",
+      meta.type = ({
+        title: metaHeader("Type", startResize("type", TYPE_W, true), dragProps("meta", "type", reorderMeta)),
         key: "type",
         width: TYPE_W,
         sorter: (a, b) => a.param.type.localeCompare(b.param.type),
@@ -1267,8 +1495,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       });
     }
     if (prefs.showScopeCol) {
-      base.push({
-        title: "Scope",
+      meta.scope = ({
+        title: metaHeader("Scope", startResize("scope", SCOPE_W, true), dragProps("meta", "scope", reorderMeta)),
         key: "scope",
         width: SCOPE_W,
         sorter: (a, b) => a.param.scope.localeCompare(b.param.scope),
@@ -1289,8 +1517,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       });
     }
     if (prefs.showDescCol) {
-      base.push({
-        title: "Description",
+      meta.desc = ({
+        title: metaHeader("Description", startResize("desc", DESC_W, true), dragProps("meta", "desc", reorderMeta)),
         key: "desc",
         width: DESC_W,
         ellipsis: true,
@@ -1301,6 +1529,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         ),
       });
     }
+    for (const key of metaOrder) if (meta[key]) base.push(meta[key]);
     const instanceNames = grid.instances.map((i) => i.name);
     const instCols: ColumnsType<Row> = visibleInstances.map((inst) => ({
       title: viewInstance
@@ -1312,6 +1541,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             canEdit && pendingInstances.has(inst.name)
               ? () => revert.mutate({ paramId: "", instance: inst.name })
               : undefined,
+            dragProps("inst", inst.name, reorderInstances),
           ),
       key: inst.name,
       width: instWidths[inst.name] ?? 150,
@@ -1461,7 +1691,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -1478,14 +1708,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const total = grid.rows.length;
   const isFiltered =
     !!categoryKey || pill !== "all" || !!q || !!lq || activeFilters > 0;
-  const clearAllFilters = () => {
+  const clearAllFilters = useCallback(() => {
     setCategory(null);
     selectParam(null);
     setPill("all");
     setLocalQ("");
     setSearch("");
     setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
-  };
+  }, [setCategory, selectParam, setSearch, setFilters]);
 
   // Bring the active cell into view within the virtual body (vertical scrollTop
   // + horizontal wheel-delta, mirroring the jump-to-cell scroller above).
@@ -1598,8 +1828,95 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0;
   const showColumns = !viewInstance && (colsCustomized || w >= 950);
   const showFilterSeg = w >= 820;
+  // The grouping control is never removed either; it degrades to a select of
+  // the same three choices before the row filter does.
+  const showGroupSeg = w >= 1040;
   const foldedColumns = !viewInstance && !showColumns;
   const anyFolded = foldedColumns;
+
+  // The empty state and the pinned shelf are whole subtrees; rebuilding them on
+  // every render of this component rebuilt the sticky rows and the empty state
+  // along with them.
+  const locale = useMemo(() => ({
+            emptyText:
+              total === 0 ? (
+                <EmptyState
+                  icon={<PlusOutlined />}
+                  title="No parameters yet"
+                  hint={
+                    canEdit
+                      ? "Add a parameter, or import settings from your repository files to bring them under management."
+                      : "Nothing is under management here yet. Someone with edit access can bring settings in from the repository's files."
+                  }
+                  actionLabel={canEdit ? "Add parameter" : undefined}
+                  onAction={canEdit ? () => setAddOpen(true) : undefined}
+                />
+              ) : (
+                <EmptyState
+                  icon={<SearchOutlined />}
+                  title="Nothing matches"
+                  hint="No parameters match the current search and filters."
+                  actionLabel="Clear filters"
+                  onAction={clearAllFilters}
+                />
+              ),
+          }), [total, canEdit, clearAllFilters]);
+  const summary = useMemo(
+    () => (pinnedRows.length
+              ? () => (
+                  <Table.Summary fixed="top">
+                    {pinnedRows.map((r) => (
+                      <Table.Summary.Row
+                        key={r.param.id}
+                        className={
+                          "cf-pinned-row" +
+                          (r.param.id === selectedParamId ? " row-selected" : "") +
+                          (r.param.id === pinnedRows[pinnedRows.length - 1].param.id ? " cf-pinned-last" : "")
+                        }
+                        onClick={() => toggleParamPanel(r.param.id)}
+                      >
+                        {columns.map((col, i) => {
+                          const cell = (col as { onCell?: (r: Row) => { className?: string } }).onCell?.(r);
+                          return (
+                            <Table.Summary.Cell key={col.key ?? i} index={i} className={cell?.className}>
+                              {renderColumn(col, r, i)}
+                            </Table.Summary.Cell>
+                          );
+                        })}
+                      </Table.Summary.Row>
+                    ))}
+                  </Table.Summary>
+                )
+              : undefined),
+    [pinnedRows, columns, selectedParamId, toggleParamPanel],
+  );
+
+  // The table's per-row callbacks, given stable identities. antd rebuilds the
+  // body when any of them changes, so an inline arrow meant every render of
+  // this component - a hover, the toolbar remeasuring itself - re-created every
+  // cell in a 25-column sheet. These change only when what they SAY changes.
+  const rowKey = useCallback((r: Row) => r.param.id, []);
+  const scroll = useMemo(() => ({ x: scrollX, y: tableY }), [scrollX, tableY]);
+  const rowClassName = useCallback(
+    (r: Row) => {
+      const g = groupMeta?.get(r.param.id);
+      // Alternate two identical flash classes per click (by jump parity)
+      // so the CSS animation restarts even when the same row is clicked
+      // again - re-adding the same class would not replay it.
+      const flashing = (flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id;
+      const flashCls = flashing ? ((flash?.n ?? 0) % 2 ? "row-flash-b " : "row-flash-a ") : "";
+      return (
+        flashCls +
+        (r.param.id === selectedParamId ? "row-selected " : "") +
+        (g ? `vgrp vgrp-c${g.color}${g.top ? " vgrp-top" : ""}${g.bot ? " vgrp-bot" : ""}` : "")
+      ).trim();
+    },
+    [groupMeta, flash, selectedParamId],
+  );
+  const onRow = useCallback(
+    (r: Row) => ({ onClick: () => toggleParamPanel(r.param.id), style: { cursor: "pointer" } }),
+    [toggleParamPanel],
+  );
 
   // One control governs both "which instances" (all, or one environment) and
   // "single sheet vs matrix" (one instance). The value encodes the mode:
@@ -1677,6 +1994,39 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               },
             ]}
           />
+        </Tooltip>
+        <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+        {/* Grouping. It answers two everyday questions - "which of these are
+            set the same across the fleet, and which one is the odd one out"
+            (by value) and "show me this the way the tree does" (by path) - so
+            it belongs on the bar, not three clicks down a menu where nobody
+            found it. */}
+        <Tooltip title={GROUP_HINT[prefs.groupBy]}>
+          {showGroupSeg ? (
+            <Segmented
+              size="small"
+              value={prefs.groupBy}
+              onChange={(v) => setPrefs({ groupBy: v as GroupBy })}
+              style={{ flexShrink: 0 }}
+              options={[
+                { value: "none", label: "Ungrouped" },
+                { value: "value", label: "By value" },
+                { value: "path", label: "By path" },
+              ]}
+            />
+          ) : (
+            <Select
+              size="small"
+              value={prefs.groupBy}
+              onChange={(v) => setPrefs({ groupBy: v })}
+              style={{ width: 116, flexShrink: 0 }}
+              options={[
+                { value: "none", label: "Ungrouped" },
+                { value: "value", label: "By value" },
+                { value: "path", label: "By path" },
+              ]}
+            />
+          )}
         </Tooltip>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Row filter: the full segmented when there is room, a compact select
@@ -1812,7 +2162,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               { key: "showTypeCol", label: <Checkbox checked={prefs.showTypeCol}>Type column</Checkbox> },
               { key: "showScopeCol", label: <Checkbox checked={prefs.showScopeCol}>Scope column</Checkbox> },
               { key: "showDescCol", label: <Checkbox checked={prefs.showDescCol}>Description column</Checkbox> },
-              { key: "groupByValue", label: <Checkbox checked={prefs.groupByValue}>Group by value</Checkbox> },
               ...(prefs.pinned.length
                 ? [{ key: "unpinAll", icon: <PushpinOutlined />, label: `Unpin all (${prefs.pinned.length})` }]
                 : []),
@@ -1844,7 +2193,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 key === "showTypeCol" ||
                 key === "showScopeCol" ||
                 key === "showDescCol" ||
-                key === "groupByValue" ||
                 key === "showBeforeAfter"
               ) {
                 setPrefs({ [key]: !prefs[key as keyof typeof prefs] } as Partial<typeof prefs>);
@@ -1852,7 +2200,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             },
           }}
         >
-          <Badge dot={activeFilters > 0 || prefs.groupByValue} color="var(--c-review)" offset={[-2, 2]}>
+          <Badge dot={activeFilters > 0} color="var(--c-review)" offset={[-2, 2]}>
             <Button size="small" icon={<MoreOutlined />} aria-label="More editor options" title="Filters, view options and tools" style={{ flexShrink: 0 }} />
           </Badge>
         </Dropdown>
@@ -1953,15 +2301,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   : [...colLayout.hidden, name],
               })
             }
-            onMove={(name, dir) => {
-              const order = orderedInstances.map((i) => i.name);
-              const idx = order.indexOf(name);
-              const to = idx + dir;
-              if (to < 0 || to >= order.length) return;
-              [order[idx], order[to]] = [order[to], order[idx]];
-              patchColLayout({ order });
-            }}
-            onReset={() => patchColLayout({ hidden: [], order: [], widths: {} })}
+            onReorder={reorderInstances}
+            onReset={() => patchColLayout(emptyColLayout)}
           />
         </Modal>
       )}
@@ -2005,86 +2346,21 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         <Table<Row>
           ref={tableRef}
           className="param-grid"
-          rowKey={(r) => r.param.id}
+          rowKey={rowKey}
           columns={columns}
           dataSource={rows}
           size={prefs.density === "compact" ? "small" : "middle"}
           virtual
-          scroll={{ x: scrollX, y: tableY }}
+          scroll={scroll}
           pagination={false}
-          locale={{
-            emptyText:
-              total === 0 ? (
-                <EmptyState
-                  icon={<PlusOutlined />}
-                  title="No parameters yet"
-                  hint={
-                    canEdit
-                      ? "Add a parameter, or import settings from your repository files to bring them under management."
-                      : "Nothing is under management here yet. Someone with edit access can bring settings in from the repository's files."
-                  }
-                  actionLabel={canEdit ? "Add parameter" : undefined}
-                  onAction={canEdit ? () => setAddOpen(true) : undefined}
-                />
-              ) : (
-                <EmptyState
-                  icon={<SearchOutlined />}
-                  title="Nothing matches"
-                  hint="No parameters match the current search and filters."
-                  actionLabel="Clear filters"
-                  onAction={clearAllFilters}
-                />
-              ),
-          }}
-          rowClassName={(r) => {
-            const g = groupMeta?.get(r.param.id);
-            // Alternate two identical flash classes per click (by jump parity)
-            // so the CSS animation restarts even when the same row is clicked
-            // again - re-adding the same class would not replay it.
-            const flashing = (flash?.kind === "param" || flash?.kind === "cell") && flash.id === r.param.id;
-            const flashCls = flashing ? ((flash?.n ?? 0) % 2 ? "row-flash-b " : "row-flash-a ") : "";
-            return (
-              flashCls +
-              (r.param.id === selectedParamId ? "row-selected " : "") +
-              (g ? `vgrp vgrp-c${g.color}${g.top ? " vgrp-top" : ""}${g.bot ? " vgrp-bot" : ""}` : "")
-            ).trim();
-          }}
-          onRow={(r) => ({
-            onClick: () => toggleParamPanel(r.param.id),
-            style: { cursor: "pointer" },
-          })}
+          locale={locale}
+          rowClassName={rowClassName}
+          onRow={onRow}
           // Pinned rows ride in the table's sticky top block: the same table, so
           // the same column widths and the same horizontal scroll, and they stay
           // under the header however far the list is scrolled. antd calls this
           // a summary; here it is the "keep these in front of me" shelf.
-          summary={
-            pinnedRows.length
-              ? () => (
-                  <Table.Summary fixed="top">
-                    {pinnedRows.map((r) => (
-                      <Table.Summary.Row
-                        key={r.param.id}
-                        className={
-                          "cf-pinned-row" +
-                          (r.param.id === selectedParamId ? " row-selected" : "") +
-                          (r.param.id === pinnedRows[pinnedRows.length - 1].param.id ? " cf-pinned-last" : "")
-                        }
-                        onClick={() => toggleParamPanel(r.param.id)}
-                      >
-                        {columns.map((col, i) => {
-                          const cell = (col as { onCell?: (r: Row) => { className?: string } }).onCell?.(r);
-                          return (
-                            <Table.Summary.Cell key={col.key ?? i} index={i} className={cell?.className}>
-                              {renderColumn(col, r, i)}
-                            </Table.Summary.Cell>
-                          );
-                        })}
-                      </Table.Summary.Row>
-                    ))}
-                  </Table.Summary>
-                )
-              : undefined
-          }
+          summary={summary}
         />
       </div>
       </div>

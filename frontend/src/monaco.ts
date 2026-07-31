@@ -9,8 +9,9 @@
 // …), which is most of the download and produced ~80 extra chunks. `edcore.main`
 // is the same editor with all of its own features (find, folding, suggestions,
 // bracket matching, context menu) and no languages; Configer edits YAML, JSON
-// and XML, so those three are registered explicitly below. Adding a format
-// means adding its contribution here - nothing else changes.
+// and XML, plus the repository's own prose in markdown, so those are registered
+// explicitly below. Adding a format means adding its contribution here -
+// nothing else changes.
 // (`editor.api` is the same module object edcore.main re-exports, and it is the
 //  one that ships type declarations - so the namespace is imported from there
 //  and edcore.main is pulled in for its editor-feature side effects.)
@@ -18,6 +19,7 @@ import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import "monaco-editor/esm/vs/editor/edcore.main";
 import "monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution";
 import "monaco-editor/esm/vs/basic-languages/xml/xml.contribution";
+import "monaco-editor/esm/vs/basic-languages/markdown/markdown.contribution";
 import "monaco-editor/esm/vs/language/json/monaco.contribution";
 import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";

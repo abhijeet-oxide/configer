@@ -3637,3 +3637,140 @@ mark.vd-ins {
     font-size: 11px;
   }
 }
+
+/* ------------------------------------------------------ markdown, rendered
+
+   A repository's prose read as prose (README, runbooks, release notes) rather
+   than as its source. Measured, not full-bleed: a line of text that runs the
+   width of a wide editor pane is a line nobody finishes. Everything here uses
+   the same tokens as the rest of the product, so a document sits in the theme
+   instead of importing a stylesheet's idea of what a document looks like. */
+.cf-md {
+  height: 100%;
+  overflow: auto;
+  padding: 22px 28px 56px;
+  font-size: var(--fs-14, 14px);
+  line-height: 1.65;
+  color: var(--text);
+  background: var(--surface);
+}
+.cf-md > * {
+  max-width: 78ch;
+}
+.cf-md > :first-child {
+  margin-top: 0;
+}
+.cf-md h1,
+.cf-md h2,
+.cf-md h3,
+.cf-md h4 {
+  margin: 1.6em 0 0.5em;
+  line-height: 1.3;
+  font-weight: 650;
+}
+.cf-md h1 { font-size: 1.7em; }
+.cf-md h2 { font-size: 1.35em; }
+.cf-md h3 { font-size: 1.15em; }
+.cf-md h4 { font-size: 1em; }
+/* The top two levels get a rule, the way a document is set. */
+.cf-md h1,
+.cf-md h2 {
+  padding-bottom: 0.24em;
+  border-bottom: 1px solid var(--border);
+}
+.cf-md p,
+.cf-md ul,
+.cf-md ol,
+.cf-md blockquote,
+.cf-md table,
+.cf-md pre {
+  margin: 0 0 0.9em;
+}
+/* The app's reset strips list markers (a product UI is full of lists that are
+   not prose). A document needs them back, or an ordered list loses the numbers
+   that were the point of ordering it. */
+.cf-md ul,
+.cf-md ol {
+  padding-inline-start: 1.6em;
+  list-style-position: outside;
+}
+.cf-md ul { list-style-type: disc; }
+.cf-md ul ul { list-style-type: circle; }
+.cf-md ul ul ul { list-style-type: square; }
+.cf-md ol { list-style-type: decimal; }
+/* A task list carries its own checkbox, so it does not also take a bullet. */
+.cf-md li.task-list-item,
+.cf-md li:has(> input[type="checkbox"]) {
+  list-style: none;
+  margin-inline-start: -1.35em;
+}
+.cf-md li + li {
+  margin-top: 0.2em;
+}
+.cf-md li > ul,
+.cf-md li > ol {
+  margin-bottom: 0;
+}
+.cf-md a {
+  color: var(--brand);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.cf-md blockquote {
+  padding: 2px 0 2px 14px;
+  border-inline-start: 3px solid var(--border-strong);
+  color: var(--text-2);
+}
+.cf-md code {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.88em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.cf-md pre {
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  /* A code block scrolls inside itself; the page never scrolls sideways. */
+  overflow-x: auto;
+  max-width: 100%;
+}
+.cf-md pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.86em;
+}
+/* A table can be wider than the measure, so it gets the full pane and its own
+   horizontal scroll rather than forcing the prose to widen. */
+.cf-md table {
+  max-width: 100%;
+  border-collapse: collapse;
+  display: block;
+  overflow-x: auto;
+  width: max-content;
+}
+.cf-md th,
+.cf-md td {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  text-align: start;
+}
+.cf-md th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+.cf-md img {
+  max-width: 100%;
+}
+.cf-md hr {
+  margin: 1.6em 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+.cf-md input[type="checkbox"] {
+  margin-inline-end: 6px;
+}

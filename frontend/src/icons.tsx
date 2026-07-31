@@ -37,6 +37,7 @@ import phCloudCheck from "@iconify-icons/ph/cloud-check";
 import phCloudArrowUp from "@iconify-icons/ph/cloud-arrow-up";
 import phStack from "@iconify-icons/ph/stack";
 import phCode from "@iconify-icons/ph/code";
+import phArticle from "@iconify-icons/ph/article";
 import phCopy from "@iconify-icons/ph/copy";
 import phDatabase from "@iconify-icons/ph/database";
 import phTrash from "@iconify-icons/ph/trash";
@@ -272,6 +273,8 @@ export const DiffOutlined = make("diff", phGitDiff);
 export const GithubOutlined = make("github", phGithubLogo);
 export const HistoryOutlined = make("history", phClockCounterClockwise);
 export const CodeOutlined = make("code", phCode);
+// Prose: a rendered document rather than its source.
+export const ReadOutlined = make("article", phArticle);
 export const DatabaseOutlined = make("database", phDatabase);
 export const HddOutlined = make("hdd", phHardDrive);
 export const CloudServerOutlined = make("cloud-server", phHardDrives);

@@ -18,6 +18,7 @@ interface Decoration {
 }
 interface Revealable {
   revealLineInCenter: (line: number) => void;
+  revealLinesInCenter?: (start: number, end: number) => void;
   setPosition: (pos: { lineNumber: number; column: number }) => void;
   setSelection?: (sel: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number }) => void;
   focus: () => void;
@@ -27,7 +28,13 @@ interface Revealable {
   onDidChangeCursorPosition?: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void;
   deltaDecorations?: (old: string[], next: Decoration[]) => string[];
   getModel?: () => { getLineMaxColumn?: (line: number) => number; getLineCount?: () => number } | null;
+  getLayoutInfo?: () => { height: number };
+  onDidLayoutChange?: (cb: () => void) => void;
 }
+
+// Below this the editor has not really been measured yet, and "the middle of
+// the viewport" is not a place worth scrolling to.
+const MIN_CENTER_HEIGHT = 120;
 
 /** One value the file's owner should be able to see at a glance is looked after
  *  by Configer: where it is, and what to say about it on hover. col/endCol
@@ -50,7 +57,11 @@ const baseOptions = {
   stickyScroll: { enabled: false },
   fontSize: 12.5,
   lineNumbers: "on" as const,
-  scrollBeyondLastLine: false,
+  // Left at Monaco's (and VS Code's) default: without the empty run past the
+  // last line, a value near the end of a file CANNOT be centred - the editor
+  // simply stops scrolling and leaves it pinned to the bottom edge. Landing on
+  // a parameter has to look the same wherever in the file it happens to live.
+  scrollBeyondLastLine: true,
   automaticLayout: true,
   renderWhitespace: "none" as const,
   wordWrap: "off" as const,
@@ -102,24 +113,57 @@ export default function MonacoFileView({
     cursorRef.current = onCursor;
   });
 
-  const reveal = (line?: number, column?: number) => {
-    if (!line || !edRef.current) return;
-    edRef.current.revealLineInCenter(line);
-    edRef.current.setPosition({ lineNumber: line, column: column ?? 1 });
-    // The cursor lands ON the value when we know where it is; the mark below
-    // (cf-managed-focus) is what actually makes it obvious, so nothing here
-    // selects text the reader did not ask to select.
+  // The reveal request already carried out, so an ordinary re-render - or the
+  // reader typing, which changes `content` - never yanks the viewport back to
+  // where they were originally sent.
+  const servedRef = useRef("");
+
+  const reveal = (line: number, column?: number) => {
+    const ed = edRef.current;
+    if (!ed) return;
+    ed.revealLineInCenter(line);
+    ed.setPosition({ lineNumber: line, column: column ?? 1 });
+    // The cursor lands ON the value when we know where it is; the marks below
+    // are what actually make it obvious, so nothing here selects text the
+    // reader did not ask to select.
     if (column === undefined) {
-      edRef.current.setSelection?.({ startLineNumber: line, startColumn: 1, endLineNumber: line + 1, endColumn: 1 });
+      ed.setSelection?.({ startLineNumber: line, startColumn: 1, endLineNumber: line + 1, endColumn: 1 });
     }
-    edRef.current.focus();
+    ed.focus();
   };
 
-  // Jump to a line when a find-in-files hit is clicked while this file is open.
-  useEffect(() => {
+  // Jump to a line: a find-in-files hit, or a parameter's "view in file".
+  //
+  // Nothing about that request is ready at the same moment. The text is
+  // fetched, Monaco mounts asynchronously, the exact column arrives from a
+  // second call once the managed values are located, and the pane's height is
+  // only measured after it is on screen. So the request is not carried out
+  // until BOTH the model is long enough to hold the line and the editor has a
+  // height worth centring in: asking a two-pixel-tall editor to centre a line
+  // pins it to the top, which is exactly where a "centred" value kept landing.
+  // Every one of those arrivals calls back in here, and the first call that
+  // finds the editor ready is the one that scrolls.
+  const serveReveal = () => {
+    const ed = edRef.current;
+    if (!revealLine || !ed) return;
+    const key = `${path}:${revealLine}:${revealColumn ?? ""}`;
+    if (servedRef.current === key) return;
+    const lines = ed.getModel?.()?.getLineCount?.() ?? 0;
+    if (lines < revealLine) return;
+    if ((ed.getLayoutInfo?.().height ?? 0) < MIN_CENTER_HEIGHT) return;
+    servedRef.current = key;
     reveal(revealLine, revealColumn);
-     
-  }, [revealLine, revealColumn]);
+  };
+  // onDidLayoutChange is wired once, at mount, so it needs the current one.
+  const serveRef = useRef(serveReveal);
+  useEffect(() => {
+    serveRef.current = serveReveal;
+  });
+  useEffect(() => {
+    if (!revealLine) servedRef.current = "";
+    serveReveal();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revealLine, revealColumn, content, path]);
 
   // Mark the lines Configer manages. A file is mostly ordinary text with a
   // handful of values the product actually looks after, and nothing in the
@@ -142,26 +186,43 @@ export default function MonacoFileView({
     const lines = ed.getModel?.()?.getLineCount?.() ?? Number.MAX_SAFE_INTEGER;
     const next = (marksRef.current ?? [])
       .filter((m) => m.line > 0 && m.line <= lines)
-      .map((m) => {
+      .flatMap((m) => {
         // The VALUE, where we know its columns: marking the whole line paints
         // the key, the indentation and the trailing comment as though Configer
         // owned them too. Only a value that cannot be narrowed (a block scalar)
         // falls back to the line.
         const whole = !m.col || !m.endCol;
-        return {
-          range: whole
-            ? { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 }
-            : { startLineNumber: m.line, startColumn: m.col!, endLineNumber: m.line, endColumn: m.endCol! },
-          options: {
-            isWholeLine: whole,
-            className: whole
-              ? `cf-managed-line${m.focus ? " cf-managed-focus" : ""}`
-              : `cf-managed-value${m.focus ? " cf-managed-focus" : ""}`,
-            linesDecorationsClassName: "cf-managed-gutter",
-            hoverMessage: { value: m.label },
-            overviewRuler: { color: m.focus ? "rgba(0, 87, 184, 0.9)" : "rgba(0, 87, 184, 0.35)", position: 1 },
+        const out = [
+          {
+            range: whole
+              ? { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 }
+              : { startLineNumber: m.line, startColumn: m.col!, endLineNumber: m.line, endColumn: m.endCol! },
+            options: {
+              isWholeLine: whole,
+              className: whole ? "cf-managed-line" : "cf-managed-value",
+              linesDecorationsClassName: "cf-managed-gutter",
+              hoverMessage: { value: m.label },
+              overviewRuler: { color: "rgba(0, 87, 184, 0.35)", position: 1 },
+            },
           },
-        };
+        ];
+        // The one the reader was sent to also gets its whole LINE washed in
+        // highlighter yellow: at a glance, from anywhere on the row, that is
+        // where you landed. It is a different question from "which characters
+        // are managed", so it is a different mark and a different colour.
+        if (m.focus) {
+          out.push({
+            range: { startLineNumber: m.line, startColumn: 1, endLineNumber: m.line, endColumn: 1 },
+            options: {
+              isWholeLine: true,
+              className: "cf-focus-line",
+              linesDecorationsClassName: "cf-focus-gutter",
+              hoverMessage: { value: m.label },
+              overviewRuler: { color: "rgba(240, 210, 100, 0.9)", position: 7 },
+            },
+          });
+        }
+        return out;
       });
     decoRef.current = ed.deltaDecorations(decoRef.current, next);
   };
@@ -178,7 +239,8 @@ export default function MonacoFileView({
     editor.onDidChangeCursorPosition?.((e) =>
       cursorRef.current?.(e.position.lineNumber, e.position.column),
     );
-    reveal(revealLine, revealColumn);
+    editor.onDidLayoutChange?.(() => serveRef.current());
+    serveReveal();
     applyMarks();
   };
 

@@ -320,6 +320,20 @@ function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
   return hay.includes(q) || matchesValue(r, q);
 }
 
+// A dotted parameter name is read from the RIGHT. "failRetryInterval" is what
+// the setting IS; "additionalValues.zts.value.admin.rebuildSlave" is only where
+// it lives, and in a fixed-width column an ellipsis at the end cut off the one
+// part worth reading. So the cell shows the leaf on its own line and the route
+// to it underneath, written the way a path is written.
+function leafOf(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i < 0 ? name : name.slice(i + 1);
+}
+function routeOf(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i < 0 ? "" : name.slice(0, i).split(".").join(" / ");
+}
+
 // hl wraps every case-insensitive occurrence of q in text with a highlight mark,
 // so the user sees exactly where a search matched.
 function hl(text: string | undefined, q: string): React.ReactNode {
@@ -1175,8 +1189,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         ellipsis: { showTitle: false },
         sorter: (a, b) => a.param.name.localeCompare(b.param.name),
         render: (_v, r) => (
-          // The name column is a fixed width; long dotted names must truncate
-          // (with the full name on hover) instead of spilling into Type/Scope.
+          // The name column is a fixed width, so the cell shows the leaf and
+          // the route to it on separate lines rather than one truncated string
+          // (see leafOf/routeOf); the full name is on hover either way.
           // Right-clicking it acts on the PARAMETER (the whole row), which is a
           // different set of actions from right-clicking one of its values.
           <ParamMenu
@@ -1192,43 +1207,45 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             onUnpinAll={unpinAll}
             onUnmanage={() => setUnmanaging(r.param)}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-              {pinnedSet.has(r.param.id) && (
-                <Tooltip title="Pinned to the top of the grid">
-                  <PushpinFilled style={{ color: "var(--c-review)", fontSize: 11, flexShrink: 0 }} />
-                </Tooltip>
-              )}
-              {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
-              {/* A NATIVE title, not a Tooltip. The floating tooltip opened on
-                  the same pointer that opens the context menu and covered the
-                  first item of it; the browser's own tip waits, and gets out of
-                  the way the moment a menu appears. */}
-              <span
-                title={r.param.name}
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  minWidth: 0,
-                  ...(r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : null),
-                }}
-              >
-                {hl(r.param.name, hlParam)}
-              </span>
-              {r.pendingUnmanage && (
-                <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
-                  <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
-                    unmanaging
-                  </Tag>
-                </Tooltip>
-              )}
-              {bindingsOf(r.param).length === 0 && (
-                <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
-                  <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
-                    design
-                  </Tag>
-                </Tooltip>
-              )}
+            {/* A NATIVE title, not a Tooltip. The floating tooltip opened on
+                the same pointer that opens the context menu and covered the
+                first item of it; the browser's own tip waits, and gets out of
+                the way the moment a menu appears. */}
+            <div className="cf-pname" title={r.param.name}>
+              <div className="cf-pname-top">
+                {pinnedSet.has(r.param.id) && (
+                  <Tooltip title="Pinned to the top of the grid">
+                    <PushpinFilled style={{ color: "var(--c-review)", fontSize: 11, flexShrink: 0 }} />
+                  </Tooltip>
+                )}
+                {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
+                <span
+                  className="cf-pname-leaf"
+                  style={r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : undefined}
+                >
+                  {hl(leafOf(r.param.name), hlParam)}
+                </span>
+                {r.pendingUnmanage && (
+                  <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
+                    <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                      unmanaging
+                    </Tag>
+                  </Tooltip>
+                )}
+                {bindingsOf(r.param).length === 0 && (
+                  <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
+                    <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                      design
+                    </Tag>
+                  </Tooltip>
+                )}
+              </div>
+              {/* The route to the leaf, in the same cell. Always rendered (empty
+                  when a name has no route) so every row is the same height in
+                  the virtual body. */}
+              <div className="cf-pname-route">
+                <bdi>{hl(routeOf(r.param.name), hlParam)}</bdi>
+              </div>
             </div>
           </ParamMenu>
         ),

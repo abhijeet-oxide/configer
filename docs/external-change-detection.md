@@ -8,9 +8,22 @@ the observed responses are quoted, not inferred.
 
 ---
 
+## 0. Status
+
+Section 4.2 and the provenance half of section 4.5 are **implemented**; see
+section 6 for what changed and `api/external_change_test.go` for the tests that
+hold it in place. The nested-repository family (B1, B2, B3, B4) is
+**deferred by decision** and is noted at `gitengine.CommitAllAs`, which is
+where it bites. Everything else stands as written.
+
+---
+
 ## 1. The two problems reported, explained
 
 ### 1.1 A `.git` inside every instance folder
+
+> **Deferred.** Understood, written down, and not being fixed in this pass.
+> The rest of this section is the record of what it does and why it matters.
 
 **Is it a real problem?** Yes, and Configer has no defence against it anywhere.
 There is not one mention of submodules or nested repositories in the codebase -
@@ -191,22 +204,24 @@ grid's `new` and `na` states are, on any real repository, permanently unused.
 Ordered by severity. Each has been confirmed in code, and the first two were
 reproduced end to end.
 
-| # | Severity | Bug | Evidence |
-|---|---|---|---|
-| B1 | **Critical** | A nested repository anywhere in the tree makes every Configer write fail, with a raw git error shown to the user | `gitengine.go:484`; reproduced 500 above |
-| B2 | **Critical** | Files inside a submodule are read and edited by `pathedit`, but `git add -A` in the parent records only the gitlink - the change request succeeds and the value never lands | `gitengine.go:484` + no submodule awareness |
-| B3 | High | `copyTree` copies `.git`, `node_modules`, `.terraform` … into every cloned instance, manufacturing B1/B2 | `layout/layout.go:175`, no skip list |
-| B4 | High | `copyTree` flattens all file modes to `0644` and silently drops symlinks | `layout/layout.go:196` |
-| B5 | High | A new instance folder committed on Git is never surfaced as an instance; it appears only as loose "new file" noise | `api/reconcile.go`, no `new_instance` type |
-| B6 | Medium | `new_folder` findings name the first path segment, so they always read `instances/` | `api/reconcile.go:130` |
-| B7 | Medium | A commit that adds a whole site is labelled "No configuration change" in the timeline | `api/timeline.go:66` iterates the registry only |
-| B8 | Medium | An unset cell is unconditionally valid, so `required: true` never fires on the case it exists for | `grid/grid.go:130` |
-| B9 | Medium | Version metadata is unreachable through every write path | `api/parameters.go:37`, `writer.ParamPatch` |
-| B10 | Medium | `cellState` flags `new` only on an exact version match, so any multi-release upgrade flags nothing | `grid/grid.go:298` |
-| B11 | Low | Uncommitted changes are invisible; on a local connection the user's own editor work does not register | no `git status` in the codebase |
-| B12 | Low | `semver.Compare` ignores prerelease identifiers and mis-orders calendar versions | `semver/semver.go:42` |
-| B13 | Low | An instance folder deleted or renamed on Git produces file-level findings but never says "this instance is gone" | `api/reconcile.go` |
-| B14 | Low | `addInstance` has no `folder` field, so an existing folder can only be adopted if it happens to be `instances/<name>` | `api/instances.go:20` |
+| # | Severity | Bug | Evidence | Status |
+|---|---|---|---|---|
+| B1 | **Critical** | A nested repository anywhere in the tree makes every Configer write fail, with a raw git error shown to the user | `gitengine.go:484`; reproduced 500 above | deferred |
+| B2 | **Critical** | Files inside a submodule are read and edited by `pathedit`, but `git add -A` in the parent records only the gitlink - the change request succeeds and the value never lands | `gitengine.go:484` + no submodule awareness | deferred |
+| B3 | High | `copyTree` copies `.git`, `node_modules`, `.terraform` … into every cloned instance, manufacturing B1/B2 | `layout/layout.go:175`, no skip list | deferred |
+| B4 | High | `copyTree` flattens all file modes to `0644` and silently drops symlinks | `layout/layout.go:196` | deferred |
+| B5 | High | A new instance folder committed on Git is never surfaced as an instance; it appears only as loose "new file" noise | `api/reconcile.go`, no `new_instance` type | **fixed** |
+| B6 | Medium | `new_folder` findings name the first path segment, so they always read `instances/` | `api/reconcile.go:130` | **fixed** |
+| B7 | Medium | A commit that adds a whole site is labelled "No configuration change" in the timeline | `api/timeline.go:66` iterates the registry only | open |
+| B8 | Medium | An unset cell is unconditionally valid, so `required: true` never fires on the case it exists for | `grid/grid.go:130` | open |
+| B9 | Medium | Version metadata is unreachable through every write path | `api/parameters.go:37`, `writer.ParamPatch` | open |
+| B10 | Medium | `cellState` flags `new` only on an exact version match, so any multi-release upgrade flags nothing | `grid/grid.go:298` | open |
+| B11 | Low | Uncommitted changes are invisible; on a local connection the user's own editor work does not register | no `git status` in the codebase | open |
+| B12 | Low | `semver.Compare` ignores prerelease identifiers and mis-orders calendar versions | `semver/semver.go:42` | open |
+| B13 | Low | An instance folder deleted or renamed on Git produces file-level findings but never says "this instance is gone" | `api/reconcile.go` | **fixed** |
+| B14 | Low | `addInstance` has no `folder` field, so an existing folder can only be adopted if it happens to be `instances/<name>` | `api/instances.go:20` | **fixed** |
+| B15 | Medium | New keys arriving in a file already managed are reported as "a file changed" and never as new settings, so a schema change is the easiest drift to miss | old `api/reconcile.go` `case "M"` | **fixed** |
+| B16 | Medium | No finding says who made the change or when, so nothing on the page can be judged without leaving it | old `Finding` had no commit | **fixed** |
 
 ---
 
@@ -368,3 +383,73 @@ is answered by looking at the tool rather than by reading release notes.
    happening" confusion for every local user.
 5. **4.4(d)-(f) - version detection, inference and upgrade preview.** The
    differentiating capability, and it stands on everything above.
+
+---
+
+## 6. What was implemented
+
+Bidirectional sync is now covered by a test suite that changes the repository
+the way a colleague's editor or a pipeline would - write files, `git commit`,
+no Configer API anywhere in the path - and then asks Configer what it knows
+(`backend/internal/api/external_change_test.go`, ten cases).
+
+The headline result: **the read half of the claim was already true.** A value
+another developer commits IS the value the grid shows, with no import step and
+no reconciliation. What was missing was the ability to say, in the product's
+own words, WHAT had happened and WHO did it.
+
+### The findings model, rewritten
+
+`api/findings.go` (split out of `reconcile.go`, which now covers only bringing
+configuration into the catalog) reports in the vocabulary of the estate rather
+than of git. Four new types sit above the file-level ones:
+
+| Type | What it means | The action offered |
+|---|---|---|
+| `new_instance` | a configuration folder the repository has and the catalog does not | **Manage this instance** - stages the registry entry, adopting the folder as it stands |
+| `instance_gone` | a managed instance's folder is no longer there | **Retire instance** - stages the removal |
+| `version_changed` | an instance's software version moved, with `from` and `to` | look at what arrives and what retires with it |
+| `new_parameters` | a file already managed gained settings nobody has decided about | **Import new settings** |
+
+Three properties make this different from a list of changed files:
+
+- **One event, said once.** A new site is one `new_instance` finding, not
+  eleven `new_file` findings; a deleted instance is one `instance_gone`, not a
+  list of vanished parameters. Estate-level findings CLAIM the paths they
+  explain, and file-level findings are what is left over. Two of the tests
+  exist only to hold this line.
+- **Everything carries provenance.** Every finding names the commit behind it -
+  sha, author, date and message - so the page answers "who stood this up, and
+  when" without leaving it. Bounded to 60 lookups per poll.
+- **A folder nobody manages is a STATE, not an event.** `new_instance` is not
+  computed from the acknowledged range, so it survives "mark all as seen" and
+  keeps asking until the instance is adopted or an ignore rule covers the
+  folder. That mirrors the existing rule that a parameter pointing at a missing
+  file always deserves a finding.
+
+Software versions are remembered in the change-request store and re-baselined
+on acknowledgement, so noticing an upgrade costs nothing on a poll and an
+acknowledged move does not come back. A version bump published through
+Configer surfaces here too, which is deliberate: the question is "which
+instances are on something new", and the answer does not depend on who typed
+it.
+
+### Adoption
+
+`POST /api/instances` takes a `folder`, which takes over a folder that already
+exists instead of scaffolding a new one. Nothing is copied and nothing is
+written into the tree - only the registry entry naming what is already there -
+and it stages into the draft like every other structural change, so managing a
+colleague's site is reviewed and published like anything else. It is also the
+only way to manage a folder that does not follow the `instances/<name>`
+default, which every real layout eventually needs. The folder is checked
+before it is staged: inside the repository, really there, not already spoken
+for, and never combined with `cloneFrom`.
+
+### Still open from this section
+
+The timeline still classifies a commit that adds an instance folder as "no
+configuration change" (B7) - the findings page now tells that story, but the
+history picture does not. And uncommitted work remains invisible (B11), which
+is the piece most likely to confuse the next person who edits the managed
+folder in their editor and looks at Configer before committing.

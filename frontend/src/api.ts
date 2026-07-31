@@ -77,6 +77,10 @@ export interface InstanceInput {
   status?: string;
   labels?: Record<string, string>;
   cloneFrom?: string;
+  /** Take over a folder the repository already has, instead of scaffolding a
+   * new one: how an instance somebody created on Git becomes managed here.
+   * Mutually exclusive with cloneFrom. */
+  folder?: string;
   author?: string;
 }
 
@@ -645,13 +649,44 @@ export interface Capabilities {
   hosted: boolean;
 }
 
-// One repository event detected between the acknowledged commit and HEAD.
+/** The commit behind a finding: who did this, and when. */
+export interface FindingCommit {
+  sha: string;
+  short: string;
+  author: string;
+  date: string;
+  message: string;
+}
+
+/** One repository event detected between the acknowledged commit and HEAD,
+ * said in the product's own terms: an instance appeared or went away, a
+ * software version moved, new settings turned up in a managed file. The
+ * file-level types are what is left when nothing larger explains it. */
 export interface Finding {
-  type: "new_file" | "file_changed" | "file_deleted" | "file_renamed" | "new_folder";
+  type:
+    | "instance_gone"
+    | "new_instance"
+    | "version_changed"
+    | "new_parameters"
+    | "new_file"
+    | "file_changed"
+    | "file_deleted"
+    | "file_renamed"
+    | "new_folder";
   path: string;
   oldPath?: string;
   candidates?: number;
   params?: string[];
+  /** The instance a finding is about (new, gone, or moved). */
+  instance?: string;
+  /** The registry entry adopting a new instance would create. */
+  proposed?: Instance;
+  /** A software version move. */
+  from?: string;
+  to?: string;
+  /** The configuration files a folder-level finding covers. */
+  files?: string[];
+  commit?: FindingCommit;
   detail: string;
 }
 

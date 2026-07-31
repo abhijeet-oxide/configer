@@ -90,7 +90,7 @@ func (s *Server) projectInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	g := s.buildGrid(p)
 	if draft != nil {
-		grid.ApplyDraft(&g, draft.Items)
+		grid.ApplyDraftWith(&g, draft.Items, s.resolve(p))
 	}
 	branch := s.branch()
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -138,7 +138,7 @@ func (s *Server) grid(w http.ResponseWriter, r *http.Request) {
 	}
 	g := s.buildGrid(p)
 	if draft != nil {
-		grid.ApplyDraft(&g, draft.Items)
+		grid.ApplyDraftWith(&g, draft.Items, s.resolve(p))
 	}
 	rev := s.catalogRev()
 	resp := gridResponse{Grid: g, Head: rev}

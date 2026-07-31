@@ -1707,7 +1707,7 @@
                         "CookieSession": []
                     }
                 ],
-                "description": "Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance.",
+                "description": "Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder from an existing instance; `folder` instead ADOPTS a folder the repository already has (nothing is copied), which is how an instance created on Git elsewhere becomes managed here. The two are mutually exclusive.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2535,7 +2535,7 @@
         },
         "/api/repo/findings": {
             "get": {
-                "description": "What changed on Git (external commits) since the last acknowledged commit: the diff between the acknowledged SHA and HEAD, classified into findings.",
+                "description": "What changed on Git outside Configer since the last acknowledged commit, classified in the product's own terms: `new_instance` (a configuration folder nobody manages yet, with the registry entry adopting it would create), `instance_gone`, `version_changed` (an instance's software version moved, with from/to), `new_parameters` (new settings inside a file already managed), and the file-level fallbacks `new_file`, `file_changed`, `file_deleted`, `file_renamed`, `new_folder`. Each finding carries the commit that caused it: sha, author, date and message.",
                 "produces": [
                     "application/json"
                 ],
@@ -2567,7 +2567,7 @@
                         "CookieSession": []
                     }
                 ],
-                "description": "Mark all repository findings up to HEAD as seen, so they stop surfacing.",
+                "description": "Mark all repository findings up to HEAD as seen, so they stop surfacing. Software versions are re-baselined at the same time, so only later moves read as news. A `new_instance` finding survives being acknowledged: a folder nobody manages is a state, not an event, and it clears by managing the instance or by an ignore rule.",
                 "produces": [
                     "application/json"
                 ],

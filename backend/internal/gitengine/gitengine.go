@@ -480,6 +480,14 @@ func (r *Repo) CommitAll(dir, message string) (string, error) {
 // CommitAllAs is CommitAll with an explicit git author ("Name <email>").
 // The committer stays the machine identity; an empty author keeps the
 // machine identity as author too (the pre-existing behavior).
+// DEFERRED, and written down here because this is where it bites: a NESTED
+// repository (a submodule, or a folder somebody cloned into the tree) breaks
+// this. With no commit checked out `add -A` fails outright and takes every
+// write in the product with it; with one, git records a gitlink and the files
+// Configer just edited are not in the commit at all. Neither case is detected
+// today. See docs/external-change-detection.md section 1.1 for the shape of
+// the fix (detect at connect and onboarding, keep copyTree from manufacturing
+// them, and verify after staging that what was written is what was recorded).
 func (r *Repo) CommitAllAs(dir, message, author string) (string, error) {
 	if _, err := r.git(dir, "add", "-A"); err != nil {
 		return "", err

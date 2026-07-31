@@ -22,6 +22,10 @@ import {
   TableOutlined,
   EyeOutlined,
   HistoryOutlined,
+  ClusterOutlined,
+  DisconnectOutlined,
+  RocketOutlined,
+  PlusCircleOutlined,
 } from "../icons";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -35,22 +39,45 @@ import { InlineNotice } from "./ui";
 import { useIdentity } from "../identity";
 
 // RepoChangesView is the inbox for everything that happened directly on Git,
-// outside Configer: new config files, edits, deletions, renames and new
-// folders. The header tiles give the shape of the drift at a glance and act
-// as filters; each finding explains itself in plain words and offers a
-// one-click resolution. When there is no drift, the page shows the latest
-// commits it is watching instead of going blank.
+// outside Configer.
+//
+// It is deliberately written in the vocabulary of the ESTATE rather than of
+// git: an instance appeared, an instance went away, a version moved, a managed
+// file gained settings nobody has decided about. "Eleven files changed" is
+// true and useless; "Ravi stood up prod-eu an hour ago" is what somebody can
+// act on. So every item says WHO did it and WHEN, and the estate-level items
+// sort above the file-level ones.
+//
+// The header tiles give the shape of the drift at a glance and act as filters;
+// each finding explains itself in plain words and offers a one-click
+// resolution that goes through the ordinary draft-review-publish workflow.
+// When there is no drift, the page shows the latest commits it is watching
+// instead of going blank.
 
 const findingMeta: Record<
   Finding["type"],
   { icon: React.ReactNode; color: string; hex: string; label: string }
 > = {
+  new_instance: { icon: <ClusterOutlined />, color: "geekblue", hex: "var(--c-accent)", label: "New instances" },
+  instance_gone: { icon: <DisconnectOutlined />, color: "red", hex: "var(--c-danger)", label: "Instances gone" },
+  version_changed: { icon: <RocketOutlined />, color: "purple", hex: "#6c3df4", label: "Version moves" },
+  new_parameters: { icon: <PlusCircleOutlined />, color: "green", hex: "var(--c-ok)", label: "New settings" },
   new_file: { icon: <FileAddOutlined />, color: "green", hex: "var(--c-ok)", label: "New files" },
   file_changed: { icon: <EditOutlined />, color: "blue", hex: "var(--c-review)", label: "Changed" },
   file_deleted: { icon: <DeleteOutlined />, color: "red", hex: "var(--c-danger)", label: "Deleted" },
   file_renamed: { icon: <SwapOutlined />, color: "orange", hex: "var(--c-pending)", label: "Renamed" },
   new_folder: { icon: <FolderAddOutlined />, color: "purple", hex: "#6c3df4", label: "New folders" },
 };
+
+// The tiles across the top. Nine finding types would be nine tiles and no
+// shape at all, so they are grouped by the QUESTION each answers: what
+// happened to my estate, what arrived to decide about, what disagrees with the
+// grid. Each is a filter over the list below.
+const TILES: { key: string; label: string; icon: React.ReactNode; hex: string; types: Finding["type"][] }[] = [
+  { key: "instances", label: "Instances", icon: <ClusterOutlined />, hex: "var(--c-accent)", types: ["new_instance", "instance_gone"] },
+  { key: "versions", label: "Version moves", icon: <RocketOutlined />, hex: "#6c3df4", types: ["version_changed"] },
+  { key: "settings", label: "New settings", icon: <PlusCircleOutlined />, hex: "var(--c-ok)", types: ["new_parameters", "new_file", "new_folder"] },
+];
 
 // DriftTile is one filter chip in the drift summary: an icon in a soft tinted
 // well, a big count and a label, on the product's neumorphic surface. A count
@@ -107,9 +134,9 @@ function isManagedDrift(f: Finding): boolean {
   return (f.type === "file_changed" || f.type === "file_deleted") && (f.params?.length ?? 0) > 0;
 }
 
-// The tile filter is either a finding type, the synthetic "managed" bucket, or
-// null (show everything).
-type DriftFilter = Finding["type"] | "managed" | null;
+// The tile filter is a tile key, the synthetic "managed" bucket, or null
+// (show everything).
+type DriftFilter = string | null;
 
 export default function RepoChangesView() {
   const { message } = AntApp.useApp();
@@ -124,11 +151,12 @@ export default function RepoChangesView() {
   const data = findingsQ.data;
   const findings = data?.findings ?? [];
   const managedCount = findings.filter(isManagedDrift).length;
+  const tileFor = (key: string) => TILES.find((t) => t.key === key);
   const shown =
     filter === "managed"
       ? findings.filter(isManagedDrift)
       : filter
-        ? findings.filter((f) => f.type === filter)
+        ? findings.filter((f) => tileFor(filter)?.types.includes(f.type) ?? false)
         : findings;
   // Latest commits fill the all-clear state, proving the watch is live.
   const historyQ = useRepoQuery({
@@ -161,7 +189,34 @@ export default function RepoChangesView() {
     setSection("import");
   };
 
-  const countOf = (t: Finding["type"]) => findings.filter((f) => f.type === t).length;
+  const countOf = (types: Finding["type"][]) => findings.filter((f) => types.includes(f.type)).length;
+
+  // Taking over a folder somebody else created: one call, staged into the
+  // draft like every other structural change, never applied behind the user.
+  const adopt = useMutation({
+    mutationFn: (f: Finding) =>
+      api.addInstance({
+        name: f.proposed?.name ?? f.instance,
+        folder: f.proposed?.folder ?? f.path.replace(/\/$/, ""),
+        environment: f.proposed?.environment,
+      }),
+    onSuccess: (_res, f) => {
+      message.success(`${f.instance} is staged in your draft. Review and submit it to start managing it.`);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
+
+  // An instance whose folder is gone: retiring it is also an ordinary staged
+  // change, so the registry never silently disagrees with the repository.
+  const retireInstance = useMutation({
+    mutationFn: (name: string) => api.deleteInstance(name),
+    onSuccess: (_res, name) => {
+      message.success(`${name} is staged for retirement in your draft.`);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   return (
     <div style={{ height: "100%", overflow: "auto", padding: "16px 24px", display: "flex", flexDirection: "column", gap: 14 }}>
@@ -211,18 +266,17 @@ export default function RepoChangesView() {
           active={filter === "managed"}
           onClick={() => managedCount > 0 && setFilter(filter === "managed" ? null : "managed")}
         />
-        {(Object.keys(findingMeta) as Finding["type"][]).map((t) => {
-          const m = findingMeta[t];
-          const n = countOf(t);
+        {TILES.map((t) => {
+          const n = countOf(t.types);
           return (
             <DriftTile
-              key={t}
-              icon={m.icon}
-              hex={m.hex}
-              label={m.label}
+              key={t.key}
+              icon={t.icon}
+              hex={t.hex}
+              label={t.label}
               count={n}
-              active={filter === t}
-              onClick={() => n > 0 && setFilter(filter === t ? null : t)}
+              active={filter === t.key}
+              onClick={() => n > 0 && setFilter(filter === t.key ? null : t.key)}
             />
           );
         })}
@@ -300,6 +354,10 @@ export default function RepoChangesView() {
           onImport={goImport}
           onRetire={(file) => retire.mutate(file)}
           retiring={retire.isPending}
+          onAdopt={(finding) => adopt.mutate(finding)}
+          adopting={adopt.isPending}
+          onRetireInstance={(name) => retireInstance.mutate(name)}
+          retiringInstance={retireInstance.isPending}
           onViewParam={(id) => {
             selectParam(id);
             setSection("config");
@@ -324,18 +382,45 @@ export default function RepoChangesView() {
   );
 }
 
+// Provenance, said the way a person would: who did this, how long ago, and
+// which commit to look at. It sits under the title of every finding because
+// deciding what to do about a change starts with knowing where it came from.
+function Provenance({ commit }: { commit: NonNullable<Finding["commit"]> }) {
+  return (
+    <span
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 12, color: "var(--text-2)" }}
+    >
+      <UserAvatar name={commit.author} size={16} />
+      {commit.author} · {relTime(commit.date)} ·
+      <Tooltip title={commit.message}>
+        <Tag className="mono" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+          {commit.short}
+        </Tag>
+      </Tooltip>
+    </span>
+  );
+}
+
 function FindingCard({
   finding: f,
   onImport,
   onRetire,
   retiring,
   onViewParam,
+  onAdopt,
+  adopting,
+  onRetireInstance,
+  retiringInstance,
 }: {
   finding: Finding;
   onImport: (focus: string) => void;
   onRetire: (file: string) => void;
   retiring: boolean;
   onViewParam: (paramId: string) => void;
+  onAdopt: (f: Finding) => void;
+  adopting: boolean;
+  onRetireInstance: (name: string) => void;
+  retiringInstance: boolean;
 }) {
   const { canEdit } = useIdentity();
   const m = findingMeta[f.type];
@@ -361,8 +446,18 @@ function FindingCard({
                 f.path
               )}
             </span>
+            {f.type === "version_changed" && (
+              <Tag color="purple" className="mono" style={{ marginInlineEnd: 0 }}>
+                {f.from} → {f.to}
+              </Tag>
+            )}
             {f.candidates ? <Tag color="green" style={{ marginInlineEnd: 0 }}>{f.candidates} candidate setting(s)</Tag> : null}
           </div>
+          {f.commit && (
+            <div style={{ marginTop: 6 }}>
+              <Provenance commit={f.commit} />
+            </div>
+          )}
           <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 13 }}>
             {f.detail}
           </Typography.Paragraph>
@@ -387,6 +482,29 @@ function FindingCard({
           )}
         </div>
         <div style={{ flexShrink: 0, marginLeft: "auto" }}>
+          {canEdit && f.type === "new_instance" && (
+            <Button size="small" type="primary" icon={<ClusterOutlined />} loading={adopting} onClick={() => onAdopt(f)}>
+              Manage this instance
+            </Button>
+          )}
+          {canEdit && f.type === "instance_gone" && f.instance && (
+            <Popconfirm
+              title={`Retire ${f.instance}?`}
+              description="It is staged in your draft and leaves the registry when the change is published. Restore the folder on Git instead if the deletion was a mistake."
+              okText="Retire"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => onRetireInstance(f.instance!)}
+            >
+              <Button size="small" danger icon={<DeleteOutlined />} loading={retiringInstance}>
+                Retire instance
+              </Button>
+            </Popconfirm>
+          )}
+          {canEdit && f.type === "new_parameters" && (
+            <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
+              Import new settings
+            </Button>
+          )}
           {canEdit && f.type === "new_file" && (
             <Button size="small" type="primary" icon={<DownloadOutlined />} onClick={() => onImport(f.path)}>
               Import settings

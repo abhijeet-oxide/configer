@@ -57,6 +57,7 @@ import phEye from "@iconify-icons/ph/eye";
 import phEyeClosed from "@iconify-icons/ph/eye-closed";
 import phPushPin from "@iconify-icons/ph/push-pin";
 import phPushPinFill from "@iconify-icons/ph/push-pin-fill";
+import phDotsSixVertical from "@iconify-icons/ph/dots-six-vertical";
 import phFilePlus from "@iconify-icons/ph/file-plus";
 import phFile from "@iconify-icons/ph/file";
 import phFileLock from "@iconify-icons/ph/file-lock";
@@ -226,6 +227,8 @@ export const EyeOutlined = make("eye", phEye);
 export const EyeInvisibleOutlined = make("eye-closed", phEyeClosed);
 export const PushpinOutlined = make("pushpin", phPushPin);
 export const PushpinFilled = make("pushpin-fill", phPushPinFill);
+// The universal "drag me" grip, for reorderable rows and column headers.
+export const HolderOutlined = make("holder", phDotsSixVertical);
 export const LockOutlined = make("lock", phLock);
 
 // Editing and actions

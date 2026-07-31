@@ -2000,21 +2000,25 @@ body {
 }
 /* Drag strip on the right edge of each instance column header. It is
    invisible until hovered, then a brand hairline; dragging resizes. */
+/* The grab strip for a column's width. It sits just INSIDE the column's right
+   edge rather than straddling it: hanging over the edge put it under the next
+   header's own content, and on the fixed-left parameter column that meant the
+   strip could not be grabbed at all. */
 .col-resize-handle {
   position: absolute;
   top: -8px;
-  right: -9px;
-  width: 10px;
+  right: 0;
+  width: 12px;
   height: 44px;
   cursor: col-resize;
-  z-index: 3;
+  z-index: 20;
 }
 .col-resize-handle::after {
   content: "";
   position: absolute;
   top: 6px;
   bottom: 6px;
-  left: 4px;
+  right: 3px;
   width: 2px;
   border-radius: 1px;
   background: transparent;
@@ -2022,6 +2026,55 @@ body {
 }
 .col-resize-handle:hover::after {
   background: var(--brand);
+}
+
+/* A metadata column's header is a plain word, so it needs the same relative box
+   the instance headers have for the resize strip to hang off. */
+.cf-col-head {
+  position: relative;
+  min-width: 0;
+}
+/* The label clips, the header does NOT: the resize strip hangs a few pixels
+   past the column's right edge and an overflow:hidden here swallowed it. */
+.cf-col-head > span:first-child {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Dragging a header moves the column. The cursor is the whole affordance while
+   the pointer is over the title; the resize strip on the edge keeps its own. */
+.param-grid .ant-table-thead th [draggable="true"] {
+  cursor: grab;
+}
+.param-grid .ant-table-thead th [draggable="true"]:active {
+  cursor: grabbing;
+}
+/* Where a dragged column would land: a full-height rule down the leading edge
+   of the column under the pointer. */
+.cf-drop-target {
+  box-shadow: inset 3px 0 0 var(--brand);
+}
+
+/* The column manager's list: one draggable row per instance. */
+.cf-col-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px;
+  border-radius: 4px;
+  cursor: grab;
+}
+.cf-col-row:active {
+  cursor: grabbing;
+}
+.cf-col-row:hover {
+  background: var(--surface-2);
+}
+.cf-col-grip {
+  color: var(--text-3);
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
 /* ---------------------------------------------------- left trees (editor) */

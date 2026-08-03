@@ -1,0 +1,32 @@
+# Spectral ruleset for the published OpenAPI document.
+#
+# It extends spectral:oas (the OpenAPI style rules Spectral ships) rather than
+# replacing it, and then relaxes the handful of rules that fight with a spec
+# GENERATED from Go handler annotations: swaggo does not emit tags descriptions
+# or contact details, and adding them to every handler would be noise for no
+# reader's benefit.
+extends: ["spectral:oas"]
+
+rules:
+  # swaggo does not emit an info.contact block, and there is nobody to put in it
+  # that the repository does not already name.
+  info-contact: off
+  # Tag descriptions are generated from the handler groups; Spectral wants prose
+  # per tag, which would live nowhere the code can keep in sync.
+  openapi-tags: off
+  tag-description: off
+  # The spec is served alongside the API it describes, so a host or a server
+  # list is a value that is wrong the moment the deployment moves.
+  oas3-api-servers: off
+  oas2-api-host: off
+  # swaggo derives an operation's identity from the handler's name and does not
+  # emit operationId; the same goes for a global tag list. Both would have to be
+  # written by hand on every handler, in a second place, kept in sync with the
+  # first. That is a worse trade than the rule is worth.
+  operation-operationId: off
+  operation-tag-defined: off
+
+# Everything not listed above is still on, including the two rules that
+# currently fail: oas2-schema (an invalid securityDefinitions block) and
+# oas2-valid-schema-example (an example value outside its own enum). Those are
+# real defects in the annotations and are left visible on purpose.

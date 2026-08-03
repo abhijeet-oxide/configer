@@ -1,0 +1,31 @@
+# Syft, emitting CycloneDX. CycloneDX rather than SPDX because it carries the
+# component inventory, the vulnerabilities AND the licences in one document, so
+# a single artifact answers "what is in this build", "is any of it vulnerable"
+# and "may we ship it". SPDX is the better licence-compliance archive and Syft
+# can emit it too; the platform standardizes on one and links the other.
+id: sbom
+name: Software bill of materials
+description: The full component inventory of this build, with licences.
+category: security
+tags: [security, sbom, supply-chain]
+tiers: [main, nightly]
+alwaysRun: true
+cost: moderate
+timeoutSeconds: 600
+tool:
+  command: syft
+  args: ["scan", "dir:.", "-o", "cyclonedx-json={out}", "-q"]
+  versionArgs: ["version"]
+  optional: true
+  install: "Install Syft: https://github.com/anchore/syft#installation"
+output:
+  format: cyclonedx
+  file: "sbom.cyclonedx.json"
+  kind: cyclonedx
+defaults:
+  severity: note
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["backend/go.sum", "frontend/package-lock.json"]

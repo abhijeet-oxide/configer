@@ -1,0 +1,34 @@
+# Lighthouse. The reference implementation of "what does a browser think of this
+# page", and the only tool here that measures Core Web Vitals the same way the
+# field data does. Run at the main-branch tier only: it needs a real browser and
+# a served build, and its numbers are noisy enough that gating a pull request on
+# a single run would cry wolf.
+id: lighthouse
+name: Lighthouse
+description: Performance, accessibility, best practices and SEO on the built application.
+category: frontend
+tags: [performance, accessibility, frontend-performance]
+tiers: [main, nightly]
+scopes: [frontend]
+needs: [frontend-build]
+cost: heavy
+timeoutSeconds: 900
+tool:
+  command: npx
+  args: ["--yes", "@lhci/cli@0.14.x", "collect",
+         "--staticDistDir", "{repo}/frontend/dist",
+         "--numberOfRuns", "3"]
+  probe: ["node", "--version"]
+  optional: true
+  install: "Lighthouse CI is fetched on demand by npx and needs Chrome or Chromium on the runner."
+  env:
+    LHCI_OUTPUT_DIR: "{artifacts}/lighthouse"
+output:
+  format: lighthouse
+  file: "lighthouse/manifest-lhr.json"
+defaults:
+  confidence: medium
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

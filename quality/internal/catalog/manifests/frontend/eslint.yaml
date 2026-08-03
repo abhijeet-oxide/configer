@@ -1,0 +1,35 @@
+# ESLint. Selected over Biome and oxlint for one reason that outweighs their
+# speed advantage: the React ecosystem's own correctness rules
+# (eslint-plugin-react-hooks, and the React Compiler's lint rules) exist only
+# here, and those rules are precisely what catches the re-render and
+# memoization mistakes generated code makes most often.
+id: eslint
+name: ESLint
+description: JavaScript and TypeScript lint, including the React hook and compiler rules.
+category: frontend
+tags: [lint, react]
+tiers: [pre-commit, pr, main]
+scopes: [frontend]
+paths: ["frontend/src/**/*.{ts,tsx,js,jsx}", "frontend/eslint.config.js"]
+changedFilesArg: "-"
+maxChangedFiles: 60
+cost: cheap
+tool:
+  command: npx
+  args: ["eslint", "--format", "json", "--output-file", "{out}", "src"]
+  probe: ["npx", "--no-install", "eslint", "--version"]
+  versionArgs: ["--version"]
+  workdir: frontend
+  install: "Run `npm install` in frontend/."
+  okExitCodes: [1]
+output:
+  format: eslint
+  file: "eslint.json"
+  kind: json
+defaults:
+  confidence: high
+  safeToAutomate: true
+  effort: trivial
+  docsUrl: https://eslint.org/docs/latest/rules/
+cache:
+  inputs: ["frontend/src/**", "frontend/eslint.config.js", "frontend/package-lock.json", "frontend/tsconfig.json"]

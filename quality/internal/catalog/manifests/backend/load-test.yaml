@@ -1,0 +1,32 @@
+# k6. Selected over Vegeta, Locust and JMeter: the test is a JavaScript file
+# that lives in the repository next to the code it exercises, the summary is
+# JSON by construction rather than by scraping, and thresholds are expressed in
+# the test itself. Vegeta is simpler but cannot express a scenario; JMeter is
+# more capable but its artefact is an XML file nobody reviews in a pull request.
+id: load-test
+name: Load test
+description: Latency and error rate of the API under load.
+category: backend
+tags: [performance, backend-performance, api]
+tiers: [main, nightly]
+scopes: [backend, api]
+cost: heavy
+timeoutSeconds: 900
+tool:
+  command: k6
+  args: ["run", "--summary-export", "{out}", "{repo}/scripts/cq/load-test.js"]
+  probe: ["k6", "version"]
+  optional: true
+  install: "Install k6: https://grafana.com/docs/k6/latest/set-up/install-k6/ - and start the backend before this stage."
+  okExitCodes: [99]
+  env:
+    K6_BASE_URL: "http://127.0.0.1:8080"
+output:
+  format: k6-summary
+  file: "k6-summary.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

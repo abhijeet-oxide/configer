@@ -1,0 +1,32 @@
+# Playwright. Selected over Cypress and Selenium: it is the only one of the
+# three that ships first-party JUnit output, first-party trace artifacts, and a
+# built-in screenshot comparison, so visual regression needs no fourth tool.
+id: playwright
+name: End-to-end tests
+description: Browser tests, including visual comparison.
+category: tests
+tags: [e2e, visual-regression]
+tiers: [pr, main]
+scopes: [frontend, backend, api]
+cost: heavy
+timeoutSeconds: 900
+tool:
+  command: npx
+  args: ["playwright", "test", "--reporter", "junit"]
+  probe: ["npx", "--no-install", "playwright", "--version"]
+  workdir: frontend
+  optional: true
+  install: "Run `npm install` in frontend/ and add a playwright.config.ts with your tests."
+  okExitCodes: [1]
+  env:
+    PLAYWRIGHT_JUNIT_OUTPUT_NAME: "{out}"
+output:
+  format: junit
+  file: "playwright.junit.xml"
+  kind: junit
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

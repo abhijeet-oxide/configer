@@ -1,0 +1,27 @@
+# hadolint. Dockerfile linting with a real parser rather than a grep, and it
+# embeds ShellCheck for the RUN lines, which is where the actual mistakes are.
+id: hadolint
+name: Dockerfile lint
+description: Dockerfile mistakes and unsafe shell inside RUN lines.
+category: infrastructure
+tags: [docker, infrastructure]
+tiers: [pr, main]
+scopes: [infra]
+paths: ["**/Dockerfile", "**/*.dockerfile"]
+cost: cheap
+tool:
+  command: sh
+  args: ["-c", "hadolint --format sarif $(git ls-files '*Dockerfile' '*.dockerfile') > \"$1\" || true", "sh", "{out}"]
+  probe: ["hadolint", "--version"]
+  optional: true
+  install: "Install hadolint: https://github.com/hadolint/hadolint#install"
+output:
+  format: sarif
+  file: "hadolint.sarif"
+  kind: sarif
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["**/Dockerfile", "**/*.dockerfile"]

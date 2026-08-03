@@ -1,0 +1,28 @@
+# The repository's own rule, expressed as an analyzer: the OpenAPI spec is
+# generated from the handler annotations AND committed (the backend serves it),
+# so it has to travel with the code that changed. This manifest is the example
+# to copy when adding a repository-specific check: no Go code, one YAML file.
+id: openapi-sync
+name: OpenAPI spec is in sync
+description: The committed OpenAPI spec no longer matches the handler annotations.
+category: api
+tags: [api, contract]
+tiers: [pre-commit, pr, main]
+scopes: [api, backend]
+paths: ["backend/internal/api/*.go"]
+cost: moderate
+tool:
+  command: make
+  args: ["docs-check"]
+  probe: ["make", "--version"]
+  install: "Install make, and Go, so the spec can be regenerated."
+output:
+  format: exit-code
+defaults:
+  severity: error
+  confidence: high
+  safeToAutomate: true
+  effort: trivial
+  recommendation: "Run `make docs && git add backend/internal/api/docs`. Installing the hooks with `make hooks` does it automatically on every commit."
+cache:
+  inputs: ["backend/internal/api/*.go", "backend/internal/api/docs/**"]

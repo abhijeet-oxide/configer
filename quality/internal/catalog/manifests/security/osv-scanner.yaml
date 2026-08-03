@@ -1,0 +1,31 @@
+# OSV-Scanner. It runs alongside Trivy rather than instead of it, on purpose:
+# OSV.dev aggregates twenty-odd curated advisory sources into one schema with
+# precise per-ecosystem version ranges, so on language lockfiles it produces
+# fewer false positives than a general scanner. Where both report the same CVE
+# the deduplicator merges them into one finding and records that two independent
+# databases agreed, which is a real confidence signal.
+id: osv-scanner
+name: Lockfile vulnerabilities
+description: Known vulnerabilities in the Go and npm lockfiles.
+category: security
+tags: [security, dependency]
+tiers: [pr, main]
+scopes: [deps, backend, frontend]
+cost: cheap
+tool:
+  command: osv-scanner
+  args: ["scan", "source", "--format", "sarif", "--output", "{out}", "--recursive", "."]
+  versionArgs: ["--version"]
+  optional: true
+  install: "Install OSV-Scanner: https://google.github.io/osv-scanner/installation/"
+  okExitCodes: [1]
+output:
+  format: sarif
+  file: "osv.sarif"
+  kind: sarif
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["backend/go.sum", "frontend/package-lock.json"]

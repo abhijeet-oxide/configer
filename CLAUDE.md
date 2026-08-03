@@ -16,6 +16,9 @@ make lint           # go vet + golangci-lint + eslint
 make build          # backend binary + frontend dist
 ./scripts/smoke.sh  # end-to-end: onboard fixture, edit, submit, assert branch diff
 make functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
+make quality        # the quality platform, incremental against origin/main
+make quality-local  # the fast loop (< 30s): formatting, types, vet
+make quality-doctor # which analyzers and tools are available here
 ```
 
 `make install` also points `core.hooksPath` at `scripts/hooks`, whose
@@ -34,6 +37,34 @@ large-fleet scale check. The Go side is build-tagged (`go test -tags functional
 Backend alone: `cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer`.
 Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 `npx tsc --noEmit`, `npx eslint src`, and the smoke script all green.
+
+## Continuous Quality Platform (`quality/`, docs in `docs/cqp/`)
+
+`cq` is a SECOND Go module and never a dependency of the shipped backend. It
+orchestrates existing open source tools rather than replacing them: it works out
+which analyzers a change can possibly affect, runs them in parallel with a
+content-addressed cache, normalizes SARIF / JUnit / LCOV / CycloneDX / Lighthouse
+/ k6 / benchstat into one vocabulary, deduplicates across tools, applies the
+quality budgets and writes one report for people, pipelines and AI agents.
+
+Two rules govern it, and they are what keep the catalog cheap:
+
+- **A TOOL is data, a FORMAT is code.** Adding an analyzer is one YAML manifest
+  in `quality/internal/catalog/manifests/` (shipped) or `.cq-analyzers/` (this
+  repository's own): no Go, no registration, no rebuild. Only a new output
+  format earns a normalizer. 19 normalizers carry 35 analyzers, because SARIF
+  alone carries eight tools.
+- **A missing precondition is a STATE.** A tool that is not installed is an
+  explained skip, never a failure and never a silent pass. A regression budget
+  with no baseline reports `skip`, because reporting `pass` would quietly
+  disable every gate on every new branch.
+
+Blocking budgets are REGRESSION budgets (`bundle-growth`, `api-call-growth`,
+`coverage-floor`, latency and benchmark regressions), measured against the merge
+base. Absolute budgets ship advisory, except where zero is genuinely the only
+acceptable number: secrets, critical security findings, console errors, data
+races, goroutine leaks, breaking API changes. Edit `cq.yaml` to change any of it;
+never gate on the score, which exists only for the trend line.
 
 ## Architecture (backend, `backend/internal/`)
 

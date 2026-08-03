@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/abhijeet-oxide/configer/quality/schema/report.schema.json",
+  "title": "Continuous Quality Platform report",
+  "description": "The contract between the quality platform and everything that reads it: dashboards, pipelines and AI agents. Semver: a minor version may add fields and never removes them, so a consumer may rely on what it already reads.",
+  "type": "object",
+  "required": ["schema", "run", "summary", "selection", "budgets", "categories", "findings", "metrics", "analyzers"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "description": "Semantic version of this document's shape.",
+      "examples": ["1.0.0"]
+    },
+    "run": {
+      "type": "object",
+      "description": "Provenance: enough to reproduce this run and enough to line two runs up against each other.",
+      "required": ["id", "startedAt", "durationMs", "platform"],
+      "properties": {
+        "id": { "type": "string", "description": "Run identifier; also the trace id prefix." },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "durationMs": { "type": "integer", "minimum": 0 },
+        "commit": { "type": "string" },
+        "branch": { "type": "string" },
+        "baseRef": { "type": "string", "description": "The ref this run was measured against." },
+        "pr": { "type": "string" },
+        "repo": { "type": "string" },
+        "ci": { "type": "string", "enum": ["github-actions", "azure-devops", "gitlab", "jenkins", "unknown-ci", "local"] },
+        "platform": { "type": "string", "examples": ["linux/amd64"] },
+        "cacheHits": { "type": "integer", "minimum": 0 },
+        "cacheMisses": { "type": "integer", "minimum": 0 },
+        "parallelism": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "description": "The part to read first, and on a clean run the only part that needs reading.",
+      "required": ["verdict", "score", "headline", "counts"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "warn", "fail", "error"],
+          "description": "pass: merge. warn: findings worth reading, nothing blocking. fail: a blocking budget was breached. error: the platform itself could not finish."
+        },
+        "score": { "type": "integer", "minimum": 0, "maximum": 100, "description": "For the trend line. No merge decision is ever made on it." },
+        "scoreDelta": { "type": "integer", "description": "Against the baseline; absent when there is no baseline." },
+        "trend": { "type": "string", "enum": ["improved", "flat", "regressed", "unknown"] },
+        "headline": { "type": "string", "description": "One sentence, plain words, no jargon." },
+        "counts": {
+          "type": "object",
+          "description": "Findings by severity.",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "newFindings": { "type": "integer", "minimum": 0 },
+        "fixedSinceBaseline": { "type": "integer", "minimum": 0 },
+        "blockedBy": {
+          "type": "array",
+          "description": "Names of the budgets that stopped this run.",
+          "items": { "type": "string" }
+        },
+        "nextSteps": {
+          "type": "array",
+          "description": "Ordered: what blocks the merge first, then the cheapest wins.",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "description": "Why the run did what it did. An agent told a check did not run must be able to see that no relevant file changed, rather than assume the platform is broken.",
+      "required": ["tier", "changedFiles", "scopes", "selected"],
+      "properties": {
+        "tier": { "type": "string", "enum": ["local", "pre-commit", "pr", "main", "nightly"] },
+        "changedFiles": { "type": "integer", "minimum": 0 },
+        "baseRef": { "type": "string" },
+        "scopes": { "type": "array", "items": { "type": "string" } },
+        "selected": { "type": "array", "items": { "type": "string" } },
+        "skipped": {
+          "type": "array",
+          "description": "Each entry is \"analyzer-id (reason in plain words)\".",
+          "items": { "type": "string" }
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "budgets": {
+      "type": "array",
+      "description": "The quality gates, evaluated. This is what decides the merge.",
+      "items": {
+        "type": "object",
+        "required": ["budget", "metric", "status", "limit", "message", "blocking"],
+        "properties": {
+          "budget": { "type": "string" },
+          "metric": { "type": "string", "description": "The metric key, or a description of the finding selector." },
+          "category": { "type": "string" },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "warn", "fail", "skip"],
+            "description": "skip means nothing measured this budget's metric, or a regression budget had no baseline. It is a state, not a pass."
+          },
+          "value": { "type": "number" },
+          "baseline": { "type": "number" },
+          "limit": { "type": "string", "description": "The rule in words." },
+          "delta": { "type": "number" },
+          "deltaPct": { "type": "number" },
+          "message": { "type": "string", "description": "Actionable without opening a log: the measurement, the baseline, the delta, the rule and the ref compared against." },
+          "blocking": { "type": "boolean", "description": "A non-blocking budget is reported and never stops a merge." },
+          "analyzer": { "type": "string" }
+        }
+      }
+    },
+    "categories": {
+      "type": "array",
+      "description": "Per-area rollup. A category nothing measured is absent rather than scored 100.",
+      "items": {
+        "type": "object",
+        "required": ["category", "score", "verdict"],
+        "properties": {
+          "category": { "type": "string", "enum": ["frontend", "backend", "api", "security", "infrastructure", "tests", "general"] },
+          "score": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "verdict": { "type": "string", "enum": ["pass", "warn", "fail", "error"] },
+          "counts": { "type": "object", "additionalProperties": { "type": "integer" } },
+          "findings": { "type": "integer", "minimum": 0 },
+          "metrics": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "Deduplicated across tools. Ordered worst first, then new, then by confidence.",
+      "items": {
+        "type": "object",
+        "required": ["id", "analyzer", "category", "severity", "confidence", "title", "fix"],
+        "properties": {
+          "id": { "type": "string", "description": "Stable fingerprint. Deliberately excludes the line number, so a finding that moved because an import was added above it is the same finding." },
+          "analyzer": { "type": "string" },
+          "rule": { "type": "string" },
+          "category": { "type": "string", "enum": ["frontend", "backend", "api", "security", "infrastructure", "tests", "general"] },
+          "severity": { "type": "string", "enum": ["blocker", "error", "warning", "note", "info"] },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "How much the platform trusts this. An agent should read it before acting unattended."
+          },
+          "title": { "type": "string" },
+          "detail": { "type": "string" },
+          "where": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string", "description": "Repository-relative, slash-separated." },
+                "line": { "type": "integer", "minimum": 1 },
+                "endLine": { "type": "integer", "minimum": 1 },
+                "column": { "type": "integer", "minimum": 1 },
+                "symbol": { "type": "string" },
+                "component": { "type": "string", "description": "React component, Go function, endpoint, route." }
+              }
+            }
+          },
+          "evidence": { "type": "string", "description": "One short quotation. Never a log." },
+          "fix": {
+            "type": "object",
+            "required": ["recommendation", "safeToAutomate"],
+            "properties": {
+              "recommendation": { "type": "string" },
+              "safeToAutomate": {
+                "type": "boolean",
+                "description": "The platform's statement that applying this without a human is expected to be correct. Set per-analyzer in a reviewed manifest, never guessed per finding. On a merged finding it is the floor of the merged values."
+              },
+              "effort": { "type": "string", "enum": ["trivial", "small", "medium", "large"] },
+              "patch": { "type": "string", "description": "Unified diff, when the tool supplied one." },
+              "docsUrl": { "type": "string", "format": "uri" }
+            }
+          },
+          "tools": {
+            "type": "array",
+            "description": "Every analyzer that independently reported this. More than one is real corroboration and raises confidence.",
+            "items": { "type": "string" }
+          },
+          "occurrences": { "type": "integer", "minimum": 1 },
+          "new": { "type": "boolean", "description": "Absent from the baseline. On a pull request this is what decides whether anyone is asked to care." },
+          "tags": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "metrics": {
+      "type": "array",
+      "description": "Measurements. Only these can be compared against a previous build, so regression gating lives entirely here.",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "value", "unit"],
+        "properties": {
+          "id": { "type": "string", "examples": ["frontend.bundle.total_gzip", "backend.latency.p95"] },
+          "name": { "type": "string" },
+          "value": { "type": "number" },
+          "unit": { "type": "string", "examples": ["bytes", "ms", "percent", "count", "score", "rps", "ns/op"] },
+          "direction": { "type": "string", "enum": ["lower_is_better", "higher_is_better"] },
+          "analyzer": { "type": "string" },
+          "category": { "type": "string" },
+          "subject": { "type": "string", "description": "Distinguishes the same metric measured over different things: one route, one benchmark, one asset." }
+        }
+      }
+    },
+    "analyzers": {
+      "type": "array",
+      "description": "What ran, how long it took, and whether it was cached. Operator data; omitted from the agent report.",
+      "items": {
+        "type": "object",
+        "required": ["id", "status", "durationMs"],
+        "properties": {
+          "id": { "type": "string" },
+          "category": { "type": "string" },
+          "status": { "type": "string", "enum": ["ok", "findings", "failed", "skipped", "cached", "missing-tool"] },
+          "reason": { "type": "string" },
+          "durationMs": { "type": "integer", "minimum": 0 },
+          "cacheHit": { "type": "boolean" },
+          "findings": { "type": "integer", "minimum": 0 },
+          "metrics": { "type": "integer", "minimum": 0 },
+          "exitCode": { "type": "integer" },
+          "artifact": { "type": "string" },
+          "tool": { "type": "string" },
+          "toolVersion": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "description": "Pointers to detail deliberately left out of the report.",
+      "items": {
+        "type": "object",
+        "required": ["name", "path", "kind"],
+        "properties": {
+          "name": { "type": "string" },
+          "path": { "type": "string" },
+          "kind": { "type": "string", "examples": ["sarif", "junit", "lcov", "cyclonedx", "html", "json", "log"] },
+          "analyzer": { "type": "string" },
+          "bytes": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "platformErrors": {
+      "type": "array",
+      "description": "The platform's own failures, kept strictly apart from findings. A broken analyzer must never look like a code defect, because an agent told its code has an error will change the code.",
+      "items": { "type": "string" }
+    }
+  }
+}

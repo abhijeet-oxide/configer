@@ -1,0 +1,31 @@
+# Semgrep. It covers the ground the language linters do not: cross-language
+# taint patterns, injection shapes, and the "somebody pasted a pattern from the
+# internet" class of defect. Run with the community ruleset only, so there is no
+# account, no upload and no network dependency beyond fetching the rules.
+id: semgrep
+name: Semantic security patterns
+description: Injection, unsafe deserialization and other cross-language patterns.
+category: security
+tags: [security, static-analysis]
+tiers: [pr, main]
+cost: moderate
+timeoutSeconds: 600
+tool:
+  command: semgrep
+  args: ["--config", "p/ci", "--sarif", "--output", "{out}", "--metrics", "off",
+         "--exclude", "node_modules", "--exclude", "dist", "--exclude", ".cq",
+         "--exclude", "sample-repos", "--quiet", "."]
+  versionArgs: ["--version"]
+  optional: true
+  install: "Install Semgrep: pipx install semgrep"
+  okExitCodes: [1]
+output:
+  format: sarif
+  file: "semgrep.sarif"
+  kind: sarif
+defaults:
+  confidence: medium
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["backend/**/*.go", "frontend/src/**", ".semgrepignore"]

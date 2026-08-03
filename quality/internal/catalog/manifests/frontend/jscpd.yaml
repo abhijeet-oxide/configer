@@ -1,0 +1,29 @@
+# jscpd. Copy-paste detection matters more with generated code than it ever did
+# with hand-written code: a model asked the same question twice produces the
+# same block twice, in two files, with different variable names.
+id: jscpd
+name: Duplicate code
+description: Copy-pasted blocks across the codebase.
+category: general
+tags: [duplication]
+tiers: [pr, main]
+cost: moderate
+tool:
+  command: npx
+  args: ["--yes", "jscpd@4", "--reporters", "json", "--output", "{artifacts}/jscpd",
+         "--min-lines", "12", "--threshold", "100", "--silent",
+         "--ignore", "**/node_modules/**,**/dist/**,**/testdata/**,**/*.json",
+         "frontend/src", "backend/internal"]
+  probe: ["node", "--version"]
+  optional: true
+  install: "jscpd is fetched on demand by npx; this needs network access on the runner."
+  okExitCodes: [1]
+output:
+  format: jscpd
+  file: "jscpd/jscpd-report.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["frontend/src/**", "backend/internal/**"]

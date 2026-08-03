@@ -1,0 +1,28 @@
+# A house rule, expressed as a plugin. This repository bans the em-dash
+# everywhere, and rather than that living in a bespoke lint step it is an
+# analyzer like any other: it appears in `cq plan`, it is skipped when nothing
+# it cares about changed, and its findings land in the same report as ESLint's.
+#
+# This is the file to copy when adding a rule of your own.
+id: no-emdash
+name: House style
+description: An em-dash (U+2014) is in a tracked source file.
+category: general
+tags: [style, house-rule]
+tiers: [local, pre-commit, pr, main]
+alwaysRun: true
+cost: cheap
+tool:
+  command: ./scripts/no-emdash.sh
+  probe: ["test", "-x", "scripts/no-emdash.sh"]
+  install: "The script lives at scripts/no-emdash.sh in this repository; make sure it is executable."
+output:
+  format: exit-code
+defaults:
+  severity: error
+  confidence: high
+  safeToAutomate: true
+  effort: trivial
+  recommendation: "Replace it with a spaced hyphen, a colon, or two sentences. The offending lines are in the artifact log."
+cache:
+  inputs: ["**/*.go", "**/*.ts", "**/*.tsx", "**/*.md", "**/*.yaml", "**/*.sh"]

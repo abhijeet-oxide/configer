@@ -1,0 +1,27 @@
+# The repository's own end-to-end script: onboard a fixture, edit through the
+# API, submit, and assert the branch carries exactly the expected surgical
+# diffs. It is the one check that proves the product's central promise, so it is
+# a first-class analyzer rather than a CI step somebody might reorder away.
+id: smoke
+name: End-to-end write-back
+description: The write-back path does not produce the expected diffs.
+category: tests
+tags: [e2e, smoke]
+tiers: [pr, main]
+scopes: [backend, api]
+cost: heavy
+timeoutSeconds: 600
+tool:
+  command: ./scripts/smoke.sh
+  probe: ["test", "-x", "scripts/smoke.sh"]
+  install: "Install Go, git and curl; the script builds the backend and drives it over HTTP."
+output:
+  format: exit-code
+defaults:
+  severity: blocker
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+  recommendation: "The smoke script says which assertion failed. It is the product's central promise, so treat a failure here as blocking whatever else is green."
+cache:
+  inputs: ["backend/**/*.go", "sample-repo/**", "scripts/smoke.sh"]

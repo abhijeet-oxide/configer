@@ -1,0 +1,29 @@
+# Gremlins. Mutation testing answers the question coverage cannot: not "was this
+# line executed" but "would any test have noticed if it were wrong". It is
+# nightly-only and advisory because a full run takes hours on a large module,
+# which its own documentation says plainly.
+id: mutation
+name: Mutation testing
+description: Whether the tests would notice if the code were wrong.
+category: tests
+tags: [tests, mutation]
+tiers: [nightly]
+scopes: [backend]
+cost: heavy
+timeoutSeconds: 3600
+tool:
+  command: sh
+  args: ["-c", "cd backend && gremlins unleash --output=\"$CQ_ARTIFACTS/gremlins.json\" ./... >/dev/null 2>&1; cd \"$CQ_REPO\" && node scripts/cq/adapt.mjs gremlins < \"$CQ_ARTIFACTS/gremlins.json\" > \"$1\"", "sh", "{out}"]
+  probe: ["gremlins", "--version"]
+  optional: true
+  install: "Install Gremlins: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"
+output:
+  format: cq
+  file: "mutation.json"
+defaults:
+  severity: note
+  confidence: medium
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

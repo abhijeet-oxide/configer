@@ -1,0 +1,28 @@
+# gofmt. The cheapest check in the platform and the one with the fewest
+# opinions: Go has one formatting, it is not configurable, and disagreeing with
+# it is not a position anybody holds.
+id: gofmt
+name: Go formatting
+description: Go files that are not gofmt clean.
+category: general
+tags: [format]
+tiers: [local, pre-commit, pr, main]
+scopes: [backend]
+paths: ["backend/**/*.go"]
+cost: cheap
+tool:
+  command: sh
+  args: ["-c", "out=$(gofmt -l .); if [ -n \"$out\" ]; then echo \"$out\"; exit 1; fi", "sh"]
+  probe: ["gofmt", "-h"]
+  workdir: backend
+  install: "Install Go: https://go.dev/dl/"
+output:
+  format: exit-code
+defaults:
+  severity: warning
+  confidence: high
+  safeToAutomate: true
+  effort: trivial
+  recommendation: "Run `make fmt` (or `gofmt -w backend`). The change is entirely mechanical."
+cache:
+  inputs: ["backend/**/*.go"]

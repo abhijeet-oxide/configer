@@ -1,0 +1,33 @@
+# kubeconform. kubeval, the tool everybody knows, is unmaintained; kubeconform
+# replaced it with parallel validation, cached schema downloads, offline
+# operation and CRD support. Schema validation is the cheapest possible
+# infrastructure check, and it catches the apiVersion mistakes that otherwise
+# surface at apply time in a cluster.
+#
+# Its JSON is neither SARIF nor the cq shape, so it goes through the one shared
+# adapter script rather than earning a normalizer of its own. That is the rule:
+# a FORMAT gets Go code, a TOOL gets a manifest.
+id: kubeconform
+name: Kubernetes manifest validation
+description: Kubernetes manifests that do not match their API schema.
+category: infrastructure
+tags: [kubernetes, infrastructure]
+tiers: [pr, main]
+scopes: [infra]
+paths: ["deploy/**/*.{yaml,yml}", "sample-repo*/**/*.{yaml,yml}"]
+cost: cheap
+tool:
+  command: sh
+  args: ["-c", "kubeconform -summary -output json -ignore-missing-schemas -skip Kptfile deploy sample-repo 2>/dev/null | node scripts/cq/adapt.mjs kubeconform > \"$1\"", "sh", "{out}"]
+  probe: ["kubeconform", "-v"]
+  optional: true
+  install: "Install kubeconform: https://github.com/yannh/kubeconform#installation"
+output:
+  format: cq
+  file: "kubeconform.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["deploy/**", "sample-repo/**"]

@@ -20,6 +20,36 @@ fi
 ROOT="$(git rev-parse --show-toplevel)"
 DOCS="backend/internal/api/docs"
 
+# ---------------------------------------------------------------------------
+# The quality gate, over the staged files only.
+#
+# This runs FIRST, and it is deliberately forgiving about its own problems: if
+# cq is not built, or a tool is missing, it says so and lets the commit through.
+# A hook that blocks work because of its own installation problem is a hook that
+# gets uninstalled, and then the OpenAPI refresh below stops happening too.
+#
+# It looks at the INDEX rather than the working tree, because the working tree
+# may hold work that was deliberately not staged.
+#
+#   SKIP_CQ=1 git commit ...    skip this check for one commit
+#   git commit --no-verify ...  skip every hook
+# ---------------------------------------------------------------------------
+
+CQ="$ROOT/quality/bin/cq"
+if [ "${SKIP_CQ:-}" != "1" ] && [ -x "$CQ" ]; then
+  if ! "$CQ" run --root "$ROOT" --tier pre-commit --staged --quiet; then
+    echo "" >&2
+    echo "pre-commit: the quality gate is not satisfied by what is staged." >&2
+    echo "  Details:  .cq/report.md" >&2
+    echo "  Retry:    make quality-precommit" >&2
+    echo "  Skip:     SKIP_CQ=1 git commit ..." >&2
+    exit 1
+  fi
+elif [ "${SKIP_CQ:-}" != "1" ]; then
+  echo "pre-commit: quality/bin/cq is not built, so the quality gate was skipped." >&2
+  echo "            Build it once with 'make cq'." >&2
+fi
+
 # Only Go changes under the API package can move the spec; every other commit
 # pays nothing.
 staged_api_go="$(git diff --cached --name-only --diff-filter=ACMR \

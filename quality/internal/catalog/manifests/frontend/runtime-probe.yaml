@@ -1,0 +1,36 @@
+# The runtime probe: a headless browser walks the application's main screens and
+# counts what static analysis cannot see - console errors, uncaught exceptions,
+# duplicate and excessive network requests, missing loading states, and (when
+# axe-core is installed) accessibility violations.
+#
+# This is one of the few places the platform builds rather than buys, and the
+# reason is that no off-the-shelf tool answers "did this screen make the same
+# request twice". The heavy lifting is still Playwright's and axe-core's; the
+# custom part is thirty lines of orchestration emitting the native format.
+id: runtime-probe
+name: Runtime behaviour probe
+description: Console errors, duplicate network calls and accessibility on the main screens.
+category: frontend
+tags: [runtime, accessibility, api]
+tiers: [pr, main]
+scopes: [frontend, backend, api]
+cost: heavy
+timeoutSeconds: 420
+tool:
+  command: node
+  args: ["{repo}/scripts/cq/runtime-probe.mjs", "{out}"]
+  probe: ["node", "-e", "require.resolve('playwright')"]
+  workdir: frontend
+  optional: true
+  install: "Run `npm install` in frontend/ (Playwright is already a dev dependency), and make sure a Chromium build is available."
+  env:
+    CQ_PROBE_BASE_URL: "http://127.0.0.1:5173"
+output:
+  format: cq
+  file: "runtime-probe.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  disabled: true

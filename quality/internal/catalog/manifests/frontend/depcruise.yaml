@@ -1,0 +1,30 @@
+# dependency-cruiser. Chosen over madge because it can state a RULE about the
+# module graph, not merely report cycles: "nothing under components may import
+# the API client directly" is an architecture gate, and madge has no way to say
+# it.
+id: depcruise
+name: Module graph
+description: Import cycles and module boundary violations in the frontend.
+category: frontend
+tags: [architecture]
+tiers: [pr, main]
+scopes: [frontend]
+cost: moderate
+tool:
+  command: npx
+  args: ["--yes", "dependency-cruiser@16", "--output-type", "json",
+         "--no-config", "--output-to", "{out}", "src"]
+  probe: ["node", "--version"]
+  workdir: frontend
+  optional: true
+  install: "dependency-cruiser is fetched on demand by npx; this needs network access on the runner."
+  okExitCodes: [1]
+output:
+  format: dependency-cruiser
+  file: "depcruise.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["frontend/src/**", "frontend/.dependency-cruiser.js"]

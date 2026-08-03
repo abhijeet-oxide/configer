@@ -1,0 +1,291 @@
+# Continuous Quality Platform configuration for this repository.
+#
+# Everything here is optional. `cq` ships with 33 analyzers and 20 budgets built
+# in, and works with no configuration at all; this file is where THIS repository
+# says what quality means to it. See docs/cqp/ for the reasoning behind every
+# default, and `cq budgets` for the gates currently in force.
+version: 1
+
+# ---------------------------------------------------------------------------
+# What the layout means. Incremental selection reads this: a change is
+# classified into the areas it touches, and an analyzer runs when one of its
+# declared scopes is in that set. A path matching nothing lands in "other",
+# which selects EVERYTHING - silence over an unmapped file is the failure mode
+# of incremental selection that actually hurts.
+# ---------------------------------------------------------------------------
+scopes:
+  frontend:
+    - "frontend/**"
+  backend:
+    - "backend/**"
+  api:
+    # An API handler change is both a backend change and a contract change, and
+    # a file may legitimately land in several scopes.
+    - "backend/internal/api/**"
+    - "frontend/src/api.ts"
+  infra:
+    - "deploy/**"
+    - "**/Dockerfile"
+    - "**/nginx.conf"
+    - "sample-repo/**"
+    - "sample-repos/**"
+  ci:
+    - ".github/**"
+    - ".azure/**"
+    - "scripts/**"
+    - "Makefile"
+    - "quality/**"
+  deps:
+    - "**/go.mod"
+    - "**/go.sum"
+    - "**/package.json"
+    - "**/package-lock.json"
+  docs:
+    - "**/*.md"
+    - "docs/**"
+
+# Nothing here is ours, so nothing here should be reported on. Reporting on
+# vendored or generated code is how people learn to ignore the report.
+ignore:
+  - "**/node_modules/**"
+  - "**/dist/**"
+  - "**/vendor/**"
+  - "**/.git/**"
+  - "**/bin/**"
+  - ".cq/**"
+  - "graphify-out/**"
+  # The scanner corpus is deliberately messy: it is FIXTURE data for the
+  # discovery tests, and its "mistakes" are the point.
+  - "sample-repos/**"
+  - "backend/internal/*/testdata/**"
+
+# Extra analyzer manifests, layered over the built-in catalog. Drop a YAML file
+# in here and it is a plugin: no Go code, no rebuild.
+analyzerDirs:
+  - .cq-analyzers
+
+# ---------------------------------------------------------------------------
+# Per-analyzer overrides. The manifests stay pristine; a repository retunes them
+# here by id.
+# ---------------------------------------------------------------------------
+analyzers:
+  # The frontend has no Playwright suite yet. Leaving it enabled would report
+  # "missing tool" on every run, which trains people to ignore that column.
+  playwright:
+    enabled: false
+  # There are no Go benchmarks in the tree yet either.
+  go-bench:
+    enabled: false
+  mutation:
+    enabled: false
+  load-test:
+    enabled: false
+
+# ---------------------------------------------------------------------------
+# The report an AI agent reads. These are the token-economy dials; see
+# docs/cqp/policy-and-reporting.md.
+# ---------------------------------------------------------------------------
+report:
+  # Tighter than the shipped defaults, because this repository carries enough
+  # pre-existing findings that the defaults produced a ~100 KB agent report.
+  # These caps hold it near 25 KB, which is the number that actually matters:
+  # an agent pays for it on every iteration of a fix loop.
+  maxFindings: 60
+  maxPerAnalyzer: 10
+  minSeverity: note
+  evidenceChars: 160
+  # newOnly would restrict the agent report to what this change added, which is
+  # the right setting once the existing backlog is cleared. Off for now so the
+  # debt stays visible rather than becoming permanently invisible.
+  newOnly: false
+
+# ---------------------------------------------------------------------------
+# The platform's own observability. Off by default; set an endpoint to ship the
+# run's spans to a collector, or enable it to leave an OTLP trace in the
+# artifacts. See docs/cqp/adr/0009-otel-without-sdk.md.
+# ---------------------------------------------------------------------------
+telemetry:
+  enabled: true
+  serviceName: configer-cqp
+  otlpEndpoint: ""
+  attributes:
+    deployment.environment: ci
+
+# ---------------------------------------------------------------------------
+# Quality budgets.
+#
+# Omit this key entirely to take the 20 shipped defaults (`cq budgets` lists
+# them). Setting it REPLACES them, so this is the full policy for this
+# repository, stated in one place.
+#
+# The rule the list follows: blocking budgets are regression budgets, because
+# "not worse than the branch you are merging into" is always both achievable and
+# meaningful. Absolute budgets ship advisory, except where zero really is the
+# only acceptable number.
+# ---------------------------------------------------------------------------
+budgets:
+  # --- never acceptable, at any point ------------------------------------
+  - name: no-secrets
+    description: A committed credential fails the build outright.
+    findings: { tag: secret }
+    max: 0
+    category: security
+
+  - name: no-critical-security
+    description: No error-or-worse security finding may reach the default branch.
+    findings: { category: security, minSeverity: error }
+    max: 0
+    category: security
+
+  - name: no-race-conditions
+    description: The Go race detector must be clean.
+    metric: backend.races
+    max: 0
+    category: backend
+
+  - name: no-goroutine-leaks
+    description: Every goroutine a test starts must have exited when it ends.
+    metric: backend.goroutine_leaks
+    max: 0
+    category: backend
+
+  - name: no-console-errors
+    description: The application must reach its main screens without a console error.
+    metric: frontend.console.errors
+    max: 0
+    category: frontend
+
+  - name: no-uncaught-exceptions
+    description: No uncaught exception during render on any probed screen.
+    metric: frontend.console.exceptions
+    max: 0
+    category: frontend
+
+  - name: no-breaking-api-changes
+    description: The published OpenAPI contract may not break an existing client.
+    metric: api.breaking_changes
+    max: 0
+    category: api
+
+  - name: house-style
+    description: This repository bans the em-dash everywhere. It is enforced, not suggested.
+    metric: general.no-emdash.passed
+    min: 1
+    category: general
+
+  # --- what this change added --------------------------------------------
+  - name: no-new-blocking-findings
+    description: A change may not introduce a new error-level finding of any kind.
+    findings: { minSeverity: error, onlyNew: true }
+    max: 0
+    tiers: [pr, main]
+
+  # --- regression: the everyday gates ------------------------------------
+  - name: bundle-growth
+    description: The gzipped frontend bundle may not grow more than 5% against the base branch.
+    metric: frontend.bundle.total_gzip
+    maxIncreasePct: 5
+    warnAt: 2
+    category: frontend
+
+  - name: api-call-growth
+    description: A screen may not start making materially more network requests than it did.
+    metric: frontend.network.requests
+    maxIncreasePct: 25
+    category: api
+
+  - name: duplicate-request-growth
+    description: Duplicated and polled requests may not increase.
+    metric: frontend.network.duplicates
+    maxIncrease: 0
+    blocking: false
+    category: api
+
+  - name: coverage-floor
+    description: Line coverage may not fall against the base branch.
+    metric: general.coverage.lines
+    maxDecrease: 0.5
+    category: tests
+
+  - name: backend-latency-regression
+    description: p95 request latency may not regress by more than 10%.
+    metric: backend.latency.p95
+    maxIncreasePct: 10
+    category: backend
+
+  # --- aspirations: measured and reported before they are enforced -------
+  - name: coverage-target
+    description: Line coverage target of 85%.
+    metric: general.coverage.lines
+    min: 85
+    blocking: false
+    category: tests
+
+  - name: accessibility-clean
+    description: Zero axe-core violations on the audited routes.
+    metric: frontend.a11y.violations
+    max: 0
+    blocking: false
+    category: frontend
+
+  - name: lighthouse-performance
+    description: Lighthouse performance stays at 90 or above; below 85 fails.
+    metric: frontend.lighthouse.performance|*
+    min: 85
+    warnAt: 90
+    blocking: false
+    category: frontend
+
+  - name: duplication-ceiling
+    description: Duplicated code stays under 5% of the codebase.
+    metric: general.duplication.percent
+    max: 5
+    blocking: false
+    category: general
+
+  - name: no-circular-dependencies
+    description: The frontend module graph stays acyclic.
+    metric: frontend.circular_dependencies
+    max: 0
+    blocking: false
+    category: frontend
+
+  - name: dead-code-ceiling
+    description: Unused exports, files and dependencies stay in double digits.
+    metric: general.dead_code.items
+    max: 25
+    blocking: false
+    category: general
+
+  - name: no-flaky-tests
+    description: No test may pass only on a retry.
+    metric: tests.flaky
+    max: 0
+    blocking: false
+    category: tests
+
+  - name: go-formatting
+    description: Go files should be gofmt clean.
+    metric: general.gofmt.passed
+    min: 1
+    blocking: false
+    category: general
+
+# ---------------------------------------------------------------------------
+# Scoring. The score is for the trend line and for the one-glance "did this make
+# things better or worse". No merge decision is ever made on it, so a wrong
+# weight here can never block anybody.
+# ---------------------------------------------------------------------------
+scoring:
+  penalty:
+    blocker: 25
+    error: 8
+    warning: 2
+    note: 0.5
+    info: 0
+  budgetFailPenalty: 15
+  categoryWeights:
+    security: 2
+    backend: 1.5
+    frontend: 1.5
+    api: 1.25

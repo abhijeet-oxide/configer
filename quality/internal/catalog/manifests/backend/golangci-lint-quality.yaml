@@ -1,0 +1,34 @@
+# The same runner, pointed at the quality platform's own module.
+#
+# Two manifests rather than one because golangci-lint runs inside a single Go
+# module, and `quality/` is deliberately a separate module so the platform can
+# never become a dependency of the shipped backend. It is also the point: a
+# platform that exempts itself from its own bar is a platform nobody believes.
+id: golangci-lint-quality
+name: Go static analysis (quality platform)
+description: The quality platform holds its own code to the same bar it holds everything else to.
+category: backend
+tags: [lint, static-analysis]
+tiers: [pre-commit, pr, main]
+scopes: [ci]
+paths: ["quality/**/*.go", "quality/.golangci.yml"]
+cost: moderate
+tool:
+  command: golangci-lint
+  args: ["run", "--output.sarif.path={out}", "--output.text.path=stdout", "./..."]
+  versionArgs: ["--version"]
+  workdir: quality
+  pin: v2.5.0
+  install: "Install golangci-lint v2: https://golangci-lint.run/welcome/install/"
+  okExitCodes: [1, 3, 5, 7]
+output:
+  format: sarif
+  file: "golangci-quality.sarif"
+  kind: sarif
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+  docsUrl: https://golangci-lint.run/usage/linters/
+cache:
+  inputs: ["quality/**/*.go", "quality/.golangci.yml", "quality/go.sum"]

@@ -1,0 +1,28 @@
+# actionlint. Workflow files are code that runs with credentials, and they are
+# the one kind of code nobody typechecks. actionlint parses the workflow schema,
+# checks the expression syntax, and runs ShellCheck over every `run:` block.
+id: actionlint
+name: Workflow lint
+description: Mistakes in the GitHub Actions workflow files.
+category: infrastructure
+tags: [ci, infrastructure]
+tiers: [pr, main]
+scopes: [ci]
+paths: [".github/workflows/*.{yml,yaml}"]
+cost: cheap
+tool:
+  command: sh
+  args: ["-c", "actionlint -format '{{json .}}' 2>/dev/null | node scripts/cq/adapt.mjs actionlint > \"$1\"", "sh", "{out}"]
+  probe: ["actionlint", "-version"]
+  optional: true
+  install: "Install actionlint: https://github.com/rhysd/actionlint/blob/main/docs/install.md"
+output:
+  format: cq
+  file: "actionlint.json"
+defaults:
+  severity: warning
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: [".github/workflows/**"]

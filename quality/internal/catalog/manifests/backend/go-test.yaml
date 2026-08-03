@@ -1,0 +1,33 @@
+# `go test -race -json`. The race detector is the single highest-value dynamic
+# check available for a Go service, and running it here rather than as a
+# separate nightly job is deliberate: a race that reaches the default branch is
+# already in production's future.
+#
+# The JSON stream, rather than a JUnit conversion, because races, deadlocks and
+# goroutine leaks arrive as OUTPUT text on an otherwise ordinary failure and a
+# JUnit conversion discards exactly that.
+id: go-test
+name: Go tests with the race detector
+description: Unit tests, data races, deadlocks and goroutine leaks.
+category: tests
+tags: [tests, race]
+tiers: [pre-commit, pr, main]
+scopes: [backend]
+paths: ["backend/**/*.go"]
+cost: moderate
+timeoutSeconds: 600
+tool:
+  command: go
+  args: ["test", "-race", "-json", "-count=1", "./..."]
+  versionArgs: ["version"]
+  workdir: backend
+  install: "Install Go: https://go.dev/dl/"
+  okExitCodes: [1, 2]
+output:
+  format: go-test-json
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["backend/**/*.go", "backend/go.sum"]

@@ -1,0 +1,33 @@
+# The house rule from CLAUDE.md, expressed as a plugin:
+#
+#   "Keep Go files <= ~400 lines and single-purpose; split by resource, not by
+#    layer."
+#
+# It is advisory rather than blocking, because "~400" is a guideline and the
+# right response to crossing it is sometimes "this file is fine". What matters
+# is that it is VISIBLE in the same report as everything else, rather than being
+# a rule people only hear about in review.
+id: go-file-length
+name: Go file length
+description: Go files that have grown past the house limit.
+category: general
+tags: [house-rule, maintainability]
+tiers: [pr, main]
+scopes: [backend, ci]
+paths: ["backend/**/*.go", "quality/**/*.go"]
+cost: cheap
+tool:
+  command: node
+  args: ["{repo}/.cq-analyzers/go-file-length.mjs", "{out}"]
+  probe: ["node", "--version"]
+  install: "Install Node.js 20 or newer."
+output:
+  format: cq
+  file: "go-file-length.json"
+defaults:
+  severity: note
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["backend/**/*.go", "quality/**/*.go"]

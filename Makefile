@@ -3,8 +3,13 @@
 SHELL := /bin/bash
 BACKEND := backend
 FRONTEND := frontend
+QUALITY := quality
 # Repository the backend serves out of the box (override: make dev CONFIGER_REPO=/path).
 CONFIGER_REPO ?= ./sample-repo
+# The quality platform's own binary, and the ref changes are measured against.
+CQ := ./$(QUALITY)/bin/cq
+CQ_BASE ?= origin/main
+CQ_VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 
 .DEFAULT_GOAL := help
 
@@ -69,9 +74,53 @@ build: ## Build the backend binary + frontend production bundle
 	cd $(FRONTEND) && npm run build
 
 .PHONY: test
-test: ## Run backend tests + frontend typecheck
+test: ## Run backend tests + frontend typecheck + quality platform tests
 	cd $(BACKEND) && go test ./...
+	cd $(QUALITY) && go test ./...
 	cd $(FRONTEND) && npx tsc --noEmit
+
+# ---------------------------------------------------------------------------
+# Continuous Quality Platform. `cq` orchestrates the open source analyzers,
+# runs only what the change can affect, and writes one report for people,
+# pipelines and AI agents. See docs/cqp/.
+# ---------------------------------------------------------------------------
+
+.PHONY: cq
+cq: ## Build the quality platform binary (quality/bin/cq)
+	cd $(QUALITY) && go build -trimpath -ldflags "-s -w -X github.com/abhijeet-oxide/configer/quality/internal/cli.Version=$(CQ_VERSION)" -o bin/cq ./cmd/cq
+	@echo "built $(QUALITY)/bin/cq $(CQ_VERSION)"
+
+.PHONY: quality
+quality: cq ## Full pull-request quality run (incremental against $(CQ_BASE))
+	$(CQ) run --tier pr --base $(CQ_BASE)
+
+.PHONY: quality-local
+quality-local: cq ## Fast local loop: formatting, types, vet (target < 30s)
+	$(CQ) run --tier local --fail-on warn
+
+.PHONY: quality-precommit
+quality-precommit: cq ## What a commit would be checked against (staged files only)
+	$(CQ) run --tier pre-commit --staged
+
+.PHONY: quality-main
+quality-main: cq ## The full sweep, and record it as the baseline
+	$(CQ) run --tier main --full --baseline
+
+.PHONY: quality-plan
+quality-plan: cq ## Say what would run, and why, without running anything
+	$(CQ) plan --tier pr --base $(CQ_BASE)
+
+.PHONY: quality-doctor
+quality-doctor: cq ## Which analyzers and tools are available here, and how to install the rest
+	$(CQ) doctor
+
+.PHONY: quality-budgets
+quality-budgets: cq ## List the quality gates in force
+	$(CQ) budgets
+
+.PHONY: quality-baseline
+quality-baseline: cq ## Record the current state as the baseline to measure against
+	$(CQ) run --tier main --full --baseline --fail-on never
 
 .PHONY: functional-test
 functional-test: ## Scanner functional + scale tests over sample-repos/ (backend + API)
@@ -81,15 +130,18 @@ functional-test: ## Scanner functional + scale tests over sample-repos/ (backend
 lint: ## go vet + ESLint + TypeScript typecheck + no em-dashes
 	./scripts/no-emdash.sh
 	cd $(BACKEND) && go vet ./...
+	cd $(QUALITY) && go vet ./...
 	cd $(FRONTEND) && npx eslint src && npx tsc --noEmit
 
 .PHONY: fmt
 fmt: ## Format Go code
 	cd $(BACKEND) && go fmt ./...
+	cd $(QUALITY) && go fmt ./...
 
 .PHONY: tidy
 tidy: ## Tidy Go module dependencies
 	cd $(BACKEND) && go mod tidy
+	cd $(QUALITY) && go mod tidy
 
 .PHONY: docker
 docker: ## Run the whole stack via docker compose
@@ -97,4 +149,5 @@ docker: ## Run the whole stack via docker compose
 
 .PHONY: clean
 clean: ## Remove build artifacts
+	rm -rf $(QUALITY)/bin .cq
 	rm -rf $(BACKEND)/bin $(FRONTEND)/dist

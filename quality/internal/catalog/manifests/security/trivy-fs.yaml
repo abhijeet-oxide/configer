@@ -1,0 +1,34 @@
+# Trivy. The broad scanner: one binary covers dependencies, misconfiguration,
+# secrets and licences across Go, npm, Dockerfiles and Kubernetes manifests.
+# Grype is measurably faster at pure vulnerability scanning and OSV-Scanner has
+# tighter per-ecosystem version matching, but neither is a pipeline bottleneck
+# once the database is cached, and one tool covering four questions is worth
+# more here than a few seconds on each.
+id: trivy-fs
+name: Dependency and configuration scan
+description: Known vulnerabilities and misconfiguration across the repository.
+category: security
+tags: [security, dependency]
+tiers: [pr, main]
+alwaysRun: true
+cost: moderate
+timeoutSeconds: 600
+tool:
+  command: trivy
+  args: ["fs", ".", "--scanners", "vuln,misconfig,license",
+         "--format", "sarif", "--output", "{out}",
+         "--severity", "MEDIUM,HIGH,CRITICAL", "--exit-code", "0",
+         "--skip-dirs", "node_modules,dist,.cq,sample-repos"]
+  versionArgs: ["--version"]
+  optional: true
+  install: "Install Trivy: https://trivy.dev/latest/getting-started/installation/"
+output:
+  format: sarif
+  file: "trivy-fs.sarif"
+  kind: sarif
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["backend/go.sum", "backend/go.mod", "frontend/package-lock.json", "deploy/**", "**/Dockerfile"]

@@ -1,0 +1,29 @@
+# benchstat over `go test -bench`. benchstat rather than a hand-rolled
+# comparison because it does the STATISTICS: it distinguishes a benchmark that
+# got slower from one that was noisy, and a performance gate built on single
+# runs cries wolf until somebody switches it off.
+id: go-bench
+name: Go benchmarks
+description: Latency and allocation per operation, compared against the baseline.
+category: backend
+tags: [performance, backend-performance]
+tiers: [main, nightly]
+scopes: [backend]
+cost: heavy
+timeoutSeconds: 1200
+tool:
+  command: sh
+  args: ["-c", "go test -run '^$' -bench . -benchmem -count 6 ./... > \"$CQ_ARTIFACTS/bench.txt\" 2>&1; benchstat -format csv \"$CQ_ARTIFACTS/bench.txt\" > \"$1\"", "sh", "{out}"]
+  probe: ["benchstat", "-h"]
+  workdir: backend
+  optional: true
+  install: "Install benchstat: go install golang.org/x/perf/cmd/benchstat@latest"
+output:
+  format: benchstat-csv
+  file: "bench.csv"
+defaults:
+  confidence: medium
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

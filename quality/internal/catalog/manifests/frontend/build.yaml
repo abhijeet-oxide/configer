@@ -1,0 +1,25 @@
+# The production build. It is an analyzer in its own right (a build that fails
+# is the loudest possible quality signal) and it is the prerequisite for
+# everything that measures the built output.
+id: frontend-build
+name: Frontend production build
+description: The frontend does not build.
+category: frontend
+tags: [build]
+tiers: [pr, main]
+scopes: [frontend]
+cost: moderate
+tool:
+  command: npx
+  args: ["vite", "build", "--logLevel", "warn"]
+  probe: ["npx", "--no-install", "vite", "--version"]
+  workdir: frontend
+  install: "Run `npm install` in frontend/."
+output:
+  format: exit-code
+defaults:
+  severity: blocker
+  confidence: high
+  recommendation: "Fix the build error in the artifact log. Nothing downstream of the build was measured."
+cache:
+  inputs: ["frontend/src/**", "frontend/index.html", "frontend/vite.config.ts", "frontend/package-lock.json"]

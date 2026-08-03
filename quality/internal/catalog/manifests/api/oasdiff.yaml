@@ -1,0 +1,28 @@
+# oasdiff. The API half of regression-based validation: a published schema is a
+# promise to code you cannot see, and the only meaningful question about a
+# change to it is whether a client that obeyed the old contract still works.
+# oasdiff knows 500-odd distinct ways an OpenAPI change can break a consumer;
+# a diff of the JSON file knows none of them.
+id: oasdiff
+name: API breaking changes
+description: Changes to the published API contract that would break an existing client.
+category: api
+tags: [api, contract, api-regression]
+tiers: [pr, main]
+scopes: [api]
+cost: cheap
+tool:
+  command: sh
+  args: ["-c", "git show \"${CQ_BASE_REF:-origin/main}:backend/internal/api/docs/configer_swagger.json\" > \"$CQ_ARTIFACTS/openapi-base.json\" 2>/dev/null || echo '{}' > \"$CQ_ARTIFACTS/openapi-base.json\"; oasdiff breaking \"$CQ_ARTIFACTS/openapi-base.json\" backend/internal/api/docs/configer_swagger.json --format json > \"$1\" 2>\"$CQ_ARTIFACTS/oasdiff.err\" || true", "sh", "{out}"]
+  probe: ["oasdiff", "--version"]
+  optional: true
+  install: "Install oasdiff: go install github.com/oasdiff/oasdiff@latest"
+output:
+  format: oasdiff
+  file: "oasdiff.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  disabled: true

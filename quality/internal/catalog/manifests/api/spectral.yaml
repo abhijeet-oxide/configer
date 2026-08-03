@@ -1,0 +1,31 @@
+# Spectral. It answers a different question from oasdiff - is the spec any good,
+# rather than did it break - so both run and neither replaces the other.
+id: spectral
+name: OpenAPI style
+description: Style and correctness of the published OpenAPI document.
+category: api
+tags: [api, contract]
+tiers: [pr, main]
+scopes: [api]
+cost: cheap
+tool:
+  command: npx
+  # No --ruleset: Spectral finds the repository's own .spectral.yaml, which
+  # extends spectral:oas and relaxes the rules that fight with a generated spec.
+  args: ["--yes", "@stoplight/spectral-cli@6", "lint",
+         "backend/internal/api/docs/configer_swagger.json",
+         "--format", "json", "--output", "{out}"]
+  probe: ["node", "--version"]
+  optional: true
+  install: "Spectral is fetched on demand by npx; this needs network access on the runner."
+  okExitCodes: [1, 2]
+output:
+  format: spectral
+  file: "spectral.json"
+defaults:
+  severity: note
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["backend/internal/api/docs/**", ".spectral.yaml"]

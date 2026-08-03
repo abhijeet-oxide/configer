@@ -1,0 +1,26 @@
+# size-limit. Chosen over bundlesize (unmaintained) and Statoscope (webpack
+# oriented) because it reports the number the browser actually pays - gzipped
+# bytes - rather than a treemap, and a gate can only compare a number.
+id: bundle-size
+name: Bundle budget
+description: Gzipped size of the built frontend bundle.
+category: frontend
+tags: [bundle, performance]
+tiers: [pr, main]
+scopes: [frontend]
+needs: [frontend-build]
+cost: cheap
+tool:
+  command: node
+  args: ["{repo}/scripts/cq/bundle-size.mjs", "{repo}/frontend/dist", "{out}"]
+  probe: ["node", "--version"]
+  install: "Install Node.js 20 or newer, and run the frontend build first so there is a bundle to measure."
+output:
+  format: size-limit
+  file: "bundle-size.json"
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  disabled: true

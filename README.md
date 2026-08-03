@@ -101,6 +101,7 @@ make functional-test                                       # onboard + verify al
 | [CONFIG.md](CONFIG.md) / [.env.example](.env.example) | Every configuration option. |
 | [DEVELOPMENT.md](DEVELOPMENT.md) | Local dev workflow, testing, and conventions. |
 | [CLAUDE.md](CLAUDE.md) | Architecture and the `.configer` schema. |
+| [docs/cqp/](docs/cqp/) | The Continuous Quality Platform: research, ten ADRs, the tool selection, and how an AI agent consumes the report. |
 | [sample-repos/](sample-repos/) | The corpus of realistic repos the scanner is tested against. |
 | `http://localhost:8080/api/docs` | Interactive API reference (spec generated from the code). |
 
@@ -112,5 +113,7 @@ make functional-test                                       # onboard + verify al
 | `frontend/` | React + TypeScript + Ant Design SPA: grid, file mode, onboarding, instances, compare, approvals. |
 | `sample-repo/` | The demo fixture served out of the box. |
 | `sample-repos/` | Realistic Helm / Kustomize / kpt / K8s / telco repos for scanner testing. |
-| `docs/` | Screenshots, the demo GIF, and design notes. |
+| `docs/` | Screenshots, the demo GIF, design notes, and the quality platform's documentation. |
 | `deploy/` | docker-compose stack (backend + frontend + Postgres). |
+| `quality/` | The Continuous Quality Platform (`cq`): one Go binary that runs the open source analyzers incrementally and writes one normalized report. |
+| `.cq-analyzers/` | This repository's own quality checks. One YAML file each, no code. |

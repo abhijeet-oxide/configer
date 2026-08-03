@@ -1,0 +1,343 @@
+# Continuous Quality Platform.
+#
+# Three ways in, one binary, one report:
+#
+#   pull_request   the `pr` stage, incremental against the merge base
+#   push to main   the `main` stage, full, and it RECORDS THE BASELINE that
+#                  every subsequent pull request is measured against
+#   schedule       the `nightly` stage, the expensive long tail
+#
+# The pull-request job is deliberately one job rather than a matrix. The
+# orchestrator already schedules analyzers in parallel with a dependency graph
+# and a shared cache; splitting them across runners would mean N cache restores,
+# N tool installations and N partial reports to stitch back together, for the
+# same wall clock. Scale out when a single runner genuinely stops coping - see
+# docs/cqp/operations.md.
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # 03:00 UTC daily: mutation testing and the deep scans.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+# Least privilege by default; each job widens only what it needs.
+permissions:
+  contents: read
+
+concurrency:
+  # A superseded pull-request run has nothing to say. Main and nightly are never
+  # cancelled, because main's run is what records the baseline.
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  GO_VERSION: "1.25"
+  NODE_VERSION: "22"
+  # Pinned tool versions. Reproducible builds start here: an unpinned scanner
+  # silently changes what "green" means between two runs of the same commit.
+  GOLANGCI_VERSION: "v2.5.0"
+  TRIVY_VERSION: "v0.58.1"
+  GITLEAKS_VERSION: "8.24.0"
+  OSV_SCANNER_VERSION: "v2.0.2"
+
+jobs:
+  quality:
+    name: ${{ github.event_name == 'pull_request' && 'Pull request' || github.event_name == 'schedule' && 'Nightly' || 'Main branch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      # Upload SARIF to the code scanning tab.
+      security-events: write
+      # Comment on the pull request and apply labels.
+      pull-requests: write
+      checks: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The platform compares against the MERGE BASE, so it needs enough
+          # history to find one. A shallow clone silently degrades every
+          # regression budget to "skip".
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            backend/go.sum
+            quality/go.sum
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # --- the analyzers ---------------------------------------------------
+      #
+      # Every tool is pinned and verified. An analyzer whose tool is absent is
+      # reported as skipped, never as passed, so this step failing degrades
+      # coverage visibly rather than silently.
+
+      - name: Install golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: ${{ env.GOLANGCI_VERSION }}
+          working-directory: backend
+          # The platform runs it; this action only puts it on PATH.
+          args: --help
+          install-mode: binary
+
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.3
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          cache: true
+
+      - name: Install Gitleaks
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Install the Go analyzers
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install github.com/oasdiff/oasdiff@latest
+          go install golang.org/x/perf/cmd/benchstat@latest
+          go install github.com/google/osv-scanner/v2/cmd/osv-scanner@${OSV_SCANNER_VERSION}
+
+      # Syft's own action, rather than `curl | sh`. Piping a remote script into
+      # a shell in a runner that holds credentials is the "curl | bash" pattern:
+      # if the URL is ever hijacked, the attacker executes arbitrary code with
+      # this job's permissions. The platform's own Semgrep analyzer flagged the
+      # earlier version of this step, which is a fair advertisement for it.
+      - name: Install Syft
+        if: github.event_name != 'pull_request'
+        uses: anchore/sbom-action/download-syft@v0.17.9
+
+      - name: Install a browser for the runtime probe
+        run: npx --yes playwright install --with-deps chromium
+
+      # --- the cache -------------------------------------------------------
+      #
+      # Three restore levels: an exact hit is ideal, a same-dependency hit is
+      # nearly as good, and any hit beats a cold start for the analyzers whose
+      # inputs did not move.
+
+      - name: Restore the quality cache
+        uses: actions/cache@v4
+        with:
+          path: .cq/cache
+          key: cq-${{ runner.os }}-${{ hashFiles('backend/go.sum', 'frontend/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            cq-${{ runner.os }}-${{ hashFiles('backend/go.sum', 'frontend/package-lock.json') }}-
+            cq-${{ runner.os }}-
+
+      # The baseline is what every regression budget compares against. It is
+      # written by the main-branch run and restored here.
+      - name: Restore the quality baseline
+        uses: actions/cache@v4
+        with:
+          path: .cq/baselines
+          key: cq-baseline-${{ github.base_ref || github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            cq-baseline-${{ github.base_ref || github.ref_name }}-
+
+      - name: Build cq
+        run: make cq
+
+      - name: What is installed
+        run: ./quality/bin/cq doctor
+
+      # `github` context data is untrusted input - a branch name is chosen by
+      # whoever opened the pull request - so it goes through `env:` and is
+      # quoted, never interpolated into the shell. This is the second thing the
+      # platform's own Semgrep analyzer caught in this file.
+      - name: What will run, and why
+        env:
+          CQ_TIER: ${{ github.event_name == 'pull_request' && 'pr' || github.event_name == 'schedule' && 'nightly' || 'main' }}
+          CQ_BASE_BRANCH: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          if [ "$CQ_TIER" = "pr" ]; then
+            ./quality/bin/cq plan --tier pr --base "origin/$CQ_BASE_BRANCH"
+          else
+            ./quality/bin/cq plan --tier "$CQ_TIER" --full
+          fi
+
+      # --- the run ---------------------------------------------------------
+
+      - name: Run the quality platform
+        id: cq
+        # The gate decision is made below, from the report, so that the pull
+        # request still gets its comment, its labels and its SARIF even when the
+        # run fails. A red build with no explanation is the thing this platform
+        # exists to prevent.
+        continue-on-error: true
+        env:
+          CQ_EVENT: ${{ github.event_name }}
+          CQ_BASE_BRANCH: ${{ github.base_ref }}
+        run: |
+          set -uo pipefail
+          if [ "$CQ_EVENT" = "pull_request" ]; then
+            ./quality/bin/cq run --tier pr --base "origin/$CQ_BASE_BRANCH"
+          elif [ "$CQ_EVENT" = "schedule" ]; then
+            ./quality/bin/cq run --tier nightly --full
+          else
+            ./quality/bin/cq run --tier main --full --baseline
+          fi
+          echo "exit=$?" >> "$GITHUB_OUTPUT"
+
+      # --- publish ---------------------------------------------------------
+
+      - name: Job summary
+        if: always()
+        run: cat .cq/report.md >> "$GITHUB_STEP_SUMMARY" || true
+
+      - name: Upload findings to code scanning
+        if: always() && hashFiles('.cq/report.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: .cq/report.sarif
+          category: continuous-quality
+
+      - name: Publish the budget results as tests
+        if: always() && hashFiles('.cq/report.junit.xml') != ''
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: .cq/report.junit.xml
+          check_name: Quality budgets
+          fail_on_failure: false
+          detailed_summary: true
+
+      - name: Upload the reports and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-report-${{ github.run_id }}
+          path: |
+            .cq/report.json
+            .cq/report-agent.json
+            .cq/report.md
+            .cq/report.sarif
+            .cq/report.junit.xml
+            .cq/report.html
+            .cq/artifacts/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Comment on the pull request
+        if: always() && github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          # One comment, edited in place. A new comment per push turns a busy
+          # pull request into an unreadable wall.
+          header: continuous-quality
+          path: .cq/report.md
+          recreate: false
+
+      - name: Apply labels
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync('.cq/report.json', 'utf8'));
+            } catch {
+              core.info('No report to label from.');
+              return;
+            }
+
+            // A label is applied when the platform actually said the thing.
+            // Tags come from the analyzer manifests, so adding a label means
+            // adding a tag to a manifest, not editing this workflow.
+            const managed = [
+              'performance-regression', 'accessibility', 'security',
+              'api-regression', 'backend-performance', 'frontend-performance',
+              'visual-regression', 'flaky-tests', 'bundle-regression',
+              'quality-pass',
+            ];
+
+            const wanted = new Set();
+            for (const f of report.findings ?? []) {
+              if (!f.new) continue;                       // this change's own findings
+              for (const t of f.tags ?? []) {
+                if (managed.includes(t)) wanted.add(t);
+              }
+            }
+            for (const b of report.budgets ?? []) {
+              if (b.status !== 'fail') continue;
+              if (b.category === 'security') wanted.add('security');
+              if (b.category === 'api') wanted.add('api-regression');
+              if (b.budget === 'bundle-growth') wanted.add('bundle-regression');
+              if (b.category === 'frontend') wanted.add('frontend-performance');
+              if (b.category === 'backend') wanted.add('backend-performance');
+            }
+            if (report.summary?.verdict === 'pass') wanted.add('quality-pass');
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const current = (await github.rest.issues.listLabelsOnIssue(
+              { owner, repo, issue_number })).data.map(l => l.name);
+
+            // Only ever touch labels this workflow manages, so a human's own
+            // labels survive.
+            for (const name of managed) {
+              const has = current.includes(name);
+              if (wanted.has(name) && !has) {
+                await github.rest.issues.addLabels(
+                  { owner, repo, issue_number, labels: [name] }).catch(() => {});
+              } else if (!wanted.has(name) && has) {
+                await github.rest.issues.removeLabel(
+                  { owner, repo, issue_number, name }).catch(() => {});
+              }
+            }
+
+      - name: Save the baseline for the default branch
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v4
+        with:
+          path: .cq/baselines
+          key: cq-baseline-main-${{ github.sha }}
+
+      # --- the gate --------------------------------------------------------
+
+      - name: Enforce the quality budgets
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ ! -f .cq/report.json ]; then
+            echo "::error::The quality platform did not produce a report, so this run cannot be judged."
+            exit 1
+          fi
+          verdict=$(node -e 'process.stdout.write(require("./.cq/report.json").summary.verdict)')
+          echo "Verdict: $verdict"
+          if [ "$verdict" = "fail" ]; then
+            node -e '
+              const r = require("./.cq/report.json");
+              for (const b of r.budgets.filter(b => b.status === "fail" && b.blocking)) {
+                console.log(`::error title=Quality budget: ${b.budget}::${b.message}`);
+              }
+              for (const s of r.summary.nextSteps ?? []) console.log(`  next: ${s}`);
+            '
+            exit 1
+          fi
+          if [ "$verdict" = "error" ]; then
+            echo "::error::The quality platform itself could not finish. See platformErrors in the report."
+            exit 1
+          fi

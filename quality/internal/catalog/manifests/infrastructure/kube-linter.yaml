@@ -1,0 +1,29 @@
+# KubeLinter. Where kubeconform asks "is this valid", KubeLinter asks "is this
+# wise": no resource limits, running as root, no readiness probe, a latest tag.
+# Polaris answers the same question with a dashboard; KubeLinter answers it with
+# a SARIF file, which is what a pipeline can consume.
+id: kube-linter
+name: Kubernetes best practice
+description: Kubernetes manifests that are valid but unwise.
+category: infrastructure
+tags: [kubernetes, infrastructure]
+tiers: [pr, main]
+scopes: [infra]
+cost: cheap
+tool:
+  command: kube-linter
+  args: ["lint", "--format", "sarif", "deploy"]
+  probe: ["kube-linter", "version"]
+  optional: true
+  install: "Install KubeLinter: https://docs.kubelinter.io/#/using-kubelinter"
+  okExitCodes: [1]
+output:
+  format: sarif
+  kind: sarif
+defaults:
+  severity: warning
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["deploy/**"]

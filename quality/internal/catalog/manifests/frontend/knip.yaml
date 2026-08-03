@@ -1,0 +1,29 @@
+# Knip. depcheck and ts-prune were both archived in 2025; Knip replaced them by
+# answering unused FILES, unused EXPORTS and unused DEPENDENCIES from a single
+# module graph. Generated code produces all three in quantity, and nothing else
+# in the toolchain notices any of them.
+id: knip
+name: Dead code and unused dependencies
+description: Unused files, exports and dependencies in the frontend.
+category: general
+tags: [dead-code]
+tiers: [pr, main]
+scopes: [frontend, deps]
+cost: moderate
+tool:
+  command: npx
+  args: ["--yes", "knip@5", "--reporter", "json"]
+  probe: ["node", "--version"]
+  workdir: frontend
+  optional: true
+  install: "Knip is fetched on demand by npx; this needs network access on the runner."
+  okExitCodes: [1, 2, 3]
+output:
+  format: knip
+defaults:
+  confidence: medium
+  safeToAutomate: false
+  effort: trivial
+  docsUrl: https://knip.dev/reference/issue-types
+cache:
+  inputs: ["frontend/src/**", "frontend/package.json", "frontend/package-lock.json", "frontend/knip.json"]

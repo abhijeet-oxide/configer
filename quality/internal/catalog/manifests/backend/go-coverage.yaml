@@ -1,0 +1,31 @@
+# Coverage, as a measurement rather than a gate. The budget on it is a
+# REGRESSION budget ("may not fall against the base branch") rather than a fixed
+# percentage, because a fixed percentage is either unreachable on day one or
+# gamed by day one hundred, and neither state improves any test.
+id: go-coverage
+name: Go coverage
+description: Line coverage of the Go packages.
+category: tests
+tags: [coverage]
+tiers: [pr, main]
+scopes: [backend]
+paths: ["backend/**/*.go"]
+cost: moderate
+timeoutSeconds: 600
+tool:
+  command: go
+  args: ["test", "-coverprofile={out}", "-covermode=atomic", "-count=1", "./..."]
+  versionArgs: ["version"]
+  workdir: backend
+  install: "Install Go: https://go.dev/dl/"
+  okExitCodes: [1, 2]
+output:
+  format: go-cover
+  file: "coverage.out"
+  kind: lcov
+defaults:
+  confidence: high
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["backend/**/*.go", "backend/go.sum"]

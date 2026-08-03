@@ -1,0 +1,33 @@
+# The two boundaries that hold this codebase together, from CLAUDE.md:
+#
+#   "Nothing writes values outside pathedit/writeback; nothing writes .configer
+#    outside writer."
+#
+# A boundary that is only written down is a boundary that erodes. This is the
+# kind of check that is worth far more than a generic linter rule, because it
+# encodes something only this team knows - and it is 40 lines of JavaScript and
+# one manifest.
+id: architecture-boundaries
+name: Architecture boundaries
+description: Code writing files outside the packages allowed to write them.
+category: backend
+tags: [house-rule, architecture]
+tiers: [pr, main]
+scopes: [backend]
+paths: ["backend/**/*.go"]
+cost: cheap
+tool:
+  command: node
+  args: ["{repo}/.cq-analyzers/architecture-boundaries.mjs", "{out}"]
+  probe: ["node", "--version"]
+  install: "Install Node.js 20 or newer."
+output:
+  format: cq
+  file: "architecture-boundaries.json"
+defaults:
+  severity: warning
+  confidence: medium
+  safeToAutomate: false
+  effort: medium
+cache:
+  inputs: ["backend/**/*.go"]

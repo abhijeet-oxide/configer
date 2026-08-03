@@ -1,0 +1,29 @@
+# go vet. Kept as its own analyzer even though golangci-lint also runs it,
+# because vet is in the Go distribution and therefore ALWAYS available: on a
+# machine with no linter installed this is still a real check, and two tools
+# agreeing raises a finding's confidence rather than duplicating it (the
+# deduplicator merges them and records both names).
+id: go-vet
+name: go vet
+description: The Go toolchain's own correctness checks.
+category: backend
+tags: [lint]
+tiers: [local, pre-commit, pr, main]
+scopes: [backend]
+paths: ["backend/**/*.go"]
+cost: cheap
+tool:
+  command: go
+  args: ["vet", "./..."]
+  versionArgs: ["version"]
+  workdir: backend
+  install: "Install Go: https://go.dev/dl/"
+output:
+  format: exit-code
+defaults:
+  severity: error
+  confidence: high
+  effort: small
+  recommendation: "Fix what vet reports in the artifact log; it does not report style, only likely mistakes."
+cache:
+  inputs: ["backend/**/*.go", "backend/go.sum"]

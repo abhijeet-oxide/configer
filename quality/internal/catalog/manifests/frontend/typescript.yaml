@@ -1,0 +1,27 @@
+# The TypeScript compiler in --noEmit mode. Nothing else can answer whether the
+# program is well typed, and a type error is the cheapest possible finding: it
+# is always real, always local, and never a matter of taste.
+id: typescript
+name: TypeScript typecheck
+description: The frontend does not typecheck.
+category: frontend
+tags: [types]
+tiers: [local, pre-commit, pr, main]
+scopes: [frontend]
+paths: ["frontend/**/*.{ts,tsx}", "frontend/tsconfig.json"]
+cost: moderate
+tool:
+  command: npx
+  args: ["tsc", "--noEmit", "--pretty", "false"]
+  probe: ["npx", "--no-install", "tsc", "--version"]
+  workdir: frontend
+  install: "Run `npm install` in frontend/."
+output:
+  format: exit-code
+defaults:
+  severity: error
+  confidence: high
+  effort: small
+  recommendation: "Fix the type errors listed in the artifact log; each names a file and a line."
+cache:
+  inputs: ["frontend/src/**", "frontend/tsconfig.json", "frontend/package-lock.json"]

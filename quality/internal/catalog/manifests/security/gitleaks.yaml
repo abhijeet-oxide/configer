@@ -1,0 +1,33 @@
+# Gitleaks. Chosen over TruffleHog for the commit-time gate on the axis that
+# matters there: speed. Gitleaks is a regex scanner that finishes in
+# milliseconds, which is the only thing that can honestly sit in a pre-commit
+# hook. TruffleHog's verifier modules are better at proving a credential is
+# live, and the recommendation in docs/cqp is to run it on a schedule over the
+# full history; the two are complementary rather than competing.
+id: gitleaks
+name: Secret detection
+description: Credentials committed to the repository.
+category: security
+tags: [security, secret]
+tiers: [pre-commit, pr, main]
+alwaysRun: true
+cost: cheap
+tool:
+  command: gitleaks
+  args: ["detect", "--no-banner", "--redact", "--report-format", "sarif", "--report-path", "{out}"]
+  versionArgs: ["version"]
+  optional: true
+  install: "Install gitleaks: https://github.com/gitleaks/gitleaks#installing"
+  okExitCodes: [1]
+output:
+  format: sarif
+  file: "gitleaks.sarif"
+  kind: sarif
+defaults:
+  severity: blocker
+  confidence: high
+  safeToAutomate: false
+  effort: small
+  recommendation: "Revoke the credential first, then remove it from the file and from the history. A secret that was pushed is a secret that leaked, whatever the diff says now."
+cache:
+  disabled: true

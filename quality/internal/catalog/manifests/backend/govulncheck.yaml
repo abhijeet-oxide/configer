@@ -1,0 +1,31 @@
+# govulncheck. It is here alongside the general-purpose scanners because it is
+# the only one that does REACHABILITY analysis for Go: it reports a CVE only
+# when the vulnerable symbol is actually called from this binary, which is the
+# difference between a fixable list and a list nobody reads.
+id: govulncheck
+name: Go vulnerability check
+description: Known vulnerabilities in code this binary actually reaches.
+category: security
+tags: [security, dependency]
+tiers: [pr, main]
+scopes: [backend, deps]
+cost: moderate
+timeoutSeconds: 420
+tool:
+  command: govulncheck
+  args: ["-format", "sarif", "./..."]
+  probe: ["govulncheck", "-h"]
+  workdir: backend
+  optional: true
+  install: "Install govulncheck: go install golang.org/x/vuln/cmd/govulncheck@latest"
+  okExitCodes: [3]
+output:
+  format: sarif
+  kind: sarif
+defaults:
+  severity: error
+  confidence: high
+  safeToAutomate: false
+  effort: small
+cache:
+  inputs: ["backend/**/*.go", "backend/go.sum"]

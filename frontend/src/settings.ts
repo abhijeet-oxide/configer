@@ -101,6 +101,30 @@ export const welcomeSeen = (): boolean => localStorage.getItem(WELCOME_KEY) === 
 export const markWelcomeSeen = (): void => localStorage.setItem(WELCOME_KEY, "1");
 export const clearWelcomeSeen = (): void => localStorage.removeItem(WELCOME_KEY);
 
+// A link may say what to do about the first-run tour:
+//
+//   ?welcome=skip   treat this device as already welcomed
+//   ?welcome=show   replay the tour whatever this device remembers
+//
+// This is what you want when handing somebody a deep link that should not open
+// with a dialog on top of it, when driving the UI from a browser test, and when
+// taking screenshots. It is read ONCE, at module load - before the router
+// canonicalizes the address bar and drops the parameter - and recorded on the
+// device, so it holds for every later navigation in that browser.
+//
+// Nothing else is accepted: an unrecognized value leaves the tour alone rather
+// than guessing which way a stray "welcome=0" was meant.
+function applyWelcomeParam(): void {
+  try {
+    const want = new URLSearchParams(window.location.search).get("welcome");
+    if (want === "skip") markWelcomeSeen();
+    else if (want === "show") clearWelcomeSeen();
+  } catch {
+    // no URL or no storage: the tour behaves exactly as it did
+  }
+}
+applyWelcomeParam();
+
 // --------------------------------------------------------------- time zones
 /** Every IANA zone the browser knows, for the searchable picker. */
 export function allTimeZones(): string[] {

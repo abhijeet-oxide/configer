@@ -38,6 +38,15 @@ Backend alone: `cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
 Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 `npx tsc --noEmit`, `npx eslint src`, and the smoke script all green.
 
+**Driving the UI (browser tests, screenshots):** append `?welcome=skip` to the
+first URL you open. The first-run tour is a modal over everything, and clicking
+it away in every script is how a test ends up asserting against a dialog. The
+parameter is read once at boot and recorded on the device, so it holds for the
+whole session even though the router cleans it out of the address bar;
+`?welcome=show` forces the tour back for a screenshot of it. The flag underneath
+is `localStorage["configer.welcomed.v1"]`, so a Playwright `addInitScript` or a
+saved `storageState` does the same thing without a URL.
+
 ## Continuous Quality Platform (`quality/`, docs in `docs/cqp/`)
 
 `cq` is a SECOND Go module and never a dependency of the shipped backend. It
@@ -52,7 +61,7 @@ Two rules govern it, and they are what keep the catalog cheap:
 - **A TOOL is data, a FORMAT is code.** Adding an analyzer is one YAML manifest
   in `quality/internal/catalog/manifests/` (shipped) or `.cq-analyzers/` (this
   repository's own): no Go, no registration, no rebuild. Only a new output
-  format earns a normalizer. 19 normalizers carry 35 analyzers, because SARIF
+  format earns a normalizer. 19 normalizers carry 36 analyzers, because SARIF
   alone carries eight tools.
 - **A missing precondition is a STATE.** A tool that is not installed is an
   explained skip, never a failure and never a silent pass. A regression budget

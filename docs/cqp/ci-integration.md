@@ -11,7 +11,7 @@ plumbing differs.
 | Budgets as tests | `mikepenz/action-junit-report` | `PublishTestResults@2` |
 | Coverage | in the report | `PublishCodeCoverageResults@2` |
 | Human summary | `$GITHUB_STEP_SUMMARY` | printed to the log, plus the PR thread |
-| PR comment | `sticky-pull-request-comment` | Azure REST API, one thread updated in place |
+| PR comment | `actions/github-script`, one comment updated in place | Azure REST API, one thread updated in place |
 | Labels | `actions/github-script` | not supported by Azure |
 
 ## What each trigger does
@@ -30,7 +30,7 @@ schedule (03:00)    -> cq run --tier nightly --full
                        mutation testing and the deep scans
 ```
 
-## Five things that are easy to get wrong
+## Six things that are easy to get wrong
 
 **`fetch-depth: 0`.** The platform compares against the merge base. A shallow
 clone cannot find one, so every regression budget silently degrades to `skip` -
@@ -48,14 +48,32 @@ runners means N cache restores, N tool installations and N partial reports to
 stitch back together, for the same wall clock. [operations.md](operations.md)
 says when that stops being true.
 
-**Pinned tool versions.** An unpinned scanner silently changes what "green"
-means between two runs of the same commit. Versions live in `env:`/`variables:`
-at the top of each file, and the tool version is part of the cache key, so an
-upgrade invalidates its own cached results rather than serving stale ones.
+**Pinned tool versions, and pins somebody actually checked.** An unpinned
+scanner silently changes what "green" means between two runs of the same commit.
+Versions live in `env:`/`variables:` at the top of each file, and the tool
+version is part of the cache key, so an upgrade invalidates its own cached
+results rather than serving stale ones.
+
+The second half of that sentence is the one that cost a red build. The first
+revision of this workflow carried three action versions written from memory: a
+`setup-trivy` release that had never existed, and two action major tags that no
+longer did. GitHub resolves every `uses:` before it runs anything, so the job
+died at "prepare actions" having produced no report at all. **A pin nobody
+verified is not a pin, it is a guess with a version number on it** - check each
+one against the project's releases, and prefer a first-party action or a pinned
+release archive over a third-party action wherever the difference is small.
+
+**Every tool install is `continue-on-error`.** This is the platform's own
+contract applied to its own pipeline. A tool that is not present is an explained
+skip, named in the report; a job that dies while installing a scanner produces
+no report at all, which is strictly worse than a report saying "trivy did not
+run: it could not be installed". The gate step still fails the build on a real
+budget breach, so nothing is weakened by this - what changes is that a runner
+problem stops masquerading as a code problem.
 
 **`cq doctor` runs before `cq run`.** It prints exactly which tools are present.
 A missing tool is a skip, not a pass - so the doctor output is the record of how
-much coverage that run actually had.
+much coverage that run actually had, and it is what makes the line above safe.
 
 ## Labels
 

@@ -12,7 +12,7 @@ import {
   MoonOutlined,
   EyeOutlined,
 } from "./icons";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from "react-resizable-panels";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { api, isReady, readyRepos, type Grid as GridData, type Meta, type RepoSummary } from "./api";
@@ -72,8 +72,38 @@ import {
 
 const { Header, Sider, Content } = Layout;
 
-function ResizeHandleV() {
-  return <PanelResizeHandle className="rrp-handle rrp-handle-v" />;
+function ResizeHandleV({ hidden, onDragging }: { hidden?: boolean; onDragging?: (b: boolean) => void }) {
+  return (
+    <PanelResizeHandle
+      className={"rrp-handle rrp-handle-v" + (hidden ? " is-hidden" : "")}
+      disabled={hidden}
+      onDragging={onDragging}
+    />
+  );
+}
+
+// useSidePanel drives one side panel from the UI store, and drives it by
+// COLLAPSING it rather than by unmounting it.
+//
+// Opening a parameter's details used to add a whole Panel to the group: the
+// layout engine recalculated, and a third of the screen appeared and vanished
+// in a single frame. There was nothing to animate, because in the frame before
+// the panel there was no panel. Kept mounted and collapsed to zero, its width
+// is an ordinary number going from 0 to 22, which CSS can carry - see
+// .cf-side-panel, where the transition lives and where it is switched off while
+// a resize is actually being dragged (a transition fighting the pointer lags).
+function useSidePanel(open: boolean) {
+  // React 18's RefObject<T> is readonly-current; the panel prop wants a plain
+  // mutable ref, which is what useRef gives when it is seeded with null and
+  // typed as nullable through the element itself.
+  const ref = useRef<ImperativePanelHandle>(null);
+  useEffect(() => {
+    const p = ref.current;
+    if (!p) return;
+    if (open && p.isCollapsed()) p.expand();
+    else if (!open && !p.isCollapsed()) p.collapse();
+  }, [open]);
+  return ref;
 }
 
 // ConnectionBanner keeps a temporary service outage non-disruptive: one calm
@@ -177,6 +207,12 @@ export default function App() {
   } = useUI();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
+  // The side panels collapse rather than unmount, so their width can be
+  // animated; `dragging` turns that animation off while a resize handle is
+  // actually under the pointer, where a transition would only lag it.
+  const leftPanel = useSidePanel(panels.left);
+  const rightPanel = useSidePanel(panels.right);
+  const [dragging, setDragging] = useState(false);
   const wide = screens.lg !== false; // >= 992px: three-panel layout
   const phone = screens.sm === false; // < 576px: bottom-tab single-column tier
   const online = useConn((s) => s.online);
@@ -439,6 +475,10 @@ export default function App() {
     // a thin rail on their edge; a click on the rail (or the keyboard
     // shortcut) brings them back. The rails live OUTSIDE the PanelGroup so the
     // resizable middle always fills the freed space.
+    //
+    // Both panels stay MOUNTED and collapse to zero rather than being added to
+    // and removed from the group - that is what gives the open and close a width
+    // to travel across instead of a single frame to appear in. See useSidePanel.
     return withStatusBar(
       <div style={{ display: "flex", height: "100%", minWidth: 0 }}>
         {!panels.left && (
@@ -446,32 +486,47 @@ export default function App() {
         )}
         <PanelGroup
           direction="horizontal"
-          autoSaveId={`configer-main-${panels.left ? "L" : ""}${panels.right ? "R" : ""}`}
+          autoSaveId="configer-main"
+          className={"cf-panels" + (dragging ? " is-dragging" : "")}
           style={{ height: "100%", flex: 1, minWidth: 0 }}
         >
-          {panels.left && (
-            <>
-              <Panel id="left" order={1} defaultSize={15} minSize={10} maxSize={30} style={{ ...panelBg }}>
-                <CollapsibleSide side="left" onCollapse={() => togglePanel("left")}>
-                  <CategoryTree grid={grid} />
-                </CollapsibleSide>
-              </Panel>
-              <ResizeHandleV />
-            </>
-          )}
+          <Panel
+            id="left"
+            order={1}
+            ref={leftPanel}
+            className="cf-side-panel"
+            collapsible
+            collapsedSize={0}
+            defaultSize={15}
+            minSize={10}
+            maxSize={30}
+            style={{ ...panelBg }}
+          >
+            <CollapsibleSide side="left" onCollapse={() => togglePanel("left")}>
+              <CategoryTree grid={grid} />
+            </CollapsibleSide>
+          </Panel>
+          <ResizeHandleV hidden={!panels.left} onDragging={setDragging} />
           <Panel id="mid" order={2} defaultSize={63} minSize={40} style={{ minWidth: 0, ...panelBg }}>
             <ParameterGrid grid={grid} />
           </Panel>
-          {panels.right && (
-            <>
-              <ResizeHandleV />
-              <Panel id="right" order={3} defaultSize={22} minSize={15} maxSize={35} style={{ ...panelBg }}>
-                <CollapsibleSide side="right" onCollapse={() => togglePanel("right")}>
-                  <DetailsPanel grid={grid} />
-                </CollapsibleSide>
-              </Panel>
-            </>
-          )}
+          <ResizeHandleV hidden={!panels.right} onDragging={setDragging} />
+          <Panel
+            id="right"
+            order={3}
+            ref={rightPanel}
+            className="cf-side-panel"
+            collapsible
+            collapsedSize={0}
+            defaultSize={22}
+            minSize={15}
+            maxSize={35}
+            style={{ ...panelBg }}
+          >
+            <CollapsibleSide side="right" onCollapse={() => togglePanel("right")}>
+              <DetailsPanel grid={grid} />
+            </CollapsibleSide>
+          </Panel>
         </PanelGroup>
         {!panels.right && (
           <CollapsedRail side="right" label="Details" onExpand={() => togglePanel("right")} />

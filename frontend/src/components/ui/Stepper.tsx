@@ -27,14 +27,45 @@ export default function Stepper({
   steps,
   current,
   className,
+  compact,
   ariaLabel = "Progress",
 }: {
   steps: StepDef[];
   /** zero-based index of the active step */
   current: number;
   className?: string;
+  /** A one-line strip instead of the full row: small nodes, small labels, left
+   *  aligned and no wider than it needs. For places where the lifecycle is
+   *  CONTEXT next to the real content (an opened change request) rather than
+   *  the subject of the screen (a wizard), where the full-size row was just a
+   *  band of empty space above the thing the reader came for. */
+  compact?: boolean;
   ariaLabel?: string;
 }) {
+  if (compact) {
+    return (
+      <div className="cfg-steps-mini" role="list" aria-label={ariaLabel}>
+        {steps.map((s, i) => {
+          const done = i < current;
+          const active = i === current;
+          const state = s.error ? "err" : done ? "done" : active ? "now" : "todo";
+          return (
+            <span key={s.label} className="contents" role="listitem">
+              {i > 0 && <i className={`cfg-steps-mini-bar${done || active ? " is-filled" : ""}`} aria-hidden />}
+              <Tooltip title={s.explain}>
+                <span className={`cfg-steps-mini-step is-${state}`}>
+                  <i className="cfg-steps-mini-dot" aria-hidden>
+                    {done && !s.error ? <CheckOutlined style={{ fontSize: 8 }} /> : null}
+                  </i>
+                  {s.label}
+                </span>
+              </Tooltip>
+            </span>
+          );
+        })}
+      </div>
+    );
+  }
   return (
     <div
       className={`mx-auto flex w-full max-w-[640px] items-start ${className ?? ""}`}

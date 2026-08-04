@@ -224,15 +224,29 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
 the vertical branch picture, or `GraphRail`'s dense commit list).
 
+**One control per question.** "Which instances am I looking at, in what order,
+and am I reading one on its own" is ONE question, so it has ONE control:
+`InstancePicker`, the dropdown the grid's toolbar opens. A tick gives an
+instance a column, a drag gives it a position, the row's own name opens it as a
+single SHEET (`viewInstance` - a different presentation, not a filter), and the
+environment chips are quick selections OVER those ticks, never a mode of their
+own. There is no environment filter and no second column manager: `hidden` in
+the per-application `colLayout` is the only state that answers "which
+instances", however the user chose it. The gear beside it holds the editor's
+SETTINGS (columns, density, row filters); a "⋮" said "more actions", which
+those are not.
+
 **The history picture (`ChangeGraph`)** draws the LIFECYCLE OF A CHANGE, not
 git internals - the reader is an approver, not a platform engineer. Time runs
 left to right; every branch that persists (the trunk plus each standing
 environment branch - `prod`, `lab`, `sandbox`, … - see `api.reservedBranches`)
-is a horizontal lane with its name on a pill at the left. A change request is
-drawn as a PATH, not an annotation: a thick Bézier leaves the exact commit dot
-it forked from, docks flat into the left edge of its card, and leaves the right
-edge - curving back into a lane only when it actually merged (which may be a
-different lane than it left).
+is a horizontal lane with its name on a pill STUCK to the left edge of the
+scroller (`.cf-lane-names`), because the picture opens scrolled to the newest
+end - the page says "newest first" and the graph must not open on last year.
+A change request is drawn as a PATH, not an annotation: a thick Bézier leaves
+the exact commit dot it forked from, docks flat into the left edge of its card,
+and leaves the right edge - curving back into a lane only when it actually
+merged (which may be a different lane than it left).
 
 Two rules keep it legible and neither may be relaxed:
 

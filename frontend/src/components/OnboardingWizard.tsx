@@ -81,8 +81,14 @@ function prettyBinding(b: Binding): { file: string; perInstance: boolean } {
   return { file: b.file, perInstance: false };
 }
 
-// DiscoverySummary is the onboarding "aha": the three numbers that turn a
-// messy repository into structured configuration, shown big and up front.
+// DiscoverySummary says what the scan turned this repository into: parameters,
+// instances, formats.
+//
+// It used to say it in a panel with 24px numerals, which made the first thing
+// on the screen a billboard about three small facts - and pushed the actual
+// work (name it, check the instances) below the fold. It is now one quiet line
+// of statistics under the title: the same three numbers, read in a glance,
+// taking a fifth of the room.
 function DiscoverySummary({
   parameters,
   instances,
@@ -95,27 +101,22 @@ function DiscoverySummary({
   const stats = [
     { n: parameters, label: parameters === 1 ? "parameter" : "parameters" },
     { n: instances, label: instances === 1 ? "instance" : "instances" },
-    { n: formats.length, label: formats.length === 1 ? "format" : "formats", hint: formats.map((f) => f.toUpperCase()).join(" · ") },
+    {
+      n: formats.length,
+      label: formats.length === 1 ? "format" : "formats",
+      hint: formats.map((f) => f.toUpperCase()).join(" · "),
+    },
   ];
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-x-8 gap-y-3 rounded-card-lg border border-brand-border bg-brand-soft px-5 py-4">
-      <div className="min-w-40">
-        <div className="text-[13px] font-semibold text-ink">Configuration discovered</div>
-        <div className="text-[12px] text-ink-2">Your existing files, now one structured surface.</div>
-      </div>
-      <div className="flex flex-wrap gap-x-8 gap-y-2">
-        {stats.map((s) => (
-          <div key={s.label}>
-            <div className="text-2xl font-semibold leading-none text-ink" style={{ fontVariantNumeric: "tabular-nums" }}>
-              {s.n}
-            </div>
-            <div className="mt-1 text-[11px] text-ink-3">
-              {s.label}
-              {s.hint ? <span className="ml-1 text-ink-2">{s.hint}</span> : null}
-            </div>
-          </div>
-        ))}
-      </div>
+    <div className="cf-onb-stats">
+      {stats.map((s) => (
+        <span key={s.label} className="cf-onb-stat">
+          <b>{s.n}</b>
+          {s.label}
+          {s.hint ? <span className="cf-onb-stat-hint">{s.hint}</span> : null}
+        </span>
+      ))}
+      <span className="cf-onb-stat-note">found by the scan - nothing written yet</span>
     </div>
   );
 }
@@ -533,9 +534,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
   return (
     <div className="cf-onb" ref={pageRef}>
-      {/* Only the parameters step widens: it is a file tree beside a table of
-          every setting found, and everything else reads better in a column. */}
-      <div className={"cf-onb-inner" + (step === 1 ? " is-wide" : "")}>
+      <div className="cf-onb-inner">
         <div className="cf-onb-head">
           <div className="min-w-0">
             <div className="cf-onb-eyebrow">Set up an application</div>
@@ -546,19 +545,19 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               <span className="mono">.configer/</span> - your configuration files stay exactly where
               they are.
             </p>
+            {/* The three numbers the scan turned up, as a line of statistics
+                under the sentence they belong to rather than as a panel of
+                their own. */}
+            <DiscoverySummary
+              parameters={found.length}
+              instances={insts.length}
+              formats={discoveredFormats}
+            />
           </div>
           <Button icon={<ArrowLeftOutlined />} onClick={() => setSection("workspace")}>
             Back to Applications
           </Button>
         </div>
-
-        {/* The "aha": what the scan turned this repository into, stated once and
-            up front - messy files become structured, countable configuration. */}
-        <DiscoverySummary
-          parameters={found.length}
-          instances={insts.length}
-          formats={discoveredFormats}
-        />
 
         <div className="cf-onb-steps">
           <Stepper current={step} steps={steps} />
@@ -566,41 +565,48 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
 
         <div className="cf-onb-body">
       {step === 0 && (
-        <div className="cf-onb-cols">
+        // Stacked, not side by side. Two cards in a row are only ever as tall
+        // as the taller one, and a three-field form beside a table of instances
+        // is never the same height - so one of them always carried a block of
+        // empty. In a column each is exactly as tall as what is in it, and the
+        // reading order is the order the decisions come in: what this is, then
+        // what it comes in.
+        <div className="cf-onb-stack">
           {/* What the application IS. */}
           <section className="cf-onb-card">
             <header className="cf-onb-card-head">
               <span className="cf-onb-card-title">About this application</span>
               <span className="cf-onb-card-hint">Written to .configer/application.yaml</span>
             </header>
-            <Form layout="vertical" requiredMark={false}>
-              <Form.Item label="Application name" required style={{ marginBottom: 14 }}>
+            {/* Two fields side by side across a full-width card: a name box
+                stretched to 1200px says nothing a 400px one does not, and
+                stacking them made a short form tall for no reason. */}
+            <Form layout="vertical" requiredMark={false} className="cf-onb-fields">
+              <Form.Item label="Application name" required style={{ marginBottom: 0 }}>
                 <Input
-                  size="large"
                   value={appName}
                   onChange={(e) => setAppName(e.target.value)}
                   placeholder="e.g. telco-platform"
                 />
               </Form.Item>
-              <Form.Item label="Description" style={{ marginBottom: 4 }}>
-                <Input.TextArea
-                  rows={3}
+              <Form.Item label="Description" style={{ marginBottom: 0 }}>
+                <Input
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="What does this application configure?"
                 />
               </Form.Item>
+              {/* The convention Configer recognized. It is a FINDING, not a
+                  choice the user has to make, so it reads as one line of fact
+                  rather than as a step of its own. */}
+              <div className="cf-onb-detect">
+                <PartitionOutlined className="cf-onb-detect-icon" />
+                <span>
+                  <b>{layoutLabels[d.detection.layout] ?? d.detection.layout}</b> structure detected
+                  {d.detection.note ? <span className="cf-onb-detect-note"> - {d.detection.note}</span> : null}
+                </span>
+              </div>
             </Form>
-            {/* The convention Configer recognized. It is a FINDING, not a
-                choice the user has to make, so it reads as one line of fact
-                rather than as a step of its own. */}
-            <div className="cf-onb-detect">
-              <PartitionOutlined className="cf-onb-detect-icon" />
-              <span>
-                <b>{layoutLabels[d.detection.layout] ?? d.detection.layout}</b> structure detected
-                {d.detection.note ? <span className="cf-onb-detect-note"> - {d.detection.note}</span> : null}
-              </span>
-            </div>
           </section>
 
           {/* What it comes in. Same decision, same screen. */}
@@ -626,26 +632,33 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                   dataSource={insts}
                   pagination={false}
                   scroll={{ x: "max-content" }}
+                  // Four balanced columns rather than one wide name column and
+                  // two narrow fields pinned to the far edge: across a
+                  // full-width card that put a metre of nothing between an
+                  // instance and the environment it belongs to.
                   columns={[
                     {
                       title: "Instance",
                       dataIndex: "name",
-                      render: (v, i) => (
-                        <div className="cf-onb-inst">
-                          <span className="cf-onb-inst-name">{v}</span>
-                          <span className="mono cf-onb-inst-folder" title={folderOf(i)}>
-                            {folderOf(i)}
-                          </span>
-                        </div>
+                      width: "22%",
+                      render: (v) => <span className="cf-onb-inst-name">{v}</span>,
+                    },
+                    {
+                      title: "Folder",
+                      width: "30%",
+                      render: (_v, i) => (
+                        <span className="mono cf-onb-inst-folder" title={folderOf(i)}>
+                          {folderOf(i)}
+                        </span>
                       ),
                     },
                     {
                       title: "Environment",
-                      width: 180,
+                      width: "24%",
                       render: (_v, i) => (
                         <AutoComplete
                           size="small"
-                          style={{ width: "100%" }}
+                          style={{ width: "100%", maxWidth: 260 }}
                           allowClear
                           placeholder="e.g. Development"
                           value={i.environment || undefined}
@@ -659,11 +672,12 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     },
                     {
                       title: "Software version",
-                      width: 150,
+                      width: "24%",
                       render: (_v, i) => (
                         <Input
                           size="small"
                           className="mono"
+                          style={{ maxWidth: 260 }}
                           placeholder="e.g. v24.3.1"
                           value={i.softwareVersion}
                           onChange={(e) => patchInstance(i.name, { softwareVersion: e.target.value })}

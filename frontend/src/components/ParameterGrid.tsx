@@ -32,7 +32,7 @@ import {
   TableOutlined,
   UpOutlined,
   DownOutlined,
-  MoreOutlined,
+  SettingOutlined,
   UndoOutlined,
   FileSearchOutlined,
   EyeInvisibleOutlined,
@@ -459,70 +459,148 @@ function hl(text: string | undefined, q: string): React.ReactNode {
   return <>{parts}</>;
 }
 
-// ColumnManager is the popover behind the Columns button: per-instance
-// visibility, order and a reset. Order is a DRAG - the same gesture as
-// dragging the column itself, and the reason this list exists is that dragging
-// a column that is scrolled off the screen is not possible. Up/down buttons
-// were two clicks per position and said nothing about where a column would
-// land. Resize happens on the header edge, so this stays a compact list.
-function ColumnManager({
+// InstancePicker is THE control for "which instances am I looking at, and in
+// what order". It is one panel because it was one question: the toolbar used to
+// carry a view Select (all / one environment / one instance) AND a separate
+// column manager (tick which instances show, drag to reorder), so half the
+// answer lived in each and neither said what the other had done. Ticking one
+// instance in one and picking it in the other did different things.
+//
+// So: one list. A tick is whether the instance has a column, a drag is where
+// that column sits, and the row's own name button opens it as a single SHEET -
+// which is a different reading of one instance, not a filter, and is the only
+// thing here that is not just column state. Environments are quick selections
+// over the same ticks rather than a mode of their own, so "all production" and
+// "these three" are the same kind of answer.
+function InstancePicker({
   instances,
   hidden,
   widths,
+  order,
+  environments,
+  focused,
   onToggle,
+  onSetHidden,
   onReorder,
+  onFocus,
   onReset,
 }: {
   instances: Instance[];
   hidden: Set<string>;
   widths: Record<string, number>;
+  order: string[];
+  environments: string[];
+  /** the instance being read as a single sheet, if any */
+  focused: string | null;
   onToggle: (name: string) => void;
+  onSetHidden: (names: string[]) => void;
   onReorder: (from: string, to: string) => void;
+  onFocus: (name: string | null) => void;
   onReset: () => void;
 }) {
-  const dirty = hidden.size > 0 || Object.keys(widths).length > 0;
+  const [q, setQ] = useState("");
+  const dirty = hidden.size > 0 || Object.keys(widths).length > 0 || order.length > 0 || !!focused;
+  const needle = q.trim().toLowerCase();
+  const shownList = needle
+    ? instances.filter(
+        (i) =>
+          i.name.toLowerCase().includes(needle) ||
+          (i.environment ?? "").toLowerCase().includes(needle),
+      )
+    : instances;
+  const visible = instances.length - hidden.size;
   return (
-    <div style={{ width: 246 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600 }}>Instance columns</span>
-        <a onClick={onReset} style={{ fontSize: 12, opacity: dirty ? 1 : 0.4, pointerEvents: dirty ? "auto" : "none" }}>
+    <div className="cf-instpick">
+      <div className="cf-instpick-head">
+        <span className="cf-instpick-title">Instances</span>
+        <span className="cf-instpick-count">
+          {visible} of {instances.length} shown
+        </span>
+        <a
+          onClick={onReset}
+          className="cf-instpick-reset"
+          style={{ opacity: dirty ? 1 : 0.35, pointerEvents: dirty ? "auto" : "none" }}
+        >
           Reset
         </a>
       </div>
-      <div style={{ maxHeight: 300, overflow: "auto", display: "flex", flexDirection: "column", gap: 1 }}>
-        {instances.map((inst) => {
+
+      {/* A sheet is a reading, not a filter, so leaving it is its own line -
+          and it is the first thing here, because while it is on nothing else
+          in this panel is doing anything. */}
+      {focused && (
+        <button type="button" className="cf-instpick-sheet" onClick={() => onFocus(null)}>
+          <ScopeInstanceOutlined />
+          <span>
+            Reading <b>{focused}</b> as a single sheet
+          </span>
+          <span className="cf-instpick-sheet-exit">Back to the grid</span>
+        </button>
+      )}
+
+      {instances.length > 7 && (
+        <Input
+          size="small"
+          allowClear
+          prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+          placeholder="Filter instances"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          style={{ marginBottom: 6 }}
+        />
+      )}
+
+      {/* Quick selections over the same ticks. "All production" is not a mode
+          the grid goes into; it is three boxes ticked. */}
+      <div className="cf-instpick-quick">
+        <a onClick={() => onSetHidden([])}>All</a>
+        <a onClick={() => onSetHidden(instances.map((i) => i.name))}>None</a>
+        {environments.map((e) => (
+          <a
+            key={e}
+            onClick={() => onSetHidden(instances.filter((i) => i.environment !== e).map((i) => i.name))}
+            title={`Show only the ${e} instances`}
+          >
+            <span className="cf-instpick-dot" style={{ background: envHex(e) }} />
+            {e}
+          </a>
+        ))}
+      </div>
+
+      <div className="cf-instpick-list">
+        {shownList.length === 0 && <div className="cf-instpick-empty">No instance matches “{q}”.</div>}
+        {shownList.map((inst) => {
           const shown = !hidden.has(inst.name);
           return (
             <div
               key={inst.name}
-              className="cf-col-row"
+              className={"cf-col-row" + (focused === inst.name ? " is-focused" : "")}
               {...dragProps("inst", inst.name, onReorder)}
             >
               <HolderOutlined className="cf-col-grip" />
-              <Checkbox checked={shown} onChange={() => onToggle(inst.name)} />
-              <span
-                style={{
-                  width: 7,
-                  height: 7,
-                  borderRadius: 4,
-                  background: envHex(inst.environment),
-                  flexShrink: 0,
-                }}
+              <Checkbox
+                checked={shown}
+                onChange={() => onToggle(inst.name)}
+                aria-label={`Show the ${inst.name} column`}
               />
-              <span
-                className="mono"
-                style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: 12, opacity: shown ? 1 : 0.5 }}
-                title={inst.name}
-              >
-                {inst.name}
-              </span>
+              <span className="cf-instpick-dot" style={{ background: envHex(inst.environment) }} />
+              <Tooltip title={`Read ${inst.name} on its own, as a sheet`} placement="right">
+                <button
+                  type="button"
+                  className="cf-instpick-name mono"
+                  style={{ opacity: shown || focused === inst.name ? 1 : 0.45 }}
+                  onClick={() => onFocus(focused === inst.name ? null : inst.name)}
+                >
+                  {inst.name}
+                </button>
+              </Tooltip>
             </div>
           );
         })}
       </div>
-      <div style={{ marginTop: 6, fontSize: 11, color: "var(--text-3)" }}>
-        Drag a row to reorder. In the grid itself, drag a column header to move it and its right
-        edge to resize it.
+      <div className="cf-instpick-foot">
+        Tick to show a column, drag to reorder, click a name to read that instance on its own. Drag
+        a column's right edge in the grid to resize it.
       </div>
     </div>
   );
@@ -870,9 +948,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [viewInstance, setViewInstance] = useState<string | null>(
     () => useUI.getState().selectedInstance,
   );
-  // Environment filter: narrows the visible instance columns (and the
-  // instance picker) to one environment.
-  const [envFilter, setEnvFilter] = useState<string>("");
+  // There is no separate environment filter any more: "all production" is three
+  // ticks in the instance picker, not a mode the grid goes into, so one piece of
+  // state (colLayout.hidden) answers "which instances" however it was chosen.
   // Per-application column layout the user controls: which instance columns
   // are hidden, their order, and manual width overrides (drag-resized). All
   // persisted so a curated view survives reloads. Keyed by repo so switching
@@ -895,7 +973,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       return next;
     });
   const hiddenInstances = useMemo(() => new Set(colLayout.hidden), [colLayout.hidden]);
-  const [colsOpen, setColsOpen] = useState(false);
+  const [instOpen, setInstOpen] = useState(false);
   // Live drag width while resizing a column header (committed to colLayout on
   // mouse-up); null when no resize is in progress.
   const [resizing, setResizing] = useState<{ name: string; width: number } | null>(null);
@@ -1049,15 +1127,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     const saved = colLayout.metaOrder.filter((k) => META_MOVABLE.includes(k));
     return [...saved, ...META_MOVABLE.filter((k) => !saved.includes(k))];
   }, [colLayout.metaOrder]);
+  // Which instance columns the grid draws. One rule: the picker's ticks, in the
+  // picker's order. Reading one instance as a sheet is the single exception -
+  // that is a different presentation of one instance, not a filter, so it shows
+  // its instance whether or not the tick is on.
   const visibleInstances = useMemo(
     () =>
-      (viewInstance ? grid.instances : orderedInstances).filter(
-        (i) =>
-          (!envFilter || (i.environment ?? "") === envFilter) &&
-          (!viewInstance || i.name === viewInstance) &&
-          (viewInstance ? true : !hiddenInstances.has(i.name)),
+      (viewInstance ? grid.instances : orderedInstances).filter((i) =>
+        viewInstance ? i.name === viewInstance : !hiddenInstances.has(i.name),
       ),
-    [grid.instances, orderedInstances, envFilter, viewInstance, hiddenInstances],
+    [grid.instances, orderedInstances, viewInstance, hiddenInstances],
   );
 
   // Draft items per parameter, for the status pills and the Changed column.
@@ -1832,21 +1911,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
 
   const environments = [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[];
 
-  // Priority overflow: measure the toolbar and fold the lowest-priority
-  // controls into the ⋮ menu, in order, as width tightens. Before the first
-  // measurement (width 0) everything shows, so there is no collapse flash.
-  // Only the column manager folds now (and only when it carries no active
-  // customization); the row filter degrades to a compact select before that.
+  // Priority overflow: measure the toolbar and degrade the widest controls as
+  // width tightens. Before the first measurement (width 0) everything shows, so
+  // there is no collapse flash. Nothing folds away entirely any more - the
+  // instance picker is the context for the whole screen and the row filter is
+  // how a reviewer finds their own edits, so both only ever get smaller.
   const w = barW || 9999;
   const colsCustomized =
     colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0;
-  const showColumns = !viewInstance && (colsCustomized || w >= 950);
   const showFilterSeg = w >= 820;
-  // The grouping control is never removed either; it degrades to a select of
-  // the same three choices before the row filter does.
+  // The grouping control degrades to a select of the same three choices before
+  // the row filter does.
   const showGroupSeg = w >= 1040;
-  const foldedColumns = !viewInstance && !showColumns;
-  const anyFolded = foldedColumns;
 
   // The empty state and the pinned shelf are whole subtrees; rebuilding them on
   // every render of this component rebuilt the sticky rows and the empty state
@@ -1932,26 +2008,32 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     [toggleParamPanel],
   );
 
-  // One control governs both "which instances" (all, or one environment) and
-  // "single sheet vs matrix" (one instance). The value encodes the mode:
-  // "" = all, env:<name> = an environment, inst:<name> = a single instance.
-  const viewValue = viewInstance ? `inst:${viewInstance}` : envFilter ? `env:${envFilter}` : "";
-  const onViewChange = (val: string) => {
-    if (val.startsWith("inst:")) {
-      const name = val.slice(5);
-      setEnvFilter("");
-      setViewInstance(name);
-      selectInstance(name);
-    } else if (val.startsWith("env:")) {
-      setEnvFilter(val.slice(4));
-      setViewInstance(null);
-      selectInstance(null);
-    } else {
-      setEnvFilter("");
-      setViewInstance(null);
-      selectInstance(null);
-    }
+  // Reading one instance on its own. It travels through selectInstance so the
+  // URL (?inst=) keeps saying what the screen is showing.
+  const focusInstance = (name: string | null) => {
+    setViewInstance(name);
+    selectInstance(name);
   };
+
+  // What the instance button says. It has to answer "what am I looking at"
+  // without being opened, so it names the one thing when there is one thing and
+  // counts otherwise - and names an environment when the ticks happen to be
+  // exactly that environment, because that is how the user chose it.
+  const shownInstances = grid.instances.filter((i) => !hiddenInstances.has(i.name));
+  const instanceLabel = viewInstance
+    ? viewInstance
+    : shownInstances.length === grid.instances.length
+      ? "All instances"
+      : shownInstances.length === 0
+        ? "No instances"
+        : shownInstances.length === 1
+          ? shownInstances[0].name
+          : environments.find(
+                (e) =>
+                  shownInstances.every((i) => i.environment === e) &&
+                  shownInstances.length === grid.instances.filter((i) => i.environment === e).length,
+              ) ??
+            `${shownInstances.length} of ${grid.instances.length} instances`;
 
   return (
     <div className="param-grid" style={{ display: "flex", flexDirection: "column", height: "100%", minWidth: 0 }}>
@@ -1977,38 +2059,56 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           borderBottom: "1px solid var(--border)",
         }}
       >
-        {/* One control for what you are looking at: all instances, a whole
-            environment (matrix, scoped), or a single instance (one sheet). */}
-        <Tooltip title="Choose what you are viewing: all instances, one environment, or a single instance as a sheet">
-          <Select
-            size="small"
-            value={viewValue}
-            onChange={onViewChange}
-            showSearch
-            optionFilterProp="label"
-            style={{ width: 158, flexShrink: 0 }}
-            options={[
-              { value: "", label: "All instances" },
-              ...(environments.length
-                ? [
-                    {
-                      label: "Filter by environment",
-                      title: "environment",
-                      options: environments.map((e) => ({ value: `env:${e}`, label: `All ${e}` })),
-                    },
-                  ]
-                : []),
-              {
-                label: "Single instance",
-                title: "instance",
-                options: grid.instances.map((i) => ({
-                  value: `inst:${i.name}`,
-                  label: i.environment ? `${i.name}  ·  ${i.environment}` : i.name,
-                })),
-              },
-            ]}
-          />
-        </Tooltip>
+        {/* ONE control for what you are looking at. Ticks say which instances
+            have columns, a drag says in what order, and a name says "read that
+            one on its own" - all in the same list, because they were always the
+            same question asked three ways. */}
+        <Dropdown
+          trigger={["click"]}
+          open={instOpen}
+          onOpenChange={setInstOpen}
+          placement="bottomLeft"
+          popupRender={() => (
+            <div className="cf-pop">
+              <InstancePicker
+                instances={orderedInstances}
+                hidden={hiddenInstances}
+                widths={colLayout.widths}
+                order={colLayout.order}
+                environments={environments}
+                focused={viewInstance}
+                onToggle={(name) =>
+                  patchColLayout({
+                    hidden: hiddenInstances.has(name)
+                      ? colLayout.hidden.filter((n) => n !== name)
+                      : [...colLayout.hidden, name],
+                  })
+                }
+                onSetHidden={(names) => patchColLayout({ hidden: names })}
+                onReorder={reorderInstances}
+                onFocus={focusInstance}
+                onReset={() => {
+                  patchColLayout(emptyColLayout);
+                  focusInstance(null);
+                }}
+              />
+            </div>
+          )}
+        >
+          <Tooltip title="Which instances to show, in what order - and reading one on its own">
+            <Badge dot={colsCustomized} color="var(--c-review)" offset={[-4, 2]}>
+              <Button
+                size="small"
+                icon={viewInstance ? <ScopeInstanceOutlined /> : <TableOutlined />}
+                aria-label="Instances shown"
+                style={{ flexShrink: 0, maxWidth: 190 }}
+              >
+                <span className="cf-instbtn-label">{instanceLabel}</span>
+                <DownOutlined style={{ fontSize: 9, opacity: 0.55, marginInlineStart: 2 }} />
+              </Button>
+            </Badge>
+          </Tooltip>
+        </Dropdown>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Grouping. It answers two everyday questions - "which of these are
             set the same across the fleet, and which one is the odd one out"
@@ -2137,27 +2237,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             </Tooltip>
           </Space>
         )}
-        {showColumns && (
-          <Tooltip title="Show, hide, reorder and resize instance columns">
-            <Badge
-              dot={colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0}
-              color="var(--c-review)"
-              offset={[-2, 2]}
-            >
-              <Button size="small" icon={<TableOutlined />} aria-label="Columns" onClick={() => setColsOpen(true)} style={{ flexShrink: 0 }} />
-            </Badge>
-          </Tooltip>
-        )}
         <Dropdown
           trigger={["click"]}
           open={moreOpen}
           onOpenChange={setMoreOpen}
           menu={{
             items: [
-              // The column manager is the only control that folds off the bar;
-              // it reappears here first so it is never unreachable when narrow.
-              ...(foldedColumns ? [{ key: "columns", icon: <TableOutlined />, label: "Manage columns…" }] : []),
-              ...(anyFolded ? [{ type: "divider" as const }] : []),
               // Find & replace stages edits across the grid, so it is an
               // editor's tool; searching (the toolbar box) stays for everyone.
               ...(canEdit
@@ -2187,10 +2272,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               },
             ],
             onClick: ({ key }) => {
-              if (key === "columns") {
-                setColsOpen(true);
-                setMoreOpen(false);
-              } else if (key === "findreplace") {
+              if (key === "findreplace") {
                 setFindReplace({ find: "" });
                 setMoreOpen(false);
               } else if (key === "legend") {
@@ -2214,8 +2296,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             },
           }}
         >
+          {/* A gear, not three dots. What is in here is the SETTINGS of the
+              editor - which columns, which density, which rows - and a gear is
+              the one glyph everybody already reads that way; "⋮" says "more of
+              the same actions", which these are not. */}
           <Badge dot={activeFilters > 0} color="var(--c-review)" offset={[-2, 2]}>
-            <Button size="small" icon={<MoreOutlined />} aria-label="More editor options" title="Filters, view options and tools" style={{ flexShrink: 0 }} />
+            <Button size="small" icon={<SettingOutlined />} aria-label="Editor settings" title="Filters, view options and tools" style={{ flexShrink: 0 }} />
           </Badge>
         </Dropdown>
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
@@ -2299,26 +2385,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           onClose={() => setBulkSet(null)}
           onApply={(targets) => bulkSave.mutate({ paramId: bulkSet.param.id, value: bulkSet.value, targets })}
         />
-      )}
-      {/* Column manager lives in a modal so it opens the same way from the
-          toolbar button or from the ⋮ menu when the button has folded away. */}
-      {!viewInstance && (
-        <Modal title={null} open={colsOpen} onCancel={() => setColsOpen(false)} footer={null} width={320}>
-          <ColumnManager
-            instances={orderedInstances}
-            hidden={hiddenInstances}
-            widths={colLayout.widths}
-            onToggle={(name) =>
-              patchColLayout({
-                hidden: hiddenInstances.has(name)
-                  ? colLayout.hidden.filter((n) => n !== name)
-                  : [...colLayout.hidden, name],
-              })
-            }
-            onReorder={reorderInstances}
-            onReset={() => patchColLayout(emptyColLayout)}
-          />
-        </Modal>
       )}
       {findReplace && (
         <FindReplaceModal

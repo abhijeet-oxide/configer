@@ -19,14 +19,13 @@ import {
   ArrowLeftOutlined,
   CheckCircleOutlined,
   CloudUploadOutlined,
-  FileSearchOutlined,
   LeftOutlined,
   PartitionOutlined,
   RightOutlined,
   SearchOutlined,
   TableOutlined,
 } from "../icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, type Binding, type Instance, type Parameter, type SkippedFile } from "../api";
@@ -314,6 +313,13 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const [treeQ, setTreeQ] = useState("");
   const [paramQ, setParamQ] = useState("");
   const [treeCollapsed, setTreeCollapsed] = useState(false);
+  // The wizard scrolls inside itself, so a long step leaves the scroller part
+  // way down - and the next step then opened halfway through, with its own
+  // title and progress row above the fold. Every step starts at its top.
+  const pageRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    pageRef.current?.scrollTo({ top: 0 });
+  }, [step]);
 
   // Files the user chose to manage despite the scan passing them over. They are
   // part of the query key, so choosing one re-proposes with it included rather
@@ -488,17 +494,23 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     );
   }
 
+  // Three steps, not four. Naming the application and confirming the instance
+  // folders are the SAME decision - "what is this thing, and what does it come
+  // in" - and splitting them made the first two screens hold one short form
+  // each. "Layout" was also the wrong word for the first of them: nobody
+  // arrives wanting to pick a layout, they arrive with a repository whose
+  // structure Configer has already worked out.
   const steps = [
-    { label: "Layout", icon: <FileSearchOutlined /> },
-    { label: "Instances", icon: <ApartmentOutlined /> },
-    { label: "Parameters", icon: <TableOutlined /> },
-    { label: "Initialize", icon: <CheckCircleOutlined /> },
+    { label: "Application", icon: <ApartmentOutlined />, explain: "Name it, and confirm the instances found in the repository" },
+    { label: "Parameters", icon: <TableOutlined />, explain: "Choose the files and settings Configer should manage" },
+    { label: "Initialize", icon: <CheckCircleOutlined />, explain: "One Git commit adding .configer/ metadata" },
   ];
+  const LAST = steps.length - 1;
 
   const canNext =
     step === 0
       ? appName.trim() !== "" && insts.length > 0
-      : step === 2
+      : step === 1
         ? chosenParams.length > 0
         : true;
   // A disabled button with no reason is a dead end. Say which of its conditions
@@ -510,7 +522,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         ? appName.trim() === ""
           ? "Give the application a name to continue."
           : "No instance folders were found, so there is nothing to lay out as columns yet. Configer expects one folder per environment or cluster."
-        : step === 2
+        : step === 1
           ? "Select at least one setting to manage."
           : "";
 
@@ -520,122 +532,157 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const setAllFiles = (checked: boolean) => setUncheckedFiles(checked ? new Set() : new Set(allFiles));
 
   return (
-    <div style={{ height: "100%", overflow: "auto", padding: "16px 24px" }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
-        <Typography.Title level={4} style={{ marginBottom: 4 }}>
-          Set up {projectName}
-        </Typography.Title>
-        <Button icon={<ArrowLeftOutlined />} onClick={() => setSection("workspace")}>
-          Back to Applications
-        </Button>
-      </div>
-      <Typography.Paragraph type="secondary">
-        Configer scanned the repository and proposes how to manage it. Nothing is written until the
-        final step, which makes one reviewable Git commit adding metadata under{" "}
-        <span className="mono">.configer/</span>. Your configuration files stay exactly where they are.
-      </Typography.Paragraph>
+    <div className="cf-onb" ref={pageRef}>
+      {/* Only the parameters step widens: it is a file tree beside a table of
+          every setting found, and everything else reads better in a column. */}
+      <div className={"cf-onb-inner" + (step === 1 ? " is-wide" : "")}>
+        <div className="cf-onb-head">
+          <div className="min-w-0">
+            <div className="cf-onb-eyebrow">Set up an application</div>
+            <h1 className="cf-onb-title">{projectName}</h1>
+            <p className="cf-onb-sub">
+              Configer scanned the repository and proposes how to manage it. Nothing is written until
+              the last step, which makes one reviewable Git commit adding metadata under{" "}
+              <span className="mono">.configer/</span> - your configuration files stay exactly where
+              they are.
+            </p>
+          </div>
+          <Button icon={<ArrowLeftOutlined />} onClick={() => setSection("workspace")}>
+            Back to Applications
+          </Button>
+        </div>
 
-      {/* The "aha": what the scan turned this repository into, stated once and
-          up front - messy files become structured, countable configuration. */}
-      <DiscoverySummary
-        parameters={found.length}
-        instances={insts.length}
-        formats={discoveredFormats}
-      />
+        {/* The "aha": what the scan turned this repository into, stated once and
+            up front - messy files become structured, countable configuration. */}
+        <DiscoverySummary
+          parameters={found.length}
+          instances={insts.length}
+          formats={discoveredFormats}
+        />
 
-      <div className="mb-5 rounded-card-lg bg-surface px-5 py-4 shadow-neu">
-        <Stepper current={step} steps={steps} />
-      </div>
+        <div className="cf-onb-steps">
+          <Stepper current={step} steps={steps} />
+        </div>
 
+        <div className="cf-onb-body">
       {step === 0 && (
-        <>
-          <InlineNotice className="mb-4">
-            Detected layout: <b>{layoutLabels[d.detection.layout] ?? d.detection.layout}</b>
-            {d.detection.note ? ` - ${d.detection.note}` : ""}
-          </InlineNotice>
-          <Form layout="vertical" style={{ maxWidth: 480 }}>
-            <Form.Item label="Application name" required>
-              <Input value={appName} onChange={(e) => setAppName(e.target.value)} placeholder="e.g. telco-platform" />
-            </Form.Item>
-            <Form.Item label="Description">
-              <Input.TextArea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="What does this application configure?"
-              />
-            </Form.Item>
-          </Form>
-          {insts.length === 0 && (
-            <InlineNotice tone="warn">
-              No instances were found. Configer looks for one folder per instance (instances/,
-              environments/, overlays/, kpt packages) - add such a structure, or connect a different
-              branch.
-            </InlineNotice>
-          )}
-        </>
+        <div className="cf-onb-cols">
+          {/* What the application IS. */}
+          <section className="cf-onb-card">
+            <header className="cf-onb-card-head">
+              <span className="cf-onb-card-title">About this application</span>
+              <span className="cf-onb-card-hint">Written to .configer/application.yaml</span>
+            </header>
+            <Form layout="vertical" requiredMark={false}>
+              <Form.Item label="Application name" required style={{ marginBottom: 14 }}>
+                <Input
+                  size="large"
+                  value={appName}
+                  onChange={(e) => setAppName(e.target.value)}
+                  placeholder="e.g. telco-platform"
+                />
+              </Form.Item>
+              <Form.Item label="Description" style={{ marginBottom: 4 }}>
+                <Input.TextArea
+                  rows={3}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="What does this application configure?"
+                />
+              </Form.Item>
+            </Form>
+            {/* The convention Configer recognized. It is a FINDING, not a
+                choice the user has to make, so it reads as one line of fact
+                rather than as a step of its own. */}
+            <div className="cf-onb-detect">
+              <PartitionOutlined className="cf-onb-detect-icon" />
+              <span>
+                <b>{layoutLabels[d.detection.layout] ?? d.detection.layout}</b> structure detected
+                {d.detection.note ? <span className="cf-onb-detect-note"> - {d.detection.note}</span> : null}
+              </span>
+            </div>
+          </section>
+
+          {/* What it comes in. Same decision, same screen. */}
+          <section className="cf-onb-card">
+            <header className="cf-onb-card-head">
+              <span className="cf-onb-card-title">
+                Instances
+                <Tag className="cf-onb-count">{insts.length}</Tag>
+              </span>
+              <span className="cf-onb-card-hint">One folder, one column in the grid</span>
+            </header>
+            {insts.length === 0 ? (
+              <InlineNotice tone="warn">
+                No instances were found. Configer looks for one folder per instance (instances/,
+                environments/, overlays/, kpt packages) - add such a structure, or connect a
+                different branch.
+              </InlineNotice>
+            ) : (
+              <>
+                <Table<Instance>
+                  size="small"
+                  rowKey="name"
+                  dataSource={insts}
+                  pagination={false}
+                  scroll={{ x: "max-content" }}
+                  columns={[
+                    {
+                      title: "Instance",
+                      dataIndex: "name",
+                      render: (v, i) => (
+                        <div className="cf-onb-inst">
+                          <span className="cf-onb-inst-name">{v}</span>
+                          <span className="mono cf-onb-inst-folder" title={folderOf(i)}>
+                            {folderOf(i)}
+                          </span>
+                        </div>
+                      ),
+                    },
+                    {
+                      title: "Environment",
+                      width: 180,
+                      render: (_v, i) => (
+                        <AutoComplete
+                          size="small"
+                          style={{ width: "100%" }}
+                          allowClear
+                          placeholder="e.g. Development"
+                          value={i.environment || undefined}
+                          options={ENV_PRESETS.map((e) => ({ value: e }))}
+                          filterOption={(input, option) =>
+                            (option?.value as string).toLowerCase().includes(input.toLowerCase())
+                          }
+                          onChange={(v) => patchInstance(i.name, { environment: v })}
+                        />
+                      ),
+                    },
+                    {
+                      title: "Software version",
+                      width: 150,
+                      render: (_v, i) => (
+                        <Input
+                          size="small"
+                          className="mono"
+                          placeholder="e.g. v24.3.1"
+                          value={i.softwareVersion}
+                          onChange={(e) => patchInstance(i.name, { softwareVersion: e.target.value })}
+                        />
+                      ),
+                    },
+                  ]}
+                />
+                <InlineNotice tone="neutral" className="mt-3">
+                  You can create, clone or retire instances any time from the Instances tab - no
+                  need to get them all here.
+                </InlineNotice>
+              </>
+            )}
+          </section>
+        </div>
       )}
 
       {step === 1 && (
-        <>
-          <Typography.Paragraph type="secondary">
-            Each folder below becomes one instance - a column in the parameter grid. Set the
-            environment (pick a suggestion or type your own) and version; it lands in{" "}
-            <span className="mono">.configer/instances.yaml</span>.
-          </Typography.Paragraph>
-          <Table<Instance>
-            size="small"
-            rowKey="name"
-            dataSource={insts}
-            pagination={false}
-            columns={[
-              { title: "Instance", dataIndex: "name", render: (v) => <b>{v}</b> },
-              {
-                title: "Folder",
-                dataIndex: "folder",
-                render: (v) => <span className="mono" style={{ fontSize: 12 }}>{v}</span>,
-              },
-              {
-                title: "Environment",
-                width: 190,
-                render: (_v, i) => (
-                  <AutoComplete
-                    size="small"
-                    style={{ width: 170 }}
-                    allowClear
-                    placeholder="e.g. Development"
-                    value={i.environment || undefined}
-                    options={ENV_PRESETS.map((e) => ({ value: e }))}
-                    filterOption={(input, option) =>
-                      (option?.value as string).toLowerCase().includes(input.toLowerCase())
-                    }
-                    onChange={(v) => patchInstance(i.name, { environment: v })}
-                  />
-                ),
-              },
-              {
-                title: "Software version",
-                width: 170,
-                render: (_v, i) => (
-                  <Input
-                    size="small"
-                    className="mono"
-                    placeholder="e.g. v24.3.1"
-                    value={i.softwareVersion}
-                    onChange={(e) => patchInstance(i.name, { softwareVersion: e.target.value })}
-                  />
-                ),
-              },
-            ]}
-          />
-          <InlineNotice tone="neutral" className="mt-3">
-            You can create, clone or retire instances any time from the Instances tab - no need to
-            get them all here.
-          </InlineNotice>
-        </>
-      )}
-
-      {step === 2 && (
         <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
           {/* Left: the file tree, collapsible to a thin rail. Unticking a file
               or folder removes its settings from the table on the right. */}
@@ -811,7 +858,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
         </div>
       )}
 
-      {step === 3 &&
+      {step === 2 &&
         (init.isSuccess ? (
           // A warm, illustrated completion before the editor opens.
           <div style={{ paddingTop: 24 }}>
@@ -870,44 +917,47 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           />
         ))}
 
-      {/* The nav is hidden once initialization is under way, so the progress
-          view owns the screen. */}
-      {!(step === 3 && (init.isPending || init.isSuccess)) && (
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 20 }}>
-          <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
-            {step === 0 ? "Cancel" : "Back"}
-          </Button>
-          {step < 3 &&
-            (blockedBecause ? (
-              <Tooltip title={blockedBecause}>
-                <span style={{ display: "inline-flex" }}>
-                  <Button type="primary" disabled>
-                    Next
-                  </Button>
-                </span>
-              </Tooltip>
-            ) : (
-              <Button type="primary" onClick={() => setStep(step + 1)}>
-                Next
-              </Button>
-            ))}
         </div>
-      )}
 
-      <div style={{ marginTop: 16 }}>
-        <SkippedFiles
-          skipped={skipped}
-          managed={managed}
-          onManage={(f) => setManaged((m) => [...m, f])}
-          onStopManaging={(f) => setManaged((m) => m.filter((x) => x.file !== f))}
-          busy={discoverQ.isFetching}
-        />
+        {/* The nav is hidden once initialization is under way, so the progress
+            view owns the screen. */}
+        {!(step === LAST && (init.isPending || init.isSuccess)) && (
+          <div className="cf-onb-nav">
+            <Button onClick={() => (step === 0 ? setSection("workspace") : setStep(step - 1))}>
+              {step === 0 ? "Cancel" : "Back"}
+            </Button>
+            <span className="cf-onb-nav-note">
+              {chosenParams.length} setting{chosenParams.length === 1 ? "" : "s"} selected across{" "}
+              {insts.length} instance{insts.length === 1 ? "" : "s"}
+              {d.sharedFiles?.length ? ` · ${d.sharedFiles.length} shared file(s)` : ""}
+            </span>
+            {step < LAST &&
+              (blockedBecause ? (
+                <Tooltip title={blockedBecause}>
+                  <span style={{ display: "inline-flex" }}>
+                    <Button type="primary" disabled>
+                      Next
+                    </Button>
+                  </span>
+                </Tooltip>
+              ) : (
+                <Button type="primary" onClick={() => setStep(step + 1)}>
+                  Next
+                </Button>
+              ))}
+          </div>
+        )}
+
+        <div style={{ marginTop: 16 }}>
+          <SkippedFiles
+            skipped={skipped}
+            managed={managed}
+            onManage={(f) => setManaged((m) => [...m, f])}
+            onStopManaging={(f) => setManaged((m) => m.filter((x) => x.file !== f))}
+            busy={discoverQ.isFetching}
+          />
+        </div>
       </div>
-
-      <Typography.Text type="secondary" style={{ display: "block", marginTop: 16, fontSize: 12 }}>
-        {chosenParams.length} settings selected across {insts.length} instances
-        {d.sharedFiles?.length ? ` · ${d.sharedFiles.length} shared file(s)` : ""}
-      </Typography.Text>
     </div>
   );
 }

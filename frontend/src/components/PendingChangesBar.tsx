@@ -24,6 +24,7 @@ export default function PendingChangesBar() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const setSection = useUI((s) => s.setSection);
+  const setOpenSubmit = useUI((s) => s.setOpenSubmit);
   // Open by pointer or by focus; a tap latches it open where there is no
   // pointer to hover with (a phone), and tapping the tab again closes it.
   const [hover, setHover] = useState(false);
@@ -77,7 +78,13 @@ export default function PendingChangesBar() {
           type="primary"
           icon={<PullRequestOutlined />}
           tabIndex={open ? 0 : -1}
-          onClick={() => setSection("config")}
+          onClick={() => {
+            // "Review" means review, so it opens the review dialog. Switching
+            // to the editor alone landed the user on a grid of a thousand rows
+            // with no sign of the handful of edits they had just asked to see.
+            setOpenSubmit(true);
+            setSection("config");
+          }}
         >
           Review
         </Button>

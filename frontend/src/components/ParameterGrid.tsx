@@ -404,18 +404,32 @@ function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
   return hay.includes(q) || matchesValue(r, q);
 }
 
-// A dotted parameter name is read from the RIGHT. "failRetryInterval" is what
-// the setting IS; "additionalValues.zts.value.admin.rebuildSlave" is only where
-// it lives, and in a fixed-width column an ellipsis at the end cut off the one
-// part worth reading. So the cell shows the leaf on its own line and the route
-// to it underneath, written the way a path is written.
+// A parameter name is read from the RIGHT. "failRetryInterval" is what the
+// setting IS; "additionalValues.zts.value.admin.rebuildSlave" is only where it
+// lives, and in a fixed-width column an ellipsis at the end cut off the one part
+// worth reading. So the cell shows the leaf on its own line and the route to it
+// underneath, written the way a path is written.
+//
+// BOTH separators split, because both turn up in one grid: names discovered from
+// YAML and JSON are dotted, and names from XML or path-shaped sources arrive as
+// "/config/cloud-deployment/net-info[3]/device-pool". Splitting only on the dot
+// left those rows as one long bold line among rows that all had a leaf and a
+// route - the same information laid out two different ways, which is what made
+// the column read as noise.
+const SEP = /[./]/;
+function splitName(name: string): { leaf: string; route: string } {
+  const i = Math.max(name.lastIndexOf("."), name.lastIndexOf("/"));
+  const leaf = i < 0 ? name : name.slice(i + 1);
+  // A name that ENDS in a separator has no leaf to promote; show it whole
+  // rather than an empty first line over a route.
+  if (i < 0 || leaf === "") return { leaf: name, route: "" };
+  return { leaf, route: name.slice(0, i).split(SEP).filter(Boolean).join(" / ") };
+}
 function leafOf(name: string): string {
-  const i = name.lastIndexOf(".");
-  return i < 0 ? name : name.slice(i + 1);
+  return splitName(name).leaf;
 }
 function routeOf(name: string): string {
-  const i = name.lastIndexOf(".");
-  return i < 0 ? "" : name.slice(0, i).split(".").join(" / ");
+  return splitName(name).route;
 }
 
 // hl wraps every case-insensitive occurrence of q in text with a highlight mark,

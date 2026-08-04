@@ -861,6 +861,14 @@ body {
    reading, so the leaf gets a line of its own and the route sits under it,
    written the way a path is written.
 
+   The two lines have to look like two DIFFERENT KINDS of thing, or the column
+   reads as a wall of similar grey text with nowhere for the eye to land - which
+   is exactly what it was. So the leaf is the loudest thing in the row (full
+   weight, full ink) and the route is demoted on three channels at once: smaller,
+   lighter, and in the monospace face a path is written in. Three quiet signals
+   agreeing beats one loud one, and none of them costs a pixel of row height or
+   a rule to draw.
+
    Both lines are always present, empty route included, so every row in the
    virtualized body measures the same. */
 .cf-pname {
@@ -881,6 +889,10 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text);
+  letter-spacing: -0.005em;
 }
 /* The ellipsis goes at the START of the route: the segments next to the leaf
    are the ones that place it, and the outermost are the ones every parameter
@@ -894,13 +906,25 @@ body {
   white-space: nowrap;
   min-width: 0;
   height: 13px;
+  font-family: var(--font-mono);
   font-size: 10px;
   line-height: 13px;
-  color: var(--c-text-3);
-  letter-spacing: 0.01em;
+  color: var(--text-3);
+  letter-spacing: 0;
 }
 .cf-pname-route > bdi {
   direction: ltr;
+}
+/* The row the pointer is on lifts its own address out of the background, so
+   following one parameter across a wide grid does not mean squinting. */
+.param-grid .ant-table-row:hover .cf-pname-route,
+.param-grid .ant-table-tbody-virtual .ant-table-row:hover .cf-pname-route {
+  color: var(--text-2);
+}
+/* The selected parameter is the subject of every side panel on the screen; its
+   name says so. */
+.param-grid .ant-table-row.row-selected .cf-pname-leaf {
+  color: var(--brand);
 }
 
 /* zebra striping + calm hover for the parameter grid (works with the
@@ -1673,18 +1697,25 @@ body {
 
 /* ------------------------------------------------- the review dialog's frame */
 
-/* A dialog is a fixed frame around ONE scrollable region. .cf-fill is that
-   region: it takes the height left after the fixed parts (notice, form, buttons)
-   have had theirs, and holds either the list of changes or the file diff - never
-   both, because two halves of a 250px gap are two things too small to read. */
+/* A dialog is a frame around ONE scrollable region. .cf-fill is that region: it
+   is as tall as the list inside it, and it is the ONLY part of the dialog
+   allowed to shrink, so everything over the dialog's cap comes out of it and
+   turns into a scrollbar there rather than anywhere else.
+
+   `flex: 0 1 auto` is the whole of that sentence. It used to be `1 1 auto`
+   against a body pinned to 700px, which meant a draft of ONE edit was reviewed
+   through a dialog three quarters empty - the list stretched to fill a frame
+   that had been sized for a draft nobody had. */
 .cf-fill {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 116px;
+  flex: 0 1 auto;
+  /* Two rows' worth: below this a list is not worth scrolling, and the dialog
+     may as well grow past its cap and scroll as a whole. */
+  min-height: 92px;
   min-width: 0;
-  /* Whatever is in here stays in here. A code diff whose container came out
-     shorter than its own layout painted straight over the form below it. */
+  /* Whatever is in here stays in here. A container that came out shorter than
+     its own layout painted straight over the form below it. */
   overflow: hidden;
 }
 
@@ -1707,7 +1738,7 @@ body {
 .cf-items-wrap {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   gap: 8px;
 }
@@ -1737,9 +1768,11 @@ body {
   white-space: nowrap;
 }
 
-/* An antd table that fills its box and scrolls its BODY only. scroll={{y:1}}
-   makes antd split the header from the body; from there the height comes from
-   the flex box this sits in, not from a number a component had to guess. */
+/* An antd table that is as tall as its rows and scrolls its BODY only once
+   there are more of them than fit. scroll={{y:1}} makes antd split the header
+   from the body; from there the height comes from the rows themselves, and the
+   flex box this sits in only ever takes height AWAY - which is what turns "too
+   many changes" into a scrollbar and "one change" into a short dialog. */
 .cf-items-fill,
 .cf-items-fill .ant-spin-nested-loading,
 .cf-items-fill .ant-spin-container,
@@ -1747,7 +1780,7 @@ body {
 .cf-items-fill .ant-table-container {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
   width: 100%;
 }
@@ -1758,11 +1791,19 @@ body {
   flex: 0 0 auto;
 }
 .cf-items-fill .ant-table-body {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
+  /* antd's scroll={{y:1}} leaves a literal max-height:1px inline; the height
+     here is the rows', capped only by the flex box above. */
   max-height: none !important;
   overflow-y: auto !important;
   overflow-x: hidden !important;
+}
+/* An empty list keeps its frame (see ChangeItemsTable) but must not keep the
+   height of one: antd's "no data" panel is 100px of illustration for a state
+   the dialog closes itself out of anyway. */
+.cf-items-fill .ant-table-placeholder .ant-empty {
+  margin: 10px 8px;
 }
 /* Fixed layout means the columns divide the width they are given; the long
    things inside them have to break rather than demand a sideways scrollbar. */
@@ -3437,15 +3478,33 @@ mark.vd-ins {
   opacity: 0.4;
 }
 
-.cf-axis line {
-  stroke: var(--cf-axis);
-  stroke-width: 1;
-  stroke-dasharray: 3 5;
-}
-.cf-axis text {
+/* The timestamp under a commit. There is no axis along the bottom of this
+   picture: x counts commits, not minutes, so each dot says its own time. Quiet
+   enough to be furniture until it is wanted, tabular so a column of them lines
+   up, and unselectable so dragging across the canvas does not highlight forty
+   of them. */
+.cf-stamp {
   fill: var(--text-3);
-  font-size: 10.5px;
+  font-size: 9.5px;
   font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  pointer-events: none;
+  user-select: none;
+  /* A halo in the canvas colour, painted UNDER the glyphs. A change still
+     waiting on somebody runs a dotted line across the lane to where it wants to
+     land, and that line passes straight through this row of text; without the
+     halo the two draw over each other and neither can be read. */
+  paint-order: stroke fill;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+.cf-stamp-day {
+  fill: var(--text-3);
+  opacity: 0.72;
+}
+.cf-stamp.is-dim {
+  opacity: 0.35;
 }
 
 /* The card. White, light, and the most important thing on screen: everything
@@ -3773,4 +3832,264 @@ mark.vd-ins {
 }
 .cf-md input[type="checkbox"] {
   margin-inline-end: 6px;
+}
+
+/* ------------------------------------------------------ onboarding an app
+
+   Setting up an application is the first real screen anybody sees, and it used
+   to read as a stack of form controls on a bare page. It is now ONE measured
+   column: a title block that says what is being set up, the three numbers the
+   scan turned up, the progress row, and then the step - each step's content in
+   cards that carry their own heading, so a glance says what the screen wants.
+
+   Naming the application and confirming its instances are the same decision and
+   share the first step; on a wide screen they sit side by side, and below
+   1100px they stack in reading order. */
+.cf-onb {
+  height: 100%;
+  overflow: auto;
+  padding: 20px 24px 48px;
+}
+/* A measured column, so the setup reads as one page rather than as controls
+   scattered across a monitor. The one exception is the parameters step, which
+   is a file tree beside a table of every setting in the repository and wants
+   every pixel it can get - it widens, and nothing else does. The prose never
+   follows it out: the intro is capped to its own measure below, so a wide
+   screen buys table, not 200-character lines. */
+.cf-onb-inner {
+  max-width: 1180px;
+  margin: 0 auto;
+  transition: max-width var(--dur-hover, 160ms) var(--ease, ease);
+}
+.cf-onb-inner.is-wide {
+  max-width: 1480px;
+}
+.cf-onb-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.cf-onb-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.cf-onb-title {
+  margin: 2px 0 6px;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 650;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.cf-onb-sub {
+  margin: 0;
+  max-width: 74ch;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text-2);
+}
+.cf-onb-steps {
+  margin: 18px 0 20px;
+  padding: 16px 20px;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--el-1);
+}
+.cf-onb-body {
+  min-height: 220px;
+}
+
+/* The step-0 pair. minmax(0,…) on both tracks so a wide instance table scrolls
+   inside its own card instead of widening the page. */
+.cf-onb-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .cf-onb-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.cf-onb-card {
+  min-width: 0;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--el-1);
+  padding: 16px 18px 18px;
+}
+.cf-onb-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.cf-onb-card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+.cf-onb-card-hint {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.cf-onb-count {
+  margin-inline-end: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The detected convention: a finding, stated in one quiet line. */
+.cf-onb-detect {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.cf-onb-detect-icon {
+  margin-top: 3px;
+  color: var(--brand);
+  flex-shrink: 0;
+}
+.cf-onb-detect-note {
+  color: var(--text-3);
+}
+
+/* An instance is its NAME first; the folder it came from is the evidence. */
+.cf-onb-inst {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cf-onb-inst-name {
+  font-weight: 600;
+  color: var(--text);
+}
+.cf-onb-inst-folder {
+  font-size: 11px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Back on the left, Next on the right, and what has been chosen between them -
+   the count belongs with the button that acts on it, not orphaned at the foot
+   of the page. */
+.cf-onb-nav {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.cf-onb-nav-note {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+/* On a phone the title and the way out stop competing for one row: the way out
+   goes above, where a back action belongs, and the title gets the full width
+   instead of a 150px column it has to hyphenate into. */
+@media (max-width: 640px) {
+  .cf-onb {
+    padding: 14px 14px 40px;
+  }
+  .cf-onb-head {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 12px;
+  }
+  .cf-onb-head .ant-btn {
+    align-self: flex-start;
+  }
+  .cf-onb-title {
+    font-size: 21px;
+  }
+  .cf-onb-steps {
+    padding: 14px 8px;
+  }
+  .cf-onb-nav {
+    flex-wrap: wrap;
+  }
+  .cf-onb-nav-note {
+    order: 3;
+    flex-basis: 100%;
+    text-align: left;
+  }
+}
+
+/* ------------------------------------------- an opened change request
+
+   The row an expanded panel hangs off is as wide as the table's widest column,
+   and the panel used to be laid out across the whole of it: the lifecycle
+   stepper (centred, max 640px) ended up hundreds of pixels off to the right,
+   with a screen of blank where the reader was looking. So the panel is bounded,
+   and stuck to the left edge - it stays under the eye however far the table is
+   scrolled sideways - and it is a surface of its own, so an open change reads as
+   one object rather than as loose content between two rows. */
+.cr-history .ant-table-expanded-row > td {
+  padding: 8px 10px 12px 48px !important;
+  background: transparent !important;
+}
+.cr-expand {
+  position: sticky;
+  left: 12px;
+  width: min(980px, calc(100vw - 320px));
+  min-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+/* The stepper is the one thing in here that wants to be centred, and it is
+   centred in the PANEL rather than in the table. */
+.cr-expand-steps {
+  padding: 2px 0 6px;
+  border-bottom: 1px solid var(--border);
+}
+/* No frame around the list inside a framed panel, and no empty rows under it. */
+.cr-expand .ant-table {
+  background: transparent;
+}
+.cr-expand .ant-table-thead > tr > th {
+  background: transparent !important;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-3) !important;
+}
+.cr-expand .ant-table-tbody > tr:last-child > td {
+  border-bottom: none;
+}
+@media (max-width: 900px) {
+  .cr-history .ant-table-expanded-row > td {
+    padding-inline-start: 12px !important;
+  }
+  .cr-expand {
+    width: calc(100vw - 64px);
+  }
 }

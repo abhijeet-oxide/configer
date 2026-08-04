@@ -39,37 +39,18 @@ func inferType(v any) model.ParamType {
 	}
 }
 
-// nameFromPath derives a dotted human name from a JSONPath-like path by
-// dropping the leading "$." and array indices.
+// nameFromPath derives a dotted human name from a JSONPath-like path: the
+// mapping keys, with array indices dropped (they locate an element, they do not
+// name the setting) and a QUOTED key kept whole - it is a key the dotted form
+// could not spell, not a subscript, and dropping it would name the parameter
+// after its parent. A leading multi-document selector ("[1]$.spec.port" ->
+// "spec.port") goes too: the name is the logical setting, not which document in
+// the stream carries it.
+//
+// The steps come from pathedit.Segments, which is also what the UI reads to
+// nest the name tree - so a name and its segmentation can never disagree.
 func nameFromPath(path string) string {
-	// Drop a leading multi-document selector ("[1]$.spec.port" -> "spec.port")
-	// so the display name is the logical setting, not the document position.
-	if _, rest, ok := pathedit.DocIndex(path); ok {
-		path = rest
-	}
-	s := strings.TrimPrefix(path, "$.")
-	// Drop [n] array indices for the display name, but keep a QUOTED key: it is
-	// a key the dotted form could not spell, not a subscript, and dropping it
-	// would name the parameter after its parent.
-	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] != '[' {
-			b.WriteByte(s[i])
-			continue
-		}
-		j := pathedit.BracketEnd(s, i)
-		if j < 0 {
-			break
-		}
-		if key, quoted := pathedit.UnquoteKey(s[i+1 : j]); quoted {
-			if b.Len() > 0 {
-				b.WriteByte('.')
-			}
-			b.WriteString(key)
-		}
-		i = j
-	}
-	return strings.TrimPrefix(b.String(), ".")
+	return strings.Join(pathedit.Segments("yaml", path), ".")
 }
 
 // flatten walks a decoded JSON/YAML value and appends leaf candidates.

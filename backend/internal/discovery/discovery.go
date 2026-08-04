@@ -334,6 +334,56 @@ func DiscoverWith(root string, reg *plugin.Registry, ignore project.Ignore, opts
 	return res, nil
 }
 
+// Tunable turns one file's raw candidates into the parameters discovery would
+// propose for them: YAML alias mirrors, indexed list leaves, positional
+// list-of-map entries, structural keys and the Kubernetes envelope all resolve
+// exactly as they do during onboarding, and each survivor comes back as a
+// parameter with the value found in the file as its Default and one binding at
+// the literal file (the caller re-scopes that to an instance folder).
+//
+// It is exported so that "what settings does this file have" has ONE answer.
+// The alternative - a second, simpler rule for the file editor - is how a file
+// edit ends up proposing `apiVersion` and `metadata.name` as parameters while
+// an import of the same file proposes neither.
+//
+// A file discovery would pass over entirely (a kustomization, a Kptfile, a
+// chart's plumbing, a schema) yields nothing.
+func Tunable(file string, cands []plugin.Candidate) []model.Parameter {
+	if skipFile(file) {
+		return nil
+	}
+	owned := cands[:0:0]
+	for _, c := range cands {
+		if c.AliasOf == "" {
+			owned = append(owned, c)
+		}
+	}
+	folded := keyListSelectors(foldLists(owned))
+	manifest := k8sManifest(folded)
+	out := make([]model.Parameter, 0, len(folded))
+	for _, c := range folded {
+		if structuralKey(c.Path) {
+			continue
+		}
+		if manifest && k8sStructural(c.Path) {
+			continue
+		}
+		p := model.Parameter{
+			ID:       slugify(c.Name),
+			Name:     c.Name,
+			Category: categoryFor(c.Name),
+			Type:     c.Type,
+			ItemType: c.itemType,
+			Secret:   looksSecret(c.Name),
+			Default:  c.Value,
+			Bindings: []model.Binding{{File: file, Path: c.Path, Format: c.Format, Line: c.Line}},
+		}
+		refineType(&p)
+		out = append(out, p)
+	}
+	return out
+}
+
 // instKeyOf reconstructs the instGroups key for a single-binding instance
 // parameter (used only inside the merge step, before bindings multiply).
 func instKeyOf(p model.Parameter) string {
@@ -442,7 +492,14 @@ func foldLists(cands []plugin.Candidate) []candidate {
 		}
 		lists[base] = len(out)
 		out = append(out, candidate{
-			Name:     strings.TrimPrefix(strings.TrimPrefix(base, "$."), "$"),
+			// The folded list is named from its own path the way its FORMAT
+			// spells a name. Trimming "$." off the front is only right for
+			// YAML/JSON: an XML XPath came through untouched, so a repeated
+			// leaf element became a parameter literally named
+			// "/config/net-info[3]/device-pool-default" - not a dotted name at
+			// all, which stranded it at the ROOT of the parameter tree instead
+			// of nesting under net-info[3] beside its siblings.
+			Name:     strings.Join(pathedit.Segments(c.Format, base), "."),
 			Path:     base,
 			Type:     model.TypeList,
 			itemType: c.Type,

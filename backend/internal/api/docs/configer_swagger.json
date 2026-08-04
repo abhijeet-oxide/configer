@@ -1115,7 +1115,7 @@
                         "CookieSession": []
                     }
                 ],
-                "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item. Managed values are always validated first.",
+                "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item, plus one add-parameter item per setting the edit introduced that nothing managed yet (`newParameters` counts them). Managed values are always validated first.",
                 "consumes": [
                     "application/json"
                 ],
@@ -1159,6 +1159,63 @@
                     },
                     "422": {
                         "description": "A managed value failed validation, or the file does not parse",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/files/duplicate": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Copy one entry of a repeated structure in a file - an XML element that occurs several times under the same parent, or a YAML/JSON list entry - and stage the result in the current draft. The copy is appended AFTER the last entry of its kind so no existing entry is renumbered, and the settings it carries are staged as new parameters, exactly as if the block had been typed in by hand. XML is copied byte-for-byte (indentation and comments included). An entry identified by a key (`env[name=LOG_LEVEL]`) is refused: the copy would be a second entry with the same identity.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Duplicate a repeated entry",
+                "parameters": [
+                    {
+                        "description": "{instance, file, path}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "newPath is the path the copy answers to",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "file and path are required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown instance or file",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "The entry cannot be duplicated, or the file does not parse",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -3919,6 +3976,14 @@
                     "description": "RequestID correlates this response with the access log and the\nX-Request-ID header, so an operator can find the exact request.",
                     "type": "string",
                     "example": "3f9a1c2b7e5d0a84"
+                },
+                "syntax": {
+                    "description": "Syntax carries the PLACE a document stopped parsing, when that is what\nwent wrong. It is a field rather than a sentence because the place is the\nactionable part: the editor puts a marker on that line instead of leaving\nthe reader to search a nine-hundred-line file for what the parser meant.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.SyntaxDetail"
+                        }
+                    ]
                 }
             }
         },
@@ -4310,6 +4375,26 @@
                 }
             }
         },
+        "api.SyntaxDetail": {
+            "type": "object",
+            "properties": {
+                "column": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "file": {
+                    "type": "string"
+                },
+                "line": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "snippet": {
+                    "type": "string",
+                    "example": "  port 8080"
+                }
+            }
+        },
         "api.ValueEditRequest": {
             "type": "object",
             "properties": {
@@ -4374,7 +4459,8 @@
                 "remove-instance",
                 "update-instance",
                 "edit-file",
-                "unmanage-parameter"
+                "unmanage-parameter",
+                "add-parameter"
             ],
             "x-enum-varnames": [
                 "ActionSet",
@@ -4384,7 +4470,8 @@
                 "ActionRemoveInstance",
                 "ActionUpdateInstance",
                 "ActionEditFile",
-                "ActionUnmanageParameter"
+                "ActionUnmanageParameter",
+                "ActionAddParameter"
             ]
         },
         "change.Approval": {
@@ -4767,6 +4854,13 @@
                 },
                 "name": {
                     "type": "string"
+                },
+                "nameSegments": {
+                    "description": "NameSegments is Name split into the steps it was built from, so the UI can\nnest the parameter tree on the real structure. The dotted name alone\ncannot say where the steps are: a key that itself contains a dot\n(\"query.dependencies\") makes \"value.query.dependencies.max\" read as four\nlevels, and the tree then shows two folders the file has never had. It is\nDERIVED from the binding path at read time and never persisted\n(yaml:\"-\"), and it is present only when it differs from splitting Name on\n\".\" - so a client may always fall back to the split.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "observed": {
                     "description": "Observed carries the value discovery read from each instance's files\n(instance name -\u003e value), so the onboarding proposal can preview the grid.\nIt is display-only: never persisted to .configer (yaml:\"-\"), only carried\nthrough the discovery JSON.",

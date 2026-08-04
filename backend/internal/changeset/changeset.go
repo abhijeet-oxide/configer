@@ -463,8 +463,23 @@ func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProbl
 		return problems, fmt.Errorf("load project from worktree: %w", err)
 	}
 	structuralApplied := false
+	// Catalog additions are collected and written in ONE pass: a file edit that
+	// introduced fifty settings would otherwise rewrite parameters.yaml fifty
+	// times, each rewrite re-marshalling the whole catalog.
+	var added []model.Parameter
 	for _, it := range cr.Items {
 		if !it.Structural() {
+			continue
+		}
+		if it.Act() == change.ActionAddParameter {
+			var pm model.Parameter
+			if err := decodeInto(it.New, &pm); err != nil {
+				if err = note(it, fmt.Errorf("decode new parameter %s: %w", it.ParamID, err)); err != nil {
+					return problems, err
+				}
+				continue
+			}
+			added = append(added, pm)
 			continue
 		}
 		if err := applyStructural(wt, proj, it); err != nil {
@@ -478,6 +493,20 @@ func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProbl
 			continue
 		}
 		structuralApplied = true
+	}
+	if len(added) > 0 {
+		n, skipped, err := writer.AddParameters(wt, added)
+		if err != nil {
+			return problems, fmt.Errorf("add %d parameters to the catalog: %w", len(added), err)
+		}
+		// A name already in the catalog is not a failure to report to the
+		// reviewer: it means the setting is managed after all (someone else
+		// added it on the branch in the meantime), which is the intended end
+		// state either way.
+		_ = skipped
+		if n > 0 {
+			structuralApplied = true
+		}
 	}
 	if structuralApplied {
 		if proj, err = project.Load(wt); err != nil {
@@ -698,6 +727,9 @@ func prBody(cr *change.ChangeRequest) string {
 			fmt.Fprintf(&b, "| remove instance | %s | - | - |\n", inst)
 		case change.ActionEditFile:
 			fmt.Fprintf(&b, "| edit file `%s` | %s | - | - |\n", it.File, inst)
+		case change.ActionAddParameter:
+			pm := addedParameter(it)
+			fmt.Fprintf(&b, "| start managing `%s` | %s | - | `%v` |\n", pm.Name, inst, pm.Observed[it.Instance])
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 		}

@@ -685,3 +685,51 @@ func TestSubmitRefusesADuplicateOpenName(t *testing.T) {
 		t.Fatalf("expected a conflict error, got %T", err)
 	}
 }
+
+// A file edit that introduced new settings carries add-parameter items beside
+// it. Submitting must write BOTH: the file's new bytes and the catalog entries
+// that make those bytes a managed setting, in one reviewable commit.
+func TestSubmitAddParameterWritesTheCatalog(t *testing.T) {
+	_, originDir, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("dana", "main")
+	stage(t, svc, cr.ID,
+		change.Item{
+			Instance: "staging", File: "instances/staging/values.yaml",
+			Action: change.ActionEditFile,
+			Old:    stagingValues, New: stagingValues + "logging:\n  level: debug\n",
+		},
+		change.Item{
+			ParamID: "logging-level", Instance: "staging",
+			File:   "instances/staging/values.yaml",
+			Action: change.ActionAddParameter,
+			New: map[string]any{
+				"id": "logging-level", "name": "logging.level", "category": "Logging",
+				"type": "string", "scope": "instance",
+				"bindings": []any{map[string]any{
+					"file": "{folder}/values.yaml", "path": "$.logging.level", "format": "yaml",
+				}},
+			},
+		},
+	)
+
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Manage the log level", Author: "dana"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := sh(t, originDir, "git", "show", got.Branch+":instances/staging/values.yaml")
+	if !strings.Contains(values, "level: debug") {
+		t.Errorf("file edit missing on the branch:\n%s", values)
+	}
+	cat := sh(t, originDir, "git", "show", got.Branch+":.configer/parameters.yaml")
+	for _, want := range []string{"id: logging-level", "name: logging.level", "$.logging.level"} {
+		if !strings.Contains(cat, want) {
+			t.Errorf("catalog missing %q:\n%s", want, cat)
+		}
+	}
+	// It is workflow-only data: the observed value never reaches .configer.
+	if strings.Contains(cat, "debug") {
+		t.Errorf("catalog carries a VALUE, which is Git's job alone:\n%s", cat)
+	}
+}

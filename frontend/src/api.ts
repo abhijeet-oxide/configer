@@ -116,6 +116,11 @@ export interface PresetRule {
 export interface Parameter {
   id: string;
   name: string;
+  /** the name's steps, when splitting it on "." would land in the wrong
+   *  places - a key that itself contains a dot ("query.dependencies") is ONE
+   *  step. Absent whenever the split is already right, so read it through
+   *  nameSegments() rather than directly. */
+  nameSegments?: string[];
   displayName?: string;
   description?: string;
   category: string;
@@ -173,7 +178,8 @@ export type ItemAction =
   | "remove-instance"
   | "update-instance"
   | "edit-file"
-  | "unmanage-parameter";
+  | "unmanage-parameter"
+  | "add-parameter";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
  *  delta is a formatting artifact, never a configuration change, so diff
@@ -182,14 +188,30 @@ export const sameContent = (a?: string, b?: string): boolean =>
   a === b || (a ?? "").replace(/\s+$/, "") === (b ?? "").replace(/\s+$/, "");
 
 /** Human label for a structural item ("" for plain cell edits). */
-export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
+export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; new?: unknown; file?: string }): string => {
   if (it.action === "add-instance")
     return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
   if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
   if (it.action === "update-instance") return `Update instance ${it.instance} settings`;
   if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
+  if (it.action === "add-parameter") return `Start managing ${addedParamName(it)}`;
   return "";
 };
+
+/** The name of the parameter an add-parameter item starts managing. The item
+ *  carries the whole catalog entry, so the change can read as the setting
+ *  rather than as its slug. */
+export const addedParamName = (it: { paramId?: string; new?: unknown }): string => {
+  const pm = it.new as Partial<Parameter> | undefined;
+  return (pm && typeof pm === "object" && typeof pm.name === "string" && pm.name) || it.paramId || "a parameter";
+};
+
+/** A parameter's name steps: the ones the server spelled out when the dot
+ *  split would land in the wrong places, otherwise the split itself. Every
+ *  surface that nests or shortens a name reads it through here, so a key
+ *  containing a dot stays one step everywhere. */
+export const nameSegments = (p: Pick<Parameter, "name" | "nameSegments">): string[] =>
+  p.nameSegments?.length ? p.nameSegments : p.name.split(".");
 
 // --- change requests -------------------------------------------------------
 
@@ -364,6 +386,10 @@ export interface Row {
   /** a draft change stops managing this parameter: still here, still editable,
    *  and leaving the catalog when that change is published */
   pendingUnmanage?: boolean;
+  /** a draft change STARTS managing this parameter: a direct file edit put the
+   *  value in the staged bytes, and the catalog entry arrives when that change
+   *  is published */
+  pendingAdd?: boolean;
 }
 
 export interface CategoryNode {
@@ -1015,6 +1041,17 @@ export interface FieldError {
   message: string;
 }
 
+/** Where a file stopped parsing. The PLACE is the actionable part of a syntax
+ *  failure, so it travels as fields rather than inside the sentence: the editor
+ *  puts a marker on that line instead of leaving the reader to search. */
+export interface SyntaxDetail {
+  file: string;
+  line?: number;
+  column?: number;
+  /** the offending line's own text, so the message can show what it means */
+  snippet?: string;
+}
+
 /**
  * ApiError is the single typed error every non-2xx response becomes. It mirrors
  * the backend's error envelope ({error, code, requestId, fields}) so the UI can
@@ -1030,6 +1067,8 @@ export class ApiError extends Error {
   /** seconds to wait before retrying, from a 429 Retry-After header */
   readonly retryAfter?: number;
   readonly fields?: FieldError[];
+  /** where a document stopped parsing, when that is what was rejected */
+  readonly syntax?: SyntaxDetail;
   constructor(init: {
     status: number;
     code: string;
@@ -1037,6 +1076,7 @@ export class ApiError extends Error {
     requestId?: string;
     retryAfter?: number;
     fields?: FieldError[];
+    syntax?: SyntaxDetail;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -1045,6 +1085,7 @@ export class ApiError extends Error {
     this.requestId = init.requestId;
     this.retryAfter = init.retryAfter;
     this.fields = init.fields;
+    this.syntax = init.syntax;
   }
   get isUnauthorized() { return this.status === 401; }
   get isForbidden() { return this.status === 403; }
@@ -1157,7 +1198,10 @@ async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promis
 // httpError turns a non-2xx response into a typed ApiError, parsing the
 // standardized envelope and surfacing a 401 to the auth layer.
 async function httpError(res: Response): Promise<ApiError> {
-  let body: { error?: string; code?: string; requestId?: string; fields?: FieldError[] } = {};
+  let body: {
+    error?: string; code?: string; requestId?: string;
+    fields?: FieldError[]; syntax?: SyntaxDetail;
+  } = {};
   try {
     body = await res.json();
   } catch {
@@ -1171,6 +1215,7 @@ async function httpError(res: Response): Promise<ApiError> {
     requestId: body.requestId,
     retryAfter: retryHeader ? Number(retryHeader) || undefined : undefined,
     fields: body.fields,
+    syntax: body.syntax,
   });
   if (err.isUnauthorized) emitUnauthorized();
   return err;
@@ -1545,8 +1590,24 @@ export const api = {
     );
   },
   stageFileEdit: (p: { instance?: string; path: string; content: string; author?: string }) =>
-    put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
-      rp("/files/draft"), p),
+    put<{
+      ok: boolean;
+      staged: number;
+      kind?: "values" | "file";
+      managedChanges?: number;
+      /** settings this edit ADDED to the file that nothing managed yet; each is
+       *  staged as a parameter the change starts managing, so they show up in
+       *  the grid and in the review instead of only inside a file diff */
+      newParameters?: number;
+      detail?: string;
+    }>(rp("/files/draft"), p),
+  /** Copy one entry of a repeated structure (an XML element that occurs several
+   *  times under its parent, a YAML/JSON list entry) and stage the result. The
+   *  copy is APPENDED after the last entry of its kind, so no existing entry is
+   *  renumbered and no binding starts reading a different thing. */
+  duplicateEntry: (p: { instance?: string; file: string; path: string; author?: string }) =>
+    send<{ ok: boolean; file: string; newPath: string; newParameters: number }>(
+      "POST", rp("/files/duplicate"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   /** Every value in one file that a parameter is bound to, with the line it
    *  sits on in the content the explorer shows. */

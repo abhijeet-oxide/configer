@@ -3,6 +3,7 @@ package parsers
 import (
 	"strings"
 
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/beevik/etree"
 )
@@ -88,11 +89,11 @@ func walkXML(el *etree.Element, path, file string, out *[]plugin.Candidate) {
 	}
 }
 
+// xmlName renders an XPath as the dotted name the grid and the parameter tree
+// read by ("/config/net-info[3]/@id" -> "config.net-info[3].id"). The steps
+// come from pathedit.Segments, the same split the UI nests the name tree on.
 func xmlName(path string) string {
-	s := strings.TrimPrefix(path, "/")
-	s = strings.ReplaceAll(s, "/@", ".")
-	s = strings.ReplaceAll(s, "/", ".")
-	return s
+	return strings.Join(pathedit.Segments("xml", path), ".")
 }
 
 func itoa(i int) string {

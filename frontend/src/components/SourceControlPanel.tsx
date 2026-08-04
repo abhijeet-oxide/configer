@@ -58,9 +58,13 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
     const rows = new Map(grid.rows.map((r) => [r.param.id, r]));
     const insts = new Map(grid.instances.map((i) => [i.name, i]));
     return (it: ChangeItem): string => {
-      // A direct file edit groups under its own file; other structural
-      // items change the instance registry (plus a folder).
+      // A direct file edit groups under its own file; the catalog items group
+      // under the catalog, and the rest change the instance registry (plus a
+      // folder). Grouping a catalog change under instances.yaml named a file it
+      // never touches, in the one panel that exists to say which files move.
       if (it.action === "edit-file") return it.file ?? "(file)";
+      if (it.action === "add-parameter" || it.action === "unmanage-parameter")
+        return ".configer/parameters.yaml";
       if (structuralLabel(it)) return ".configer/instances.yaml";
       const row = rows.get(it.paramId);
       if (!row) return "(unmapped)";

@@ -1,6 +1,11 @@
-import { Checkbox, Tooltip, Tree, Typography, Input, type GetRef } from "antd";
+import {
+  Checkbox, Dropdown, Modal, Select, Tooltip, Tree, Typography, Input,
+  App as AntApp, type GetRef,
+} from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Grid } from "../api";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { CopyOutlined } from "../icons";
+import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
@@ -25,16 +30,122 @@ interface TreeItem {
 interface NameNode {
   seg: string;
   prefix: string; // full dotted prefix, e.g. "admin.rebuildslave"
+  depth: number; // how many steps deep, which is also how many path steps it spans
   count: number; // parameters in this subtree
   params: { id: string; name: string; leaf: string }[];
   children: Map<string, NameNode>;
+  // A parameter from anywhere under this node, so the node can answer "which
+  // file, and where in it" without the tree carrying bindings of its own.
+  sample?: Parameter;
+}
+
+// An indexed step - net-info[3] - is one ENTRY of a repeated structure. That is
+// the only place duplicating means anything, and it is what the reader is
+// looking at when they want another one.
+const INDEXED = /\[\d+\]$/;
+
+/** One entry of a repeated structure, and where it lives. */
+interface DuplicableEntry {
+  /** the step as the tree shows it, e.g. "net-info[3]" */
+  label: string;
+  /** the binding's file, which may still be templated ("{folder}/x.xml") */
+  file: string;
+  /** the entry's own path inside that file */
+  path: string;
+}
+
+// DuplicateEntryModal asks the one question a copy cannot answer for itself -
+// WHICH instance's file to copy in - and then stages the copy exactly as a hand
+// edit of the same file would be staged.
+//
+// The instance question only gets asked when it is real. A shared file has no
+// instance, and a fleet of one has no choice to make; asking anyway is a dialog
+// that exists to be dismissed.
+function DuplicateEntryModal({
+  entry,
+  instances,
+  onClose,
+}: {
+  entry: DuplicableEntry;
+  instances: Instance[];
+  onClose: () => void;
+}) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const { selectedInstance, setSection, setFileFocus } = useUI();
+  const templated = entry.file.includes("{folder}") || entry.file.includes("{instance}");
+  const choices = templated ? instances : [];
+  const [instance, setInstance] = useState<string | undefined>(
+    () => (choices.find((i) => i.name === selectedInstance) ?? choices[0])?.name,
+  );
+  const target = choices.find((i) => i.name === instance);
+  const file = expandBinding({ file: entry.file, path: entry.path }, target ?? null);
+
+  const dup = useMutation({
+    mutationFn: () =>
+      api.duplicateEntry({ instance, file, path: entry.path, author: "Local user" }),
+    onSuccess: (r) => {
+      const copy = r.newPath.split("/").filter(Boolean).pop() ?? "a new entry";
+      message.success(
+        r.newParameters > 0
+          ? `Copied as ${copy}, staged in your draft with ${r.newParameters} setting${r.newParameters === 1 ? "" : "s"} to fill in.`
+          : `Copied as ${copy}, staged in your draft.`,
+        6,
+      );
+      qc.invalidateQueries();
+      onClose();
+      // Land in the file on the copy: the next thing anyone does with a
+      // duplicated block is fill it in.
+      setFileFocus({ path: r.file, instance, allInstances: !instance });
+      setSection("files");
+    },
+    onError: (e: Error) => message.error(e.message, 8),
+  });
+
+  return (
+    <Modal
+      open
+      title={`Duplicate ${entry.label}`}
+      okText="Duplicate"
+      confirmLoading={dup.isPending}
+      onOk={() => dup.mutate()}
+      onCancel={onClose}
+      destroyOnHidden
+    >
+      <Typography.Paragraph style={{ marginBottom: 12 }}>
+        A copy of this entry is added <b>after the last one</b> in the file, so nothing
+        already there is renumbered. Everything it carries comes with it, and the settings
+        inside it are staged as new parameters you can then edit.
+      </Typography.Paragraph>
+      {choices.length > 1 && (
+        <div style={{ marginBottom: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            Which instance's file
+          </Typography.Text>
+          <Select
+            style={{ width: "100%", marginTop: 4 }}
+            value={instance}
+            onChange={setInstance}
+            options={choices.map((i) => ({ value: i.name, label: i.name }))}
+          />
+        </div>
+      )}
+      <Typography.Text type="secondary" style={{ fontSize: 12 }} className="mono">
+        {file}
+      </Typography.Text>
+    </Modal>
+  );
 }
 
 // All intermediate dotted prefixes of a name, so revealing a leaf can expand
 // exactly the branches that contain it (admin.rebuildslave.x -> [admin,
 // admin.rebuildslave]).
-function ancestorPrefixes(name: string): string[] {
-  const parts = name.split(".");
+//
+// The steps come from api.nameSegments, never from splitting the name here: a
+// key that itself contains a dot ("query.dependencies") is ONE step, and
+// splitting on every dot nested a level the file has never had - and then
+// looked for the leaf under a branch that does not exist.
+function ancestorPrefixes(parts: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < parts.length - 1; i++) out.push(parts.slice(0, i + 1).join("."));
   return out;
@@ -47,12 +158,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   const { ref, height } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
 
-  // Build the name trie: split each parameter name on "." into nested groups.
+  // Build the name trie from each parameter's own name STEPS (see
+  // api.nameSegments) rather than from splitting its name on every dot.
   const nameRoot = useMemo(() => {
-    const root: NameNode = { seg: "", prefix: "", count: 0, params: [], children: new Map() };
+    const root: NameNode = { seg: "", prefix: "", depth: 0, count: 0, params: [], children: new Map() };
     for (const r of grid.rows) {
       const name = r.param.name;
-      const parts = name.split(".");
+      const parts = nameSegments(r.param);
       const leaf = parts[parts.length - 1];
       let level = root;
       let prefix = "";
@@ -61,16 +173,47 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         prefix = prefix ? `${prefix}.${seg}` : seg;
         let node = level.children.get(seg);
         if (!node) {
-          node = { seg, prefix, count: 0, params: [], children: new Map() };
+          node = { seg, prefix, depth: i + 1, count: 0, params: [], children: new Map() };
           level.children.set(seg, node);
         }
         node.count++;
+        if (!node.sample) node.sample = r.param;
         level = node;
       }
       level.params.push({ id: r.param.id, name, leaf });
     }
     return root;
   }, [grid.rows]);
+
+  // The entries a reader can ask for another of: a node that IS one entry of a
+  // repeated structure, with a file behind it that says where to copy from.
+  //
+  // A node's depth is also the number of path steps it spans - the name steps
+  // and the XPath steps are the same split (see api.nameSegments) - so the
+  // entry's own path is the binding path cut at that depth.
+  const dupEntries = useMemo(() => {
+    const out = new Map<string, DuplicableEntry>();
+    const walk = (n: NameNode) => {
+      for (const c of n.children.values()) {
+        walk(c);
+        if (!INDEXED.test(c.seg) || !c.sample) continue;
+        const b = c.sample.bindings?.[0];
+        // XML is where repeated elements surface as indexed steps. A YAML or
+        // JSON list is folded into one list parameter long before it reaches
+        // this tree, so there is no per-entry node to click.
+        if (!b?.file || !b.path || b.format !== "xml") continue;
+        const steps = b.path.split("/").filter(Boolean);
+        if (steps.length < c.depth) continue;
+        out.set(c.prefix, {
+          label: c.seg,
+          file: b.file,
+          path: "/" + steps.slice(0, c.depth).join("/"),
+        });
+      }
+    };
+    walk(nameRoot);
+    return out;
+  }, [nameRoot]);
 
   // Every group prefix, for expand-all by default.
   const allNameKeys = useMemo(() => {
@@ -85,12 +228,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
     return keys;
   }, [nameRoot]);
 
-  const paramName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of grid.rows) m.set(r.param.id, r.param.name);
+  const paramByID = useMemo(() => {
+    const m = new Map<string, Parameter>();
+    for (const r of grid.rows) m.set(r.param.id, r.param);
     return m;
   }, [grid.rows]);
 
+  const [duplicating, setDuplicating] = useState<DuplicableEntry | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>(allNameKeys);
   // Keep the expand-all default in sync if the catalog changes.
   useEffect(() => setExpandedKeys((prev) => Array.from(new Set([...prev, ...allNameKeys]))), [allNameKeys]);
@@ -102,16 +246,37 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
     const toItems = (node: NameNode): TreeItem[] => {
       const entries: { seg: string; item: TreeItem }[] = [];
       for (const c of node.children.values()) {
+        const entry = dupEntries.get(c.prefix);
+        const label = (
+          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+            <span>{c.seg}</span>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{c.count}</Typography.Text>
+          </span>
+        );
         entries.push({
           seg: c.seg,
           item: {
             key: c.prefix,
             searchText: c.prefix.toLowerCase(),
-            title: (
-              <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                <span>{c.seg}</span>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{c.count}</Typography.Text>
-              </span>
+            // An entry of a repeated structure answers a right-click: "give me
+            // another one of these". Doing it by hand meant selecting the block
+            // in the editor, pasting it, fixing the indentation, and hoping the
+            // paste did not land somewhere that renumbered its neighbours.
+            title: entry ? (
+              <Dropdown
+                trigger={["contextMenu"]}
+                menu={{
+                  items: [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }],
+                  onClick: ({ key, domEvent }) => {
+                    domEvent.stopPropagation();
+                    if (key === "dup") setDuplicating(entry);
+                  },
+                }}
+              >
+                {label}
+              </Dropdown>
+            ) : (
+              label
             ),
             children: toItems(c),
           },
@@ -141,19 +306,20 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
       { key: "__all__", searchText: "all parameters", title: <b>All Parameters ({grid.rows.length})</b> },
       ...toItems(nameRoot),
     ];
-  }, [nameRoot, grid.rows.length, showFull]);
+  }, [nameRoot, dupEntries, grid.rows.length, showFull]);
+
 
   // Reverse sync: when a parameter becomes selected (typically by clicking a
   // grid row), reveal and scroll to its leaf here.
   const leafKey = selectedParamId ? `p:${selectedParamId}` : null;
   useEffect(() => {
     if (!selectedParamId) return;
-    const name = paramName.get(selectedParamId);
-    if (!name) return;
-    setExpandedKeys((prev) => Array.from(new Set([...prev, ...ancestorPrefixes(name)])));
+    const param = paramByID.get(selectedParamId);
+    if (!param) return;
+    setExpandedKeys((prev) => Array.from(new Set([...prev, ...ancestorPrefixes(nameSegments(param))])));
     const t = setTimeout(() => treeRef.current?.scrollTo({ key: `p:${selectedParamId}` }), 60);
     return () => clearTimeout(t);
-  }, [selectedParamId, paramName]);
+  }, [selectedParamId, paramByID]);
 
   return (
     <div className="cat-tree" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -193,7 +359,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                 // filter would hide the row is the filter cleared (never
                 // narrowed) so the jump can land.
                 const id = k.slice(2);
-                const name = paramName.get(id) ?? "";
+                const name = paramByID.get(id)?.name ?? "";
                 if (categoryKey && name !== categoryKey && !name.startsWith(categoryKey + "."))
                   setCategory(null);
                 selectParam(id);
@@ -220,6 +386,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           />
         </div>
       </div>
+      {duplicating && (
+        <DuplicateEntryModal
+          entry={duplicating}
+          instances={grid.instances}
+          onClose={() => setDuplicating(null)}
+        />
+      )}
     </div>
   );
 }

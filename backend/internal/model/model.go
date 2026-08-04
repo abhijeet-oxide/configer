@@ -107,9 +107,18 @@ type Catalog struct {
 
 // Parameter describes a single managed configuration parameter.
 type Parameter struct {
-	ID          string    `yaml:"id" json:"id"`
-	Name        string    `yaml:"name" json:"name"`
-	DisplayName string    `yaml:"displayName,omitempty" json:"displayName,omitempty"`
+	ID   string `yaml:"id" json:"id"`
+	Name string `yaml:"name" json:"name"`
+	// NameSegments is Name split into the steps it was built from, so the UI can
+	// nest the parameter tree on the real structure. The dotted name alone
+	// cannot say where the steps are: a key that itself contains a dot
+	// ("query.dependencies") makes "value.query.dependencies.max" read as four
+	// levels, and the tree then shows two folders the file has never had. It is
+	// DERIVED from the binding path at read time and never persisted
+	// (yaml:"-"), and it is present only when it differs from splitting Name on
+	// "." - so a client may always fall back to the split.
+	NameSegments []string  `yaml:"-" json:"nameSegments,omitempty"`
+	DisplayName  string    `yaml:"displayName,omitempty" json:"displayName,omitempty"`
 	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
 	Category    string    `yaml:"category" json:"category"`
 	Type        ParamType `yaml:"type" json:"type"`

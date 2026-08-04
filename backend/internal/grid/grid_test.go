@@ -229,3 +229,43 @@ func TestApplyDraftRevalidates(t *testing.T) {
 		t.Errorf("staged valid hostname should be valid, got valid=%v msg=%q", c.Valid, c.Message)
 	}
 }
+
+// A key that itself contains a dot is ONE step of the name, and only the path
+// can say so. Without that the tree splits "value.query.dependencies.max" into
+// four levels and shows two folders the file has never had.
+func TestNameSegmentsSpellOutADottedKey(t *testing.T) {
+	p := mkProject(t)
+	p.Catalog.Parameters = []model.Parameter{
+		{ID: "dotted", Name: "value.query.dependencies.max", Type: model.TypeInteger,
+			Bindings: []model.Binding{{File: "{folder}/values.yaml", Path: "$.value['query.dependencies'].max", Format: "yaml"}}},
+		{ID: "plain", Name: "a.b.c", Type: model.TypeString,
+			Bindings: []model.Binding{{File: "{folder}/values.yaml", Path: "$.a.b.c", Format: "yaml"}}},
+		{ID: "renamed", Name: "shortname", Type: model.TypeString,
+			Bindings: []model.Binding{{File: "{folder}/values.yaml", Path: "$.deep.nested.shortname", Format: "yaml"}}},
+	}
+	rows := map[string]Row{}
+	for _, r := range Build(p).Rows {
+		rows[r.Param.ID] = r
+	}
+
+	got := rows["dotted"].Param.NameSegments
+	want := []string{"value", "query.dependencies", "max"}
+	if len(got) != len(want) {
+		t.Fatalf("segments = %q, want %q", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("segments = %q, want %q", got, want)
+		}
+	}
+	// A name the dot split already gets right carries nothing: thousands of rows
+	// must not pay for a field that repeats the name.
+	if segs := rows["plain"].Param.NameSegments; segs != nil {
+		t.Errorf("plain name carries segments %q", segs)
+	}
+	// A name that did NOT come from this path (a dedup kept the shortest of
+	// several) is not the path's to re-segment.
+	if segs := rows["renamed"].Param.NameSegments; segs != nil {
+		t.Errorf("renamed parameter carries segments %q from a path it is not named after", segs)
+	}
+}

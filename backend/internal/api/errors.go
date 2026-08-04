@@ -14,7 +14,12 @@ package api
 // without value. The fields map cleanly onto Problem Details if that is ever
 // desired (code->type, error->detail, requestId->instance).
 
-import "net/http"
+import (
+	"fmt"
+	"net/http"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
+)
 
 // Stable error codes. These are part of the API contract: clients may switch
 // on them, so treat a rename as a breaking change. Group by concern.
@@ -71,6 +76,19 @@ type APIError struct {
 	RequestID string `json:"requestId,omitempty" example:"3f9a1c2b7e5d0a84"`
 	// Fields carries per-field validation failures (422 only).
 	Fields []FieldError `json:"fields,omitempty"`
+	// Syntax carries the PLACE a document stopped parsing, when that is what
+	// went wrong. It is a field rather than a sentence because the place is the
+	// actionable part: the editor puts a marker on that line instead of leaving
+	// the reader to search a nine-hundred-line file for what the parser meant.
+	Syntax *SyntaxDetail `json:"syntax,omitempty"`
+}
+
+// SyntaxDetail locates a parse failure inside a file.
+type SyntaxDetail struct {
+	File    string `json:"file"`
+	Line    int    `json:"line,omitempty" example:"42"`
+	Column  int    `json:"column,omitempty" example:"7"`
+	Snippet string `json:"snippet,omitempty" example:"  port 8080"`
 }
 
 // codeForStatus is the default machine code for a status when a handler does
@@ -122,6 +140,20 @@ func writeError(w http.ResponseWriter, r *http.Request, status int, code, msg st
 func writeFieldErrors(w http.ResponseWriter, r *http.Request, msg string, fields ...FieldError) {
 	writeJSON(w, http.StatusUnprocessableEntity, APIError{
 		Error: msg, Code: CodeValidationFailed, RequestID: reqID(r), Fields: fields,
+	})
+}
+
+// writeSyntaxError answers 422 for a file that will not parse, saying where.
+// The sentence names the line too: the message is what a toast shows, and a
+// toast has no editor to put a marker in.
+func writeSyntaxError(w http.ResponseWriter, r *http.Request, file string, se *pathedit.SyntaxError) {
+	msg := "this file does not parse, so nothing was staged: " + se.Message
+	if se.Line > 0 {
+		msg = fmt.Sprintf("line %d does not parse, so nothing was staged: %s", se.Line, se.Message)
+	}
+	writeJSON(w, http.StatusUnprocessableEntity, APIError{
+		Error: msg, Code: CodeValidationFailed, RequestID: reqID(r),
+		Syntax: &SyntaxDetail{File: file, Line: se.Line, Column: se.Column, Snippet: se.Snippet},
 	})
 }
 

@@ -2425,7 +2425,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       <div ref={bodyRef} style={{ flex: 1, overflow: "hidden", minHeight: 0, display: "flex", flexDirection: "column" }}>
         <Table<Row>
           ref={tableRef}
-          className="param-grid"
+          // An empty grid says so and stops there. Its body is still as wide as
+          // every column added together, so antd hung a horizontal scrollbar
+          // under "Nothing matches" - an invitation to scroll sideways through
+          // nothing. The class turns that one bar off; see index.css.
+          className={"param-grid" + (rows.length === 0 && pinnedRows.length === 0 ? " is-empty" : "")}
           rowKey={rowKey}
           columns={columns}
           dataSource={rows}

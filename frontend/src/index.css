@@ -32,6 +32,24 @@ body,
   padding: 0;
 }
 
+/* This is an application shell, not a document: it is exactly the size of the
+   window and every scrollable region inside it manages its own bar. So the PAGE
+   itself never scrolls sideways.
+
+   Without this, a floating layer that lands a pixel over the right edge - a
+   tooltip on the last button in the top bar - grew the document, which put a
+   horizontal scrollbar on the page, which shifted the layout, which moved the
+   pointer off the button that opened the tooltip, which closed it, which
+   removed the bar. That loop is what read as the page shaking.
+
+   `clip` rather than `hidden`: hidden would make body a scroll container and
+   break every `position: sticky` inside it (the grid's fixed columns, the lane
+   labels on the timeline). `clip` just clips. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
@@ -2042,6 +2060,24 @@ body {
 }
 .param-grid .ant-table-tbody-virtual-scrollbar-vertical {
   display: none !important;
+}
+
+/* An empty grid has nowhere to scroll to. antd keeps the body as wide as every
+   column added together whatever is in it, so "Nothing matches" came with a
+   horizontal scrollbar under it - an invitation to go sideways through nothing,
+   and the one bar on the screen that could not lead anywhere. The empty state is
+   a single centred block: it fits, so nothing scrolls. */
+.param-grid.is-empty .ant-table-body,
+.param-grid.is-empty .ant-table-tbody-virtual-holder {
+  overflow: hidden !important;
+}
+/* The placeholder row is laid out across that same full width; pinning it to
+   the left edge keeps the message where the reader is rather than centred over
+   two thousand pixels of nothing. */
+.param-grid.is-empty .ant-table-placeholder > .ant-table-cell {
+  position: sticky;
+  left: 0;
+  border-bottom: none;
 }
 
 /* Sticky (fixed) columns must be fully opaque; otherwise scrolled content

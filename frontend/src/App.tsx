@@ -805,8 +805,15 @@ export default function App() {
         </Sider>
       )}
       <Layout style={{ minWidth: 0 }}>
+        {/* More room on the right than on the left. The last control in the bar
+            is a small icon button, and a tooltip centred on something 16px from
+            the window edge hangs over it - which grew the document by a pixel,
+            which put a horizontal scrollbar on the page, which moved the layout,
+            which moved the pointer off the button. Padding here keeps the tip
+            inside the window; index.css makes sure a stray pixel could never
+            scroll the page anyway. */}
         {!focusMode && (
-          <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingInline: 16 }}>
+          <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingLeft: 16, paddingRight: 28 }}>
             <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
           </Header>
         )}

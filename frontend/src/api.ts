@@ -223,6 +223,28 @@ export interface RealignPayload {
 export const realignPayload = (it: { new?: unknown }): RealignPayload =>
   (it.new && typeof it.new === "object" ? (it.new as RealignPayload) : {});
 
+/** What a REVIEW should list. A direct file edit whose consequences are already
+ *  spelled out - the settings it added, the entries the catalog followed - adds
+ *  nothing by also saying "edited directly": the reader has just been told
+ *  exactly what changed, in the terms they think in, and the file row is the
+ *  same fact a second time with less in it.
+ *
+ *  So it is dropped, and ONLY when something else accounts for it. An edit that
+ *  changed no settings - a comment, a reordering, a block nothing manages - has
+ *  no other row to speak for it, and there the file row is the whole change.
+ *  (The draft item itself is untouched: the bytes still publish, and the Source
+ *  Control panel still lists every item there is, because that surface answers
+ *  "what is staged" rather than "what changed".) */
+export const reviewItems = (items: ChangeItem[]): ChangeItem[] => {
+  const explained = new Set<string>();
+  for (const it of items) {
+    if ((it.action === "add-parameter" || it.action === "realign-bindings") && it.file)
+      explained.add(it.file);
+  }
+  if (explained.size === 0) return items;
+  return items.filter((it) => !(it.action === "edit-file" && it.file && explained.has(it.file)));
+};
+
 /** The name of the parameter an add-parameter item starts managing. The item
  *  carries the whole catalog entry, so the change can read as the setting
  *  rather than as its slug. */

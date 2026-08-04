@@ -17,7 +17,7 @@ import { Button, Popconfirm, Tooltip, App as AntApp } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { PullRequestOutlined, DeleteOutlined } from "../icons";
-import { api } from "../api";
+import { api, reviewItems } from "../api";
 import { useUI } from "../store";
 
 export default function PendingChangesBar() {
@@ -33,7 +33,9 @@ export default function PendingChangesBar() {
 
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const draft = draftQ.data?.draft;
-  const pending = draft?.items?.length ?? 0;
+  // The same count the review dialog shows (see api.reviewItems), so the bar
+  // and the dialog can never disagree about how many changes there are.
+  const pending = reviewItems(draft?.items ?? []).length;
 
   const discard = useMutation({
     mutationFn: () => api.rejectChange(draft!.id),

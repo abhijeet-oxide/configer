@@ -83,6 +83,7 @@ export default function MonacoFileView({
   content,
   original,
   diff = false,
+  diffLayout = "split",
   dark,
   revealLine,
   revealColumn,
@@ -97,9 +98,11 @@ export default function MonacoFileView({
   path: string;
   content: string;
   original?: string;
-  /** show the side-by-side diff against `original`. The caller decides; the
-   *  pane never switches on its own (see the note at the top of this file). */
+  /** show the diff against `original`. The caller decides; the pane never
+   *  switches on its own (see the note at the top of this file). */
   diff?: boolean;
+  /** two panes beside each other, or one with the changes interleaved */
+  diffLayout?: "split" | "inline";
   dark: boolean;
   revealLine?: number;
   /** column to land the cursor on within revealLine (the value's own start) */
@@ -297,7 +300,7 @@ export default function MonacoFileView({
           ...baseOptions,
           readOnly: !editable,
           originalEditable: false,
-          renderSideBySide: true,
+          renderSideBySide: diffLayout === "split",
           ignoreTrimWhitespace: false,
         }}
         onMount={(diff) => {

@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
+import { api, reviewItems, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
 import { useIdentity } from "../identity";
@@ -52,7 +52,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
 
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
-  const pending = items.length;
+  // Counted the way the list is COUNTED: a file row the parameter rows already
+  // explain is not shown, so counting it would make the button promise one more
+  // change than the dialog can show.
+  const pending = reviewItems(items).length;
   const prodTouched = items.some(
     (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
   );

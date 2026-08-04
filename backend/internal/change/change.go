@@ -279,14 +279,28 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 	if strings.HasPrefix(paramID, "file:") {
 		paramID, file = "", strings.TrimPrefix(paramID, "file:")
 	}
+	drop := func(i int) bool {
+		undone := cr.Items[i]
+		cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
+		if undone.Act() == ActionEditFile {
+			cr.dropCatalogItems(undone.File)
+		}
+		return true
+	}
 	for i := range cr.Items {
 		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance && cr.Items[i].File == file {
-			undone := cr.Items[i]
-			cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
-			if undone.Act() == ActionEditFile {
-				cr.dropCatalogItems(undone.File)
+			return drop(i)
+		}
+	}
+	// An item that names a parameter AND a file - one a file edit proposed to
+	// start managing - is still addressed by its parameter. Requiring the file
+	// to match too meant the undo beside such a row found nothing and quietly
+	// did nothing at all.
+	if paramID != "" && file == "" {
+		for i := range cr.Items {
+			if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance {
+				return drop(i)
 			}
-			return true
 		}
 	}
 	return false

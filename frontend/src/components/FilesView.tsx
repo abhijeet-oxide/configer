@@ -9,7 +9,8 @@ import {
   SearchOutlined,
   MoreOutlined,
   DiffOutlined,
-  TableOutlined,
+  SplitCellsOutlined,
+  MergeCellsOutlined,
   BranchesOutlined,
   FileTextOutlined,
   FolderAddOutlined,
@@ -70,6 +71,13 @@ const MarkdownView = lazy(() => import("./MarkdownView"));
 //     query still held, for the moment before the refetch landed: the text
 //     visibly reverted and came back, and the cursor jumped. The one thing an
 //     editor must never do to somebody mid-sentence.
+//
+// And the rule that keeps all four true: NOTHING about the editor is reset by
+// the file LIST. That list is a fresh array on every fifteen-second poll and
+// again after every save, so an effect keyed on it ran constantly - and the one
+// that was keyed on it threw away the typed buffer and closed the diff, over
+// and over, while somebody was working. Editor state belongs to the open FILE
+// and is reset when the open file changes.
 
 // detectIndent reports the file's indentation width (a best effort from the
 // first indented line), for the status strip.
@@ -82,6 +90,10 @@ function detectIndent(content: string): number {
 }
 
 const TREE_KEY = "configer.filesTreeOpen";
+const DIFF_LAYOUT_KEY = "configer.diffLayout";
+
+/** Side by side, or one pane with removals and additions interleaved. */
+type DiffLayout = "split" | "inline";
 
 export default function FilesView() {
   const { message } = AntApp.useApp();
@@ -93,8 +105,6 @@ export default function FilesView() {
   const setSection = useUI((s) => s.setSection);
   const setImportFocus = useUI((s) => s.setImportFocus);
   const setCompare = useUI((s) => s.setCompare);
-  const setJump = useUI((s) => s.setJump);
-  const selectInstance = useUI((s) => s.selectInstance);
   const fileFocus = useUI((s) => s.fileFocus);
   const projectQ = useRepoQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
   const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid });
@@ -127,6 +137,10 @@ export default function FilesView() {
   // Reading a diff and writing a file are different jobs; which one you are
   // doing is a control, not something the editor decides the moment you type.
   const [showDiff, setShowDiff] = useState(false);
+  const [diffLayout, setDiffLayout] = useState<DiffLayout>(
+    () => (localStorage.getItem(DIFF_LAYOUT_KEY) === "inline" ? "inline" : "split"),
+  );
+  useEffect(() => localStorage.setItem(DIFF_LAYOUT_KEY, diffLayout), [diffLayout]);
   // What the last save did to the catalog, said quietly in the status strip
   // and then let go of. It is worth knowing and not worth interrupting for.
   const [savedNote, setSavedNote] = useState("");
@@ -288,10 +302,17 @@ export default function FilesView() {
     }
   }, [fileFocus]);
 
+  // Which file is open. This runs on every refetch of the list, because that is
+  // when a file can appear or disappear - and for no other reason. It must
+  // therefore touch NOTHING about the editor: `files` is a fresh array on every
+  // background poll and after every save, so resetting the editor here reset it
+  // every fifteen seconds and again a moment after each autosave. That is the
+  // whole of the instability: the typed buffer was thrown away mid-sentence (so
+  // the editor reverted under the cursor and whatever was typed next landed on
+  // top of the old text), and the diff, once opened, closed itself again on the
+  // next poll. Editor state is reset by the effect below, when the FILE
+  // changes.
   useEffect(() => {
-    setDirty(null);
-    setProblem(null);
-    setShowDiff(false);
     if (files.length === 0) {
       select(null);
       return;
@@ -323,6 +344,17 @@ export default function FilesView() {
     if (!on || !files.some((f) => f.path === on)) select(files[0].path);
   }, [files, instance]);
 
+  // Editor state belongs to the OPEN FILE, so it is reset when the open file
+  // changes and at no other time. Every one of these is a thing the reader is
+  // in the middle of: what they have typed, the failure they are fixing, the
+  // diff they opened to look at.
+  useEffect(() => {
+    setDirty(null);
+    setProblem(null);
+    setSavedNote("");
+    reportedRef.current = "";
+  }, [selected, instance]);
+
   const current = files.find((f) => f.path === selected);
   // Markdown reads as a document unless asked otherwise. A file with unsaved
   // typing stays in the editor: switching to preview under somebody mid-edit
@@ -334,6 +366,11 @@ export default function FilesView() {
   // committed. Drives whether the diff toggle can be pressed at all.
   const shown = dirty ?? current?.content ?? "";
   const hasFileChanges = committed !== undefined && !sameContent(committed, shown);
+  // The toggle is a standing preference, but a diff of a file that matches its
+  // committed self is two identical panes. So the preference is kept and the
+  // VIEW is gated: switching to an unchanged file shows the editor and coming
+  // back shows the diff again, without the toggle having to be re-pressed.
+  const diffOpen = showDiff && hasFileChanges;
 
 
   // Which lines of the open file Configer manages. Located server-side against
@@ -499,15 +536,6 @@ export default function FilesView() {
     URL.revokeObjectURL(a.href);
   };
 
-  // Files -> Editor: jump to the parameter(s) bound into the open file. In the
-  // "All instances" view resolve the concrete instance from the file's folder
-  // so the grid lands on the right cell (a shared file jumps to the row).
-  const openInEditor = (paramId: string) => {
-    const inst = allInstances ? ownerInstanceOf(selected ?? "") : instance ?? undefined;
-    if (inst) selectInstance(inst);
-    setJump("cell", paramId, inst ?? undefined);
-    setSection("config");
-  };
 
   const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, staleTime: 30_000 });
   // The same draft the editor's status bar shows: staging any change makes
@@ -571,9 +599,19 @@ export default function FilesView() {
 
   return (
     <div className="flex h-full min-w-0 flex-col">
-      {/* The workspace toolbar: branch, instance, managed filter on the left;
-          the open file's path, state and actions on the right. */}
+      {/* The workspace toolbar. The OPEN FILE leads it, because the file is what
+          this screen is about; branch, instance and the managed filter are
+          context for the explorer beside it, and the file's state and actions
+          sit on the right. The path is set as quiet italic prose rather than a
+          chip: it is the subject line, not another control. */}
       <div className="flex flex-wrap items-center gap-2 border-b border-line bg-surface px-3 py-2">
+        {current && (
+          <Tooltip title={current.path}>
+            <span className="cf-open-file">
+              <bdi>{current.path}</bdi>
+            </span>
+          </Tooltip>
+        )}
         <div className="flex min-w-0 items-center gap-2">
           {statusQ.data?.branch && (
             <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{statusQ.data.branch}</MonoChip>
@@ -626,7 +664,6 @@ export default function FilesView() {
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           {current && (
             <>
-              <MonoChip title={current.path}>{current.path}</MonoChip>
               {managed.has(current.path) ? (
                 <StatusPill tone="ok">Managed</StatusPill>
               ) : (
@@ -672,24 +709,10 @@ export default function FilesView() {
                   />
                 </Tooltip>
               )}
-              {currentParams.length > 0 && (
-                <Tooltip title="Parameters whose values live in this file - open any in Parameters">
-                  <Dropdown
-                    trigger={["click"]}
-                    menu={{
-                      items: currentParams.map((id) => ({
-                        key: id,
-                        label: <span className="mono">{id}</span>,
-                      })),
-                      onClick: ({ key }) => openInEditor(key),
-                    }}
-                  >
-                    <Button size="small" icon={<TableOutlined />}>
-                      {currentParams.length} parameter{currentParams.length === 1 ? "" : "s"} here
-                    </Button>
-                  </Dropdown>
-                </Tooltip>
-              )}
+              {/* No "N parameters here" list. On a real file that was seven
+                  hundred entries of a dropdown taller than the screen, offering
+                  to jump away from the file being edited - a list nobody can
+                  read, answering a question the grid already answers better. */}
               {/* The diff is a VIEW of this file, opened deliberately - it used
                   to arrive on its own the moment anything differed, which meant
                   typing one character replaced the editor under the cursor.
@@ -702,15 +725,15 @@ export default function FilesView() {
                   committed === undefined
                     ? "This file is new in your draft, so there is nothing to compare it against"
                     : hasFileChanges
-                      ? "Show what your changes do to this file, side by side with the committed version"
+                      ? "Show what your changes do to this file against the committed version"
                       : "This file matches the committed version"
                 }
               >
                 <span className="inline-flex">
                   <Button
                     size="small"
-                    type={showDiff ? "primary" : "default"}
-                    className={hasFileChanges && !showDiff ? "cf-diff-offer" : undefined}
+                    type={diffOpen ? "primary" : "default"}
+                    className={hasFileChanges && !diffOpen ? "cf-diff-offer" : undefined}
                     icon={<DiffOutlined />}
                     disabled={!hasFileChanges}
                     onClick={() => setShowDiff((v) => !v)}
@@ -719,6 +742,21 @@ export default function FilesView() {
                   </Button>
                 </span>
               </Tooltip>
+              {/* How to read it. Side by side is right for a block that moved;
+                  inline is right for a value that changed, and on a narrow
+                  window it is the only one that fits. The choice sticks, so
+                  somebody who reads diffs one way sets it once. */}
+              {diffOpen && (
+                <Segmented
+                  size="small"
+                  value={diffLayout}
+                  onChange={(v) => setDiffLayout(v as DiffLayout)}
+                  options={[
+                    { value: "split", label: "Split", icon: <SplitCellsOutlined /> },
+                    { value: "inline", label: "Inline", icon: <MergeCellsOutlined /> },
+                  ]}
+                />
+              )}
               {canEdit && <SubmitChangesButton instances={gridQ.data?.instances} />}
               <Dropdown
                 trigger={["click"]}
@@ -855,7 +893,8 @@ export default function FilesView() {
                       path={current.path}
                       content={dirty ?? current.content}
                       original={createdFiles.has(current.path) ? undefined : committed}
-                      diff={showDiff}
+                      diff={diffOpen}
+                      diffLayout={diffLayout}
                       dark={mode === "dark"}
                       editable={canEdit}
                       revealLine={problem?.line || focusMark?.line || reveal}

@@ -72,7 +72,7 @@ export function StatePill({ state, size = "md" }: { state: ChangeState; size?: "
 // that fills brand as the request advances. Each step's plain explanation rides
 // in a tooltip so the label stays to one line. A rejected request turns the
 // review node red rather than adding a fourth column.
-export default function CrSteps({ state }: { state: ChangeState }) {
+export default function CrSteps({ state, compact }: { state: ChangeState; compact?: boolean }) {
   const failed = state === "rejected";
   const current = failed ? 1 : state === "draft" ? 0 : state === "under_review" || state === "approved" ? 1 : 2;
   const steps = [
@@ -85,5 +85,5 @@ export default function CrSteps({ state }: { state: ChangeState }) {
     },
     { label: "Published", icon: <CheckCircleOutlined />, explain: stateMeta.published.explain },
   ];
-  return <Stepper steps={steps} current={current} ariaLabel="Change request progress" />;
+  return <Stepper steps={steps} current={current} compact={compact} ariaLabel="Change request progress" />;
 }

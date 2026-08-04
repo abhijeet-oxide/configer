@@ -88,7 +88,10 @@ export default function ChangeRequestsView() {
         className="cr-history"
         dataSource={q.data}
         pagination={false}
-        scroll={{ x: "max-content" }}
+        // A MINIMUM, not max-content: past 1080px the table takes the width it
+        // is given, so an opened change spans the whole of it instead of a
+        // panel floating in the middle of a row sized to its widest column.
+        scroll={{ x: 1080 }}
         locale={{
           emptyText: (
             <StatePanel
@@ -99,16 +102,19 @@ export default function ChangeRequestsView() {
           ),
         }}
         expandable={{
-          // The opened change is a PANEL, not a second full-width row. The row
-          // it hangs off is as wide as its widest column, so content laid out
-          // across that width put the lifecycle stepper hundreds of pixels off
-          // to the right and left a screen of blank in front of it. The panel
-          // is bounded and stuck to the left edge instead, so it stays where
-          // the reader is however far the table is scrolled sideways.
+          // The opened change fills the row it hangs off. Its lifecycle is
+          // CONTEXT here, not the subject, so it is a one-line strip beside the
+          // count rather than a wizard-sized progress row - what the reader
+          // came for is the list of what actually changed, and that gets the
+          // space. Sticky-left so a narrow window that has to scroll the table
+          // sideways still finds the panel where it left it.
           expandedRowRender: (cr) => (
             <div className="cr-expand">
-              <div className="cr-expand-steps">
-                <CrSteps state={cr.state} />
+              <div className="cr-expand-head">
+                <CrSteps state={cr.state} compact />
+                <span className="cr-expand-count">
+                  {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"}
+                </span>
               </div>
               <ItemsTable items={cr.items} />
             </div>
@@ -171,11 +177,16 @@ export default function ChangeRequestsView() {
             title: "Branch / PR",
             width: 240,
             render: (_v, cr) => (
-              <Space size={4} wrap>
+              <Space size={4} wrap style={{ maxWidth: "100%" }}>
                 {cr.branch ? (
-                  <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
-                    {cr.branch}
-                  </Tag>
+                  // A branch name is longer than any column it will ever sit
+                  // in, and a Tag does not truncate on its own - it simply drew
+                  // over the Author beside it. The full name is on hover.
+                  <Tooltip title={cr.branch}>
+                    <Tag icon={<BranchesOutlined />} className="mono cr-branch-tag" style={{ fontSize: 11 }}>
+                      {cr.branch}
+                    </Tag>
+                  </Tooltip>
                 ) : cr.state === "draft" ? (
                   // Saying nothing here is better than naming a branch that does
                   // not exist: a placeholder read as a decision already taken.

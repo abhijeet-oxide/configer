@@ -32,6 +32,24 @@ body,
   padding: 0;
 }
 
+/* This is an application shell, not a document: it is exactly the size of the
+   window and every scrollable region inside it manages its own bar. So the PAGE
+   itself never scrolls sideways.
+
+   Without this, a floating layer that lands a pixel over the right edge - a
+   tooltip on the last button in the top bar - grew the document, which put a
+   horizontal scrollbar on the page, which shifted the layout, which moved the
+   pointer off the button that opened the tooltip, which closed it, which
+   removed the bar. That loop is what read as the page shaking.
+
+   `clip` rather than `hidden`: hidden would make body a scroll container and
+   break every `position: sticky` inside it (the grid's fixed columns, the lane
+   labels on the timeline). `clip` just clips. */
+html,
+body {
+  overflow-x: clip;
+}
+
 body {
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
@@ -847,6 +865,45 @@ body {
 .rrp-handle[data-resize-handle-state="hover"],
 .rrp-handle[data-resize-handle-state="drag"] {
   background: rgba(0, 87, 184, 0.35);
+}
+/* A handle belonging to a collapsed panel: no width, no cursor, nothing to
+   grab. It stays in the tree so the panel beside it can stay mounted. */
+.rrp-handle.is-hidden {
+  width: 0;
+  margin: 0;
+  pointer-events: none;
+  background: transparent;
+}
+
+/* A side panel opening and closing.
+
+   The panels are kept mounted and collapsed to zero (see useSidePanel in
+   App.tsx), so opening one is a width going 0 -> 22% and CSS can carry it.
+   react-resizable-panels drives the size through flex-grow, so that is what
+   transitions; the contents fade a little behind the edge so a narrow panel is
+   never caught mid-layout with its text reflowing.
+
+   The transition is OFF while a resize handle is being dragged: there it would
+   be a 200ms lag between the pointer and the edge it is holding. It is also off
+   for anyone who has asked for less motion. */
+.cf-side-panel {
+  transition: flex-grow 220ms var(--ease);
+}
+.cf-side-panel > * {
+  transition: opacity 180ms var(--ease);
+}
+.cf-side-panel[data-panel-size="0.0"] > * {
+  opacity: 0;
+}
+.cf-panels.is-dragging .cf-side-panel,
+.cf-panels.is-dragging .cf-side-panel > * {
+  transition: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cf-side-panel,
+  .cf-side-panel > * {
+    transition: none;
+  }
 }
 
 .ant-table-wrapper .ant-table {
@@ -2005,6 +2062,24 @@ body {
   display: none !important;
 }
 
+/* An empty grid has nowhere to scroll to. antd keeps the body as wide as every
+   column added together whatever is in it, so "Nothing matches" came with a
+   horizontal scrollbar under it - an invitation to go sideways through nothing,
+   and the one bar on the screen that could not lead anywhere. The empty state is
+   a single centred block: it fits, so nothing scrolls. */
+.param-grid.is-empty .ant-table-body,
+.param-grid.is-empty .ant-table-tbody-virtual-holder {
+  overflow: hidden !important;
+}
+/* The placeholder row is laid out across that same full width; pinning it to
+   the left edge keeps the message where the reader is rather than centred over
+   two thousand pixels of nothing. */
+.param-grid.is-empty .ant-table-placeholder > .ant-table-cell {
+  position: sticky;
+  left: 0;
+  border-bottom: none;
+}
+
 /* Sticky (fixed) columns must be fully opaque; otherwise scrolled content
    shows through the Parameter column. The token-driven background variable
    is set by the grid root and follows light/dark themes. */
@@ -2097,13 +2172,123 @@ body {
   box-shadow: inset 3px 0 0 var(--brand);
 }
 
-/* The column manager's list: one draggable row per instance. */
+/* ------------------------------------------------------ the instance picker
+
+   ONE panel answering "which instances, in what order, and am I reading one on
+   its own". It replaced a view Select and a separate column manager that each
+   held half the answer and neither of which said what the other had done. */
+.cf-pop {
+  background: var(--surface);
+  border-radius: var(--r-md, 10px);
+  box-shadow: var(--el-3, var(--el-2));
+  border: 1px solid var(--border);
+}
+.cf-instpick {
+  width: 268px;
+  padding: 10px 12px 8px;
+}
+.cf-instpick-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.cf-instpick-title {
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text);
+}
+.cf-instpick-count {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+.cf-instpick-reset {
+  font-size: 11.5px;
+}
+/* The sheet notice. While it is on, the ticks below are not deciding anything,
+   so it says so and offers the way out in one control. */
+.cf-instpick-sheet {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--c-review-bd, var(--border));
+  border-radius: 8px;
+  background: var(--c-review-bg, var(--surface-2));
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-align: left;
+  cursor: pointer;
+}
+.cf-instpick-sheet-exit {
+  margin-left: auto;
+  color: var(--brand);
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* Quick selections OVER the ticks - not modes of their own. */
+.cf-instpick-quick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.cf-instpick-quick a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.cf-instpick-quick a:hover {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface-2));
+  color: var(--text);
+}
+.cf-instpick-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.cf-instpick-list {
+  max-height: 288px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cf-instpick-empty,
+.cf-instpick-foot {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.45;
+}
+.cf-instpick-foot {
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--border);
+}
+.cf-instpick-empty {
+  padding: 8px 2px;
+}
+/* One draggable row per instance. */
 .cf-col-row {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 2px;
-  border-radius: 4px;
+  padding: 3px;
+  border-radius: 5px;
   cursor: grab;
 }
 .cf-col-row:active {
@@ -2112,10 +2297,43 @@ body {
 .cf-col-row:hover {
   background: var(--surface-2);
 }
+.cf-col-row.is-focused {
+  background: color-mix(in srgb, var(--brand) 10%, transparent);
+  box-shadow: inset 2px 0 0 var(--brand);
+}
 .cf-col-grip {
   color: var(--text-3);
   font-size: 13px;
   flex-shrink: 0;
+}
+/* The name is a button: it opens that instance as a sheet. */
+.cf-instpick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  text-align: left;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+.cf-instpick-name:hover {
+  color: var(--brand);
+  text-decoration: underline;
+}
+/* The toolbar button wears the answer, so it truncates rather than pushing the
+   rest of the bar along. */
+.cf-instbtn-label {
+  display: inline-block;
+  max-width: 132px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 
 /* ---------------------------------------------------- left trees (editor) */
@@ -3349,6 +3567,17 @@ mark.vd-ins {
   fill: var(--c);
   opacity: 0.55;
 }
+/* The lane labels ride in a zero-size box stuck to the left edge of the
+   scroller, so they stay on screen however far the picture is scrolled. Sticky
+   makes it a positioned ancestor, which is what the pills inside anchor to. */
+.cf-lane-names {
+  position: sticky;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  z-index: 4;
+}
 .cf-lane-name {
   position: absolute;
   left: 14px;
@@ -3848,21 +4077,16 @@ mark.vd-ins {
 .cf-onb {
   height: 100%;
   overflow: auto;
-  padding: 20px 24px 48px;
+  padding: 18px 20px 44px;
 }
-/* A measured column, so the setup reads as one page rather than as controls
-   scattered across a monitor. The one exception is the parameters step, which
-   is a file tree beside a table of every setting in the repository and wants
-   every pixel it can get - it widens, and nothing else does. The prose never
-   follows it out: the intro is capped to its own measure below, so a wide
-   screen buys table, not 200-character lines. */
+/* The page takes the width it is given. There is no measured column here any
+   more: every step of this wizard is a table (instances, then every setting in
+   the repository), and a table pushed into 1180px on a 1900px screen is a
+   sideways scrollbar in exchange for two bands of empty. The PROSE still gets a
+   measure of its own (.cf-onb-sub), which is the part that actually needed
+   one. */
 .cf-onb-inner {
-  max-width: 1180px;
-  margin: 0 auto;
-  transition: max-width var(--dur-hover, 160ms) var(--ease, ease);
-}
-.cf-onb-inner.is-wide {
-  max-width: 1480px;
+  width: 100%;
 }
 .cf-onb-head {
   display: flex;
@@ -3893,10 +4117,46 @@ mark.vd-ins {
   line-height: 1.6;
   color: var(--text-2);
 }
+/* The three numbers the scan turned up, as one line of statistics under the
+   sentence they belong to. They used to be a panel with 24px numerals, which
+   made a billboard of three small facts and pushed the actual work below the
+   fold. */
+.cf-onb-stats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.cf-onb-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  white-space: nowrap;
+}
+.cf-onb-stat b {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.cf-onb-stat-hint {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.cf-onb-stat-note {
+  color: var(--text-3);
+  font-size: 11.5px;
+  padding-inline-start: 4px;
+  border-inline-start: 1px solid var(--border);
+}
+
 .cf-onb-steps {
-  margin: 18px 0 20px;
-  padding: 16px 20px;
-  border-radius: 14px;
+  margin: 16px 0 18px;
+  padding: 13px 20px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--el-1);
 }
@@ -3904,16 +4164,27 @@ mark.vd-ins {
   min-height: 220px;
 }
 
-/* The step-0 pair. minmax(0,…) on both tracks so a wide instance table scrolls
-   inside its own card instead of widening the page. */
-.cf-onb-cols {
-  display: grid;
-  grid-template-columns: minmax(0, 400px) minmax(0, 1fr);
-  gap: 16px;
-  align-items: start;
+/* Step 0, in a column. Two cards in a row are only ever as tall as the taller
+   one, and a two-field form beside a table of instances is never the same
+   height - so one of them always carried a block of empty. Stacked, each is
+   exactly as tall as its content, and the order is the order the decisions
+   come in. */
+.cf-onb-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
-@media (max-width: 1100px) {
-  .cf-onb-cols {
+/* Name and description side by side, with the detected structure under both. */
+.cf-onb-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr);
+  gap: 12px 16px;
+}
+.cf-onb-fields > .cf-onb-detect {
+  grid-column: 1 / -1;
+}
+@media (max-width: 760px) {
+  .cf-onb-fields {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -3924,11 +4195,13 @@ mark.vd-ins {
   box-shadow: var(--el-1);
   padding: 16px 18px 18px;
 }
+/* Title and hint sit TOGETHER at the left. Pushed to opposite ends of a
+   full-width card they were a metre apart, which stops reading as a caption for
+   the thing beside it and starts reading as two unrelated labels. */
 .cf-onb-card-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
   margin-bottom: 12px;
 }
@@ -3954,7 +4227,6 @@ mark.vd-ins {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  margin-top: 14px;
   padding: 9px 12px;
   border-radius: 10px;
   background: var(--surface-2);
@@ -3972,21 +4244,19 @@ mark.vd-ins {
 }
 
 /* An instance is its NAME first; the folder it came from is the evidence. */
-.cf-onb-inst {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
 .cf-onb-inst-name {
   font-weight: 600;
   color: var(--text);
 }
 .cf-onb-inst-folder {
-  font-size: 11px;
+  display: inline-block;
+  max-width: 100%;
+  font-size: 11.5px;
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  vertical-align: bottom;
 }
 
 /* Back on the left, Next on the right, and what has been chosen between them -
@@ -4049,27 +4319,50 @@ mark.vd-ins {
    scrolled sideways - and it is a surface of its own, so an open change reads as
    one object rather than as loose content between two rows. */
 .cr-history .ant-table-expanded-row > td {
-  padding: 8px 10px 12px 48px !important;
+  padding: 6px 12px 10px !important;
   background: transparent !important;
 }
 .cr-expand {
+  /* Sticky-left with a viewport cap: at full width the panel simply fills the
+     row, and when the window is too narrow and the table has to scroll
+     sideways, the panel stays where the reader left it. */
   position: sticky;
-  left: 12px;
-  width: min(980px, calc(100vw - 320px));
-  min-width: 300px;
+  left: 0;
+  width: min(100%, calc(100vw - 132px));
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px 14px 14px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-radius: 10px;
   background: var(--surface-2);
   border: 1px solid var(--border);
 }
-/* The stepper is the one thing in here that wants to be centred, and it is
-   centred in the PANEL rather than in the table. */
-.cr-expand-steps {
-  padding: 2px 0 6px;
+/* The lifecycle strip and the size of the change, on one line. */
+.cr-expand-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
+}
+.cr-expand-count {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+/* A branch name is longer than any column it will ever sit in, and an antd Tag
+   is shrink-to-fit inside a Space item - "max-width: 100%" resolves to its own
+   content width and clips nothing. The cap has to be a real length: the Branch
+   column's 240 less its padding. The full name is on hover. */
+.cr-branch-tag {
+  display: inline-block;
+  max-width: 214px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
 }
 /* No frame around the list inside a framed panel, and no empty rows under it. */
 .cr-expand .ant-table {
@@ -4086,10 +4379,72 @@ mark.vd-ins {
   border-bottom: none;
 }
 @media (max-width: 900px) {
-  .cr-history .ant-table-expanded-row > td {
-    padding-inline-start: 12px !important;
-  }
   .cr-expand {
-    width: calc(100vw - 64px);
+    width: calc(100vw - 56px);
   }
+}
+
+/* The one-line lifecycle strip. Small nodes, small labels, and a bar between
+   them that fills as the change advances - the same vocabulary as the full
+   stepper at a tenth of the height. */
+.cfg-steps-mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.cfg-steps-mini-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  color: var(--text-3);
+}
+.cfg-steps-mini-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-strong, var(--border));
+  color: #fff;
+  flex-shrink: 0;
+}
+.cfg-steps-mini-step.is-done {
+  color: var(--text-2);
+}
+.cfg-steps-mini-step.is-done .cfg-steps-mini-dot {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.cfg-steps-mini-step.is-now {
+  color: var(--text);
+  font-weight: 650;
+}
+.cfg-steps-mini-step.is-now .cfg-steps-mini-dot {
+  background: var(--brand);
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+.cfg-steps-mini-step.is-err {
+  color: var(--c-danger);
+  font-weight: 650;
+}
+.cfg-steps-mini-step.is-err .cfg-steps-mini-dot {
+  background: var(--c-danger);
+  border-color: var(--c-danger);
+}
+.cfg-steps-mini-bar {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+.cfg-steps-mini-bar.is-filled {
+  background: var(--brand);
 }

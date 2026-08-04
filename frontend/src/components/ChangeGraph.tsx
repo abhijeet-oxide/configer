@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Tooltip, App as AntApp } from "antd";
 import {
   BranchesOutlined,
@@ -229,6 +229,7 @@ export default function ChangeGraph({
   onOpenChange: (cr: ChangeRequest) => void;
 }) {
   const [hover, setHover] = useState<number | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   // Who is reading. A change of the viewer's OWN that has not landed is the one
   // thing on this screen they can still do something about, so it gets picked
@@ -509,6 +510,25 @@ export default function ChangeGraph({
     return days.size <= 1;
   }, [nodes]);
 
+  // Open on the NEWEST end. Time runs left to right, so the newest thing is off
+  // the right edge - and the page above this says "newest first", which a
+  // picture that opens on the oldest commit of the year flatly contradicts.
+  // Everywhere else in this product the newest change is the one you land on;
+  // here it was the one you had to go looking for.
+  //
+  // Layout-effect, so the jump happens in the same frame the picture is painted
+  // in and is never seen as a scroll. A second pass after paint catches the case
+  // where the cards have only just measured and the canvas grew.
+  const scrollToNow = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollLeft = el.scrollWidth;
+  };
+  useLayoutEffect(scrollToNow, [width, height]);
+  useEffect(() => {
+    const t = setTimeout(scrollToNow, 0);
+    return () => clearTimeout(t);
+  }, [width, height]);
+
   if (!lanes.length || !snapshots.length) return null;
 
   const dim = (id: number) => hover != null && hover !== id;
@@ -516,7 +536,7 @@ export default function ChangeGraph({
   return (
     <div className="cf">
       <Legend lanes={lanes} laneColor={laneColor} />
-      <div className="cf-scroll">
+      <div className="cf-scroll" ref={scrollRef}>
         <div className="cf-plot" style={{ width, height }}>
           <svg width={width} height={height} className="cf-svg">
             {/* Lanes. Thick, calm, and behind everything: they are the roads,
@@ -578,18 +598,24 @@ export default function ChangeGraph({
             ))}
           </svg>
 
-          {/* Lane names, at the left where reading starts. */}
-          {lanes.map((l, i) => (
-            <Tooltip key={`n-${l.name}`} title={laneWords(l)}>
-              <span
-                className={`cf-lane-name${l.trunk ? " is-trunk" : ""}`}
-                style={{ top: laneY(i), ["--c" as string]: laneColor(i) }}
-              >
-                <BranchesOutlined style={{ fontSize: 11 }} />
-                {l.name}
-              </span>
-            </Tooltip>
-          ))}
+          {/* Lane names, at the left where reading starts - and they STAY
+              there. The picture opens scrolled to the newest end, which used to
+              leave every lane unlabelled: a wrapper stuck to the left edge
+              carries them along, so whichever week you are looking at, the
+              lanes still say which branch they are. */}
+          <div className="cf-lane-names">
+            {lanes.map((l, i) => (
+              <Tooltip key={`n-${l.name}`} title={laneWords(l)}>
+                <span
+                  className={`cf-lane-name${l.trunk ? " is-trunk" : ""}`}
+                  style={{ top: laneY(i), ["--c" as string]: laneColor(i) }}
+                >
+                  <BranchesOutlined style={{ fontSize: 11 }} />
+                  {l.name}
+                </span>
+              </Tooltip>
+            ))}
+          </div>
 
           {/* HEAD, level with the trunk, at the end of the road. */}
           <span className="cf-head" style={{ top: laneY(0), left: headX(nodes) + 26 }}>

@@ -286,15 +286,20 @@ clicking copies it. Two changes forking from one commit leave the same dot;
 cards fan above and below their lane so several simultaneous changes never
 stack on top of each other.
 
-The horizontal scale has TWO rules that are easy to break and obvious when
-broken. A stop is per COMMIT, not per instant - a pipeline that lands three
-changes in the same second is still three commits, and keying x off distinct
-timestamps drew them all on top of one another. And a change's own gaps are
-WIDENED (`LEAD` + `CROSS_LEAD` per lane crossed) until its card plus a run
-either side actually fits, so the commits at both ends really do move apart and
-the curve never falls vertically out of its branch. Everything else - the axis,
-every node, every card - reads its x from that one scale, so the picture stays
-internally honest.
+The horizontal scale is ORDINAL, and has THREE rules that are easy to break and
+obvious when broken. A stop is per COMMIT, not per instant - a pipeline that
+lands three changes in the same second is still three commits, and keying x off
+distinct timestamps drew them all on top of one another. Every stop is ONE
+`STEP` wide: x counts commits, never minutes, because a scale that paid pixels
+for elapsed time made a quiet weekend a quarter-screen of nothing and a month of
+history mostly blank. So there is no axis along the bottom - each dot writes its
+own timestamp underneath itself (`NodeStamp`, the date line dropped when the
+whole history is inside one day), which is exact rather than estimated off a
+ruler. And a change's own gaps are WIDENED (`LEAD` + `CROSS_LEAD` per lane
+crossed) until its card plus a run either side actually fits, so the commits at
+both ends really do move apart and the curve never falls vertically out of its
+branch. Everything else - every node, every card, every stamp - reads its x from
+that one scale, so the picture stays internally honest.
 
 Two levels, and the difference is load-bearing. WORKSPACE-level views (Home,
 Applications, Inbox, Audit, Instances estate, Settings) need no application and

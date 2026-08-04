@@ -85,6 +85,7 @@ export default function ChangeRequestsView() {
       <Table<ChangeRequest>
         rowKey="id"
         size="middle"
+        className="cr-history"
         dataSource={q.data}
         pagination={false}
         scroll={{ x: "max-content" }}
@@ -98,9 +99,17 @@ export default function ChangeRequestsView() {
           ),
         }}
         expandable={{
+          // The opened change is a PANEL, not a second full-width row. The row
+          // it hangs off is as wide as its widest column, so content laid out
+          // across that width put the lifecycle stepper hundreds of pixels off
+          // to the right and left a screen of blank in front of it. The panel
+          // is bounded and stuck to the left edge instead, so it stays where
+          // the reader is however far the table is scrolled sideways.
           expandedRowRender: (cr) => (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <CrSteps state={cr.state} />
+            <div className="cr-expand">
+              <div className="cr-expand-steps">
+                <CrSteps state={cr.state} />
+              </div>
               <ItemsTable items={cr.items} />
             </div>
           ),

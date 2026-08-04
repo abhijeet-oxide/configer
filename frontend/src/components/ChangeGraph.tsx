@@ -59,15 +59,18 @@ const LABEL_W = 132;
 const PLOT_PAD_L = 26;
 const PLOT_PAD_R = 130;
 const PAD_TOP = 22;
-const AXIS_H = 52;
+/** Room under the lowest lane for the last row of commit stamps. */
+const FOOT_H = 34;
 /** Vertical distance between lanes. A card plus air has to fit in the gap,
  *  because that is where cards live. */
 /** The least room a band gets even with no cards in it. */
-const MIN_BAND = 74;
+const MIN_BAND = 78;
 const CARD_W = 178;
 const CARD_H = 132;
 const CARD_GAP_X = 54;
-const CARD_GAP_Y = 20;
+/** Also the clearance under a lane line, which is where a commit's stamp is
+ *  written - two short lines of it. */
+const CARD_GAP_Y = 32;
 /** How far a submitted change reaches past its card to show where it is asking
  *  to land. Long enough to read as a journey, short enough that two of them
  *  waiting at once do not draw over each other. */
@@ -79,12 +82,17 @@ const HEAD_CLEAR = 104;
 /** Two things waiting on the same branch will land one after the other, so
  *  they are drawn one after the other rather than on the same spot. */
 const PROJECT_STAGGER = 38;
-/** Minimum and maximum horizontal distance between two consecutive moments.
- *  Real elapsed time decides where in between, so a quiet night does not push
- *  the picture a mile wide and a busy minute is still readable. */
-const STEP_MIN = 132;
-const STEP_MAX = 260;
-const MS_PER_PX = 90_000; // 1.5 minutes of real time per pixel, before clamping
+/** Horizontal distance between two consecutive commits. ONE number, because the
+ *  axis is the ORDER things happened in, not the clock.
+ *
+ *  It used to be elapsed time, clamped: a gap of real minutes bought real
+ *  pixels. That drew a picture whose width was decided by how long a team went
+ *  without committing - a weekend put a quarter of a screen of nothing between
+ *  two commits, and reading a month of history meant scrolling past mostly
+ *  blank. Nothing lives in that space, so nothing is lost by closing it. WHEN
+ *  each commit happened is still on screen, written under its own dot, where it
+ *  can be read exactly rather than estimated off a ruler. */
+const STEP = 112;
 /** Horizontal room a change's curve needs to leave its commit flat and arrive
  *  at its card flat. LEAD is what any change gets; CROSS_LEAD is added for each
  *  lane it crosses on top. Without them a change fell almost vertically out of
@@ -242,13 +250,13 @@ export default function ChangeGraph({
     return m;
   }, [snapshots, lanes]);
 
-  // A squashed time scale. Every COMMIT gets its own stop - not every distinct
+  // The horizontal scale. Every COMMIT gets its own stop - not every distinct
   // instant - because two commits landed in the same second are still two
   // commits, and a pipeline that publishes three changes inside a minute must
-  // not draw them all on top of each other. Stops are then spaced by how much
-  // real time passed, clamped, so neither a burst nor a quiet weekend decides
-  // how wide the picture is. Time still reads left to right and the axis says
-  // exactly when.
+  // not draw them all on top of each other. Stops are ORDINAL: one step each,
+  // in the order they happened. Time still reads left to right, and each dot
+  // carries its own timestamp, so the picture is exactly as wide as it has
+  // things to say.
   const scale = useMemo(() => {
     // Oldest first, which is also the order equal-timestamp commits must take:
     // the service lists them newest first, so reversing a run of them puts the
@@ -267,9 +275,7 @@ export default function ChangeGraph({
       .map((sha, i) => ({ sha, seq: i, ...seen.get(sha)! }))
       .sort((a, b) => a.t - b.t || a.seq - b.seq);
 
-    const widths = stops.map((s, i) =>
-      i === 0 ? 0 : Math.min(STEP_MAX, Math.max(STEP_MIN, (s.t - stops[i - 1].t) / MS_PER_PX)),
-    );
+    const widths = stops.map((_s, i) => (i === 0 ? 0 : STEP));
 
     // A change needs more room than its timing alone asks for - its card has to
     // fit between the commit it left and the one it landed on, with enough run
@@ -305,17 +311,12 @@ export default function ChangeGraph({
       xOf.set(s.sha, x);
       moments.push({ t: s.t, x });
     });
-    // Work still out has no commit to sit on, so the axis runs on to the most
-    // recent thing that happened at all - otherwise an open change would be
-    // pinned to the last publish and look finished.
+    // Work still out has no commit to sit on, so the scale runs on one more
+    // step to the most recent thing that happened at all - otherwise an open
+    // change would be pinned to the last publish and look finished.
     const latest = changes.reduce((m, c) => Math.max(m, new Date(c.updatedAt).getTime() || 0), 0);
     const last = moments[moments.length - 1];
-    if (last && latest > last.t) {
-      moments.push({
-        t: latest,
-        x: last.x + Math.min(STEP_MAX, Math.max(STEP_MIN, (latest - last.t) / MS_PER_PX)),
-      });
-    }
+    if (last && latest > last.t) moments.push({ t: latest, x: last.x + STEP });
     return { moments, xOf };
   }, [snapshots, lanes, changes]);
 
@@ -493,12 +494,20 @@ export default function ChangeGraph({
   const laneY = (i: number) => layout.laneYs[Math.max(0, Math.min(i, layout.laneYs.length - 1))] ?? PAD_TOP;
 
   const lastX = Math.max(
-    LABEL_W + PLOT_PAD_L + STEP_MIN,
+    LABEL_W + PLOT_PAD_L + STEP,
     ...nodes.map((n) => n.x),
     ...flows.map((f) => Math.max(f.x1, f.projectX ?? f.cardX + CARD_W)),
   );
   const width = lastX + PLOT_PAD_R;
-  const height = layout.bottom + AXIS_H;
+  const height = layout.bottom + FOOT_H;
+
+  // How each dot's timestamp is written. A history inside one day does not
+  // need the date on every dot; one that spans days does, and putting it on a
+  // second line keeps every stamp narrow enough to sit under its own node.
+  const sameDay = useMemo(() => {
+    const days = new Set(nodes.map((n) => new Date(n.date).toDateString()));
+    return days.size <= 1;
+  }, [nodes]);
 
   if (!lanes.length || !snapshots.length) return null;
 
@@ -552,8 +561,21 @@ export default function ChangeGraph({
               />
             ))}
 
-            {/* The axis. It is what makes this a timeline rather than a diagram. */}
-            <Axis scale={moments} y={height - AXIS_H + 18} width={width} />
+            {/* WHEN, on the dot it belongs to. There is no axis along the
+                bottom any more: the x scale counts commits, not minutes, so a
+                ruler under it would be measuring something that is not there.
+                Each moment says its own time instead, which is both exact and
+                where the reader is already looking. */}
+            {nodes.map((n) => (
+              <NodeStamp
+                key={`t-${n.lane}-${n.sha}`}
+                x={n.x}
+                y={laneY(n.lane)}
+                date={n.date}
+                sameDay={sameDay}
+                dimmed={hover != null}
+              />
+            ))}
           </svg>
 
           {/* Lane names, at the left where reading starts. */}
@@ -792,41 +814,36 @@ function Star({ x, y }: { x: number; y: number }) {
   return <polygon points={pts.join(" ")} className="cf-star" />;
 }
 
-/** The time axis. It is what makes this a timeline rather than a diagram, so
- *  it says WHEN at the precision the span actually needs: seconds for a busy
- *  afternoon, a date once the history runs over days. Labels thin out until
- *  they stop touching, and a repeated label is dropped rather than printed
- *  twice. */
-function Axis({ scale, y, width }: { scale: Moment[]; y: number; width: number }) {
-  if (!scale.length) return null;
-  const span = scale[scale.length - 1].t - scale[0].t;
-  const fmt: Intl.DateTimeFormatOptions =
-    span < 30 * 60_000
-      ? { hour: "numeric", minute: "2-digit", second: "2-digit" }
-      : span < 36 * 3_600_000
-        ? { hour: "numeric", minute: "2-digit" }
-        : { month: "short", day: "numeric", hour: "numeric" };
-
-  const shown: { x: number; label: string }[] = [];
-  let lastX = -Infinity;
-  let lastLabel = "";
-  for (const m of scale) {
-    if (m.x - lastX < 96) continue;
-    const label = new Date(m.t).toLocaleString([], fmt);
-    if (label === lastLabel) continue;
-    shown.push({ x: m.x, label });
-    lastX = m.x;
-    lastLabel = label;
-  }
+/** When a commit happened, written under the commit. Two short lines - time
+ *  over date - so the stamp is narrower than the gap between two dots and never
+ *  runs into its neighbour. Within a single day the date line is dropped: it
+ *  would be the same word under every dot. */
+function NodeStamp({
+  x,
+  y,
+  date,
+  sameDay,
+  dimmed,
+}: {
+  x: number;
+  y: number;
+  date: string;
+  sameDay: boolean;
+  dimmed: boolean;
+}) {
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = d.toLocaleDateString([], { day: "numeric", month: "short" });
   return (
-    <g className="cf-axis">
-      <line x1={LABEL_W} x2={width - 40} y1={y} y2={y} />
-      {shown.map((t) => (
-        <text key={t.x} x={t.x} y={y + 18} textAnchor="middle">
-          {t.label}
-        </text>
-      ))}
-    </g>
+    <text className={`cf-stamp${dimmed ? " is-dim" : ""}`} x={x} y={y + 17} textAnchor="middle">
+      <tspan x={x}>{time}</tspan>
+      {!sameDay && (
+        <tspan x={x} dy="10.5" className="cf-stamp-day">
+          {day}
+        </tspan>
+      )}
+    </text>
   );
 }
 

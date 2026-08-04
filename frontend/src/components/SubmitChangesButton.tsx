@@ -8,7 +8,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { FileSearchOutlined, PullRequestOutlined, WarningFilled } from "../icons";
+import { PullRequestOutlined, WarningFilled } from "../icons";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -16,24 +16,23 @@ import { useRepoQuery } from "../repoQuery";
 import { api, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
 import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
-import ChangePreview from "./ChangePreview";
 import { useIdentity } from "../identity";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
 // the global header): pending-edit badge, review-before-submit modal with
 // per-row undo, change type + reference, and the git-native explanation.
 //
-// The dialog has a FIXED shape whatever the size of the draft, and exactly ONE
-// thing in it scrolls: the list of changes. Everything else - the production
-// notice, the file-diff panel, the form, the buttons - is laid out to fit inside
-// the dialog's own height, which is capped to the window.
+// Exactly ONE thing in the dialog scrolls: the list of changes. Everything else
+// - the production notice, the form, the buttons - is laid out to fit, and the
+// whole dialog is capped to the window.
 //
-// It took two goes to get here. First the dialog grew with the draft, so a
-// hundred edits pushed the form off the bottom of the screen. Then the body
-// scrolled, which put THREE bars on screen at once (the body's, the list's, and
-// a sideways one under the table) and made the dialog look broken. A dialog is a
-// fixed frame around one scrollable list; nothing else in it may scroll.
-const BODY_H = "min(700px, calc(100vh - 170px))";
+// The cap is a MAXIMUM, not a height. Pinning the body to 700px meant a draft of
+// one edit was reviewed through a dialog three quarters of it empty - a screen
+// of nothing between the single row and the form under it. So the list is as
+// tall as its rows, the dialog is as tall as its contents, and only once there
+// is more than fits does the list start scrolling inside the cap. One edit gets
+// a small dialog; a hundred get the same dialog the old one always was.
+const BODY_MAX_H = "min(700px, calc(100vh - 170px))";
 
 /** How many staged edits go back in one request. Big enough that undoing a
  *  hundred is two or three round trips, small enough that the progress it
@@ -48,7 +47,6 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const qc = useQueryClient();
   const { setSection, selectParam, openSubmit, setOpenSubmit } = useUI();
   const [open, setOpen] = useState(false);
-  const [showDiffs, setShowDiffs] = useState(false);
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
 
@@ -232,13 +230,13 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         style={{ top: 24, maxWidth: "calc(100vw - 32px)" }}
         styles={{
           body: {
-            height: BODY_H,
+            maxHeight: BODY_MAX_H,
             display: "flex",
             flexDirection: "column",
             gap: 12,
-            // The parts below add up to less than this on any normal screen, so
-            // no bar appears here; auto rather than hidden so a very short window
-            // (under ~680px) scrolls instead of clipping the form.
+            // The list is the only part allowed to shrink, so it absorbs
+            // everything over the cap; auto rather than hidden so a very short
+            // window (under ~680px) scrolls instead of clipping the form.
             overflowY: "auto",
             overflowX: "hidden",
           },
@@ -296,21 +294,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           />
         </div>
 
-        {/* The byte diff opens in its OWN window. A code diff needs room, and
-            taking it from a dialog that also holds a form left the diff too
-            short to read and (when the file list grew) painting over the fields
-            under it. Two windows, each the right size for what it holds. */}
-        {pending > 0 && draftQ.data?.draft && (
-          <Button
-            type="link"
-            size="small"
-            icon={<FileSearchOutlined />}
-            style={{ paddingLeft: 0, alignSelf: "flex-start", flexShrink: 0 }}
-            onClick={() => setShowDiffs(true)}
-          >
-            View exact file changes
-          </Button>
-        )}
+        {/* No byte-level diff from here. Reviewing a change means reading what
+            moved, which is the list above; the exact file bytes are the Files
+            section's job, and offering them again in a second window only made
+            this dialog a fork in the road. */}
         <Form
           form={form}
           layout="vertical"
@@ -367,26 +354,6 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             <Input.TextArea rows={2} placeholder="Shown to the approver, and kept in the Git history" />
           </Form.Item>
         </Form>
-      </Modal>
-
-      <Modal
-        title="Exactly what will change on disk"
-        open={showDiffs && !!draftQ.data?.draft}
-        onCancel={() => setShowDiffs(false)}
-        footer={null}
-        width={1080}
-        style={{ top: 20, maxWidth: "calc(100vw - 32px)" }}
-        styles={{
-          body: {
-            height: "min(760px, calc(100vh - 130px))",
-            display: "flex",
-            flexDirection: "column",
-            overflow: "hidden",
-          },
-        }}
-        destroyOnHidden
-      >
-        {draftQ.data?.draft && <ChangePreview changeId={draftQ.data.draft.id} />}
       </Modal>
     </>
   );

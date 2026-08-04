@@ -417,6 +417,7 @@ definitions:
     - edit-file
     - unmanage-parameter
     - add-parameter
+    - realign-bindings
     type: string
     x-enum-varnames:
     - ActionSet
@@ -428,6 +429,7 @@ definitions:
     - ActionEditFile
     - ActionUnmanageParameter
     - ActionAddParameter
+    - ActionRealignBindings
   change.Approval:
     properties:
       approver:

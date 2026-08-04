@@ -48,7 +48,7 @@ const MarkdownView = lazy(() => import("./MarkdownView"));
 // thrown away in the other, and nothing on screen said so. What replaces it is
 // the same "Review changes" the grid has: the draft is one draft.
 //
-// Two things follow from that and are load-bearing:
+// Four things follow from that, and all four are load-bearing:
 //
 //   - A file that no longer PARSES is refused, whole, with the line called out
 //     in the editor and in a notice above it. Autosave without that check is
@@ -57,7 +57,19 @@ const MarkdownView = lazy(() => import("./MarkdownView"));
 //   - The typing is never taken away. A refused save leaves the buffer exactly
 //     as written, so the fix is one character rather than a retype, and the
 //     DIFF is a view you open (see MonacoFileView) rather than one that arrives
-//     on its own and drops the cursor.
+//     on its own and drops the cursor. What the diff DOES do on its own is
+//     offer itself: its button goes amber the moment the file differs.
+//   - Nothing announces the save. No toast, no pill appearing and disappearing
+//     on every pause in the typing - just a line in the status strip that reads
+//     Editing… → Saving… → Saved, and says what the save meant for the catalog
+//     only when that actually moved. An edit that keeps itself does not need
+//     announcing, and a notification over the file somebody is typing in is an
+//     interruption whatever it says.
+//   - `dirty` is held until the SERVER's copy matches it. Clearing it on the
+//     response swapped the editor's value back to the pre-edit content the file
+//     query still held, for the moment before the refetch landed: the text
+//     visibly reverted and came back, and the cursor jumped. The one thing an
+//     editor must never do to somebody mid-sentence.
 
 // detectIndent reports the file's indentation width (a best effort from the
 // first indented line), for the status strip.
@@ -115,6 +127,12 @@ export default function FilesView() {
   // Reading a diff and writing a file are different jobs; which one you are
   // doing is a control, not something the editor decides the moment you type.
   const [showDiff, setShowDiff] = useState(false);
+  // What the last save did to the catalog, said quietly in the status strip
+  // and then let go of. It is worth knowing and not worth interrupting for.
+  const [savedNote, setSavedNote] = useState("");
+  // The catalog counts the last save reported for this file, so the next save
+  // only speaks up if they moved.
+  const reportedRef = useRef("");
   const [treeQ, setTreeQ] = useState("");
   const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
   const [reveal, setReveal] = useState<number | undefined>(undefined);
@@ -317,6 +335,7 @@ export default function FilesView() {
   const shown = dirty ?? current?.content ?? "";
   const hasFileChanges = committed !== undefined && !sameContent(committed, shown);
 
+
   // Which lines of the open file Configer manages. Located server-side against
   // the same draft-applied content shown here, so a mark sits exactly on the
   // value it belongs to. Only for a file that carries any: the request is
@@ -362,21 +381,40 @@ export default function FilesView() {
   const save = useMutation({
     mutationFn: ({ path, content }: { path: string; content: string }) =>
       api.stageFileEdit({ instance: stageInstanceFor(path), path, content, author: "Local user" }),
-    onSuccess: (r, vars) => {
+    onSuccess: (r) => {
       setProblem(null);
-      // Only clear the buffer when it is still what we sent: the user may have
-      // typed on while the request was in flight.
-      setDirty((d) => (d === vars.content ? null : d));
-      if (r.staged === 0) return; // nothing changed: no news is the right amount
-      if (r.newParameters)
-        // Say what the edit ADDED, by name-count: the settings are the point of
-        // the save, and "File edit staged" gave no sign they had been picked up
-        // at all.
-        message.success(
-          `Saved. ${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found in this file; they appear in the grid and publish with this change`,
-          6,
-        );
-      qc.invalidateQueries();
+      // What the edit did to the SETTINGS goes in the status strip, not into a
+      // toast. It is worth knowing and it is not worth interrupting for: a
+      // notification that arrives mid-sentence, over the file, is the same
+      // interruption whatever it says.
+      //
+      // And only when it CHANGED. Each save recomputes the whole of what this
+      // file does to the catalog, so a later save that only adds a comment
+      // still comes back carrying the four parameters an earlier one found -
+      // and reporting those again reads as four MORE, off the back of typing
+      // that added none.
+      const counts = `${r.newParameters ?? 0}/${r.movedParameters ?? 0}/${r.droppedParameters ?? 0}`;
+      if (counts !== reportedRef.current) {
+        reportedRef.current = counts;
+        const said: string[] = [];
+        if (r.newParameters) said.push(`${r.newParameters} new`);
+        if (r.movedParameters) said.push(`${r.movedParameters} re-pointed`);
+        if (r.droppedParameters) said.push(`${r.droppedParameters} no longer here`);
+        setSavedNote(said.length ? `${said.join(", ")} parameter${said.length === 1 && r.newParameters === 1 ? "" : "s"}` : "");
+      }
+      // The buffer is NOT cleared here. Clearing it swaps the editor's value
+      // from what was typed back to the copy the file query still holds - the
+      // pre-edit content - until the refetch lands a moment later, so the text
+      // visibly reverts and comes back and the cursor jumps. It is dropped in
+      // the effect below, once the server's copy actually says what the screen
+      // says.
+      void qc.invalidateQueries({
+        predicate: (q) => {
+          const k = q.queryKey[0];
+          return k === "files-draft" || k === "draft" || k === "grid" ||
+            k === "project-info" || k === "managed-values" || k === "changes";
+        },
+      });
     },
     onError: (e: Error) => {
       // A file that does not parse is not a toast-and-forget: it is a state the
@@ -390,21 +428,62 @@ export default function FilesView() {
     },
   });
 
-  // Autosave: one save shortly after the typing stops, and never one that
-  // races the last. A file the user is holding a key down in must not become a
-  // request per keystroke.
-  const AUTOSAVE_MS = 900;
+  // The typing is let go of only when the server's copy of the file matches it.
+  // Until then `dirty` is what the editor shows, so nothing the user typed ever
+  // flickers back to an older version of itself.
+  useEffect(() => {
+    if (dirty !== null && current && current.content === dirty) setDirty(null);
+  }, [dirty, current]);
+
+  // Autosave: one save shortly after the typing stops, and never one that races
+  // the last. A file somebody is holding a key down in must not become a request
+  // per keystroke, and a pause to think must not become a save mid-sentence -
+  // which is why this is a second and a half rather than a beat.
+  const AUTOSAVE_MS = 1500;
   const saveRef = useRef(save);
   useEffect(() => {
     saveRef.current = save;
   });
+  const flush = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!canEdit || dirty === null || !selected) return;
+    if (!canEdit || dirty === null || !selected) {
+      flush.current = () => {};
+      return;
+    }
     const path = selected;
     const content = dirty;
-    const t = setTimeout(() => saveRef.current.mutate({ path, content }), AUTOSAVE_MS);
+    const send = () => saveRef.current.mutate({ path, content });
+    const t = setTimeout(send, AUTOSAVE_MS);
+    // Clicking away commits what is there, without waiting out the timer: the
+    // moment somebody's attention leaves the file is the moment "is that kept?"
+    // has to already be answered.
+    flush.current = () => {
+      clearTimeout(t);
+      send();
+    };
     return () => clearTimeout(t);
   }, [dirty, selected, canEdit]);
+
+  // The one line the strip shows about saving. Nothing while a clean file sits
+  // there; "Saving…" for the moment it takes; then what the save meant, which
+  // fades on the next keystroke rather than on a timer somebody has to wait out.
+  const saveState = save.isPending
+    ? "Saving…"
+    : dirty !== null
+      ? "Editing…"
+      : savedNote
+        ? `Saved · ${savedNote}`
+        : hasFileChanges
+          ? "Saved to your draft"
+          : "";
+  // A new file, or new typing, retires the last save's note.
+  useEffect(() => {
+    if (dirty !== null) setSavedNote("");
+  }, [dirty]);
+  useEffect(() => {
+    setSavedNote("");
+    reportedRef.current = "";
+  }, [selected]);
 
   const copy = async () => {
     if (!current) return;
@@ -573,7 +652,10 @@ export default function FilesView() {
                   </span>
                 </Tooltip>
               )}
-              {dirty !== null && <StatusPill tone="review">Unsaved</StatusPill>}
+              {/* No "Unsaved" pill. An edit keeps itself, so a badge that comes
+                  and goes on every pause in the typing is a flicker reporting a
+                  state nobody has to act on. Saving is said once, quietly, in
+                  the status strip at the bottom. */}
               {/* Only for markdown: everything else in a configuration
                   repository IS its source, and a "raw" switch on a values file
                   would be a switch between the same thing twice. */}
@@ -608,9 +690,13 @@ export default function FilesView() {
                   </Dropdown>
                 </Tooltip>
               )}
-              {/* The diff is a VIEW of this file, opened deliberately. It used
+              {/* The diff is a VIEW of this file, opened deliberately - it used
                   to arrive on its own the moment anything differed, which meant
-                  typing one character replaced the editor under the cursor. */}
+                  typing one character replaced the editor under the cursor.
+                  What it does do on its own is OFFER itself: the moment the file
+                  differs from what is committed, the button goes amber and says
+                  so. Attention without interruption - the cursor stays where it
+                  was, and looking is one click when the reader is ready. */}
               <Tooltip
                 title={
                   committed === undefined
@@ -624,6 +710,7 @@ export default function FilesView() {
                   <Button
                     size="small"
                     type={showDiff ? "primary" : "default"}
+                    className={hasFileChanges && !showDiff ? "cf-diff-offer" : undefined}
                     icon={<DiffOutlined />}
                     disabled={!hasFileChanges}
                     onClick={() => setShowDiff((v) => !v)}
@@ -777,6 +864,7 @@ export default function FilesView() {
                       problem={problem?.line ? { line: problem.line, column: problem.column, message: problem.message } : undefined}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
                       onSave={(v) => save.mutate({ path: current.path, content: v })}
+                      onBlur={() => flush.current()}
                       onCursor={(ln, col) => setCursor({ ln, col })}
                     />
                   </Suspense>
@@ -809,6 +897,13 @@ export default function FilesView() {
             </span>
             <span>Spaces: {current ? detectIndent(dirty ?? current.content) : 2}</span>
             <span className="uppercase">{current ? languageFor(current.path) : ""}</span>
+            {/* Where saving is said. It is a strip, not a dialog: an edit that
+                keeps itself does not need announcing, and a notification over
+                the file somebody is typing in is an interruption whatever it
+                says. The slot is always rendered so nothing beside it moves. */}
+            <span className="cf-save-state" aria-live="polite">
+              {saveState}
+            </span>
             <span className="ml-auto opacity-85">
               {files.length} file{files.length === 1 ? "" : "s"}
               {changedFiles.size > 0 && ` · ${changedFiles.size} modified`}

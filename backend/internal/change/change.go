@@ -69,7 +69,33 @@ const (
 	// something is a change like any other, so it travels the same road - draft,
 	// review, publish - beside the file edit that introduced it.
 	ActionAddParameter Action = "add-parameter"
+	// ActionRealignBindings moves catalog entries to follow the values they
+	// describe, after a file edit inserted or removed one entry of a repeated
+	// structure. File carries the file; New carries a RealignPayload.
+	//
+	// It exists because these entries are addressed by POSITION. Insert a
+	// network in the middle of an XML file and `net-info[3]/net-id` still
+	// resolves - to a different network. Nothing errors, nothing is flagged, and
+	// the grid quietly starts showing one network's values under another's name.
+	// This is the item that keeps the catalog pointing at what it named.
+	ActionRealignBindings Action = "realign-bindings"
 )
+
+// BindingMove is one parameter's in-file path following its entry.
+type BindingMove struct {
+	ParamID string `json:"paramId"`
+	Name    string `json:"name,omitempty"`
+	From    string `json:"from"`
+	To      string `json:"to"`
+}
+
+// RealignPayload is what a realign-bindings item carries: the parameters whose
+// address moved, and the ones whose value the edit took out of the file
+// altogether (they would otherwise stay in the catalog bound to nothing).
+type RealignPayload struct {
+	Moves   []BindingMove `json:"moves,omitempty"`
+	Dropped []BindingMove `json:"dropped,omitempty"`
+}
 
 // Structural reports whether the action changes the instance topology or the
 // catalog rather than a value; structural items apply before value items on
@@ -77,7 +103,7 @@ const (
 func (it Item) Structural() bool {
 	a := it.Act()
 	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance ||
-		a == ActionUnmanageParameter || a == ActionAddParameter
+		a == ActionUnmanageParameter || a == ActionAddParameter || a == ActionRealignBindings
 }
 
 // Item is one pending change: a (parameter, instance) cell edit, a
@@ -258,7 +284,7 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 			undone := cr.Items[i]
 			cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
 			if undone.Act() == ActionEditFile {
-				cr.dropAddedParameters(undone.File)
+				cr.dropCatalogItems(undone.File)
 			}
 			return true
 		}
@@ -266,15 +292,16 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 	return false
 }
 
-// dropAddedParameters removes the add-parameter items a file edit brought with
-// it.
-func (cr *ChangeRequest) dropAddedParameters(file string) {
+// dropCatalogItems removes the catalog consequences a file edit brought with
+// it - the parameters it proposed to start managing, and the realignment that
+// keeps the rest pointing at what they name.
+func (cr *ChangeRequest) dropCatalogItems(file string) {
 	if file == "" {
 		return
 	}
 	kept := cr.Items[:0]
 	for _, it := range cr.Items {
-		if it.Act() == ActionAddParameter && it.File == file {
+		if it.File == file && (it.Act() == ActionAddParameter || it.Act() == ActionRealignBindings) {
 			continue
 		}
 		kept = append(kept, it)
@@ -282,11 +309,13 @@ func (cr *ChangeRequest) dropAddedParameters(file string) {
 	cr.Items = kept
 }
 
-// ReplaceAddedParameters swaps in the complete set of parameters a file edit
-// proposes to start managing, so a file saved twice does not accumulate items
-// for lines the second save took back out.
-func (cr *ChangeRequest) ReplaceAddedParameters(file string, items []Item) {
-	cr.dropAddedParameters(file)
+// ReplaceCatalogItems swaps in the complete set of catalog consequences of one
+// file's current content. It REPLACES rather than merges because each save is
+// the whole truth about that file: a setting an earlier save proposed and this
+// one took back out leaves with it, and a realignment is always the difference
+// between the committed file and what is on screen now, never a running total.
+func (cr *ChangeRequest) ReplaceCatalogItems(file string, items []Item) {
+	cr.dropCatalogItems(file)
 	cr.Items = append(cr.Items, items...)
 }
 

@@ -63,7 +63,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
       // folder). Grouping a catalog change under instances.yaml named a file it
       // never touches, in the one panel that exists to say which files move.
       if (it.action === "edit-file") return it.file ?? "(file)";
-      if (it.action === "add-parameter" || it.action === "unmanage-parameter")
+      if (it.action === "add-parameter" || it.action === "unmanage-parameter" || it.action === "realign-bindings")
         return ".configer/parameters.yaml";
       if (structuralLabel(it)) return ".configer/instances.yaml";
       const row = rows.get(it.paramId);

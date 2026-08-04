@@ -149,7 +149,37 @@ func (JSONParser) Detect(path string, _ []byte) bool {
 	return strings.HasSuffix(strings.ToLower(path), ".json")
 }
 
+// Extract reads a JSON document through the SAME node tree the edit engine
+// uses for JSON (pathedit parses and re-emits JSON as a yaml.Node), which buys
+// two things a plain json.Unmarshal cannot give:
+//
+//   - DOCUMENT ORDER. Go maps iterate randomly, so the candidates came out in a
+//     different order on every scan. Nothing noticed while the question was only
+//     "which settings are in this file", but the moment two versions of a file
+//     have to be lined up against each other - to work out what an edit actually
+//     added - an order that changes between the two readings makes every
+//     candidate look moved.
+//   - The source LINE of each value, which the onboarding proposal shows beside
+//     it and which JSON files had none of.
+//
+// A document yaml cannot read falls back to encoding/json, so a file that
+// worked before still works.
 func (JSONParser) Extract(file string, content []byte) ([]plugin.Candidate, error) {
+	var doc yaml.Node
+	if err := yaml.Unmarshal(content, &doc); err == nil {
+		root := &doc
+		if root.Kind == yaml.DocumentNode && len(root.Content) > 0 {
+			root = root.Content[0]
+		}
+		if root.Kind != 0 {
+			var out []plugin.Candidate
+			flattenNode(root, "$", file, "", &out)
+			for i := range out {
+				out[i].Format = "json"
+			}
+			return out, nil
+		}
+	}
 	var root any
 	if err := json.Unmarshal(content, &root); err != nil {
 		return nil, err

@@ -4463,7 +4463,8 @@ const docTemplateconfiger = `{
                 "update-instance",
                 "edit-file",
                 "unmanage-parameter",
-                "add-parameter"
+                "add-parameter",
+                "realign-bindings"
             ],
             "x-enum-varnames": [
                 "ActionSet",
@@ -4474,7 +4475,8 @@ const docTemplateconfiger = `{
                 "ActionUpdateInstance",
                 "ActionEditFile",
                 "ActionUnmanageParameter",
-                "ActionAddParameter"
+                "ActionAddParameter",
+                "ActionRealignBindings"
             ]
         },
         "change.Approval": {

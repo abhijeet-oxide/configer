@@ -1765,6 +1765,31 @@ body {
   background: var(--c-mark-bd);
 }
 
+/* "View difference" once this file actually differs from what is committed.
+   Amber is the product's word for pending, and this is the one thing on the
+   toolbar that has become true since the reader last looked. It OFFERS - it
+   does not interrupt: the cursor stays where it was and the diff opens when
+   they are ready, which is the whole difference from the pane that used to
+   swap itself in on the first keystroke. */
+.cf-diff-offer:not(:disabled) {
+  border-color: var(--c-pending);
+  color: var(--c-pending);
+  background: color-mix(in srgb, var(--c-pending) 8%, transparent);
+}
+.cf-diff-offer:not(:disabled):hover {
+  border-color: var(--c-pending) !important;
+  color: var(--c-pending) !important;
+  background: color-mix(in srgb, var(--c-pending) 16%, transparent);
+}
+
+/* Where saving is said: the status strip, in the strip's own voice. It is a
+   fixed slot, so the readings either side of it never move as it changes. */
+.cf-save-state {
+  min-width: 15ch;
+  opacity: 0.8;
+  font-variant-numeric: tabular-nums;
+}
+
 /* The line a save was refused on. Louder than either mark above, because it is
    the reason nothing was staged: the file does not parse, and this is where it
    stops. Red is already the product's word for "this is wrong". */

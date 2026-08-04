@@ -1,6 +1,6 @@
 import { Checkbox, Tooltip, Tree, Typography, Input, type GetRef } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { Grid } from "../api";
+import { nameSegments, type Grid, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
 
@@ -33,8 +33,12 @@ interface NameNode {
 // All intermediate dotted prefixes of a name, so revealing a leaf can expand
 // exactly the branches that contain it (admin.rebuildslave.x -> [admin,
 // admin.rebuildslave]).
-function ancestorPrefixes(name: string): string[] {
-  const parts = name.split(".");
+//
+// The steps come from api.nameSegments, never from splitting the name here: a
+// key that itself contains a dot ("query.dependencies") is ONE step, and
+// splitting on every dot nested a level the file has never had - and then
+// looked for the leaf under a branch that does not exist.
+function ancestorPrefixes(parts: string[]): string[] {
   const out: string[] = [];
   for (let i = 0; i < parts.length - 1; i++) out.push(parts.slice(0, i + 1).join("."));
   return out;
@@ -47,12 +51,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   const { ref, height } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
 
-  // Build the name trie: split each parameter name on "." into nested groups.
+  // Build the name trie from each parameter's own name STEPS (see
+  // api.nameSegments) rather than from splitting its name on every dot.
   const nameRoot = useMemo(() => {
     const root: NameNode = { seg: "", prefix: "", count: 0, params: [], children: new Map() };
     for (const r of grid.rows) {
       const name = r.param.name;
-      const parts = name.split(".");
+      const parts = nameSegments(r.param);
       const leaf = parts[parts.length - 1];
       let level = root;
       let prefix = "";
@@ -85,9 +90,9 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
     return keys;
   }, [nameRoot]);
 
-  const paramName = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const r of grid.rows) m.set(r.param.id, r.param.name);
+  const paramByID = useMemo(() => {
+    const m = new Map<string, Parameter>();
+    for (const r of grid.rows) m.set(r.param.id, r.param);
     return m;
   }, [grid.rows]);
 
@@ -148,12 +153,12 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   const leafKey = selectedParamId ? `p:${selectedParamId}` : null;
   useEffect(() => {
     if (!selectedParamId) return;
-    const name = paramName.get(selectedParamId);
-    if (!name) return;
-    setExpandedKeys((prev) => Array.from(new Set([...prev, ...ancestorPrefixes(name)])));
+    const param = paramByID.get(selectedParamId);
+    if (!param) return;
+    setExpandedKeys((prev) => Array.from(new Set([...prev, ...ancestorPrefixes(nameSegments(param))])));
     const t = setTimeout(() => treeRef.current?.scrollTo({ key: `p:${selectedParamId}` }), 60);
     return () => clearTimeout(t);
-  }, [selectedParamId, paramName]);
+  }, [selectedParamId, paramByID]);
 
   return (
     <div className="cat-tree" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
@@ -193,7 +198,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                 // filter would hide the row is the filter cleared (never
                 // narrowed) so the jump can land.
                 const id = k.slice(2);
-                const name = paramName.get(id) ?? "";
+                const name = paramByID.get(id)?.name ?? "";
                 if (categoryKey && name !== categoryKey && !name.startsWith(categoryKey + "."))
                   setCategory(null);
                 selectParam(id);

@@ -330,6 +330,14 @@ export default function FilesView() {
       if (r.staged === 0) message.info("No changes to save");
       else if (r.kind === "values")
         message.success(`${r.staged} value edit(s) staged in your draft; visible in the grid too`);
+      else if (r.newParameters)
+        // Say what the edit ADDED, by name-count: the settings are the point of
+        // the save, and "File edit staged" gave no sign they had been picked up
+        // at all.
+        message.success(
+          `File edit staged, with ${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found in it; they appear in the grid and publish with this change`,
+          6,
+        );
       else message.success("File edit staged in your draft");
       qc.invalidateQueries();
     },

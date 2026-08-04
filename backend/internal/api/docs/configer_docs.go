@@ -1118,7 +1118,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item. Managed values are always validated first.",
+                "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item, plus one add-parameter item per setting the edit introduced that nothing managed yet (` + "`" + `newParameters` + "`" + ` counts them). Managed values are always validated first.",
                 "consumes": [
                     "application/json"
                 ],
@@ -4377,7 +4377,8 @@ const docTemplateconfiger = `{
                 "remove-instance",
                 "update-instance",
                 "edit-file",
-                "unmanage-parameter"
+                "unmanage-parameter",
+                "add-parameter"
             ],
             "x-enum-varnames": [
                 "ActionSet",
@@ -4387,7 +4388,8 @@ const docTemplateconfiger = `{
                 "ActionRemoveInstance",
                 "ActionUpdateInstance",
                 "ActionEditFile",
-                "ActionUnmanageParameter"
+                "ActionUnmanageParameter",
+                "ActionAddParameter"
             ]
         },
         "change.Approval": {
@@ -4770,6 +4772,13 @@ const docTemplateconfiger = `{
                 },
                 "name": {
                     "type": "string"
+                },
+                "nameSegments": {
+                    "description": "NameSegments is Name split into the steps it was built from, so the UI can\nnest the parameter tree on the real structure. The dotted name alone\ncannot say where the steps are: a key that itself contains a dot\n(\"query.dependencies\") makes \"value.query.dependencies.max\" read as four\nlevels, and the tree then shows two folders the file has never had. It is\nDERIVED from the binding path at read time and never persisted\n(yaml:\"-\"), and it is present only when it differs from splitting Name on\n\".\" - so a client may always fall back to the split.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "observed": {
                     "description": "Observed carries the value discovery read from each instance's files\n(instance name -\u003e value), so the onboarding proposal can preview the grid.\nIt is display-only: never persisted to .configer (yaml:\"-\"), only carried\nthrough the discovery JSON.",

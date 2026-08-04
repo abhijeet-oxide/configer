@@ -180,9 +180,30 @@ func structuralSummary(it change.Item) string {
 			name = it.ParamID
 		}
 		return "stop managing " + name
+	case change.ActionAddParameter:
+		name := addedParameterName(it)
+		if it.File != "" {
+			return "start managing " + name + " (new in " + it.File + ")"
+		}
+		return "start managing " + name
 	}
 	return string(it.Act()) + " " + it.Instance
 }
+
+// addedParameter decodes an add-parameter item's payload. A payload that will
+// not decode still yields a parameter named after the item, so a summary can be
+// written for it rather than left blank.
+func addedParameter(it change.Item) model.Parameter {
+	var pm model.Parameter
+	if err := decodeInto(it.New, &pm); err != nil || pm.Name == "" {
+		pm.Name = it.ParamID
+	}
+	return pm
+}
+
+// addedParameterName reads the name off an add-parameter item, so the change
+// reads as the setting rather than as its slug.
+func addedParameterName(it change.Item) string { return addedParameter(it).Name }
 
 func readFileOrEmpty(dir, rel string) string {
 	b, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))

@@ -279,3 +279,72 @@ func TestManageAnywayIncludesAPassedOverFile(t *testing.T) {
 		}
 	}
 }
+
+// A repeated LEAF element in XML folds into one list parameter, and that
+// parameter must be named the way every other name is spelled - dotted. Naming
+// it from the raw path left "/config/net-info[2]/device-pool-default", which is
+// not a name the parameter tree can nest: it sat at the root, alone, while its
+// siblings nested under net-info[2].
+func TestFoldedXMLListKeepsTheDottedName(t *testing.T) {
+	cands, err := parsers.XMLParser{}.Extract("net.xml", []byte(`<config>
+  <net-info>
+    <net-label>media</net-label>
+    <device-pool-default>pool-a</device-pool-default>
+    <device-pool-default>pool-b</device-pool-default>
+  </net-info>
+</config>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	folded := foldLists(cands)
+	var list *candidate
+	for i := range folded {
+		if folded[i].Type == model.TypeList {
+			list = &folded[i]
+		}
+	}
+	if list == nil {
+		t.Fatal("the repeated element did not fold into a list")
+	}
+	if list.Name != "config.net-info.device-pool-default" {
+		t.Errorf("name = %q, want the dotted name", list.Name)
+	}
+	if list.Path != "/config/net-info/device-pool-default" {
+		t.Errorf("path = %q, want the XPath without the positional predicate", list.Path)
+	}
+}
+
+// Tunable is the ONE answer to "what settings does this file have", so a file
+// editor asking it gets exactly what an import would have proposed: no
+// Kubernetes envelope, no apiVersion/kind, no alias mirrors.
+func TestTunableMatchesWhatImportWouldPropose(t *testing.T) {
+	cands, err := parsers.YAMLParser{}.Extract("app.yaml", []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: prod
+spec:
+  replicas: 3
+status:
+  readyReplicas: 3
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, p := range Tunable("app.yaml", cands) {
+		got[p.Name] = true
+	}
+	if !got["spec.replicas"] {
+		t.Errorf("spec.replicas missing from %v", got)
+	}
+	for _, envelope := range []string{"apiVersion", "kind", "metadata.name", "metadata.namespace", "status.readyReplicas"} {
+		if got[envelope] {
+			t.Errorf("%s is Kubernetes envelope, not a setting: %v", envelope, got)
+		}
+	}
+	// A file that describes structure rather than settings yields nothing.
+	if p := Tunable("kustomization.yaml", cands); len(p) != 0 {
+		t.Errorf("kustomization.yaml proposed %+v", p)
+	}
+}

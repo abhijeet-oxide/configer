@@ -58,14 +58,26 @@ const (
 	// which kind of edit takes which path, and nothing reaches the default
 	// branch without review.
 	ActionUnmanageParameter Action = "unmanage-parameter"
+	// ActionAddParameter starts managing a value the repository now carries but
+	// the catalog does not know about - typically one a direct file edit just
+	// introduced. ParamID carries the id it will get; New the model.Parameter
+	// to write into .configer/parameters.yaml; File the file it was found in.
+	//
+	// It exists because a direct file edit that ADDS settings said only "edited
+	// directly": the new values were in the committed bytes, invisible in the
+	// grid, and nothing in the review named them. A change that starts managing
+	// something is a change like any other, so it travels the same road - draft,
+	// review, publish - beside the file edit that introduced it.
+	ActionAddParameter Action = "add-parameter"
 )
 
-// Structural reports whether the action changes the instance topology rather
-// than a value; structural items apply before value items on submit.
+// Structural reports whether the action changes the instance topology or the
+// catalog rather than a value; structural items apply before value items on
+// submit.
 func (it Item) Structural() bool {
 	a := it.Act()
 	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance ||
-		a == ActionUnmanageParameter
+		a == ActionUnmanageParameter || a == ActionAddParameter
 }
 
 // Item is one pending change: a (parameter, instance) cell edit, a
@@ -232,6 +244,10 @@ func (cr *ChangeRequest) UpsertItem(it Item) {
 // RemoveItem drops the pending edit for (paramID, instance) and reports
 // whether one existed. A direct file edit is addressed by paramID
 // "file:<path>" (its ParamID is empty).
+//
+// Undoing a file edit also drops the parameters that edit proposed to start
+// managing: they exist only because those lines do, and leaving them behind
+// would publish a catalog entry bound to a path the file no longer has.
 func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 	file := ""
 	if strings.HasPrefix(paramID, "file:") {
@@ -239,11 +255,39 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 	}
 	for i := range cr.Items {
 		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance && cr.Items[i].File == file {
+			undone := cr.Items[i]
 			cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
+			if undone.Act() == ActionEditFile {
+				cr.dropAddedParameters(undone.File)
+			}
 			return true
 		}
 	}
 	return false
+}
+
+// dropAddedParameters removes the add-parameter items a file edit brought with
+// it.
+func (cr *ChangeRequest) dropAddedParameters(file string) {
+	if file == "" {
+		return
+	}
+	kept := cr.Items[:0]
+	for _, it := range cr.Items {
+		if it.Act() == ActionAddParameter && it.File == file {
+			continue
+		}
+		kept = append(kept, it)
+	}
+	cr.Items = kept
+}
+
+// ReplaceAddedParameters swaps in the complete set of parameters a file edit
+// proposes to start managing, so a file saved twice does not accumulate items
+// for lines the second save took back out.
+func (cr *ChangeRequest) ReplaceAddedParameters(file string, items []Item) {
+	cr.dropAddedParameters(file)
+	cr.Items = append(cr.Items, items...)
 }
 
 // Instances returns the unique instance names touched by this CR.

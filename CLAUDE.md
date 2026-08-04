@@ -86,12 +86,27 @@ never gate on the score, which exists only for the trend line.
   `$.value['query.dependencies'].x` - build one with `pathedit.JoinKey`, never
   by string concatenation, or the path silently resolves to nothing and writes
   a nested block on top of the real key. Never add a second path engine.
+  `pathedit.Segments(format, path)` is the matching read: the NAME STEPS a path
+  spells, for YAML/JSON and XPath alike. Every producer of a parameter name goes
+  through it (`parsers.nameFromPath`, `xmlName`, discovery's folded lists), and
+  `grid` hands the steps to the UI as `nameSegments` whenever splitting the name
+  on `.` would land in the wrong places - because it silently does: a key that
+  itself contains a dot made the tree nest two folders the file never had.
 - `writeback` - file-level wrapper: read file, pathedit, write file.
 - `change` / `changeset` / `crstore` - the change-request lifecycle
   (Draft→UnderReview→Approved→Published). `changeset.Submit` takes a
   `SubmitRequest`, opens an isolated worktree, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
   `Changed-by:` trailer, pushes, opens a GitHub PR.
+- **Editing a file is also a CATALOG change.** A direct file edit that
+  introduces settings nothing manages stages one `add-parameter` item per new
+  setting beside the `edit-file` item (`api.addedParameters`, judged against the
+  COMMITTED bytes and filtered through `discovery.Tunable` so a file edit and an
+  import propose exactly the same things). They preview as `pendingAdd` rows and
+  publish as `.configer/parameters.yaml` entries in the same commit - otherwise
+  new settings are bytes in a diff, absent from the grid and unnamed in the
+  review, which is how "edited directly" became the whole story of a change that
+  added four networks.
 - **A branch says what the change is**: `<category>/<owner>/cr-<n>-<slug>`
   (owner omitted when there is no login, i.e. single-user; category is the
   change type - hotfix/feature/bugfix/… - and `change` when none was picked).

@@ -394,6 +394,7 @@ definitions:
     - update-instance
     - edit-file
     - unmanage-parameter
+    - add-parameter
     type: string
     x-enum-varnames:
     - ActionSet
@@ -404,6 +405,7 @@ definitions:
     - ActionUpdateInstance
     - ActionEditFile
     - ActionUnmanageParameter
+    - ActionAddParameter
   change.Approval:
     properties:
       approver:
@@ -721,6 +723,19 @@ definitions:
         description: ItemType is the element type when Type is "list".
       name:
         type: string
+      nameSegments:
+        description: |-
+          NameSegments is Name split into the steps it was built from, so the UI can
+          nest the parameter tree on the real structure. The dotted name alone
+          cannot say where the steps are: a key that itself contains a dot
+          ("query.dependencies") makes "value.query.dependencies.max" read as four
+          levels, and the tree then shows two folders the file has never had. It is
+          DERIVED from the binding path at read time and never persisted
+          (yaml:"-"), and it is present only when it differs from splitting Name on
+          "." - so a client may always fall back to the split.
+        items:
+          type: string
+        type: array
       observed:
         additionalProperties: {}
         description: |-
@@ -1589,8 +1604,9 @@ paths:
       description: 'File-mode save: a direct Monaco edit of one file, staged into
         the same draft as grid edits. Edits that only change managed values become
         ordinary validated cell items (fan-out preserved); edits that touch unmanaged
-        content stage as one whole-file item. Managed values are always validated
-        first.'
+        content stage as one whole-file item, plus one add-parameter item per setting
+        the edit introduced that nothing managed yet (`newParameters` counts them).
+        Managed values are always validated first.'
       parameters:
       - description: The file edit
         in: body

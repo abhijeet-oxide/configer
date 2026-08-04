@@ -116,6 +116,11 @@ export interface PresetRule {
 export interface Parameter {
   id: string;
   name: string;
+  /** the name's steps, when splitting it on "." would land in the wrong
+   *  places - a key that itself contains a dot ("query.dependencies") is ONE
+   *  step. Absent whenever the split is already right, so read it through
+   *  nameSegments() rather than directly. */
+  nameSegments?: string[];
   displayName?: string;
   description?: string;
   category: string;
@@ -173,7 +178,8 @@ export type ItemAction =
   | "remove-instance"
   | "update-instance"
   | "edit-file"
-  | "unmanage-parameter";
+  | "unmanage-parameter"
+  | "add-parameter";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
  *  delta is a formatting artifact, never a configuration change, so diff
@@ -182,14 +188,30 @@ export const sameContent = (a?: string, b?: string): boolean =>
   a === b || (a ?? "").replace(/\s+$/, "") === (b ?? "").replace(/\s+$/, "");
 
 /** Human label for a structural item ("" for plain cell edits). */
-export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; file?: string }): string => {
+export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; new?: unknown; file?: string }): string => {
   if (it.action === "add-instance")
     return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
   if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
   if (it.action === "update-instance") return `Update instance ${it.instance} settings`;
   if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
+  if (it.action === "add-parameter") return `Start managing ${addedParamName(it)}`;
   return "";
 };
+
+/** The name of the parameter an add-parameter item starts managing. The item
+ *  carries the whole catalog entry, so the change can read as the setting
+ *  rather than as its slug. */
+export const addedParamName = (it: { paramId?: string; new?: unknown }): string => {
+  const pm = it.new as Partial<Parameter> | undefined;
+  return (pm && typeof pm === "object" && typeof pm.name === "string" && pm.name) || it.paramId || "a parameter";
+};
+
+/** A parameter's name steps: the ones the server spelled out when the dot
+ *  split would land in the wrong places, otherwise the split itself. Every
+ *  surface that nests or shortens a name reads it through here, so a key
+ *  containing a dot stays one step everywhere. */
+export const nameSegments = (p: Pick<Parameter, "name" | "nameSegments">): string[] =>
+  p.nameSegments?.length ? p.nameSegments : p.name.split(".");
 
 // --- change requests -------------------------------------------------------
 
@@ -364,6 +386,10 @@ export interface Row {
   /** a draft change stops managing this parameter: still here, still editable,
    *  and leaving the catalog when that change is published */
   pendingUnmanage?: boolean;
+  /** a draft change STARTS managing this parameter: a direct file edit put the
+   *  value in the staged bytes, and the catalog entry arrives when that change
+   *  is published */
+  pendingAdd?: boolean;
 }
 
 export interface CategoryNode {
@@ -1545,8 +1571,17 @@ export const api = {
     );
   },
   stageFileEdit: (p: { instance?: string; path: string; content: string; author?: string }) =>
-    put<{ ok: boolean; staged: number; kind?: "values" | "file"; managedChanges?: number; detail?: string }>(
-      rp("/files/draft"), p),
+    put<{
+      ok: boolean;
+      staged: number;
+      kind?: "values" | "file";
+      managedChanges?: number;
+      /** settings this edit ADDED to the file that nothing managed yet; each is
+       *  staged as a parameter the change starts managing, so they show up in
+       *  the grid and in the review instead of only inside a file diff */
+      newParameters?: number;
+      detail?: string;
+    }>(rp("/files/draft"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   /** Every value in one file that a parameter is bound to, with the line it
    *  sits on in the content the explorer shows. */

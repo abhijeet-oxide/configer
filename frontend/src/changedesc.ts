@@ -5,7 +5,7 @@
 // file edit) get a real sentence instead of being forced into before/after
 // columns - which is what made "Add instance test (clone of ...)" read as a
 // value going from the source name to a label.
-import type { ChangeItem } from "./api";
+import { addedParamName, type ChangeItem } from "./api";
 import { fmtValue } from "./rules";
 
 export type ChangeTone = "review" | "ok" | "pending" | "danger" | "neutral";
@@ -94,6 +94,17 @@ export function describeChange(it: ChangeItem): ChangeDesc {
       kind: "instance",
       subject: name,
       what: "Configer stops managing it; the value stays in every file",
+    };
+  }
+  if (action === "add-parameter") {
+    const pm = it.new as { bindings?: { file?: string }[] } | undefined;
+    const where = pm?.bindings?.[0]?.file ?? it.file;
+    return {
+      tag: "New parameter",
+      tone: "ok",
+      kind: "instance",
+      subject: addedParamName(it),
+      what: where ? `now managed, from ${where}` : "now managed",
     };
   }
   if (action === "remove-instance") {

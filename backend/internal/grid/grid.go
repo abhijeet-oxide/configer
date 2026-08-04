@@ -12,6 +12,7 @@ import (
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/semver"
@@ -64,6 +65,12 @@ type Row struct {
 	// still here, still editable, and will leave the catalog when that change
 	// is published.
 	PendingUnmanage bool `json:"pendingUnmanage,omitempty"`
+	// PendingAdd marks a parameter a draft change STARTS managing: the value is
+	// already in the draft's file bytes, the catalog entry arrives when the
+	// change is published. It is here so a direct file edit that introduced
+	// settings shows them where settings live, rather than only as a file whose
+	// diff the reader has to decode.
+	PendingAdd bool `json:"pendingAdd,omitempty"`
 }
 
 // Grid is the full matrix plus the instance (column) list and the category
@@ -112,6 +119,7 @@ func BuildWith(p *project.Project, docs resolver.Docs) Grid {
 		if isIgnored(param, p.Ignore) {
 			continue
 		}
+		param.NameSegments = nameSegments(param)
 		row := Row{Param: param, Cells: make(map[string]Cell, len(active))}
 		for _, inst := range active {
 			state := cellState(param, inst)
@@ -273,6 +281,45 @@ func applyStructuralPreview(g *Grid, it change.Item, r *resolver.Resolver) {
 				g.Instances[i].Status = "retiring" // pending removal
 			}
 		}
+	case change.ActionAddParameter:
+		for i := range g.Rows {
+			if g.Rows[i].Param.ID == it.ParamID {
+				return // already in the catalog (or already previewed)
+			}
+		}
+		var pm model.Parameter
+		if b, err := json.Marshal(it.New); err != nil {
+			return
+		} else if err := json.Unmarshal(b, &pm); err != nil || pm.ID == "" {
+			return
+		}
+		pm.NameSegments = nameSegments(pm)
+		row := Row{Param: pm, Cells: make(map[string]Cell, len(g.Instances)), PendingAdd: true}
+		for _, inst := range g.Instances {
+			// The value is not on disk yet - it lives in the draft's staged file
+			// bytes - so the cell reads it from what the edit observed rather
+			// than resolving a file that still has the old content.
+			v, seen := pm.Observed[inst.Name]
+			if !seen && pm.Scope == model.ScopeGlobal {
+				v, seen = pm.Default, pm.Default != nil
+			}
+			cell := Cell{
+				Value: v, Set: seen, Source: model.LayerInstance,
+				State: cellState(pm, inst), Valid: true, Pending: true,
+			}
+			if pm.Scope == model.ScopeGlobal {
+				cell.Source = model.LayerBase
+			}
+			if seen {
+				vr := validate.Value(pm, v)
+				cell.Valid, cell.Message = vr.Valid, vr.Message
+			}
+			// Not editable until it is really in the catalog: an edit staged
+			// against a parameter that does not exist yet has nothing to write
+			// through on submit.
+			row.Cells[inst.Name] = cell
+		}
+		g.Rows = append(g.Rows, row)
 	case change.ActionUnmanageParameter:
 		// The row stays, marked: the parameter is still managed until the change
 		// is published, and hiding it early would leave the reader wondering
@@ -301,6 +348,30 @@ func PendingInstanceFolder(instances []model.Instance, cloneFrom, name string) s
 		}
 	}
 	return "instances/" + name
+}
+
+// nameSegments spells out where a parameter's name divides, reading it back
+// off the binding path the name was built from. It answers only when the
+// segments RE-JOIN to exactly the name it already has: a name that came from
+// somewhere else (a deduplication that kept the shortest of several names, a
+// hand-written catalog entry) is not this path's to re-segment, and the client
+// falls back to splitting on "." as before.
+//
+// Nil when the naive split is already right, which is nearly every parameter -
+// a grid over a large estate carries thousands of rows and none of them should
+// pay for a field that says what the name already said.
+func nameSegments(p model.Parameter) []string {
+	if len(p.Bindings) == 0 {
+		return nil
+	}
+	segs := pathedit.Segments(p.Bindings[0].Format, p.Bindings[0].Path)
+	if len(segs) == 0 || strings.Join(segs, ".") != p.Name {
+		return nil
+	}
+	if len(segs) == len(strings.Split(p.Name, ".")) {
+		return nil // the dot split already lands on these steps
+	}
+	return segs
 }
 
 // cellState derives the lifecycle state from parameter version metadata and the

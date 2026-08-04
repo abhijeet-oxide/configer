@@ -58,6 +58,7 @@ import {
   type ChangeItem,
   type Grid,
   type Instance,
+  nameSegments,
   type Parameter,
   type PresetRule,
   type Row,
@@ -410,26 +411,24 @@ function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
 // worth reading. So the cell shows the leaf on its own line and the route to it
 // underneath, written the way a path is written.
 //
-// BOTH separators split, because both turn up in one grid: names discovered from
-// YAML and JSON are dotted, and names from XML or path-shaped sources arrive as
-// "/config/cloud-deployment/net-info[3]/device-pool". Splitting only on the dot
-// left those rows as one long bold line among rows that all had a leaf and a
-// route - the same information laid out two different ways, which is what made
-// the column read as noise.
-const SEP = /[./]/;
-function splitName(name: string): { leaf: string; route: string } {
-  const i = Math.max(name.lastIndexOf("."), name.lastIndexOf("/"));
-  const leaf = i < 0 ? name : name.slice(i + 1);
+// The steps come from api.nameSegments - the same split the parameter tree
+// nests on - so the leaf here and the leaf there are always the same word. A
+// "/" also splits, for a name that arrived path-shaped from a source with no
+// segmentation of its own; without it such a row was one long bold line among
+// rows that all had a leaf and a route.
+function splitName(param: Pick<Parameter, "name" | "nameSegments">): { leaf: string; route: string } {
+  const parts = nameSegments(param).flatMap((s) => (s.includes("/") ? s.split("/").filter(Boolean) : [s]));
+  const leaf = parts[parts.length - 1] ?? param.name;
   // A name that ENDS in a separator has no leaf to promote; show it whole
   // rather than an empty first line over a route.
-  if (i < 0 || leaf === "") return { leaf: name, route: "" };
-  return { leaf, route: name.slice(0, i).split(SEP).filter(Boolean).join(" / ") };
+  if (parts.length < 2 || leaf === "") return { leaf: leaf || param.name, route: "" };
+  return { leaf, route: parts.slice(0, -1).join(" / ") };
 }
-function leafOf(name: string): string {
-  return splitName(name).leaf;
+function leafOf(param: Pick<Parameter, "name" | "nameSegments">): string {
+  return splitName(param).leaf;
 }
-function routeOf(name: string): string {
-  return splitName(name).route;
+function routeOf(param: Pick<Parameter, "name" | "nameSegments">): string {
+  return splitName(param).route;
 }
 
 // hl wraps every case-insensitive occurrence of q in text with a highlight mark,
@@ -1543,12 +1542,19 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   className="cf-pname-leaf"
                   style={r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : undefined}
                 >
-                  {hl(leafOf(r.param.name), hlParam)}
+                  {hl(leafOf(r.param), hlParam)}
                 </span>
                 {r.pendingUnmanage && (
                   <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
                     <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                       unmanaging
+                    </Tag>
+                  </Tooltip>
+                )}
+                {r.pendingAdd && (
+                  <Tooltip title="A file edit in your draft added this setting. Configer starts managing it when that change is published, so it is not editable from the grid yet - change it in file mode.">
+                    <Tag color="green" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                      new
                     </Tag>
                   </Tooltip>
                 )}
@@ -1564,7 +1570,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   when a name has no route) so every row is the same height in
                   the virtual body. */}
               <div className="cf-pname-route">
-                <bdi>{hl(routeOf(r.param.name), hlParam)}</bdi>
+                <bdi>{hl(routeOf(r.param), hlParam)}</bdi>
               </div>
             </div>
           </ParamMenu>

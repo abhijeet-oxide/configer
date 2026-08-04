@@ -128,6 +128,47 @@ func ParsePath(path string) ([]Seg, error) {
 	return segs, nil
 }
 
+// Segments splits a path into the display steps a parameter NAME is built
+// from. It is the one place that answers "what are this setting's name parts",
+// which matters because the joined name cannot answer it: a key that itself
+// contains a dot ("query.dependencies") reads as two steps the moment anything
+// splits the name on ".", so the tree nests a level that exists nowhere in the
+// file and the leaf is named after a fragment of a key.
+//
+// YAML/JSON: the mapping keys, quoted ones included whole. An array subscript
+// is dropped (it locates an element, it does not name the setting) but a
+// [key=value] selector contributes its VALUE as a step, because that is the
+// entry's identity and the name it reads by.
+//
+// XML: the XPath's element steps, positional predicate and all
+// ("net-info[3]"), with an attribute step written as its bare attribute name.
+func Segments(format, path string) []string {
+	if normFormat(format) == "xml" {
+		var out []string
+		for _, step := range strings.Split(strings.TrimPrefix(path, "/"), "/") {
+			if step == "" {
+				continue
+			}
+			out = append(out, strings.TrimPrefix(step, "@"))
+		}
+		return out
+	}
+	segs, err := ParsePath(path)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, s := range segs {
+		if s.Key != "" || s.Quoted {
+			out = append(out, s.Key)
+		}
+		if s.SelVal != "" {
+			out = append(out, s.SelVal)
+		}
+	}
+	return out
+}
+
 // UnquoteKey reads the contents of a bracket as a quoted key, reporting
 // whether it was quoted at all. Only the outer quotes are stripped; a key
 // containing a quote of the other kind survives intact.

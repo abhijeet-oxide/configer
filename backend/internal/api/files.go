@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/discovery"
 	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
@@ -307,10 +308,12 @@ func (e errInstanceNotFound) Error() string {
 // to its other locations on submit, and the grid shows the pending cells.
 // When unmanaged content changed too, the whole file content is staged as
 // one edit-file item (managed values are still validated first: an invalid
-// value is rejected with 422 either way).
+// value is rejected with 422 either way), together with an add-parameter item
+// for every setting the edit ADDED - so new settings reach the grid and the
+// review rather than living only inside a file diff.
 //
 // @Summary     Stage a file edit
-// @Description File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item. Managed values are always validated first.
+// @Description File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item, plus one add-parameter item per setting the edit introduced that nothing managed yet (`newParameters` counts them). Managed values are always validated first.
 // @Tags        Files
 // @Accept      json
 // @Produce     json
@@ -465,19 +468,146 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Unmanaged content changed: stage the whole file once.
+	// Unmanaged content changed: stage the whole file once, plus a parameter for
+	// each setting the edit ADDS. Without the second half the new settings are
+	// only bytes in a diff: the grid never shows them, and the review says the
+	// file was "edited directly" while saying nothing about what now lives in it.
+	added := s.addedParameters(p, inst, req.Path, committed, req.Content)
 	_, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		cr.UpsertItem(change.Item{
 			Instance: req.Instance, File: req.Path, Action: change.ActionEditFile,
 			Old: committed, New: req.Content, UpdatedAt: time.Now().UTC(),
 		})
+		// Replaced wholesale rather than upserted: this save is the whole truth
+		// about what the file adds, so a setting an earlier save proposed and
+		// this one takes back out leaves with it.
+		cr.ReplaceAddedParameters(req.Path, added)
 		return nil
 	})
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "staged": 1, "kind": "file", "managedChanges": len(changes)})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "staged": 1 + len(added), "kind": "file",
+		"managedChanges": len(changes), "newParameters": len(added),
+	})
+}
+
+// maxAddedParameters caps how many new settings ONE file edit may propose to
+// start managing. A save that adds a handful of keys is the case this exists
+// for; a save that pastes in a thousand-line file is an IMPORT, and the answer
+// there is the onboarding scan, not a draft nobody can read. The file edit
+// itself is staged either way, so nothing the user typed is lost.
+const maxAddedParameters = 200
+
+// addedParameters proposes a parameter for every setting the edited content has
+// that neither the committed file nor the catalog already accounts for.
+//
+// "New" is judged against the COMMITTED bytes, not against the draft-applied
+// baseline the editor showed, so saving the same file twice proposes the same
+// set both times and taking a line back out withdraws its proposal.
+//
+// The paths are the answer, not the values: inserting an element in the middle
+// of an XML file shifts every positional predicate after it, and what that file
+// gained is one more slot at the end - which is exactly what the catalog will
+// address once the change is published.
+func (s *Server) addedParameters(p *project.Project, inst model.Instance, file, committed, edited string) []change.Item {
+	parser, err := s.Registry.ParserFor(file, []byte(edited))
+	if err != nil {
+		return nil // not a format we can read: the file edit stands on its own
+	}
+	newCands, err := parser.Extract(file, []byte(edited))
+	if err != nil {
+		return nil // unparsable: staging the bytes is all we can honestly do
+	}
+	before := map[string]bool{}
+	if oldCands, err := parser.Extract(file, []byte(committed)); err == nil {
+		for _, c := range oldCands {
+			before[c.Path] = true
+		}
+	} else if committed != "" {
+		return nil // cannot tell new from old: propose nothing rather than everything
+	}
+
+	// Every path the catalog already reaches in this file, for any instance -
+	// a setting already managed is not a new one, whoever it belongs to.
+	managed := map[string]bool{}
+	for _, param := range p.Catalog.Parameters {
+		for _, b := range param.Bindings {
+			if b.EffectiveLayer() == model.LayerBase {
+				if b.File == file {
+					managed[b.Path] = true
+				}
+				continue
+			}
+			for _, i := range p.Registry.Instances {
+				if b.ForInstance(i).File == file {
+					managed[b.Path] = true
+				}
+			}
+		}
+	}
+
+	// Where the parameter binds: a file inside an instance's folder is that
+	// instance's own layer and binds through {folder}; anything else is shared.
+	rel, inFolder := "", false
+	if folder := inst.FolderOrDefault(); inst.Name != "" && folder != "" && strings.HasPrefix(file, folder+"/") {
+		rel, inFolder = strings.TrimPrefix(file, folder+"/"), true
+	}
+
+	used := map[string]bool{}
+	for _, param := range p.Catalog.Parameters {
+		used[param.ID] = true
+	}
+
+	out := make([]change.Item, 0)
+	for _, pm := range discovery.Tunable(file, newCands) {
+		path := pm.Bindings[0].Path
+		if pm.Name == "" || pm.ID == "" {
+			continue // nothing to call it: a name is the whole point of managing it
+		}
+		if before[path] || managed[path] || isIgnoredPath(p.Ignore, path) {
+			continue
+		}
+		if len(out) >= maxAddedParameters {
+			break
+		}
+		id := pm.ID
+		for n := 2; used[id]; n++ {
+			id = fmt.Sprintf("%s-%d", pm.ID, n)
+		}
+		used[id] = true
+		pm.ID = id
+		if inFolder {
+			pm.Scope = model.ScopeInstance
+			pm.Bindings[0].File = "{folder}/" + rel
+			// The value belongs to the instance whose folder it was found in,
+			// not to every instance, so it travels as an observation rather
+			// than as a default the others would inherit.
+			pm.Observed = map[string]any{inst.Name: pm.Default}
+			pm.Default = nil
+		} else {
+			pm.Scope = model.ScopeGlobal
+		}
+		out = append(out, change.Item{
+			ParamID: pm.ID, Instance: inst.Name, File: file,
+			Action: change.ActionAddParameter, New: pm, UpdatedAt: time.Now().UTC(),
+		})
+	}
+	return out
+}
+
+// isIgnoredPath reports whether .configer/ignore.yaml already says this path is
+// not a setting - the record of somebody having decided exactly that, which a
+// file edit must not quietly overturn.
+func isIgnoredPath(ig project.Ignore, path string) bool {
+	for _, p := range ig.Parameters {
+		if p == path {
+			return true
+		}
+	}
+	return false
 }
 
 // ManagedValue is one value inside a file that Configer manages: which

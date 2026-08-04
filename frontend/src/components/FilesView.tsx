@@ -368,14 +368,18 @@ export default function FilesView() {
       // typed on while the request was in flight.
       setDirty((d) => (d === vars.content ? null : d));
       if (r.staged === 0) return; // nothing changed: no news is the right amount
+      // Say what the edit did to the SETTINGS, which is the point of the save.
+      // The counts are deliberately separate: "4 new" is what the person typed
+      // in, and the parameters that had to follow their entries are a
+      // consequence of where they typed it, not more of their work.
+      const said: string[] = [];
       if (r.newParameters)
-        // Say what the edit ADDED, by name-count: the settings are the point of
-        // the save, and "File edit staged" gave no sign they had been picked up
-        // at all.
-        message.success(
-          `Saved. ${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found in this file; they appear in the grid and publish with this change`,
-          6,
-        );
+        said.push(`${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found`);
+      if (r.movedParameters)
+        said.push(`${r.movedParameters} re-pointed at the entries they name`);
+      if (r.droppedParameters)
+        said.push(`${r.droppedParameters} no longer in the file`);
+      if (said.length) message.success(`Saved. ${said.join(", ")}.`, 6);
       qc.invalidateQueries();
     },
     onError: (e: Error) => {

@@ -467,8 +467,28 @@ func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProbl
 	// introduced fifty settings would otherwise rewrite parameters.yaml fifty
 	// times, each rewrite re-marshalling the whole catalog.
 	var added []model.Parameter
+	// Realignments are collected too, and applied FIRST: they move existing
+	// entries out of the way, and the additions land at the paths that frees up.
+	var moves []writer.BindingMove
+	var dropped []string
 	for _, it := range cr.Items {
 		if !it.Structural() {
+			continue
+		}
+		if it.Act() == change.ActionRealignBindings {
+			var payload change.RealignPayload
+			if err := decodeInto(it.New, &payload); err != nil {
+				if err = note(it, fmt.Errorf("decode realignment for %s: %w", it.File, err)); err != nil {
+					return problems, err
+				}
+				continue
+			}
+			for _, m := range payload.Moves {
+				moves = append(moves, writer.BindingMove{ParamID: m.ParamID, From: m.From, To: m.To})
+			}
+			for _, d := range payload.Dropped {
+				dropped = append(dropped, d.ParamID)
+			}
 			continue
 		}
 		if it.Act() == change.ActionAddParameter {
@@ -494,16 +514,31 @@ func applyItems(wt string, cr *change.ChangeRequest, tolerant bool) ([]ItemProbl
 		}
 		structuralApplied = true
 	}
+	if len(moves) > 0 || len(dropped) > 0 {
+		n, retired, err := writer.RealignBindings(wt, moves, dropped)
+		if err != nil {
+			return problems, fmt.Errorf("realign %d bindings: %w", len(moves), err)
+		}
+		if n > 0 || retired > 0 {
+			structuralApplied = true
+		}
+	}
 	if len(added) > 0 {
 		n, skipped, err := writer.AddParameters(wt, added)
 		if err != nil {
 			return problems, fmt.Errorf("add %d parameters to the catalog: %w", len(added), err)
 		}
-		// A name already in the catalog is not a failure to report to the
-		// reviewer: it means the setting is managed after all (someone else
-		// added it on the branch in the meantime), which is the intended end
-		// state either way.
-		_ = skipped
+		// A skipped addition is REPORTED. It was quietly swallowed once, and the
+		// swallowing hid a real fault: a realignment that moved a binding without
+		// its name left two parameters wanting the same name, so three of the
+		// four settings somebody had just typed in never reached the catalog and
+		// nothing anywhere said so.
+		for _, name := range skipped {
+			if err = note(change.Item{ParamID: name, Action: change.ActionAddParameter},
+				fmt.Errorf("a parameter named %q is already in the catalog, so this one was not added", name)); err != nil {
+				return problems, err
+			}
+		}
 		if n > 0 {
 			structuralApplied = true
 		}
@@ -730,6 +765,8 @@ func prBody(cr *change.ChangeRequest) string {
 		case change.ActionAddParameter:
 			pm := addedParameter(it)
 			fmt.Fprintf(&b, "| start managing `%s` | %s | - | `%v` |\n", pm.Name, inst, pm.Observed[it.Instance])
+		case change.ActionRealignBindings:
+			fmt.Fprintf(&b, "| %s | %s | - | - |\n", structuralSummary(it), inst)
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)
 		}

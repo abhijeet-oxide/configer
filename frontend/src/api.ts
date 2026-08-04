@@ -179,7 +179,8 @@ export type ItemAction =
   | "update-instance"
   | "edit-file"
   | "unmanage-parameter"
-  | "add-parameter";
+  | "add-parameter"
+  | "realign-bindings";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
  *  delta is a formatting artifact, never a configuration change, so diff
@@ -195,8 +196,32 @@ export const structuralLabel = (it: { action?: string; instance: string; old?: u
   if (it.action === "update-instance") return `Update instance ${it.instance} settings`;
   if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
   if (it.action === "add-parameter") return `Start managing ${addedParamName(it)}`;
+  if (it.action === "realign-bindings") {
+    const p = realignPayload(it);
+    const parts: string[] = [];
+    if (p.moves?.length) parts.push(`${p.moves.length} parameter${p.moves.length === 1 ? "" : "s"} follow their entries`);
+    if (p.dropped?.length) parts.push(`${p.dropped.length} no longer in the file`);
+    return parts.length ? parts.join(", ") : "Catalog realigned";
+  }
   return "";
 };
+
+/** One parameter's in-file address following the value it names. */
+export interface BindingMove {
+  paramId: string;
+  name?: string;
+  from: string;
+  to: string;
+}
+
+/** What a realign-bindings item carries. */
+export interface RealignPayload {
+  moves?: BindingMove[];
+  dropped?: BindingMove[];
+}
+
+export const realignPayload = (it: { new?: unknown }): RealignPayload =>
+  (it.new && typeof it.new === "object" ? (it.new as RealignPayload) : {});
 
 /** The name of the parameter an add-parameter item starts managing. The item
  *  carries the whole catalog entry, so the change can read as the setting
@@ -1599,6 +1624,12 @@ export const api = {
        *  staged as a parameter the change starts managing, so they show up in
        *  the grid and in the review instead of only inside a file diff */
       newParameters?: number;
+      /** catalog entries that had to follow their values to a new address,
+       *  because the edit inserted or removed an entry of a repeated structure
+       *  and everything below it shifted */
+      movedParameters?: number;
+      /** catalog entries whose value the edit took out of the file */
+      droppedParameters?: number;
       detail?: string;
     }>(rp("/files/draft"), p),
   /** Copy one entry of a repeated structure (an XML element that occurs several
@@ -1606,7 +1637,7 @@ export const api = {
    *  copy is APPENDED after the last entry of its kind, so no existing entry is
    *  renumbered and no binding starts reading a different thing. */
   duplicateEntry: (p: { instance?: string; file: string; path: string; author?: string }) =>
-    send<{ ok: boolean; file: string; newPath: string; newParameters: number }>(
+    send<{ ok: boolean; file: string; newPath: string; newParameters: number; movedParameters?: number }>(
       "POST", rp("/files/duplicate"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   /** Every value in one file that a parameter is bound to, with the line it

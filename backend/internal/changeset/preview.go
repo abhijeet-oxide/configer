@@ -186,6 +186,20 @@ func structuralSummary(it change.Item) string {
 			return "start managing " + name + " (new in " + it.File + ")"
 		}
 		return "start managing " + name
+	case change.ActionRealignBindings:
+		var payload change.RealignPayload
+		_ = decodeInto(it.New, &payload)
+		parts := []string{}
+		if n := len(payload.Moves); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d parameter(s) follow their entries", n))
+		}
+		if n := len(payload.Dropped); n > 0 {
+			parts = append(parts, fmt.Sprintf("%d no longer in the file", n))
+		}
+		if len(parts) == 0 {
+			return "realign " + it.File
+		}
+		return strings.Join(parts, ", ") + " in " + it.File
 	}
 	return string(it.Act()) + " " + it.Instance
 }

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
@@ -229,6 +230,84 @@ func dropFromCatalog(root, paramID string) (model.Parameter, error) {
 		return nil
 	})
 	return param, err
+}
+
+// pathName spells the dotted name a binding's path would produce, so a rename
+// can be applied exactly when the current name is the one that path gave.
+func pathName(b model.Binding) string {
+	return strings.Join(pathedit.Segments(b.Format, b.Path), ".")
+}
+
+// BindingMove is one parameter's in-file path following the value it names.
+type BindingMove struct {
+	ParamID string
+	From    string
+	To      string
+}
+
+// RealignBindings re-points catalog entries at the values they describe, in ONE
+// catalog write, and drops the entries whose value has left the file.
+//
+// It is the answer to a property of positional addressing that is otherwise
+// silent: `net-info[3]/net-id` keeps resolving after a network is inserted
+// above it, just to a different network. No error, no warning - the grid simply
+// starts showing one thing under another thing's name. A move here is never
+// inferred inside this function: the caller has already lined the file's two
+// versions up and knows which setting went where.
+//
+// Each parameter appears in at most one move, so the rewrites cannot cascade
+// (a [3]->[4] rewrite is never then caught by a [4]->[5] one).
+func RealignBindings(root string, moves []BindingMove, dropped []string) (moved, retired int, err error) {
+	byID := make(map[string][]BindingMove, len(moves))
+	for _, m := range moves {
+		if m.From != m.To {
+			byID[m.ParamID] = append(byID[m.ParamID], m)
+		}
+	}
+	drop := make(map[string]bool, len(dropped))
+	for _, id := range dropped {
+		drop[id] = true
+	}
+	err = mutateCatalog(root, func(cat *model.Catalog) error {
+		kept := cat.Parameters[:0]
+		for _, p := range cat.Parameters {
+			if drop[p.ID] {
+				retired++
+				continue
+			}
+			for _, m := range byID[p.ID] {
+				for i := range p.Bindings {
+					if p.Bindings[i].Path != m.From {
+						continue
+					}
+					// The NAME goes with it. A name is read off the path it was
+					// built from, so a binding that moves and a name that does
+					// not leaves two parameters called net-info[5].net-label -
+					// one of them the entry that moved, the other the entry that
+					// took its place. The catalog refuses a duplicate name, so
+					// the second one is silently dropped and the setting the
+					// person just typed in never arrives.
+					//
+					// Only when the name really was this path's: a name that
+					// came from somewhere else (a deduplication that kept the
+					// shortest of several, a hand-written entry) is not this
+					// path's to rewrite.
+					if p.Name == pathName(p.Bindings[i]) {
+						p.Bindings[i].Path = m.To
+						p.Name = pathName(p.Bindings[i])
+					} else {
+						p.Bindings[i].Path = m.To
+					}
+					moved++
+					break
+				}
+			}
+			kept = append(kept, p)
+		}
+		cat.Parameters = kept
+		return nil
+	})
+	return moved, retired, err
 }
 
 // UnmanageParameter stops Configer managing a parameter WITHOUT touching the

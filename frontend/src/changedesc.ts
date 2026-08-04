@@ -5,7 +5,7 @@
 // file edit) get a real sentence instead of being forced into before/after
 // columns - which is what made "Add instance test (clone of ...)" read as a
 // value going from the source name to a label.
-import { addedParamName, type ChangeItem } from "./api";
+import { addedParamName, realignPayload, type ChangeItem } from "./api";
 import { fmtValue } from "./rules";
 
 export type ChangeTone = "review" | "ok" | "pending" | "danger" | "neutral";
@@ -105,6 +105,24 @@ export function describeChange(it: ChangeItem): ChangeDesc {
       kind: "instance",
       subject: addedParamName(it),
       what: where ? `now managed, from ${where}` : "now managed",
+    };
+  }
+  if (action === "realign-bindings") {
+    const p = realignPayload(it);
+    const moves = p.moves?.length ?? 0;
+    const dropped = p.dropped?.length ?? 0;
+    const parts: string[] = [];
+    // What this actually protects against is worth saying in the row itself:
+    // these entries are addressed by position, so an entry added or removed in
+    // the middle leaves every entry below it answering to a different address.
+    if (moves) parts.push(`${moves} parameter${moves === 1 ? "" : "s"} follow the entries they name`);
+    if (dropped) parts.push(`${dropped} stop being managed (their value left the file)`);
+    return {
+      tag: "Catalog",
+      tone: dropped ? "review" : "neutral",
+      kind: "file",
+      subject: it.file ?? "the catalog",
+      what: parts.join("; ") || "entries realigned",
     };
   }
   if (action === "remove-instance") {

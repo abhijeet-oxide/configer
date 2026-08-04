@@ -4,9 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/abhijeet-oxide/configer/backend/internal/change"
+	"github.com/abhijeet-oxide/configer/backend/internal/discovery"
+	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/parsers"
+	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
+	"github.com/abhijeet-oxide/configer/backend/internal/project"
+	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
 // A direct file edit that ADDS settings used to vanish into "edited directly":
@@ -252,5 +261,209 @@ func TestDuplicateEntryStagesTheCopyAndItsParameters(t *testing.T) {
 	}
 	if !strings.HasPrefix(content, "<config>\n  <net-info>\n    <label>a</label>") {
 		t.Errorf("the entries above the copy were rewritten:\n%s", content)
+	}
+}
+
+// The case from the field: somebody adds ONE network in the middle of an XML
+// file that already has several. Comparing the two versions by path tells them
+// they added six settings, leaves two parameters bound to nothing, and silently
+// re-points eight more at a different network than their name says. All three
+// are the same bug - these entries are addressed by position - and all three
+// have to be gone.
+func TestInsertingAnEntryMidFileReportsWhatWasActuallyAdded(t *testing.T) {
+	const netXML = `<config>
+  <cloud-deployment-config>
+    <net-info>
+      <net-label>trustedv4mngt</net-label>
+      <net-id>oam</net-id>
+      <device-name-ipvlan>vlan100</device-name-ipvlan>
+    </net-info>
+    <net-info>
+      <net-label>trustedsig</net-label>
+      <net-id>tsig0</net-id>
+      <device-name-ipvlan>vlan340</device-name-ipvlan>
+    </net-info>
+    <net-info>
+      <net-label>trustedmed</net-label>
+      <net-id>tmed0</net-id>
+    </net-info>
+    <net-info>
+      <net-label>untrustedmed</net-label>
+      <net-id>umed0</net-id>
+      <vlan-tag>-1</vlan-tag>
+    </net-info>
+  </cloud-deployment-config>
+</config>
+`
+	root := minimalRepo(t)
+	file := filepath.Join(root, "instances", "staging", "net.xml")
+	if err := os.WriteFile(file, []byte(netXML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Manage every setting in it, exactly as an import would.
+	cands, err := parsers.XMLParser{}.Extract("instances/staging/net.xml", []byte(netXML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	managed := discovery.Tunable("instances/staging/net.xml", cands)
+	for i := range managed {
+		managed[i].Scope = model.ScopeInstance
+		managed[i].Bindings[0].File = "{folder}/net.xml"
+		managed[i].Default = nil
+	}
+	if _, _, err := writer.AddParameters(root, managed); err != nil {
+		t.Fatal(err)
+	}
+	commitAll(t, root, "add net.xml")
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+
+	at := strings.Index(netXML, "    <net-info>\n      <net-label>trustedsig")
+	edited := netXML[:at] + `    <net-info>
+      <net-label>trustedv4mngt2</net-label>
+      <net-id>oam2</net-id>
+      <device-name-ipvlan>vlan101</device-name-ipvlan>
+    </net-info>
+` + netXML[at:]
+
+	var res struct {
+		NewParameters     int `json:"newParameters"`
+		MovedParameters   int `json:"movedParameters"`
+		DroppedParameters int `json:"droppedParameters"`
+	}
+	doJSON(t, h, http.MethodPut, "/api/files/draft", map[string]any{
+		"instance": "staging", "path": "instances/staging/net.xml", "content": edited,
+	}, &res)
+
+	if res.NewParameters != 3 {
+		t.Fatalf("newParameters = %d, want the 3 settings of the block that was typed in", res.NewParameters)
+	}
+	if res.DroppedParameters != 0 {
+		t.Errorf("droppedParameters = %d; an insert deletes nothing", res.DroppedParameters)
+	}
+	if res.MovedParameters == 0 {
+		t.Fatal("nothing moved, so every binding below the insert still points at the wrong network")
+	}
+
+	// The additions are the inserted block's own settings, at its own path.
+	var g struct {
+		Rows []struct {
+			Param struct {
+				Name     string `json:"name"`
+				Bindings []struct{ Path string } `json:"bindings"`
+			} `json:"param"`
+			Cells      map[string]struct{ Value any } `json:"cells"`
+			PendingAdd bool                           `json:"pendingAdd"`
+		} `json:"rows"`
+	}
+	doJSON(t, h, http.MethodGet, "/api/grid", nil, &g)
+	got := map[string]any{}
+	for _, r := range g.Rows {
+		if r.PendingAdd {
+			got[r.Param.Name] = r.Cells["staging"].Value
+			if !strings.Contains(r.Param.Bindings[0].Path, "net-info[2]/") {
+				t.Errorf("%s binds at %s, want the inserted entry's own position",
+					r.Param.Name, r.Param.Bindings[0].Path)
+			}
+		}
+	}
+	for name, want := range map[string]any{
+		"config.cloud-deployment-config.net-info[2].net-label":          "trustedv4mngt2",
+		"config.cloud-deployment-config.net-info[2].net-id":             "oam2",
+		"config.cloud-deployment-config.net-info[2].device-name-ipvlan": "vlan101",
+	} {
+		if got[name] != want {
+			t.Errorf("pending addition %s = %v, want %v (all: %v)", name, got[name], want, got)
+		}
+	}
+
+	// The catalog follows: every parameter that moved is re-pointed at the entry
+	// it names, so nothing is left describing a different network.
+	var d struct {
+		Draft struct {
+			Items []struct {
+				Action string          `json:"action"`
+				New    json.RawMessage `json:"new"`
+			} `json:"items"`
+		} `json:"draft"`
+	}
+	doJSON(t, h, http.MethodGet, "/api/changes/draft", nil, &d)
+	var moves []writer.BindingMove
+	for _, it := range d.Draft.Items {
+		if it.Action != "realign-bindings" {
+			continue
+		}
+		var payload change.RealignPayload
+		if err := json.Unmarshal(it.New, &payload); err != nil {
+			t.Fatal(err)
+		}
+		for _, m := range payload.Moves {
+			moves = append(moves, writer.BindingMove{ParamID: m.ParamID, From: m.From, To: m.To})
+		}
+		if len(payload.Dropped) != 0 {
+			t.Errorf("an insert dropped %d parameters", len(payload.Dropped))
+		}
+	}
+	if _, _, err := writer.RealignBindings(root, moves, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p, err := project.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// trustedsig was entry 2 and is now entry 3: its parameters followed it, NAME
+	// included. A binding that moves while its name stays put leaves two
+	// parameters called net-info[2].net-label - the entry that moved, and the
+	// entry that took its place - and the catalog refuses the second, so the
+	// setting the person just typed in never arrives.
+	byName := map[string]string{}
+	for _, param := range p.Catalog.Parameters {
+		if _, dup := byName[param.Name]; dup {
+			t.Errorf("two parameters are called %s", param.Name)
+		}
+		byName[param.Name] = param.Bindings[0].Path
+	}
+	for name, wantPath := range map[string]string{
+		"config.cloud-deployment-config.net-info[3].net-label": "/config/cloud-deployment-config/net-info[3]/net-label",
+		"config.cloud-deployment-config.net-info[5].vlan-tag":  "/config/cloud-deployment-config/net-info[5]/vlan-tag",
+	} {
+		if byName[name] != wantPath {
+			t.Errorf("%s binds to %q, want %q", name, byName[name], wantPath)
+		}
+	}
+	// And the entry that moved still describes the network it always did.
+	raw0, _ := os.ReadFile(file)
+	if v, _, _ := pathedit.Get(raw0, "xml", byName["config.cloud-deployment-config.net-info[3].net-label"]); v != "trustedsig" {
+		t.Errorf("net-info[3].net-label reads %v, want trustedsig (the network it has always named)", v)
+	}
+	// And nothing is bound to a path the file does not have.
+	raw, _ := os.ReadFile(file)
+	for _, param := range p.Catalog.Parameters {
+		for _, b := range param.Bindings {
+			if !strings.HasSuffix(b.File, "net.xml") {
+				continue
+			}
+			if _, ok, _ := pathedit.Get(raw, "xml", b.Path); !ok {
+				t.Errorf("%s is bound to %s, which the file does not have", param.Name, b.Path)
+			}
+		}
+	}
+}
+
+func commitAll(t *testing.T, root, msg string) {
+	t.Helper()
+	for _, args := range [][]string{{"add", "-A"},
+		{"-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", msg}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
 	}
 }

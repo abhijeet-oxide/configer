@@ -21,6 +21,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/ingest"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
+	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
@@ -484,16 +485,13 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	// each setting the edit ADDS. Without the second half the new settings are
 	// only bytes in a diff: the grid never shows them, and the review says the
 	// file was "edited directly" while saying nothing about what now lives in it.
-	added := s.addedParameters(p, inst, req.Path, committed, req.Content)
+	catalog, added, moved, dropped := s.catalogDelta(p, inst, req.Path, committed, req.Content)
 	_, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		cr.UpsertItem(change.Item{
 			Instance: req.Instance, File: req.Path, Action: change.ActionEditFile,
 			Old: committed, New: req.Content, UpdatedAt: time.Now().UTC(),
 		})
-		// Replaced wholesale rather than upserted: this save is the whole truth
-		// about what the file adds, so a setting an earlier save proposed and
-		// this one takes back out leaves with it.
-		cr.ReplaceAddedParameters(req.Path, added)
+		cr.ReplaceCatalogItems(req.Path, catalog)
 		return nil
 	})
 	if err != nil {
@@ -501,8 +499,9 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok": true, "staged": 1 + len(added), "kind": "file",
-		"managedChanges": len(changes), "newParameters": len(added),
+		"ok": true, "staged": 1 + len(catalog), "kind": "file",
+		"managedChanges": len(changes), "newParameters": added,
+		"movedParameters": moved, "droppedParameters": dropped,
 	})
 }
 
@@ -579,7 +578,7 @@ func (s *Server) duplicateEntry(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	added := s.addedParameters(p, inst, clean, committed, next)
+	catalog, added, moved, dropped := s.catalogDelta(p, inst, clean, committed, next)
 	defer s.lockDraft(draftOwner(r))()
 	draft, err := s.Store.Draft(draftOwner(r), s.branch())
 	if err != nil {
@@ -591,14 +590,15 @@ func (s *Server) duplicateEntry(w http.ResponseWriter, r *http.Request) {
 			Instance: req.Instance, File: clean, Action: change.ActionEditFile,
 			Old: committed, New: next, UpdatedAt: time.Now().UTC(),
 		})
-		cr.ReplaceAddedParameters(clean, added)
+		cr.ReplaceCatalogItems(clean, catalog)
 		return nil
 	}); err != nil {
 		writeErr(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok": true, "file": clean, "newPath": newPath, "newParameters": len(added),
+		"ok": true, "file": clean, "newPath": newPath, "newParameters": added,
+		"movedParameters": moved, "droppedParameters": dropped,
 	})
 }
 
@@ -609,76 +609,125 @@ func (s *Server) duplicateEntry(w http.ResponseWriter, r *http.Request) {
 // itself is staged either way, so nothing the user typed is lost.
 const maxAddedParameters = 200
 
-// addedParameters proposes a parameter for every setting the edited content has
-// that neither the committed file nor the catalog already accounts for.
+// catalogDelta works out what a file edit does to the CATALOG: the settings it
+// introduced (one add-parameter item each) and the entries that moved or left,
+// which the catalog has to follow (one realign-bindings item for the file).
 //
-// "New" is judged against the COMMITTED bytes, not against the draft-applied
-// baseline the editor showed, so saving the same file twice proposes the same
-// set both times and taking a line back out withdraws its proposal.
+// It is judged against the COMMITTED bytes, not against the draft-applied
+// baseline the editor showed, so saving the same file twice says the same thing
+// both times and taking a line back out withdraws its consequences.
 //
-// The paths are the answer, not the values: inserting an element in the middle
-// of an XML file shifts every positional predicate after it, and what that file
-// gained is one more slot at the end - which is exactly what the catalog will
-// address once the change is published.
-func (s *Server) addedParameters(p *project.Project, inst model.Instance, file, committed, edited string) []change.Item {
+// The second half is not a nicety. A repeated structure is addressed by
+// POSITION, so adding one network in the middle of an XML file renumbers every
+// network below it: `net-info[3]/net-id` keeps resolving, to a different
+// network, and the grid quietly starts showing one network's values under
+// another's name. Comparing the two versions by PATH cannot see that - it
+// reports the tail of the file as new, a couple of paths as vanished, and says
+// nothing about the ones that silently changed meaning. discovery.Realign lines
+// the two versions up instead, so a person who added one block is told they
+// added one block and the rest of the catalog follows its entries down.
+func (s *Server) catalogDelta(
+	p *project.Project, inst model.Instance, file, committed, edited string,
+) (items []change.Item, added, moved, dropped int) {
 	parser, err := s.Registry.ParserFor(file, []byte(edited))
 	if err != nil {
-		return nil // not a format we can read: the file edit stands on its own
+		return nil, 0, 0, 0 // not a format we can read: the file edit stands on its own
 	}
 	newCands, err := parser.Extract(file, []byte(edited))
 	if err != nil {
-		return nil // unparsable: staging the bytes is all we can honestly do
+		return nil, 0, 0, 0 // unparsable: staging the bytes is all we can honestly do
 	}
-	before := map[string]bool{}
-	if oldCands, err := parser.Extract(file, []byte(committed)); err == nil {
-		for _, c := range oldCands {
-			before[c.Path] = true
+	var oldCands []plugin.Candidate
+	if committed != "" {
+		if oldCands, err = parser.Extract(file, []byte(committed)); err != nil {
+			return nil, 0, 0, 0 // cannot tell new from old: say nothing rather than everything
 		}
-	} else if committed != "" {
-		return nil // cannot tell new from old: propose nothing rather than everything
 	}
+	delta := discovery.Realign(file, oldCands, newCands)
 
-	// Every path the catalog already reaches in this file, for any instance -
-	// a setting already managed is not a new one, whoever it belongs to.
-	managed := map[string]bool{}
+	// Which catalog parameter sits at a given path in THIS file, for any
+	// instance: a setting already managed is not a new one, whoever it belongs
+	// to, and a setting that moved is one of these that has to follow it.
+	owner := map[string]model.Parameter{}
 	for _, param := range p.Catalog.Parameters {
 		for _, b := range param.Bindings {
 			if b.EffectiveLayer() == model.LayerBase {
 				if b.File == file {
-					managed[b.Path] = true
+					owner[b.Path] = param
 				}
 				continue
 			}
 			for _, i := range p.Registry.Instances {
 				if b.ForInstance(i).File == file {
-					managed[b.Path] = true
+					owner[b.Path] = param
 				}
 			}
 		}
 	}
 
-	// Where the parameter binds: a file inside an instance's folder is that
+	// The realignment: the catalog entries whose address changed, and the ones
+	// whose value the edit took out of the file. Only paths the catalog actually
+	// holds are named - a move of something nothing manages is not a change.
+	var payload change.RealignPayload
+	// The addresses the realignment VACATES. An insert in the middle shifts the
+	// entries below it down, so the path the new block occupies is one the
+	// catalog still holds - held by the entry that has just moved off it. Read
+	// naively that looks like "already managed" and the block the person typed
+	// in is proposed as nothing at all.
+	freed := map[string]bool{}
+	for _, m := range delta.Moved {
+		param, ok := owner[m.From]
+		if !ok {
+			continue
+		}
+		// A relocation is the same setting in a different position of the same
+		// structure. Anything else came out of an alignment that guessed, and
+		// re-pointing on a guess is worse than not re-pointing at all.
+		if !discovery.SameEntry(m.From, m.To) {
+			continue
+		}
+		payload.Moves = append(payload.Moves, change.BindingMove{
+			ParamID: param.ID, Name: param.Name, From: m.From, To: m.To,
+		})
+		freed[m.From] = true
+	}
+	for _, m := range payload.Moves {
+		delete(freed, m.To) // something moved onto it, so it is not free after all
+	}
+	for _, path := range delta.Removed {
+		if param, ok := owner[path]; ok {
+			payload.Dropped = append(payload.Dropped, change.BindingMove{
+				ParamID: param.ID, Name: param.Name, From: path,
+			})
+		}
+	}
+
+	// Where a new parameter binds: a file inside an instance's folder is that
 	// instance's own layer and binds through {folder}; anything else is shared.
 	rel, inFolder := "", false
 	if folder := inst.FolderOrDefault(); inst.Name != "" && folder != "" && strings.HasPrefix(file, folder+"/") {
 		rel, inFolder = strings.TrimPrefix(file, folder+"/"), true
 	}
-
 	used := map[string]bool{}
 	for _, param := range p.Catalog.Parameters {
 		used[param.ID] = true
 	}
 
-	out := make([]change.Item, 0)
-	for _, pm := range discovery.Tunable(file, newCands) {
+	items = make([]change.Item, 0, len(delta.Added)+1)
+	for _, pm := range delta.Added {
 		path := pm.Bindings[0].Path
 		if pm.Name == "" || pm.ID == "" {
 			continue // nothing to call it: a name is the whole point of managing it
 		}
-		if before[path] || managed[path] || isIgnoredPath(p.Ignore, path) {
+		// Already managed and staying that way: the edit did not introduce this
+		// setting, it changed one.
+		if _, taken := owner[path]; taken && !freed[path] {
 			continue
 		}
-		if len(out) >= maxAddedParameters {
+		if isIgnoredPath(p.Ignore, path) {
+			continue
+		}
+		if added >= maxAddedParameters {
 			break
 		}
 		id := pm.ID
@@ -698,12 +747,19 @@ func (s *Server) addedParameters(p *project.Project, inst model.Instance, file, 
 		} else {
 			pm.Scope = model.ScopeGlobal
 		}
-		out = append(out, change.Item{
+		added++
+		items = append(items, change.Item{
 			ParamID: pm.ID, Instance: inst.Name, File: file,
 			Action: change.ActionAddParameter, New: pm, UpdatedAt: time.Now().UTC(),
 		})
 	}
-	return out
+	if len(payload.Moves) > 0 || len(payload.Dropped) > 0 {
+		items = append(items, change.Item{
+			Instance: inst.Name, File: file, Action: change.ActionRealignBindings,
+			New: payload, UpdatedAt: time.Now().UTC(),
+		})
+	}
+	return items, added, len(payload.Moves), len(payload.Dropped)
 }
 
 // isIgnoredPath reports whether .configer/ignore.yaml already says this path is

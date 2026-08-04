@@ -733,3 +733,44 @@ func TestSubmitAddParameterWritesTheCatalog(t *testing.T) {
 		t.Errorf("catalog carries a VALUE, which is Git's job alone:\n%s", cat)
 	}
 }
+
+// A file edit that shifted the entries of a repeated structure carries a
+// realignment: the catalog entries below the insertion follow the values they
+// name, and any whose value left the file stop being managed. Submitting must
+// write both, in the same commit as the bytes that caused them.
+func TestSubmitRealignsBindings(t *testing.T) {
+	_, originDir, svc := fixture(t)
+	ctx := context.Background()
+
+	cr, _ := svc.Store.Draft("erin", "main")
+	stage(t, svc, cr.ID,
+		change.Item{
+			Instance: "staging", File: "instances/staging/values.yaml",
+			Action: change.ActionEditFile,
+			Old:    stagingValues, New: stagingValues,
+		},
+		change.Item{
+			Instance: "staging", File: "instances/staging/values.yaml",
+			Action: change.ActionRealignBindings,
+			New: change.RealignPayload{
+				Moves:   []change.BindingMove{{ParamID: "p1", Name: "app.port", From: "$.app.port", To: "$.app.listener.port"}},
+				Dropped: []change.BindingMove{{ParamID: "p2", Name: "platform.domain", From: "$.platform.domain"}},
+			},
+		},
+	)
+
+	got, err := svc.Submit(ctx, SubmitRequest{ID: cr.ID, Title: "Follow the moved entries", Author: "erin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cat := sh(t, originDir, "git", "show", got.Branch+":.configer/parameters.yaml")
+	if !strings.Contains(cat, "$.app.listener.port") {
+		t.Errorf("binding did not follow its value:\n%s", cat)
+	}
+	if strings.Contains(cat, "path: $.app.port") {
+		t.Errorf("binding still points at the old address:\n%s", cat)
+	}
+	if strings.Contains(cat, "platform.domain") {
+		t.Errorf("a parameter whose value left the file is still in the catalog:\n%s", cat)
+	}
+}

@@ -98,15 +98,29 @@ never gate on the score, which exists only for the trend line.
   `SubmitRequest`, opens an isolated worktree, applies draft items (structural
   instance changes → direct file edits → value edits), commits with a
   `Changed-by:` trailer, pushes, opens a GitHub PR.
-- **Editing a file is also a CATALOG change.** A direct file edit that
-  introduces settings nothing manages stages one `add-parameter` item per new
-  setting beside the `edit-file` item (`api.addedParameters`, judged against the
-  COMMITTED bytes and filtered through `discovery.Tunable` so a file edit and an
-  import propose exactly the same things). They preview as `pendingAdd` rows and
-  publish as `.configer/parameters.yaml` entries in the same commit - otherwise
-  new settings are bytes in a diff, absent from the grid and unnamed in the
-  review, which is how "edited directly" became the whole story of a change that
-  added four networks.
+- **Editing a file is also a CATALOG change** (`api.catalogDelta`, judged
+  against the COMMITTED bytes so a file saved twice says the same thing twice).
+  A direct file edit that introduces settings nothing manages stages one
+  `add-parameter` item per new setting beside the `edit-file` item, filtered
+  through `discovery.Tunable` so a file edit and an import propose exactly the
+  same things. They preview as `pendingAdd` rows and publish as
+  `.configer/parameters.yaml` entries in the same commit - otherwise new
+  settings are bytes in a diff, absent from the grid and unnamed in the review.
+- **What changed is decided by ALIGNMENT, never by comparing paths**
+  (`discovery.Realign`). A repeated structure is addressed by POSITION, so
+  inserting one entry in the middle renumbers every entry below it: compared by
+  path that reads as settings appearing at the END of the file, a couple of
+  paths vanishing, and - silently - a dozen bindings still resolving while
+  describing a different thing than their name says. Both versions are lined up
+  as SEQUENCES instead (common prefix/suffix trimmed, then an LCS keyed by leaf
+  name + value), which is why every parser must emit candidates in DOCUMENT
+  ORDER - JSON goes through the yaml node tree for exactly this reason, Go maps
+  having no order to speak of. The answer comes back as added / moved / removed,
+  and the moved ones ride a single `realign-bindings` item that carries the
+  catalog after them: one review row, one catalog write. A binding that moves
+  takes its NAME with it (`writer.RealignBindings`) - leave the name and two
+  parameters want it, the catalog refuses the second, and the setting somebody
+  just typed in never arrives.
 - **A file edit stages itself, and is REFUSED if the file does not parse.** File
   mode autosaves into the draft shortly after typing stops (the same keeping a
   grid cell does when you leave it) and has no save button. That only holds

@@ -122,8 +122,16 @@ never gate on the score, which exists only for the trend line.
   parameters want it, the catalog refuses the second, and the setting somebody
   just typed in never arrives.
 - **A file edit stages itself, and is REFUSED if the file does not parse.** File
-  mode autosaves into the draft shortly after typing stops (the same keeping a
-  grid cell does when you leave it) and has no save button. That only holds
+  mode autosaves into the draft a beat after typing stops - and immediately on
+  blur, because the moment somebody's attention leaves the file is the moment
+  "is that kept?" must already be answered. There is no save button, and nothing
+  announces the save: no toast, no pill flickering on every pause, just a line in
+  the status strip (Editing… → Saving… → Saved) that names the catalog
+  consequences only when they actually moved. The editor holds the typed buffer
+  until the SERVER's copy matches it - clearing it on the response swapped the
+  value back to the pre-edit content for the moment before the refetch landed,
+  so the text visibly reverted and the cursor jumped. The diff never opens
+  itself; its button goes amber instead. That only holds
   because `pathedit.CheckSyntax` gates it: the WHOLE document is parsed before a
   single item is staged, and a failure answers 422 with the line, column and the
   offending line's own text (`APIError.syntax`), which the editor marks and the

@@ -33,6 +33,7 @@ interface Revealable {
   onDidChangeModelContent: (cb: () => void) => void;
   addCommand?: (keybinding: number, handler: () => void) => void;
   onDidChangeCursorPosition?: (cb: (e: { position: { lineNumber: number; column: number } }) => void) => void;
+  onDidBlurEditorText?: (cb: () => void) => void;
   deltaDecorations?: (old: string[], next: Decoration[]) => string[];
   getModel?: () => { getLineMaxColumn?: (line: number) => number; getLineCount?: () => number } | null;
   getLayoutInfo?: () => { height: number };
@@ -90,6 +91,7 @@ export default function MonacoFileView({
   editable = false,
   onDirty,
   onSave,
+  onBlur,
   onCursor,
 }: {
   path: string;
@@ -110,6 +112,9 @@ export default function MonacoFileView({
   editable?: boolean;
   onDirty?: (value: string) => void;
   onSave?: (value: string) => void;
+  /** the reader's attention left the text: whatever is pending should land now
+   *  rather than wait out a timer somebody is no longer here for */
+  onBlur?: () => void;
   /** live cursor position, for a Ln/Col status strip */
   onCursor?: (line: number, col: number) => void;
 }) {
@@ -120,10 +125,12 @@ export default function MonacoFileView({
   const edRef = useRef<Revealable | null>(null);
   const saveRef = useRef(onSave);
   const dirtyRef = useRef(onDirty);
+  const blurRef = useRef(onBlur);
   const cursorRef = useRef(onCursor);
   useEffect(() => {
     saveRef.current = onSave;
     dirtyRef.current = onDirty;
+    blurRef.current = onBlur;
     cursorRef.current = onCursor;
   });
 
@@ -272,6 +279,7 @@ export default function MonacoFileView({
     editor.onDidChangeCursorPosition?.((e) =>
       cursorRef.current?.(e.position.lineNumber, e.position.column),
     );
+    editor.onDidBlurEditorText?.(() => blurRef.current?.());
     editor.onDidLayoutChange?.(() => serveRef.current());
     serveReveal();
     applyMarks();

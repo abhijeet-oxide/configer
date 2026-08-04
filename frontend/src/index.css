@@ -972,6 +972,19 @@ body {
 .cf-pname-route > bdi {
   direction: ltr;
 }
+/* The step (or steps) of a route that tell this row apart from the other rows
+   with the same leaf. Twelve rows called "cpu" differ by ONE word, and set in
+   the same grey as the four words they share it was invisible.
+   Weight and contrast, never a hue: the grid already spends colour on state
+   (pending, invalid, overridden), and a second meaning for the same signal is
+   how a reader stops trusting the first. */
+.cf-pname-route .cf-route-key {
+  color: var(--text-1);
+  font-weight: 600;
+}
+.cf-pname-route .cf-route-sep {
+  opacity: 0.55;
+}
 /* The row the pointer is on lifts its own address out of the background, so
    following one parameter across a wide grid does not mean squinting. */
 .param-grid .ant-table-row:hover .cf-pname-route,
@@ -1750,6 +1763,23 @@ body {
   margin-left: 3px;
   border-radius: 2px;
   background: var(--c-mark-bd);
+}
+
+/* The line a save was refused on. Louder than either mark above, because it is
+   the reason nothing was staged: the file does not parse, and this is where it
+   stops. Red is already the product's word for "this is wrong". */
+.monaco-editor .cf-problem-line {
+  background: color-mix(in srgb, var(--c-danger) 12%, transparent);
+}
+.monaco-editor .cf-problem-gutter {
+  width: 3px !important;
+  margin-left: 3px;
+  border-radius: 2px;
+  background: var(--c-danger);
+}
+:root[data-theme="dark"] .monaco-editor .cf-problem-line,
+.dark .monaco-editor .cf-problem-line {
+  background: color-mix(in srgb, var(--c-danger) 20%, transparent);
 }
 
 /* ------------------------------------------------- the review dialog's frame */

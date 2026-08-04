@@ -107,6 +107,24 @@ never gate on the score, which exists only for the trend line.
   new settings are bytes in a diff, absent from the grid and unnamed in the
   review, which is how "edited directly" became the whole story of a change that
   added four networks.
+- **A file edit stages itself, and is REFUSED if the file does not parse.** File
+  mode autosaves into the draft shortly after typing stops (the same keeping a
+  grid cell does when you leave it) and has no save button. That only holds
+  because `pathedit.CheckSyntax` gates it: the WHOLE document is parsed before a
+  single item is staged, and a failure answers 422 with the line, column and the
+  offending line's own text (`APIError.syntax`), which the editor marks and the
+  notice above it names. Reading a path only notices damage that sits on the way
+  to that path, so a stray brace below every managed value once staged clean.
+  Only real formats are checked (`api.parseableFormat`): a README is not
+  malformed YAML, it was never YAML.
+- **`pathedit.DuplicateEntry`** copies one entry of a repeated structure and
+  APPENDS it after the last of its kind - never beside the one it came from,
+  because these entries are addressed by position and inserting in the middle
+  silently re-points every binding below it. XML is copied as BYTES (comments
+  and indentation included); YAML/JSON go through the node tree. It is staged
+  down the same road a hand edit travels, so the settings the copy carries
+  arrive as add-parameter items and an entry identified by a key is refused
+  rather than cloned into two entries with one identity.
 - **A branch says what the change is**: `<category>/<owner>/cr-<n>-<slug>`
   (owner omitted when there is no login, i.e. single-user; category is the
   change type - hotfix/feature/bugfix/… - and `change` when none was picked).
@@ -238,6 +256,18 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `InstancesView`, `SourceControlPanel`/`SubmitChangesButton` (the draft),
 `ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
 the vertical branch picture, or `GraphRail`'s dense commit list).
+
+**A name is read from the RIGHT, and what tells it apart carries the weight.**
+The grid shows a parameter's leaf on one line and its route underneath. On a
+real estate that leaves twelve rows saying `cpu` over a grey route, differing by
+one word buried among four they share - and somebody edits the wrong limit. So
+`discriminatingSegments` (ParameterGrid) works out, per set of rows sharing a
+leaf, which route steps actually TELL THEM APART (compared from the right, since
+routes differ in length) and only those are set in full contrast. It is computed
+once per catalog over EVERY row, not per render and not over the filtered ones:
+what tells a value apart is a property of the estate, not of the current search,
+and a row whose emphasis moves when you type in the search box is worse than no
+emphasis. Weight and contrast only - the grid already spends colour on state.
 
 **One control per question.** "Which instances am I looking at, in what order,
 and am I reading one on its own" is ONE question, so it has ONE control:

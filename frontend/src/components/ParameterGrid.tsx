@@ -416,19 +416,89 @@ function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
 // "/" also splits, for a name that arrived path-shaped from a source with no
 // segmentation of its own; without it such a row was one long bold line among
 // rows that all had a leaf and a route.
-function splitName(param: Pick<Parameter, "name" | "nameSegments">): { leaf: string; route: string } {
+function splitName(param: Pick<Parameter, "name" | "nameSegments">): { leaf: string; route: string[] } {
   const parts = nameSegments(param).flatMap((s) => (s.includes("/") ? s.split("/").filter(Boolean) : [s]));
   const leaf = parts[parts.length - 1] ?? param.name;
   // A name that ENDS in a separator has no leaf to promote; show it whole
   // rather than an empty first line over a route.
-  if (parts.length < 2 || leaf === "") return { leaf: leaf || param.name, route: "" };
-  return { leaf, route: parts.slice(0, -1).join(" / ") };
+  if (parts.length < 2 || leaf === "") return { leaf: leaf || param.name, route: [] };
+  return { leaf, route: parts.slice(0, -1) };
 }
 function leafOf(param: Pick<Parameter, "name" | "nameSegments">): string {
   return splitName(param).leaf;
 }
-function routeOf(param: Pick<Parameter, "name" | "nameSegments">): string {
-  return splitName(param).route;
+
+// A grid of a real estate is FULL of rows whose leaf is the same word. Twelve
+// `cpu` rows and nine `memory` rows all read "cpu" over a grey route, and the
+// one segment that says WHICH cpu - cmserver, cnfcmserver, indexmgr - is set in
+// the same weight and colour as the four segments every one of them shares. The
+// reader is left comparing five words across two lines to find the difference,
+// and edits the wrong limit.
+//
+// So: for every set of rows that share a leaf, work out which segments of their
+// routes actually TELL THEM APART, and let those carry the weight. The rest
+// stays quiet - it is shared context, not identity. Segments are compared from
+// the RIGHT, because a route's tail is what a reader anchors on and routes in
+// one group are often different lengths.
+//
+// Computed once per catalog and cached by parameter id: the cell renderer only
+// ever looks its own row up, so a scroll through ten thousand rows costs the
+// same as before. Grouping over EVERY row (not just the visible ones) keeps a
+// row's emphasis from shifting as filters change - what tells a value apart is a
+// property of the estate, not of the current search.
+function discriminatingSegments(rows: { param: Parameter }[]): Map<string, Set<number>> {
+  const byLeaf = new Map<string, { id: string; route: string[] }[]>();
+  for (const r of rows) {
+    const { leaf, route } = splitName(r.param);
+    if (route.length === 0) continue;
+    const group = byLeaf.get(leaf);
+    if (group) group.push({ id: r.param.id, route });
+    else byLeaf.set(leaf, [{ id: r.param.id, route }]);
+  }
+  const out = new Map<string, Set<number>>();
+  for (const group of byLeaf.values()) {
+    if (group.length < 2) continue; // a leaf that is already unique needs nothing
+    const longest = Math.max(...group.map((g) => g.route.length));
+    for (let fromEnd = 1; fromEnd <= longest; fromEnd++) {
+      const seen = new Set<string>();
+      for (const g of group) seen.add(g.route[g.route.length - fromEnd] ?? " ");
+      if (seen.size < 2) continue; // every row shares this step: shared context
+      for (const g of group) {
+        const i = g.route.length - fromEnd;
+        if (i < 0) continue;
+        const marks = out.get(g.id) ?? new Set<number>();
+        marks.add(i);
+        out.set(g.id, marks);
+      }
+    }
+  }
+  return out;
+}
+
+// Route renders a parameter's route with its distinguishing steps picked out.
+// One span per step is the whole cost, and the set of marked indices is looked
+// up once per row from a map built for the entire catalog.
+function Route({
+  param,
+  keys,
+  q,
+}: {
+  param: Parameter;
+  keys: Set<number> | undefined;
+  q: string;
+}) {
+  const { route } = splitName(param);
+  if (route.length === 0) return null;
+  return (
+    <>
+      {route.map((seg, i) => (
+        <span key={i}>
+          {i > 0 && <span className="cf-route-sep"> / </span>}
+          <span className={keys?.has(i) ? "cf-route-key" : undefined}>{hl(seg, q)}</span>
+        </span>
+      ))}
+    </>
+  );
 }
 
 // hl wraps every case-insensitive occurrence of q in text with a highlight mark,
@@ -1225,6 +1295,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // pinning means: they scrolled away with everything else, which is exactly the
   // moment you wanted them.
   const pinnedSet = useMemo(() => new Set(prefs.pinned), [prefs.pinned]);
+  // Which steps of each row's route tell it apart from the other rows with the
+  // same leaf. One pass over the catalog, not per render and not per row.
+  const routeKeys = useMemo(() => discriminatingSegments(grid.rows), [grid.rows]);
   const dropPinned = useCallback(
     (list: Row[]) => (prefs.pinned.length ? list.filter((r) => !pinnedSet.has(r.param.id)) : list),
     [prefs.pinned.length, pinnedSet],
@@ -1568,9 +1641,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               </div>
               {/* The route to the leaf, in the same cell. Always rendered (empty
                   when a name has no route) so every row is the same height in
-                  the virtual body. */}
+                  the virtual body. The steps that tell this row apart from the
+                  others with the same leaf carry the weight; the shared ones
+                  stay quiet. */}
               <div className="cf-pname-route">
-                <bdi>{hl(routeOf(r.param), hlParam)}</bdi>
+                <bdi>
+                  <Route param={r.param} keys={routeKeys.get(r.param.id)} q={hlParam} />
+                </bdi>
               </div>
             </div>
           </ParamMenu>

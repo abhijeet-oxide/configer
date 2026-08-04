@@ -1041,6 +1041,17 @@ export interface FieldError {
   message: string;
 }
 
+/** Where a file stopped parsing. The PLACE is the actionable part of a syntax
+ *  failure, so it travels as fields rather than inside the sentence: the editor
+ *  puts a marker on that line instead of leaving the reader to search. */
+export interface SyntaxDetail {
+  file: string;
+  line?: number;
+  column?: number;
+  /** the offending line's own text, so the message can show what it means */
+  snippet?: string;
+}
+
 /**
  * ApiError is the single typed error every non-2xx response becomes. It mirrors
  * the backend's error envelope ({error, code, requestId, fields}) so the UI can
@@ -1056,6 +1067,8 @@ export class ApiError extends Error {
   /** seconds to wait before retrying, from a 429 Retry-After header */
   readonly retryAfter?: number;
   readonly fields?: FieldError[];
+  /** where a document stopped parsing, when that is what was rejected */
+  readonly syntax?: SyntaxDetail;
   constructor(init: {
     status: number;
     code: string;
@@ -1063,6 +1076,7 @@ export class ApiError extends Error {
     requestId?: string;
     retryAfter?: number;
     fields?: FieldError[];
+    syntax?: SyntaxDetail;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -1071,6 +1085,7 @@ export class ApiError extends Error {
     this.requestId = init.requestId;
     this.retryAfter = init.retryAfter;
     this.fields = init.fields;
+    this.syntax = init.syntax;
   }
   get isUnauthorized() { return this.status === 401; }
   get isForbidden() { return this.status === 403; }
@@ -1183,7 +1198,10 @@ async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promis
 // httpError turns a non-2xx response into a typed ApiError, parsing the
 // standardized envelope and surfacing a 401 to the auth layer.
 async function httpError(res: Response): Promise<ApiError> {
-  let body: { error?: string; code?: string; requestId?: string; fields?: FieldError[] } = {};
+  let body: {
+    error?: string; code?: string; requestId?: string;
+    fields?: FieldError[]; syntax?: SyntaxDetail;
+  } = {};
   try {
     body = await res.json();
   } catch {
@@ -1197,6 +1215,7 @@ async function httpError(res: Response): Promise<ApiError> {
     requestId: body.requestId,
     retryAfter: retryHeader ? Number(retryHeader) || undefined : undefined,
     fields: body.fields,
+    syntax: body.syntax,
   });
   if (err.isUnauthorized) emitUnauthorized();
   return err;
@@ -1582,6 +1601,13 @@ export const api = {
       newParameters?: number;
       detail?: string;
     }>(rp("/files/draft"), p),
+  /** Copy one entry of a repeated structure (an XML element that occurs several
+   *  times under its parent, a YAML/JSON list entry) and stage the result. The
+   *  copy is APPENDED after the last entry of its kind, so no existing entry is
+   *  renumbered and no binding starts reading a different thing. */
+  duplicateEntry: (p: { instance?: string; file: string; path: string; author?: string }) =>
+    send<{ ok: boolean; file: string; newPath: string; newParameters: number }>(
+      "POST", rp("/files/duplicate"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
   /** Every value in one file that a parameter is bound to, with the line it
    *  sits on in the content the explorer shows. */

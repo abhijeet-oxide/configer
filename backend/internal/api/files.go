@@ -364,6 +364,18 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Does it still parse? This is asked FIRST, of the whole document, before a
+	// single item is staged. Reading the managed paths only notices damage that
+	// happens to sit on the way to one of them, so a stray brace below every
+	// managed value staged clean and was committed - and the file the cluster
+	// then read was the broken one.
+	if f := parseableFormat(req.Path); f != "" {
+		if se := pathedit.CheckSyntax([]byte(req.Content), f); se != nil {
+			writeSyntaxError(w, r, req.Path, se)
+			return
+		}
+	}
+
 	// Detect managed value changes at this path, validating each.
 	type valueChange struct {
 		param    model.Parameter
@@ -491,6 +503,102 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok": true, "staged": 1 + len(added), "kind": "file",
 		"managedChanges": len(changes), "newParameters": len(added),
+	})
+}
+
+// duplicateEntry copies one entry of a repeated structure (an XML element that
+// occurs several times under its parent, a YAML/JSON list entry) and stages the
+// result exactly as a hand edit of the same file would be staged: one file item
+// plus one new parameter per setting the copy brought with it.
+//
+// It exists because the alternative is real work done by hand. A telco config
+// carries the same block per network, and adding one meant selecting twenty
+// lines in the editor, pasting them, fixing the indentation, then hoping the
+// paste landed somewhere that did not renumber the entries below it. The copy
+// is always APPENDED after the last entry of its kind for that reason: these
+// entries are addressed by position, so inserting one in the middle silently
+// re-points every binding under it.
+//
+// @Summary     Duplicate a repeated entry
+// @Description Copy one entry of a repeated structure in a file - an XML element that occurs several times under the same parent, or a YAML/JSON list entry - and stage the result in the current draft. The copy is appended AFTER the last entry of its kind so no existing entry is renumbered, and the settings it carries are staged as new parameters, exactly as if the block had been typed in by hand. XML is copied byte-for-byte (indentation and comments included). An entry identified by a key (`env[name=LOG_LEVEL]`) is refused: the copy would be a second entry with the same identity.
+// @Tags        Files
+// @Accept      json
+// @Produce     json
+// @Param       body body object true "{instance, file, path}"
+// @Success     200 {object} object "newPath is the path the copy answers to"
+// @Failure     400 {object} APIError "file and path are required"
+// @Failure     404 {object} APIError "Unknown instance or file"
+// @Failure     422 {object} APIError "The entry cannot be duplicated, or the file does not parse"
+// @Security    CookieSession
+// @Router      /api/files/duplicate [post]
+func (s *Server) duplicateEntry(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Instance string `json:"instance"`
+		File     string `json:"file"`
+		Path     string `json:"path"`
+		Author   string `json:"author"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.File == "" || req.Path == "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "file and path are required")
+		return
+	}
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	inst, ok := p.InstanceByName(req.Instance)
+	if !ok && req.Instance != "" {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "instance not found")
+		return
+	}
+	clean := filepath.ToSlash(filepath.Clean(req.File))
+	if filepath.IsAbs(clean) || clean == ".." || strings.HasPrefix(clean, "../") {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid file path")
+		return
+	}
+
+	raw, rerr := os.ReadFile(filepath.Join(p.Root, filepath.FromSlash(clean)))
+	if rerr != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "that file is not in this repository")
+		return
+	}
+	committed := string(raw)
+	var items []change.Item
+	if d := s.Store.CurrentDraft(draftOwner(r)); d != nil {
+		items = d.Items
+	}
+	// Copy from what the user is LOOKING at (the draft applied), so duplicating
+	// an entry they added a minute ago copies the entry they added.
+	current, _ := applyDraftToFile(p, inst, clean, committed, items)
+
+	format := formatForFile(clean)
+	next, newPath, derr := pathedit.DuplicateEntry([]byte(current), format, req.Path)
+	if derr != nil {
+		writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, derr.Error())
+		return
+	}
+
+	added := s.addedParameters(p, inst, clean, committed, next)
+	defer s.lockDraft(draftOwner(r))()
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		cr.UpsertItem(change.Item{
+			Instance: req.Instance, File: clean, Action: change.ActionEditFile,
+			Old: committed, New: next, UpdatedAt: time.Now().UTC(),
+		})
+		cr.ReplaceAddedParameters(clean, added)
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok": true, "file": clean, "newPath": newPath, "newParameters": len(added),
 	})
 }
 

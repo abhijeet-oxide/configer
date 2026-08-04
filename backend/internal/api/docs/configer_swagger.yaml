@@ -27,6 +27,14 @@ definitions:
           X-Request-ID header, so an operator can find the exact request.
         example: 3f9a1c2b7e5d0a84
         type: string
+      syntax:
+        allOf:
+        - $ref: '#/definitions/api.SyntaxDetail'
+        description: |-
+          Syntax carries the PLACE a document stopped parsing, when that is what
+          went wrong. It is a field rather than a sentence because the place is the
+          actionable part: the editor puts a marker on that line instead of leaving
+          the reader to search a nine-hundred-line file for what the parser meant.
     type: object
   api.Capabilities:
     properties:
@@ -338,6 +346,20 @@ definitions:
         type: string
       title:
         example: Raise admin port in production
+        type: string
+    type: object
+  api.SyntaxDetail:
+    properties:
+      column:
+        example: 7
+        type: integer
+      file:
+        type: string
+      line:
+        example: 42
+        type: integer
+      snippet:
+        example: '  port 8080'
         type: string
     type: object
   api.ValueEditRequest:
@@ -1637,6 +1659,49 @@ paths:
       security:
       - CookieSession: []
       summary: Stage a file edit
+      tags:
+      - Files
+  /api/files/duplicate:
+    post:
+      consumes:
+      - application/json
+      description: 'Copy one entry of a repeated structure in a file - an XML element
+        that occurs several times under the same parent, or a YAML/JSON list entry
+        - and stage the result in the current draft. The copy is appended AFTER the
+        last entry of its kind so no existing entry is renumbered, and the settings
+        it carries are staged as new parameters, exactly as if the block had been
+        typed in by hand. XML is copied byte-for-byte (indentation and comments included).
+        An entry identified by a key (`env[name=LOG_LEVEL]`) is refused: the copy
+        would be a second entry with the same identity.'
+      parameters:
+      - description: '{instance, file, path}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: newPath is the path the copy answers to
+          schema:
+            type: object
+        "400":
+          description: file and path are required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance or file
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: The entry cannot be duplicated, or the file does not parse
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Duplicate a repeated entry
       tags:
       - Files
   /api/files/managed:

@@ -311,6 +311,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/discover", s.discover)
 	mux.HandleFunc("POST /api/init", s.initApp)
 	mux.HandleFunc("PUT /api/files/draft", s.stageFileEdit)
+	mux.HandleFunc("POST /api/files/duplicate", s.duplicateEntry)
 	return mux
 }
 

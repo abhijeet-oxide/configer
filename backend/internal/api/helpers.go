@@ -200,6 +200,27 @@ func formatForFile(file string) string {
 	}
 }
 
+// parseableFormat is formatForFile without its fallback: it names the format
+// only for files we really do parse, and "" for everything else.
+//
+// The fallback is right where a format is REQUIRED (a binding has to be read
+// somehow) and wrong where the question is "should this be checked at all" - a
+// README or a shell script is not malformed YAML, it was never YAML, and
+// refusing to save one because a sentence contains a colon would be the
+// product inventing a rule the repository does not have.
+func parseableFormat(file string) string {
+	switch {
+	case strings.HasSuffix(file, ".xml"):
+		return "xml"
+	case strings.HasSuffix(file, ".json"):
+		return "json"
+	case strings.HasSuffix(file, ".yaml"), strings.HasSuffix(file, ".yml"):
+		return "yaml"
+	default:
+		return ""
+	}
+}
+
 func stringify(v any) string {
 	b, _ := json.Marshal(v)
 	return string(b)

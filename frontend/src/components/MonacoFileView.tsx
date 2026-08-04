@@ -1,9 +1,16 @@
 // Lazy-loaded Monaco pane: importing this module pulls in Monaco (a separate
 // build chunk) and runs the offline setup side-effect. Shows an editor for a
-// repository file, or a side-by-side diff when the committed baseline differs
-// from the draft-applied content (the live "what your edits will change"
-// view). When editable, changes report through onDirty and Ctrl/Cmd-S runs
-// onSave, the same save path as the grid: staged into the draft.
+// repository file, or a side-by-side diff when the caller ASKS for one.
+//
+// Asking is the point. The pane used to decide for itself - any difference
+// between the committed baseline and the shown content swapped in the diff
+// editor - which meant the first character somebody typed tore the editor they
+// were typing in out from under them, replaced it with a two-pane diff, and
+// dropped the cursor. Reading a diff and writing a file are different jobs, so
+// which one you are doing is now a control the person operates, not a state the
+// pane infers.
+//
+// When editable, changes report through onDirty and Ctrl/Cmd-S runs onSave.
 import { Editor, DiffEditor } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import "../monaco";
@@ -74,10 +81,12 @@ export default function MonacoFileView({
   path,
   content,
   original,
+  diff = false,
   dark,
   revealLine,
   revealColumn,
   marks,
+  problem,
   editable = false,
   onDirty,
   onSave,
@@ -86,12 +95,17 @@ export default function MonacoFileView({
   path: string;
   content: string;
   original?: string;
+  /** show the side-by-side diff against `original`. The caller decides; the
+   *  pane never switches on its own (see the note at the top of this file). */
+  diff?: boolean;
   dark: boolean;
   revealLine?: number;
   /** column to land the cursor on within revealLine (the value's own start) */
   revealColumn?: number;
   /** values to mark as managed by Configer (quietly - see the effect below) */
   marks?: LineMark[];
+  /** the line a failed save could not parse, marked as an error */
+  problem?: { line: number; column?: number; message: string };
   /** allow typing; edits report through onDirty, Ctrl/Cmd-S calls onSave */
   editable?: boolean;
   onDirty?: (value: string) => void;
@@ -102,7 +116,7 @@ export default function MonacoFileView({
   const language = languageFor(path);
   const theme = dark ? "vs-dark" : "light";
   const decoRef = useRef<string[]>([]);
-  const showDiff = original !== undefined && original !== content;
+  const showDiff = diff && original !== undefined;
   const edRef = useRef<Revealable | null>(null);
   const saveRef = useRef(onSave);
   const dirtyRef = useRef(onDirty);
@@ -177,8 +191,10 @@ export default function MonacoFileView({
   // order: Monaco mounts asynchronously and the lines are fetched, so whichever
   // is last has to be the one that paints.
   const marksRef = useRef(marks);
+  const problemRef = useRef(problem);
   useEffect(() => {
     marksRef.current = marks;
+    problemRef.current = problem;
   });
   const applyMarks = () => {
     const ed = edRef.current;
@@ -224,13 +240,30 @@ export default function MonacoFileView({
         }
         return out;
       });
+    // The line a save was refused on. It rides the same decoration pass as the
+    // managed marks so there is one place that paints, and it is the loudest
+    // thing in the file: it is the only reason the edit is not staged.
+    const prob = problemRef.current;
+    if (prob && prob.line > 0 && prob.line <= lines) {
+      next.push({
+        range: { startLineNumber: prob.line, startColumn: 1, endLineNumber: prob.line, endColumn: 1 },
+        options: {
+          isWholeLine: true,
+          className: "cf-problem-line",
+          linesDecorationsClassName: "cf-problem-gutter",
+          hoverMessage: { value: prob.message },
+          overviewRuler: { color: "rgba(214, 69, 69, 0.9)", position: 7 },
+        },
+      });
+    }
     decoRef.current = ed.deltaDecorations(decoRef.current, next);
   };
   useEffect(() => {
     marksRef.current = marks;
+    problemRef.current = problem;
     applyMarks();
-     
-  }, [marks, content, path]);
+
+  }, [marks, problem, content, path]);
 
   const wire = (editor: Revealable) => {
     edRef.current = editor;

@@ -5,7 +5,6 @@ import {
   CopyOutlined,
   DownloadOutlined,
   PlusCircleOutlined,
-  SaveOutlined,
   UndoOutlined,
   SearchOutlined,
   MoreOutlined,
@@ -23,13 +22,14 @@ import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { api, sameContent, ALL_INSTANCES } from "../api";
+import { api, ApiError, sameContent, ALL_INSTANCES } from "../api";
 import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
 import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
 import { isMarkdown, languageFor } from "../monacoLang";
 import FileExplorer from "./FileExplorer";
+import SubmitChangesButton from "./SubmitChangesButton";
 import { useIdentity } from "../identity";
 
 const MonacoFileView = lazy(() => import("./MonacoFileView"));
@@ -39,8 +39,25 @@ const MarkdownView = lazy(() => import("./MarkdownView"));
 // REAL repository files (its folder plus shared config). The editor
 // dominates; the explorer is a VS Code-grade tree: compact, searchable,
 // resizable AND collapsible to a thin rail. Files Configer manages carry a
-// dot; management is added or dropped from the row actions. Saving stages
-// into the draft, exactly like a grid edit.
+// dot; management is added or dropped from the row actions.
+//
+// Editing here is editing, in the same sense the grid means it. An edit STAGES
+// ITSELF shortly after the typing stops, the same way leaving a grid cell keeps
+// what you put in it; there is no save button, because the one that used to be
+// here was a trap - identical edits in the two places were kept in one and
+// thrown away in the other, and nothing on screen said so. What replaces it is
+// the same "Review changes" the grid has: the draft is one draft.
+//
+// Two things follow from that and are load-bearing:
+//
+//   - A file that no longer PARSES is refused, whole, with the line called out
+//     in the editor and in a notice above it. Autosave without that check is
+//     how a stray comma reaches a branch: the file was staged the moment it was
+//     typed, and nobody was asked.
+//   - The typing is never taken away. A refused save leaves the buffer exactly
+//     as written, so the fix is one character rather than a retype, and the
+//     DIFF is a view you open (see MonacoFileView) rather than one that arrives
+//     on its own and drops the cursor.
 
 // detectIndent reports the file's indentation width (a best effort from the
 // first indented line), for the status strip.
@@ -90,6 +107,14 @@ export default function FilesView() {
   };
   const [onlyManaged, setOnlyManaged] = useState(true);
   const [dirty, setDirty] = useState<string | null>(null);
+  // The last save that was refused: what is wrong and where. It stays until a
+  // save succeeds, because the file is not staged while it holds.
+  const [problem, setProblem] = useState<
+    { message: string; line: number; column?: number; snippet?: string } | null
+  >(null);
+  // Reading a diff and writing a file are different jobs; which one you are
+  // doing is a control, not something the editor decides the moment you type.
+  const [showDiff, setShowDiff] = useState(false);
   const [treeQ, setTreeQ] = useState("");
   const [treeOpen, setTreeOpen] = useState(() => localStorage.getItem(TREE_KEY) !== "0");
   const [reveal, setReveal] = useState<number | undefined>(undefined);
@@ -247,6 +272,8 @@ export default function FilesView() {
 
   useEffect(() => {
     setDirty(null);
+    setProblem(null);
+    setShowDiff(false);
     if (files.length === 0) {
       select(null);
       return;
@@ -285,6 +312,10 @@ export default function FilesView() {
   const showPreview = !!current && isMarkdown(current.path) && mdMode === "preview" && dirty === null;
   const committed = current ? committedOf.get(current.path) : undefined;
   const currentParams = current ? paramsByFile.get(current.path) ?? [] : [];
+  // Anything to compare: what is on screen (typed or staged) against what is
+  // committed. Drives whether the diff toggle can be pressed at all.
+  const shown = dirty ?? current?.content ?? "";
+  const hasFileChanges = committed !== undefined && !sameContent(committed, shown);
 
   // Which lines of the open file Configer manages. Located server-side against
   // the same draft-applied content shown here, so a mark sits exactly on the
@@ -317,32 +348,63 @@ export default function FilesView() {
   // known, the reveal goes to its exact position.
   const focusMark = useMemo(() => marks.find((m) => m.focus), [marks]);
 
+  // Staging a file edit is the same act as typing in a grid cell, so it works
+  // the same way: it happens on its own, shortly after the typing stops. The
+  // "Save to draft" button that used to be here was a trap - a cell edit was
+  // kept the moment you left the cell, an identical edit in file mode was
+  // thrown away unless you found the button first, and nothing on screen said
+  // the two behaved differently.
+  //
+  // A failure does NOT clear the typing. The text stays exactly as written so
+  // the fix is one character, not a retype.
+  const stageInstanceFor = (path: string) =>
+    allInstances ? ownerInstanceOf(path) : instance ?? undefined;
   const save = useMutation({
-    mutationFn: (content: string) => {
-      // In "All instances" view the selected file's folder tells us which
-      // instance to stage against (undefined = a shared/base file, staged
-      // globally). Otherwise it is simply the chosen instance.
-      const stageInstance = allInstances ? ownerInstanceOf(selected ?? "") : instance ?? undefined;
-      return api.stageFileEdit({ instance: stageInstance, path: selected!, content, author: "Local user" });
-    },
-    onSuccess: (r) => {
-      setDirty(null);
-      if (r.staged === 0) message.info("No changes to save");
-      else if (r.kind === "values")
-        message.success(`${r.staged} value edit(s) staged in your draft; visible in the grid too`);
-      else if (r.newParameters)
+    mutationFn: ({ path, content }: { path: string; content: string }) =>
+      api.stageFileEdit({ instance: stageInstanceFor(path), path, content, author: "Local user" }),
+    onSuccess: (r, vars) => {
+      setProblem(null);
+      // Only clear the buffer when it is still what we sent: the user may have
+      // typed on while the request was in flight.
+      setDirty((d) => (d === vars.content ? null : d));
+      if (r.staged === 0) return; // nothing changed: no news is the right amount
+      if (r.newParameters)
         // Say what the edit ADDED, by name-count: the settings are the point of
         // the save, and "File edit staged" gave no sign they had been picked up
         // at all.
         message.success(
-          `File edit staged, with ${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found in it; they appear in the grid and publish with this change`,
+          `Saved. ${r.newParameters} new parameter${r.newParameters === 1 ? "" : "s"} found in this file; they appear in the grid and publish with this change`,
           6,
         );
-      else message.success("File edit staged in your draft");
       qc.invalidateQueries();
     },
-    onError: (e: Error) => message.error(e.message, 6),
+    onError: (e: Error) => {
+      // A file that does not parse is not a toast-and-forget: it is a state the
+      // editor stays in until the file parses again, marked on the exact line.
+      const syntax = e instanceof ApiError ? e.syntax : undefined;
+      if (syntax) {
+        setProblem({ message: e.message, line: syntax.line ?? 0, column: syntax.column, snippet: syntax.snippet });
+        return;
+      }
+      setProblem({ message: e.message, line: 0 });
+    },
   });
+
+  // Autosave: one save shortly after the typing stops, and never one that
+  // races the last. A file the user is holding a key down in must not become a
+  // request per keystroke.
+  const AUTOSAVE_MS = 900;
+  const saveRef = useRef(save);
+  useEffect(() => {
+    saveRef.current = save;
+  });
+  useEffect(() => {
+    if (!canEdit || dirty === null || !selected) return;
+    const path = selected;
+    const content = dirty;
+    const t = setTimeout(() => saveRef.current.mutate({ path, content }), AUTOSAVE_MS);
+    return () => clearTimeout(t);
+  }, [dirty, selected, canEdit]);
 
   const copy = async () => {
     if (!current) return;
@@ -546,29 +608,31 @@ export default function FilesView() {
                   </Dropdown>
                 </Tooltip>
               )}
-              <Button
-                size="small"
-                icon={<DiffOutlined />}
-                onClick={() => {
-                  if (instance) setCompare(instance, null);
-                  localStorage.setItem("configer.compareMode", "files");
-                  setSection("compare");
-                }}
+              {/* The diff is a VIEW of this file, opened deliberately. It used
+                  to arrive on its own the moment anything differed, which meant
+                  typing one character replaced the editor under the cursor. */}
+              <Tooltip
+                title={
+                  committed === undefined
+                    ? "This file is new in your draft, so there is nothing to compare it against"
+                    : hasFileChanges
+                      ? "Show what your changes do to this file, side by side with the committed version"
+                      : "This file matches the committed version"
+                }
               >
-                Compare
-              </Button>
-              {canEdit && (
-                <Button
-                  size="small"
-                  type="primary"
-                  icon={<SaveOutlined />}
-                  disabled={dirty === null}
-                  loading={save.isPending}
-                  onClick={() => dirty !== null && save.mutate(dirty)}
-                >
-                  Save to draft
-                </Button>
-              )}
+                <span className="inline-flex">
+                  <Button
+                    size="small"
+                    type={showDiff ? "primary" : "default"}
+                    icon={<DiffOutlined />}
+                    disabled={!hasFileChanges}
+                    onClick={() => setShowDiff((v) => !v)}
+                  >
+                    View difference
+                  </Button>
+                </span>
+              </Tooltip>
+              {canEdit && <SubmitChangesButton instances={gridQ.data?.instances} />}
               <Dropdown
                 trigger={["click"]}
                 menu={{
@@ -576,11 +640,18 @@ export default function FilesView() {
                     { key: "undo", icon: <UndoOutlined />, label: "Discard unsaved typing", disabled: dirty === null },
                     { key: "copy", icon: <CopyOutlined />, label: "Copy content" },
                     { key: "download", icon: <DownloadOutlined />, label: "Download file" },
+                    { type: "divider" as const },
+                    { key: "compare", icon: <BranchesOutlined />, label: "Compare across instances or branches" },
                   ],
                   onClick: ({ key }) => {
                     if (key === "undo") setDirty(null);
                     if (key === "copy") void copy();
                     if (key === "download") download();
+                    if (key === "compare") {
+                      if (instance) setCompare(instance, null);
+                      localStorage.setItem("configer.compareMode", "files");
+                      setSection("compare");
+                    }
                   },
                 }}
               >
@@ -590,6 +661,37 @@ export default function FilesView() {
           )}
         </div>
       </div>
+
+      {problem && (
+        <Alert
+          type="error"
+          showIcon
+          style={{ padding: "6px 12px" }}
+          message={
+            <span>
+              {problem.message}
+              {problem.snippet && (
+                <>
+                  {" "}
+                  <code className="mono" style={{ fontSize: 11 }}>{problem.snippet}</code>
+                </>
+              )}
+            </span>
+          }
+          description={
+            <span style={{ fontSize: 12 }}>
+              Nothing was staged, and your typing is untouched. Fix the line and it saves itself.
+            </span>
+          }
+          action={
+            problem.line > 0 ? (
+              <Button size="small" onClick={() => setReveal(problem.line)}>
+                Go to line {problem.line}
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
 
       {instancePending && (
         <Alert
@@ -666,13 +768,15 @@ export default function FilesView() {
                       path={current.path}
                       content={dirty ?? current.content}
                       original={createdFiles.has(current.path) ? undefined : committed}
+                      diff={showDiff}
                       dark={mode === "dark"}
                       editable={canEdit}
-                      revealLine={focusMark?.line ?? reveal}
-                      revealColumn={focusMark?.col}
+                      revealLine={problem?.line || focusMark?.line || reveal}
+                      revealColumn={problem?.line ? problem.column : focusMark?.col}
                       marks={dirty === null ? marks : undefined}
+                      problem={problem?.line ? { line: problem.line, column: problem.column, message: problem.message } : undefined}
                       onDirty={(v) => setDirty(v === current.content ? null : v)}
-                      onSave={(v) => save.mutate(v)}
+                      onSave={(v) => save.mutate({ path: current.path, content: v })}
                       onCursor={(ln, col) => setCursor({ ln, col })}
                     />
                   </Suspense>

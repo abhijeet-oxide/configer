@@ -1166,6 +1166,63 @@
                 }
             }
         },
+        "/api/files/duplicate": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Copy one entry of a repeated structure in a file - an XML element that occurs several times under the same parent, or a YAML/JSON list entry - and stage the result in the current draft. The copy is appended AFTER the last entry of its kind so no existing entry is renumbered, and the settings it carries are staged as new parameters, exactly as if the block had been typed in by hand. XML is copied byte-for-byte (indentation and comments included). An entry identified by a key (`env[name=LOG_LEVEL]`) is refused: the copy would be a second entry with the same identity.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Files"
+                ],
+                "summary": "Duplicate a repeated entry",
+                "parameters": [
+                    {
+                        "description": "{instance, file, path}",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "newPath is the path the copy answers to",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "file and path are required",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown instance or file",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "The entry cannot be duplicated, or the file does not parse",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/files/managed": {
             "get": {
                 "description": "Every value in one file that a catalog parameter is bound to, with the 1-based line it sits on in the draft-applied content the Files explorer shows, and the columns the value itself occupies on that line. Lets the editor mark exactly the managed values. A value that cannot be narrowed (a block scalar) reports columns 0 and is marked by line.",
@@ -3919,6 +3976,14 @@
                     "description": "RequestID correlates this response with the access log and the\nX-Request-ID header, so an operator can find the exact request.",
                     "type": "string",
                     "example": "3f9a1c2b7e5d0a84"
+                },
+                "syntax": {
+                    "description": "Syntax carries the PLACE a document stopped parsing, when that is what\nwent wrong. It is a field rather than a sentence because the place is the\nactionable part: the editor puts a marker on that line instead of leaving\nthe reader to search a nine-hundred-line file for what the parser meant.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/api.SyntaxDetail"
+                        }
+                    ]
                 }
             }
         },
@@ -4307,6 +4372,26 @@
                 "title": {
                     "type": "string",
                     "example": "Raise admin port in production"
+                }
+            }
+        },
+        "api.SyntaxDetail": {
+            "type": "object",
+            "properties": {
+                "column": {
+                    "type": "integer",
+                    "example": 7
+                },
+                "file": {
+                    "type": "string"
+                },
+                "line": {
+                    "type": "integer",
+                    "example": 42
+                },
+                "snippet": {
+                    "type": "string",
+                    "example": "  port 8080"
                 }
             }
         },

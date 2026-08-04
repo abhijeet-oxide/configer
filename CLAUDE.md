@@ -106,6 +106,11 @@ never gate on the score, which exists only for the trend line.
   same things. They preview as `pendingAdd` rows and publish as
   `.configer/parameters.yaml` entries in the same commit - otherwise new
   settings are bytes in a diff, absent from the grid and unnamed in the review.
+  The REVIEW then lists the parameter rows and drops the file row
+  (`api.reviewItems`): once the reader has been told exactly what changed, in
+  the terms they think in, "edited directly" is the same fact again with less in
+  it. Every user-facing count of "changes" goes through the same filter, so the
+  bar, the badge and the dialog can never disagree.
 - **What changed is decided by ALIGNMENT, never by comparing paths**
   (`discovery.Realign`). A repeated structure is addressed by POSITION, so
   inserting one entry in the middle renumbers every entry below it: compared by
@@ -130,8 +135,11 @@ never gate on the score, which exists only for the trend line.
   consequences only when they actually moved. The editor holds the typed buffer
   until the SERVER's copy matches it - clearing it on the response swapped the
   value back to the pre-edit content for the moment before the refetch landed,
-  so the text visibly reverted and the cursor jumped. The diff never opens
-  itself; its button goes amber instead. That only holds
+  so the text visibly reverted and the cursor jumped. Nothing about the editor
+  is reset by the file LIST either - that array is new on every poll and after
+  every save, and an effect keyed on it wiped the buffer and closed the diff
+  every fifteen seconds. The diff never opens itself; its button goes amber
+  instead, and it reads split or inline. That only holds
   because `pathedit.CheckSyntax` gates it: the WHOLE document is parsed before a
   single item is staged, and a failure answers 422 with the line, column and the
   offending line's own text (`APIError.syntax`), which the editor marks and the

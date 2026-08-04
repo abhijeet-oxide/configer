@@ -112,13 +112,19 @@ export function describeChange(it: ChangeItem): ChangeDesc {
     const moves = p.moves?.length ?? 0;
     const dropped = p.dropped?.length ?? 0;
     const parts: string[] = [];
-    // What this actually protects against is worth saying in the row itself:
-    // these entries are addressed by position, so an entry added or removed in
-    // the middle leaves every entry below it answering to a different address.
-    if (moves) parts.push(`${moves} parameter${moves === 1 ? "" : "s"} follow the entries they name`);
-    if (dropped) parts.push(`${dropped} stop being managed (their value left the file)`);
+    // Said in the terms the reader is in: entries in these files are numbered,
+    // so adding or removing one in the middle shifts the numbering of every
+    // entry under it. "N parameters follow the entries they name" was the
+    // mechanism, not the meaning - true, and no help to anybody deciding
+    // whether to approve. What they need is: nothing changed value.
+    if (moves)
+      parts.push(
+        `${moves} existing parameter${moves === 1 ? " is" : "s are"} renumbered to keep pointing at the same value`,
+      );
+    if (dropped)
+      parts.push(`${dropped} stop${dropped === 1 ? "s" : ""} being managed - the value is no longer in the file`);
     return {
-      tag: "Catalog",
+      tag: "Renumbered",
       tone: dropped ? "review" : "neutral",
       kind: "file",
       subject: it.file ?? "the catalog",

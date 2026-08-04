@@ -1782,6 +1782,27 @@ body {
   background: color-mix(in srgb, var(--c-pending) 16%, transparent);
 }
 
+/* The open file, at the head of the toolbar. It is the SUBJECT of the screen,
+   not another control, so it is set as quiet italic prose rather than as a chip
+   among chips. Truncation eats the left - the folders - because the file's own
+   name is the part worth reading, and it is the part a chip's right-hand
+   ellipsis always cut off first. */
+.cf-open-file {
+  direction: rtl;
+  text-align: left;
+  max-width: 34ch;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: italic;
+  font-size: 12px;
+  color: var(--text-3);
+}
+.cf-open-file > bdi {
+  direction: ltr;
+}
+
 /* Where saving is said: the status strip, in the strip's own voice. It is a
    fixed slot, so the readings either side of it never move as it changes. */
 .cf-save-state {

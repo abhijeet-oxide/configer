@@ -14,7 +14,7 @@ import UserAvatar from "./UserAvatar";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, ApiError, type Grid } from "../api";
+import { api, ApiError, type Grid, reviewItems} from "../api";
 import { describeError } from "../notify";
 import { useActivity } from "../activity";
 import { useUI } from "../store";
@@ -181,7 +181,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const invalid = perInstance.reduce((s, t) => s + t.invalid, 0);
 
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review") ?? [];
-  const pending = draftQ.data?.draft?.items?.length ?? 0;
+  const pending = reviewItems(draftQ.data?.draft?.items ?? []).length;
   const st = statusQ.data;
   const findings = findingsQ.data?.findings ?? [];
   const repo = wsQ.data?.repos.find((r) => r.id === repoId);

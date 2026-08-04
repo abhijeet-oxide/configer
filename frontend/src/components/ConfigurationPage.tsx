@@ -2,7 +2,7 @@ import { Dropdown, Badge } from "antd";
 import { useMemo } from "react";
 import { DownOutlined } from "../icons";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, expandBinding } from "../api";
+import { api, bindingsOf, expandBinding, reviewItems} from "../api";
 import { useUI } from "../store";
 import { useElementSize } from "../hooks";
 import { useIdentity } from "../identity";
@@ -97,7 +97,9 @@ export default function ConfigurationPage({
       .length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const incoming = incomingQ.data?.changes?.length ?? 0;
-  const draftItems = draftQ.data?.draft?.items?.length ?? 0;
+  // Counted the way the review counts (see api.reviewItems): a file row that
+  // the parameter rows already explain is not a change the reader can open.
+  const draftItems = reviewItems(draftQ.data?.draft?.items ?? []).length;
 
   // How many real files the pending edits touch, for the Files tab badge: a
   // value edit fans out to its parameter's binding files (expanded per

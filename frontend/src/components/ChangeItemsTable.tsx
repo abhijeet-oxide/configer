@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Table, Tag, Tooltip, Button, Typography, Empty, Input, Popconfirm, Progress, Spin } from "antd";
 import { DeleteOutlined, SearchOutlined } from "../icons";
 import { describeChange, type ChangeDesc, type ChangeTone } from "../changedesc";
+import { reviewItems } from "../api";
 import ValueDiff from "./ui/ValueDiff";
 import type { ChangeItem } from "../api";
 
@@ -141,7 +142,7 @@ export function ChangeItemsTable({
   // undoing ten of them is one action, not ten.
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<React.Key[]>([]);
-  const all = useMemo(() => items ?? [], [items]);
+  const all = useMemo(() => reviewItems(items ?? []), [items]);
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return all;

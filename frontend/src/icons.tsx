@@ -103,6 +103,8 @@ import phGear from "@iconify-icons/ph/gear";
 import phStarFill from "@iconify-icons/ph/star-fill";
 import phStar from "@iconify-icons/ph/star";
 import phArrowsLeftRight from "@iconify-icons/ph/arrows-left-right";
+import phColumns from "@iconify-icons/ph/columns";
+import phRows from "@iconify-icons/ph/rows";
 import phTable from "@iconify-icons/ph/table";
 import phListDashes from "@iconify-icons/ph/list-dashes";
 import phLightning from "@iconify-icons/ph/lightning";
@@ -270,6 +272,10 @@ export const FolderAddOutlined = make("folder-add", phFolderPlus);
 export const BranchesOutlined = make("branches", phGitBranch);
 export const PullRequestOutlined = make("pull-request", phGitPullRequest);
 export const DiffOutlined = make("diff", phGitDiff);
+// How a difference is laid out: two panes beside each other, or one pane with
+// the removals and additions interleaved.
+export const SplitCellsOutlined = make("split-cells", phColumns);
+export const MergeCellsOutlined = make("merge-cells", phRows);
 export const GithubOutlined = make("github", phGithubLogo);
 export const HistoryOutlined = make("history", phClockCounterClockwise);
 export const CodeOutlined = make("code", phCode);

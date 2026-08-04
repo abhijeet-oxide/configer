@@ -18,6 +18,11 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
+// draftOwnerName is whose draft these requests touch. Single-user mode maps
+// every request to the one local operator, so CurrentDraft("") is ALWAYS nil -
+// which quietly turned two assertions here into assertions about nothing.
+const draftOwnerName = "Local user"
+
 // A direct file edit that ADDS settings used to vanish into "edited directly":
 // the new values were in the staged bytes, absent from the grid, and unnamed in
 // the review. They are now staged as parameters the change starts managing, so
@@ -144,7 +149,7 @@ func TestUndoingAFileEditWithdrawsItsParameters(t *testing.T) {
 	doJSON(t, h, http.MethodDelete,
 		"/api/values?paramId=file:instances/staging/values.yaml&instance=staging", nil, nil)
 
-	if d := s.Store.CurrentDraft(""); d != nil && len(d.Items) != 0 {
+	if d := s.Store.CurrentDraft(draftOwnerName); d != nil && len(d.Items) != 0 {
 		t.Fatalf("draft still holds %+v after undoing the file edit", d.Items)
 	}
 }
@@ -188,7 +193,7 @@ func TestFileEditRefusesABrokenFileAndSaysWhere(t *testing.T) {
 	if !strings.Contains(e.Error, "nothing was staged") {
 		t.Errorf("message does not say the edit was refused: %q", e.Error)
 	}
-	if d := s.Store.CurrentDraft(""); d != nil && len(d.Items) > 0 {
+	if d := s.Store.CurrentDraft(draftOwnerName); d != nil && len(d.Items) > 0 {
 		t.Errorf("a broken file was staged anyway: %+v", d.Items)
 	}
 }
@@ -465,5 +470,46 @@ func commitAll(t *testing.T, root, msg string) {
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v %s", args, err, out)
 		}
+	}
+}
+
+// The undo beside a proposed parameter has to remove it. Such an item names a
+// parameter AND the file it was found in, and addressing it by parameter alone
+// found nothing - so the button did nothing at all, silently.
+func TestUndoingOneProposedParameter(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+	doJSON(t, h, http.MethodPut, "/api/files/draft", map[string]any{
+		"instance": "staging",
+		"path":     "instances/staging/values.yaml",
+		"content":  "app:\n  port: 8080\n  host: edge-1\nlogging:\n  level: debug\n",
+	}, nil)
+
+	before := len(s.Store.CurrentDraft(draftOwnerName).Items)
+	doJSON(t, h, http.MethodDelete,
+		"/api/values?paramId=logging-level&instance=staging", nil, nil)
+	items := s.Store.CurrentDraft(draftOwnerName).Items
+	if len(items) != before-1 {
+		t.Fatalf("draft holds %d items, want one fewer than %d", len(items), before)
+	}
+	for _, it := range items {
+		if it.ParamID == "logging-level" {
+			t.Fatalf("the proposed parameter is still staged: %+v", it)
+		}
+	}
+	// The file edit stays: the lines are still there, they are simply not
+	// managed. Undoing a proposal is not undoing the typing.
+	found := false
+	for _, it := range items {
+		if it.Act() == "edit-file" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("undoing a proposed parameter took the file edit with it")
 	}
 }

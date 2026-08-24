@@ -5,7 +5,7 @@ import { BranchesOutlined, ClusterOutlined, EyeOutlined } from "../../icons";
 import { api } from "../../api";
 import { useIdentity } from "../../identity";
 import { useUI } from "../../store";
-import { StatusPill, type PillTone } from "./StatusPill";
+import { StatusPill, type PillTone } from "../../uikit";
 
 // AppContextChips is the persistent application context from the reference:
 // branch (monospace), live git synchronization state, instance count, and a

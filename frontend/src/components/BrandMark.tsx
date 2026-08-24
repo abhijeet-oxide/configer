@@ -1,9 +1,15 @@
-import { theme as brand } from "../theme.config";
+import brand from "../brand";
 
-// BrandMark is the product's logo tile, resolved once from the brand config
-// (an image, an inline SVG, or a text glyph). Every surface that shows the mark
-// - the navigation rail, the phone header, the boot screen - renders THIS, so
+// BrandMark is the product's logo tile, resolved once from `brand.ts` (an
+// image, an inline SVG, or a text glyph). Every surface that shows the mark -
+// the navigation rail, the phone header, the boot screen - renders THIS, so
 // the identity can never differ between window sizes or states.
+//
+// The TILE is this app's own presentation: a rounded plate carrying the mark,
+// which is what its icon rail is built around. The shared kit offers a plainer
+// BrandMark/BrandLockup for a tool whose navigation wants one; both read the
+// same identity, so what the mark IS never differs between tools - only how
+// this product's chrome frames it.
 export default function BrandMark({ size = 28 }: { size?: number }) {
   const style =
     size === 28

@@ -1,19 +1,14 @@
 import type { CSSProperties, ReactNode } from "react";
 
 // StatusPill is THE status chip of the design system: a pastel tinted pill
-// with a dot and a short label. Tones map to the semantic palette in
-// tokens.css. Use it for operational state (Synced, Pending review, Failing,
-// Active); never for environment identity (that is EnvTag's job).
+// with a dot and a short label. Tones map to the semantic palette.
+//
+// Use it for OPERATIONAL STATE (Synced, Pending review, Failing, Active).
+// Never for environment identity: an environment has its own colours, and a
+// production instance that borrowed the danger tone would say something about
+// its health that nobody meant.
 
 export type PillTone = "ok" | "pending" | "review" | "danger" | "neutral";
-
-const TONE_CLASS: Record<PillTone, string> = {
-  ok: "bg-ok-bg border-ok-bd text-ok",
-  pending: "bg-pending-bg border-pending-bd text-pending",
-  review: "bg-review-bg border-review-bd text-review",
-  danger: "bg-danger-bg border-danger-bd text-danger",
-  neutral: "bg-surface-2 border-line text-ink-2",
-};
 
 export function StatusPill({
   tone,
@@ -37,18 +32,17 @@ export function StatusPill({
     <span
       title={title}
       style={style}
-      className={`inline-flex items-center gap-1.5 rounded-full border font-medium leading-none whitespace-nowrap align-middle ${
-        size === "sm" ? "h-[18px] px-2 text-[11px]" : "h-[22px] px-2.5 text-xs"
-      } ${TONE_CLASS[tone]}`}
+      className={`ui-pill is-${size} tone-${tone}`}
     >
-      {icon ?? (dot && <span className="size-1.5 shrink-0 rounded-full bg-current" />)}
+      {icon ?? (dot && <span className="ui-pill-dot" />)}
       {children}
     </span>
   );
 }
 
-// ChangeChip labels a diff row the way the reference does: Modified (blue),
-// Added (green), Removed (red), Unchanged (neutral).
+// ChangeChip labels a diff row: Modified (blue), Added (green), Removed (red),
+// Unchanged (neutral). The words are always written out, so the row still
+// reads correctly in greyscale.
 export type ChangeKind = "modified" | "added" | "removed" | "unchanged";
 
 const CHANGE_TONE: Record<ChangeKind, PillTone> = {

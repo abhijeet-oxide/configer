@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 
 // PageHeader standardizes the top block of every screen: a strong title, an
 // optional description in secondary text, and a right-aligned actions slot.
+// Every page in both tools opens the same way, which is most of what makes
+// them feel like one product.
 export default function PageHeader({
   title,
   description,
@@ -15,15 +17,13 @@ export default function PageHeader({
   children?: ReactNode;
 }) {
   return (
-    <div className="mb-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xl leading-snug font-semibold text-ink">
-            {title}
-          </div>
-          {description && <div className="mt-0.5 text-[13px] text-ink-2">{description}</div>}
+    <div className="ui-page-header">
+      <div className="ui-page-header-row">
+        <div className="ui-page-header-main">
+          <div className="ui-page-header-title">{title}</div>
+          {description && <div className="ui-page-header-desc">{description}</div>}
         </div>
-        {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+        {actions && <div className="ui-page-header-actions">{actions}</div>}
       </div>
       {children}
     </div>

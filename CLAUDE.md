@@ -278,14 +278,46 @@ React 18 + TS strict + Vite + Ant Design 5 + react-query (server state) +
 zustand (`store.ts`, UI state with URL deep-links `?app=&view=&param=&inst=`).
 Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `api.ts` is the typed client and shared helpers (`bindingsOf`,
-`expandBinding`, `structuralLabel`). Theming: `theme.ts` tokens through
-`ConfigProvider` in `main.tsx` - never hardcode hex colors; use
-`envHex`/`semantic`. Key views: `ParameterGrid` (grid + typed editors),
+`expandBinding`, `structuralLabel`). Key views: `ParameterGrid` (grid + typed editors),
 `FilesView`+`MonacoFileView` (file mode over real files, saves via
 `PUT /api/files/draft`), `OnboardingWizard` (discover→init),
 `InstancesView`, `SourceControlPanel`/`SubmitChangesButton` (the draft),
 `ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
 the vertical branch picture, or `GraphRail`'s dense commit list).
+
+**Theming is NOT this repository's to decide.** `frontend/src/uikit/` is a
+design system shared BYTE-IDENTICALLY with the other tools on the platform
+(today `softwareGateway/web/src/uikit/`), so two products meant to look like
+one product stay that way by being the same FILES rather than two careful
+copies of the same intentions. It holds the palette (light and dark, plus the
+presets and the one `ACTIVE_PRESET` switch), the structural tokens, the Ant
+Design bridge, the `ThemeProvider` and the primitives (`SectionCard`,
+`PageHeader`, `StatTile`, `StatusPill`, `InlineNotice`, `EmptyState`,
+`Stepper`, `Toolbar`, `Kbd`, the motion vocabulary). Read `uikit/README.md`
+before touching it; the rules that matter:
+
+- **Nothing in `uikit/` names a product.** Identity - the name, the mark, the
+  caption, the favicon - lives in `src/brand.ts`, which is what survives the
+  folder being copied over the top of it. Shared components take it as a prop.
+- **Reskin by editing `uikit/tokens.ts`**, and every tool follows. Never
+  hardcode a hex anywhere: read `c.brand` / `severity` / `envHex` from the kit,
+  which are `var()` references and therefore follow the light/dark switch and
+  the active preset on their own.
+- **Plain CSS inside the folder, never Tailwind utilities** - the sibling tool
+  has no Tailwind, and a primitive styled with `bg-surface` renders unstyled
+  the moment it is copied there. Tailwind stays fine everywhere else here.
+- **`react` and `antd` are its only dependencies.** Adding a third is how a
+  copyable folder turns into a package with a release process.
+- After changing it, copy the whole folder across and verify with
+  `diff -r frontend/src/uikit ../softwareGateway/web/src/uikit` - empty output
+  means the tools are still on one design system. Fix a drift by copying, never
+  by patching one side, and never by adding a prop that makes the kit behave
+  differently per tool. Two looks that must genuinely differ are a PRESET.
+
+`components/ui/` is the local layer above it: mostly re-exports from the kit
+(so the existing import sites did not have to change), plus what is Configer's
+own vocabulary rather than a design-system piece (`ValueDiff`,
+`AppContextChips`).
 
 **A name is read from the RIGHT, and what tells it apart carries the weight.**
 The grid shows a parameter's leaf on one line and its route underneath. On a

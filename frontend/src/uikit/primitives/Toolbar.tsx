@@ -14,14 +14,9 @@ export default function Toolbar({
   border?: boolean;
 }) {
   return (
-    <div
-      className={`flex min-h-10 min-w-0 shrink-0 items-center gap-2 bg-surface px-3 ${
-        border ? "border-b border-line" : ""
-      }`}
-      style={style}
-    >
-      <div className="flex min-w-0 flex-1 items-center gap-2">{left}</div>
-      {right && <div className="flex shrink-0 items-center gap-2">{right}</div>}
+    <div className={`ui-toolbar${border ? " has-border" : ""}`} style={style}>
+      <div className="ui-toolbar-left">{left}</div>
+      {right && <div className="ui-toolbar-right">{right}</div>}
     </div>
   );
 }

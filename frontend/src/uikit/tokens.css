@@ -1,11 +1,16 @@
 /* Structural design tokens: spacing, radius, elevation, motion and type.
-   The COLOR layer (brand, sidebar, surfaces, text, semantic, provenance) is not
-   here - it is generated from theme.config.ts and inlined into <head> by
-   plugins/vite-plugin-brand.ts, so colors have a single source of truth and are
-   customizable at build time. Edit theme.config.ts to reskin the app. */
+
+   The COLOUR layer is not here. It is generated from tokens.ts and inlined
+   into <head> by vitePluginBrand.ts, so colours have a single source of truth,
+   are customizable at build time, and land before the first paint rather than
+   after it. Edit tokens.ts to reskin; edit this file to change the SHAPE of
+   the design system.
+
+   Everything here is shared by every tool that copies this folder. Nothing in
+   it names a product. */
 
 :root {
-  /* Spacing: engineered 4px scale. */
+  /* Spacing: an engineered 4px scale. */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -30,26 +35,31 @@
   --el-3: 16px 16px 36px rgba(143, 157, 178, 0.4), -8px -8px 20px rgba(255, 255, 255, 0.9);
   --el-inset: inset 3px 3px 7px rgba(163, 177, 198, 0.3), inset -3px -3px 7px rgba(255, 255, 255, 0.85);
 
-  /* Overlay elevation: floating surfaces (the command palette, modals, menus,
-     popovers) do NOT use the soft-UI dual shadow - a top-left light source on a
-     dimmed backdrop reads as a halo/glow. They lift with a crisp, single-
-     direction cast plus a hairline seat, so they sit as focused sheets above the
-     page. The mask darkens and faintly blurs the page so the surface, not its
-     glow, holds the eye. */
+  /* Overlay elevation: floating surfaces (a command palette, a modal, a menu,
+     a popover) do NOT use the soft-UI dual shadow - a top-left light source on
+     a dimmed backdrop reads as a halo. They lift with a crisp, single-direction
+     cast plus a hairline seat, so they sit as focused sheets above the page.
+     The mask darkens and faintly blurs the page so the surface, not its glow,
+     holds the eye. */
   --el-overlay: 0 12px 32px -10px rgba(16, 24, 40, 0.18), 0 4px 10px -4px rgba(16, 24, 40, 0.1);
   --overlay-seat: 0 0 0 1px var(--border);
   --overlay-mask: rgba(20, 27, 40, 0.42);
 
-  /* Motion: state change only, never decoration. */
+  /* Motion: state change only, never decoration. Exponential ease-out from an
+     already-visible default, so a slow render shows the finished page rather
+     than an empty one. */
   --dur-hover: 120ms;
   --dur-panel: 220ms;
   --dur-view: 300ms;
   --ease: cubic-bezier(0.2, 0.8, 0.4, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* Typography. */
+  /* Typography. The families are repeated from tokens.ts because a stylesheet
+     cannot import a module; they are the same two stacks. */
   --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas,
+    "Liberation Mono", Menlo, monospace;
   --fs-11: 11px;
   --fs-12: 12px;
   --fs-13: 13px;
@@ -84,11 +94,38 @@
   --el-2: 0 8px 20px -6px rgba(16, 24, 40, 0.14);
   --el-3: 0 20px 44px -14px rgba(16, 24, 40, 0.22);
   --el-inset: inset 0 0 0 1px rgba(16, 24, 40, 0.06);
-  --shadow-neu: none;
-  --shadow-neu-inset: inset 0 0 0 1px var(--border);
 }
 :root[data-preset="instrument"][data-theme="dark"] {
   --el-1: 0 1px 2px rgba(0, 0, 0, 0.5);
   --el-2: 0 8px 20px -6px rgba(0, 0, 0, 0.55);
   --el-3: 0 20px 44px -14px rgba(0, 0, 0, 0.65);
+}
+
+/* --- comfort ---------------------------------------------------------------
+   Density and font scale are stamped on <html> by ThemeProvider, so the
+   hand-rolled surfaces answer to the same two controls as the component
+   library rather than staying at one size while everything around them moves. */
+:root[data-density="compact"] {
+  --sp-3: 10px;
+  --sp-4: 12px;
+  --sp-5: 16px;
+  --sp-6: 18px;
+}
+:root[data-fontscale="small"] {
+  --fs-11: 10px;
+  --fs-12: 11px;
+  --fs-13: 12px;
+  --fs-14: 13px;
+  --fs-16: 15px;
+  --fs-20: 19px;
+  --fs-24: 22px;
+}
+:root[data-fontscale="large"] {
+  --fs-11: 12px;
+  --fs-12: 13px;
+  --fs-13: 14px;
+  --fs-14: 15px;
+  --fs-16: 17px;
+  --fs-20: 22px;
+  --fs-24: 27px;
 }

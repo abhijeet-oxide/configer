@@ -1,16 +1,20 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { App as AntApp, ConfigProvider } from 'antd'
+import { App as AntApp } from 'antd'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import BootGate from './components/BootGate'
 import AuthGate from './components/AuthGate'
 import { useUI } from './store'
-import { buildTheme } from './theme'
+import { ThemeProvider, watchSystemMode } from './uikit'
 import { ApiError } from './api'
 import { notifyError, setNotifier } from './notify'
 import './styles.css'
-import './tokens.css'
+// The shared design system, ahead of this app's own stylesheet so anything
+// Configer states about a surface still wins. The COLOUR variables are not in
+// here - the brand plugin inlines them into <head>, ahead of every stylesheet,
+// so the page never paints once in the wrong theme.
+import './uikit/styles.css'
 import './index.css'
 import './geo.css'
 
@@ -54,50 +58,50 @@ const queryClient = new QueryClient({
   }),
 })
 
-// ThemeRoot applies the design system: light/dark algorithm and comfort font
-// scale come from the UI store, so the appearance controls take effect
-// app-wide. AntApp provides the message/notification context that components
-// consume via AntApp.useApp().
+// ThemeRoot binds this app's settings to the shared design system.
+//
+// The kit's ThemeProvider is used in CONTROLLED mode: Configer already keeps a
+// versioned settings document (settings.ts, persisted through the UI store),
+// and that stays the truth. The provider just paints it - building the Ant
+// Design theme from the same tokens the CSS variables come from, and stamping
+// the painted mode, the density and the font scale on <html> so the
+// hand-rolled surfaces answer to the same three controls as the component
+// library. Adopting the shared system did not mean adopting a second copy of
+// everybody's preferences.
+//
+// AntApp (inside the provider) supplies the message/notification context that
+// components consume via AntApp.useApp().
 function ThemeRoot() {
-  const mode = useUI((s) => s.mode)
   const themePref = useUI((s) => s.themePref)
   const fontScale = useUI((s) => s.fontScale)
   const density = useUI((s) => s.density)
+  // The provider paints "follow system" itself, but the store's resolved
+  // `mode` is read by the surfaces that cannot express themselves in CSS
+  // variables - Monaco's own theme, the chart colours - so it has to keep up
+  // with the OS too. One watcher, the kit's, feeding both.
   React.useEffect(() => {
-    // Expose the mode to plain CSS (tokens.css) for non-AntD surfaces.
-    document.documentElement.dataset.theme = mode
-    document.documentElement.style.colorScheme = mode
-  }, [mode])
-  React.useEffect(() => {
-    // Density and font scale for the hand-rolled surfaces (grid, rail).
-    document.documentElement.dataset.density = density
-    document.documentElement.dataset.fontscale = fontScale
-  }, [density, fontScale])
-  // "Follow system": track the OS setting live for as long as it is chosen.
-  React.useEffect(() => {
-    if (themePref !== 'system' || !window.matchMedia) return
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const apply = () => useUI.getState().applySystemMode(mq.matches ? 'dark' : 'light')
-    apply()
-    mq.addEventListener('change', apply)
-    return () => mq.removeEventListener('change', apply)
+    if (themePref !== 'system') return
+    return watchSystemMode((m) => useUI.getState().applySystemMode(m))
   }, [themePref])
   return (
-    <ConfigProvider
-      theme={buildTheme(mode, fontScale, density)}
-      componentSize={density === 'compact' ? 'small' : 'middle'}
+    <ThemeProvider
+      value={{ theme: themePref, fontScale, density }}
+      onChange={(next) => {
+        const ui = useUI.getState()
+        if (next.theme !== themePref) ui.setThemePref(next.theme)
+        if (next.fontScale !== fontScale) ui.setFontScale(next.fontScale)
+        if (next.density !== density) ui.setDensity(next.density)
+      }}
     >
-      <AntApp>
-        <GlobalFeedback />
-        {/* Nothing renders until we know the service is there (BootGate) and
-            whether this browser may see it at all (AuthGate). */}
-        <BootGate>
-          <AuthGate>
-            <App />
-          </AuthGate>
-        </BootGate>
-      </AntApp>
-    </ConfigProvider>
+      <GlobalFeedback />
+      {/* Nothing renders until we know the service is there (BootGate) and
+          whether this browser may see it at all (AuthGate). */}
+      <BootGate>
+        <AuthGate>
+          <App />
+        </AuthGate>
+      </BootGate>
+    </ThemeProvider>
   )
 }
 

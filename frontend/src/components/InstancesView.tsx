@@ -11,10 +11,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type Grid, type Instance, type InstanceInput } from "../api";
 import { useUI } from "../store";
-import { ENV_PRESETS } from "../theme";
+import { canonicalEnv, envOptions } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import EnvTag from "./EnvTag";
 import InstanceTopology from "./InstanceTopology";
+import InstancesGeography from "./InstancesGeography";
 import { EmptyState } from "./ui";
 import { useIdentity } from "../identity";
 
@@ -45,6 +46,7 @@ function formatLabels(labels?: Record<string, string>): string {
 
 interface FormValues {
   name: string;
+  description?: string;
   environment?: string;
   region?: string;
   softwareVersion?: string;
@@ -91,7 +93,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     return [...reg, ...draftAdds];
   }, [regQ.data, grid.instances]);
   const [statusFilter, setStatusFilter] = useState<"active" | "archived" | "all">("active");
-  const [view, setView] = useState<"table" | "topology">("table");
+  const [view, setView] = useState<"table" | "topology" | "geography">("table");
   const [modal, setModal] = useState<{ mode: "add" | "edit" | "clone"; instance?: Instance } | null>(null);
   const [copyInto, setCopyInto] = useState<{ target: string; source?: string } | null>(null);
   const [form] = Form.useForm<FormValues>();
@@ -188,6 +190,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       instance
         ? {
             name: mode === "clone" ? `${instance.name}-copy` : instance.name,
+            // A copy is a DIFFERENT instance, so it does not inherit a
+            // sentence written about the one it came from.
+            description: mode === "clone" ? "" : instance.description,
             environment: instance.environment,
             region: instance.region,
             softwareVersion: instance.softwareVersion,
@@ -201,13 +206,18 @@ export default function InstancesView({ grid }: { grid: Grid }) {
   };
 
   const submit = (v: FormValues) => {
+    // The picker is free text, so the same environment arrives spelled several
+    // ways; what gets WRITTEN is the one spelling, or the estate ends up with
+    // "lab" and "Lab" as two environments.
+    const environment = canonicalEnv(v.environment);
     if (modal?.mode === "edit") {
       // Send ONLY what actually changed: an untouched field must not turn
       // into a registry write (and a spurious line in the Git diff).
       const orig = modal.instance!;
       const input: InstanceInput = { name: v.name, author: "Local user" };
       const diff = (a?: string, b?: string) => (a ?? "") !== (b ?? "");
-      if (diff(v.environment, orig.environment)) input.environment = v.environment ?? "";
+      if (diff(environment, orig.environment)) input.environment = environment ?? "";
+      if (diff(v.description, orig.description)) input.description = v.description ?? "";
       if (diff(v.region, orig.region)) input.region = v.region ?? "";
       if (diff(v.softwareVersion, orig.softwareVersion)) input.softwareVersion = v.softwareVersion ?? "";
       if (diff(v.versionName, orig.versionName)) input.versionName = v.versionName ?? "";
@@ -218,7 +228,8 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     }
     const input: InstanceInput = {
       name: v.name,
-      environment: v.environment,
+      description: v.description,
+      environment,
       region: v.region,
       softwareVersion: v.softwareVersion,
       versionName: v.versionName,
@@ -258,19 +269,21 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             options={[
               { value: "table", label: "Table" },
               { value: "topology", label: "Topology" },
+              { value: "geography", label: "Geography" },
             ]}
           />
-          {view === "table" && (
-            <Segmented
-              value={statusFilter}
-              onChange={(v) => setStatusFilter(v as typeof statusFilter)}
-              options={[
-                { value: "active", label: "Active" },
-                { value: "archived", label: "Archived" },
-                { value: "all", label: "All" },
-              ]}
-            />
-          )}
+          {/* Which instances are in scope is the same question in every view,
+              so it is asked once. Hiding it outside the table left the other
+              views quietly showing archived instances with no way to say so. */}
+          <Segmented
+            value={statusFilter}
+            onChange={(v) => setStatusFilter(v as typeof statusFilter)}
+            options={[
+              { value: "active", label: "Active" },
+              { value: "archived", label: "Archived" },
+              { value: "all", label: "All" },
+            ]}
+          />
           {canEdit && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => openModal("add")}>
               Add instance
@@ -280,7 +293,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       </div>
 
       {view === "topology" ? (
-        <InstanceTopology grid={grid} />
+        <InstanceTopology grid={grid} instances={shown} />
+      ) : view === "geography" ? (
+        <InstancesGeography grid={grid} instances={shown} />
       ) : (
       <Table<Instance>
         rowKey="name"
@@ -304,7 +319,21 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           ),
         }}
         columns={[
-          { title: "Instance", dataIndex: "name", render: (n) => <b>{n}</b> },
+          {
+            title: "Instance",
+            dataIndex: "name",
+            render: (n: string, i) => (
+              // The name identifies it; the description says what it IS. Two
+              // lines in one column, because they answer the same question and
+              // a column of its own would push everything else off the screen.
+              <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.3 }}>
+                <b>{n}</b>
+                {i.description && (
+                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>{i.description}</span>
+                )}
+              </span>
+            ),
+          },
           {
             title: "Environment",
             dataIndex: "environment",
@@ -429,17 +458,29 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               className="mono"
             />
           </Form.Item>
+          <Form.Item
+            name="description"
+            label="Description"
+            tooltip="What this instance is for, in your own words - the site it serves, or what makes it different from its neighbours"
+          >
+            <Input placeholder="e.g. Primary session border controller for the Warrenville site" />
+          </Form.Item>
           <div style={{ display: "flex", gap: 10 }}>
             <Form.Item name="environment" label="Environment" style={{ flex: 1 }}>
               <AutoComplete
-                options={[...new Set([...ENV_PRESETS, ...environments])].map((e) => ({ value: e }))}
+                options={envOptions(environments).map((e) => ({ value: e }))}
                 filterOption={(input, option) =>
                   (option?.value as string).toLowerCase().includes(input.toLowerCase())
                 }
                 placeholder="Development"
               />
             </Form.Item>
-            <Form.Item name="region" label="Region" style={{ flex: 1 }}>
+            <Form.Item
+              name="region"
+              label="Region"
+              tooltip="Filled in from the instance name when a rule recognizes it; edit it freely"
+              style={{ flex: 1 }}
+            >
               <Input placeholder="eu-central-1" />
             </Form.Item>
           </div>

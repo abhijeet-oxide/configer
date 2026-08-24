@@ -270,6 +270,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/files/managed", s.managedValues)
 	mux.HandleFunc("POST /api/scan", s.scan)
 	mux.HandleFunc("GET /api/validation/presets", s.presets)
+	mux.HandleFunc("GET /api/regions", s.regionPlaces)
 	mux.HandleFunc("PUT /api/values", s.stageValue)
 	mux.HandleFunc("PUT /api/values/bulk", s.bulkStageValue)
 	mux.HandleFunc("DELETE /api/values", s.revertValue)

@@ -1,0 +1,168 @@
+/* Geography view: the estate on a map.
+   The sea is a flat wash and the land a muted grey - this is a diagram of
+   where machines are, not an atlas, and a saturated ocean would outshout the
+   pins that carry the meaning. The map fills its frame (preserveAspectRatio
+   slice) rather than being letterboxed inside it: a band of empty sea down one
+   side reads as a broken layout, not as geography. */
+.cf-geo {
+  position: relative;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--surface);
+  min-height: 300px;
+}
+.cf-geo-svg {
+  display: block;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  height: 52vh;
+  min-height: 300px;
+  max-height: 560px;
+}
+.cf-geo-sea {
+  fill: var(--surface-2);
+}
+.cf-geo-land {
+  fill: color-mix(in srgb, var(--text-3) 26%, var(--surface));
+  stroke: var(--surface);
+  stroke-width: 0.7;
+  vector-effect: non-scaling-stroke;
+}
+
+.cf-geo-pin {
+  cursor: pointer;
+}
+.cf-geo-core {
+  stroke: var(--surface);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  transition: r 120ms ease;
+}
+.cf-geo-halo {
+  opacity: 0.16;
+  stroke: none;
+  transition: opacity 120ms ease;
+}
+.cf-geo-pin:hover .cf-geo-halo,
+.cf-geo-pin.is-on .cf-geo-halo {
+  opacity: 0.36;
+}
+.cf-geo-count {
+  fill: #fff;
+  font-weight: 700;
+  text-anchor: middle;
+  pointer-events: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+/* The rail beside the map. A map is a poor list - pins overlap, a small one is
+   a hard target, and a keyboard cannot hover - so every place is also a row. */
+.cf-geo-rail {
+  flex: 0 0 236px;
+  border-inline-start: 1px solid var(--border);
+  background: var(--surface);
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cf-geo-place {
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 4px 6px 6px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.cf-geo-place.is-on {
+  border-color: color-mix(in srgb, var(--brand) 40%, var(--border));
+  background: color-mix(in srgb, var(--brand) 5%, var(--surface));
+}
+.cf-geo-place-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.cf-geo-place-n {
+  margin-inline-start: auto;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+.cf-geo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+.cf-geo-inst {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-2);
+  background: transparent;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: start;
+}
+.cf-geo-inst:hover {
+  color: var(--text);
+  background: var(--surface-2);
+}
+.cf-geo-inst .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cf-geo-veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-3);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  pointer-events: none;
+}
+.cf-geo-zoom {
+  font: inherit;
+  font-size: 12px;
+  color: var(--brand);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cf-geo-zoom:hover {
+  text-decoration: underline;
+}
+
+/* Under a phone the rail goes below the map rather than squeezing it. */
+@media (max-width: 720px) {
+  .cf-geo {
+    flex-direction: column;
+  }
+  .cf-geo-rail {
+    flex: 1 1 auto;
+    border-inline-start: 0;
+    border-top: 1px solid var(--border);
+    max-height: 240px;
+  }
+  .cf-geo-svg {
+    height: 34vh;
+  }
+}

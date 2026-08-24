@@ -375,8 +375,8 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
               // list can stay narrowed for a reason nothing on screen explains.
               if (k === "__all__") {
                 setCategory(null);
-                if (filters.invalidOnly || filters.overriddenOnly || filters.hideNA)
-                  setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
+                if (filters.invalidOnly || filters.overriddenOnly || filters.hideNA || filters.files.length)
+                  setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false, files: [] });
               } else {
                 setCategory(k);
               }

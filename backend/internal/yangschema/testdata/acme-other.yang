@@ -1,0 +1,26 @@
+module acme-other {
+    namespace "http://example.com/acme-other";
+    prefix other;
+
+    container backup {
+        list cell {
+            key "name";
+            // Same leaf name, different rules: a lookup that can only see the
+            // leaf must refuse to answer rather than pick one.
+            leaf name {
+                type string { length "1..4"; }
+            }
+            leaf power {
+                // Identical to the radio module's power in every way that
+                // makes a rule, so a leaf-only lookup is NOT ambiguous here.
+                description "Transmit power.";
+                units "dBm";
+                type int16 {
+                    range "-30..46" {
+                        error-message "Transmit power must sit between -30 and 46 dBm.";
+                    }
+                }
+            }
+        }
+    }
+}

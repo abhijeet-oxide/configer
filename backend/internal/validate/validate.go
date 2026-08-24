@@ -93,6 +93,9 @@ func Value(param model.Parameter, v any) Result {
 				Pattern: p.Pattern, Min: p.Min, Max: p.Max,
 				MinLength: p.MinLength, MaxLength: p.MaxLength,
 			}
+			// The preset's failure is worded by the preset, so the parameter's
+			// own message must not be borrowed for it.
+
 			if r := applyRules(rules, s); !r.Valid {
 				msg := p.Name + ": " + r.Message
 				if p.Example != "" {
@@ -253,12 +256,23 @@ var (
 
 // applyRules enforces the explicit rule fields against the value's string form.
 func applyRules(val model.Validation, s string) Result {
-	if val.Pattern != "" {
-		re, err := compiled(val.Pattern)
+	// Every pattern must hold, not just the first: a schema restricts a value
+	// through a chain of definitions and a value has to satisfy all of them.
+	// A rejection speaks in the schema's OWN words when it gave any, because
+	// "doesn't match the required format" tells the reader nothing they can act
+	// on and a regular expression tells them less.
+	for _, pattern := range append([]string{val.Pattern}, val.Patterns...) {
+		if pattern == "" {
+			continue
+		}
+		re, err := compiled(pattern)
 		if err != nil {
 			return invalid("invalid validation pattern")
 		}
 		if !re.MatchString(s) {
+			if val.ErrorMessage != "" {
+				return invalid(val.ErrorMessage)
+			}
 			return invalid("doesn't match the required format")
 		}
 	}
@@ -279,21 +293,31 @@ func applyRules(val model.Validation, s string) Result {
 	if val.Min != nil || val.Max != nil {
 		if f, err := strconv.ParseFloat(s, 64); err == nil {
 			if val.Min != nil && f < *val.Min {
-				return invalid(fmt.Sprintf("below minimum %v", *val.Min))
+				return refuse(val, fmt.Sprintf("below minimum %v", *val.Min))
 			}
 			if val.Max != nil && f > *val.Max {
-				return invalid(fmt.Sprintf("above maximum %v", *val.Max))
+				return refuse(val, fmt.Sprintf("above maximum %v", *val.Max))
 			}
 		}
 	}
 
 	n := len([]rune(s))
 	if val.MinLength != nil && n < *val.MinLength {
-		return invalid(fmt.Sprintf("shorter than %d characters", *val.MinLength))
+		return refuse(val, fmt.Sprintf("shorter than %d characters", *val.MinLength))
 	}
 	if val.MaxLength != nil && n > *val.MaxLength {
-		return invalid(fmt.Sprintf("longer than %d characters", *val.MaxLength))
+		return refuse(val, fmt.Sprintf("longer than %d characters", *val.MaxLength))
 	}
 
 	return ok()
+}
+
+// refuse states a rejection in the schema's own words when it supplied any,
+// falling back to the product's wording. A vendor sentence naming the setting
+// beats a generic one describing arithmetic.
+func refuse(val model.Validation, generic string) Result {
+	if val.ErrorMessage != "" {
+		return invalid(val.ErrorMessage)
+	}
+	return invalid(generic)
 }

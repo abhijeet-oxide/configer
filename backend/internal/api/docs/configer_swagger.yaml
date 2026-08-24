@@ -622,6 +622,14 @@ definitions:
     type: object
   model.Instance:
     properties:
+      description:
+        description: |-
+          Description is what this instance IS, in the owner's own words: which
+          site it serves, what it is for, what makes it different from its
+          neighbours. It is never derived from the product - every instance of one
+          product would then carry the same sentence, which tells a reader nothing
+          about the one in front of them.
+        type: string
       environment:
         type: string
       folder:
@@ -824,10 +832,26 @@ definitions:
         type: string
       atMost:
         type: string
+      constraints:
+        description: |-
+          Constraints are conditions stated in words because they cannot be
+          checked against a single value on its own: cross-field requirements,
+          uniqueness, alternatives of a union, disjoint ranges. They are DISPLAYED
+          and never enforced - a condition nobody can see is worse than one the
+          product admits it does not police.
+        items:
+          type: string
+        type: array
       enum:
         items:
           type: string
         type: array
+      errorMessage:
+        description: |-
+          ErrorMessage is the schema's own wording for a rejected value. When set
+          it replaces the generic "doesn't match the required format", which tells
+          the reader nothing about what the value was supposed to look like.
+        type: string
       max:
         type: number
       maxItems:
@@ -842,12 +866,31 @@ definitions:
         type: integer
       pattern:
         type: string
+      patterns:
+        description: |-
+          Patterns are ADDITIONAL regular expressions that must ALL hold on top of
+          Pattern. One field cannot carry them: a schema may restrict a value
+          through a chain of type definitions, each adding a pattern of its own,
+          and a value has to satisfy every one - collapsing them into the last one
+          read would quietly widen the rule.
+        items:
+          type: string
+        type: array
       preset:
         description: id of a predefined rule
         type: string
       required:
         type: boolean
       schemaRef:
+        description: |-
+          SchemaRef names the schema document the rules were derived from (a JSON
+          Schema, a YANG model), so the UI can say where a rule came from rather
+          than presenting a vendor's constraint as the product's opinion.
+        type: string
+      units:
+        description: |-
+          Units is the unit the value is expressed in ("seconds", "kbit/s") when
+          the schema said so. It is shown beside the editor, never parsed.
         type: string
     type: object
 info:

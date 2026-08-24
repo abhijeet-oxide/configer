@@ -35,6 +35,7 @@ import {
   SettingOutlined,
   UndoOutlined,
   FileSearchOutlined,
+  FileOutlined,
   EyeInvisibleOutlined,
   InfoCircleOutlined,
   CheckCircleOutlined,
@@ -76,7 +77,7 @@ import {
 } from "./grid/cells";
 import ValueDiff from "./ui/ValueDiff";
 import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
-import { envHex } from "../theme";
+import { canonicalEnv, envHex, envOptions } from "../theme";
 import { useIdentity } from "../identity";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useDebounced, useElementSize } from "../hooks";
@@ -528,6 +529,140 @@ function hl(text: string | undefined, q: string): React.ReactNode {
   return <>{parts}</>;
 }
 
+// FilePicker answers "which FILE am I looking at". On a product that spreads
+// one instance across a dozen documents - a deployment descriptor, a network
+// input, a certificate provision - the parameter tree groups by NAME, which is
+// the wrong axis for somebody who has been handed one file to review. Picking
+// none is the normal state and means every file; picking some narrows the grid
+// to the parameters those files actually carry.
+//
+// It sits beside the instance picker rather than inside the settings gear
+// because it is context ("what am I looking at"), not a view option.
+function FilePicker({
+  choices,
+  selected,
+  onChange,
+}: {
+  choices: { file: string; count: number }[];
+  selected: string[];
+  onChange: (files: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const picked = useMemo(() => new Set(selected), [selected]);
+  // A file the catalog no longer writes to must not keep filtering invisibly.
+  const live = useMemo(
+    () => selected.filter((f) => choices.some((c) => c.file === f)),
+    [selected, choices],
+  );
+  const needle = q.trim().toLowerCase();
+  const shown = needle ? choices.filter((c) => c.file.toLowerCase().includes(needle)) : choices;
+
+  if (choices.length < 2) return null;
+
+  const label =
+    live.length === 0
+      ? "All files"
+      : live.length === 1
+        ? live[0].split("/").pop()
+        : `${live.length} files`;
+
+  return (
+    <Dropdown
+      trigger={["click"]}
+      open={open}
+      onOpenChange={setOpen}
+      placement="bottomLeft"
+      popupRender={() => (
+        <div className="cf-pop" style={{ width: 340, maxWidth: "90vw" }}>
+          <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
+            <Input
+              size="small"
+              allowClear
+              autoFocus
+              prefix={<SearchOutlined style={{ opacity: 0.5 }} />}
+              placeholder="Filter files"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+          </div>
+          <div style={{ maxHeight: 320, overflow: "auto", padding: 4 }}>
+            {shown.length === 0 && (
+              <Typography.Text type="secondary" style={{ fontSize: 12, padding: 8, display: "block" }}>
+                No file matches “{q.trim()}”.
+              </Typography.Text>
+            )}
+            {shown.map((c) => (
+              <label
+                key={c.file}
+                className="cf-filepick-row"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "4px 6px",
+                  cursor: "pointer",
+                  borderRadius: 4,
+                }}
+              >
+                <Checkbox
+                  checked={picked.has(c.file)}
+                  onChange={() =>
+                    onChange(
+                      picked.has(c.file) ? live.filter((f) => f !== c.file) : [...live, c.file],
+                    )
+                  }
+                />
+                {/* The path is read from the RIGHT: the file name is what
+                    tells one document from another, the folders are context. */}
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span className="mono" style={{ fontSize: 12, display: "block", lineHeight: 1.3 }}>
+                    {c.file.split("/").pop()}
+                  </span>
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: 10,
+                      color: "var(--text-3)",
+                      display: "block",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      direction: "rtl",
+                      textAlign: "left",
+                    }}
+                  >
+                    {c.file}
+                  </span>
+                </span>
+                <Typography.Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
+                  {c.count}
+                </Typography.Text>
+              </label>
+            ))}
+          </div>
+          {live.length > 0 && (
+            <div style={{ padding: 6, borderTop: "1px solid var(--border)" }}>
+              <Button size="small" type="link" style={{ padding: 0 }} onClick={() => onChange([])}>
+                Show every file
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    >
+      <Tooltip title="Show only the parameters these files carry">
+        <Badge dot={live.length > 0} color="var(--c-review)" offset={[-4, 2]}>
+          <Button size="small" icon={<FileOutlined />} aria-label="Files shown" style={{ flexShrink: 0, maxWidth: 190 }}>
+            <span className="cf-instbtn-label">{label}</span>
+            <DownOutlined style={{ fontSize: 9, opacity: 0.55, marginInlineStart: 2 }} />
+          </Button>
+        </Badge>
+      </Tooltip>
+    </Dropdown>
+  );
+}
+
 // InstancePicker is THE control for "which instances am I looking at, and in
 // what order". It is one panel because it was one question: the toolbar used to
 // carry a view Select (all / one environment / one instance) AND a separate
@@ -627,7 +762,11 @@ function InstancePicker({
         {environments.map((e) => (
           <a
             key={e}
-            onClick={() => onSetHidden(instances.filter((i) => i.environment !== e).map((i) => i.name))}
+            onClick={() =>
+              onSetHidden(
+                instances.filter((i) => canonicalEnv(i.environment) !== e).map((i) => i.name),
+              )
+            }
             title={`Show only the ${e} instances`}
           >
             <span className="cf-instpick-dot" style={{ background: envHex(e) }} />
@@ -700,7 +839,7 @@ function BulkSetModal({
   const fromEnv = grid.instances.find((i) => i.name === from)?.environment;
   const others = useMemo(() => grid.instances.filter((i) => i.name !== from), [grid.instances, from]);
   const [sel, setSel] = useState<Set<string>>(
-    () => new Set(others.filter((i) => i.environment === fromEnv).map((i) => i.name)),
+    () => new Set(others.filter((i) => canonicalEnv(i.environment) === fromEnv).map((i) => i.name)),
   );
   const toggle = (name: string) =>
     setSel((s) => {
@@ -1254,6 +1393,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // each keystroke made the box itself feel like treacle. The pause is the one
   // a person makes between typing and expecting an answer.
   const lq = useDebounced(localQ, 140).trim().toLowerCase();
+  // Which files the grid is restricted to. A Set, because this is asked once
+  // per row on every keystroke and an array scan over a dozen files is not.
+  const fileFilter = useMemo(() => new Set(filters.files), [filters.files]);
   const baseRows = useMemo(() => {
     const filtered = grid.rows.filter((r) => {
       // categoryKey is a dotted NAME prefix selected in the tree.
@@ -1261,6 +1403,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         return false;
       if (q && !rowMatches(r, q, searchScope)) return false;
       if (lq && !rowMatches(r, lq, searchScope)) return false;
+      // A parameter belongs to a file if ANY of its bindings lives there: a
+      // deduplicated setting is genuinely part of every file it writes to.
+      if (fileFilter.size && !bindingsOf(r.param).some((b) => fileFilter.has(b.file))) return false;
       const cells = Object.values(r.cells);
       if (filters.invalidOnly && !cells.some((c) => !c.valid)) return false;
       if (filters.overriddenOnly && !cells.some((c) => c.set && c.source === "instance")) return false;
@@ -1271,7 +1416,23 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
     );
     return filtered;
-  }, [grid.rows, categoryKey, q, lq, filters, searchScope, treeOrder]);
+  }, [grid.rows, categoryKey, q, lq, filters, fileFilter, searchScope, treeOrder]);
+
+  // Every file the catalog writes to, with how many parameters each carries.
+  // Counted over ALL rows, never the filtered ones: the counts are a property
+  // of the estate, and numbers that moved while you picked from them would be
+  // describing the answer rather than the choice.
+  const fileChoices = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of grid.rows) {
+      for (const f of new Set(bindingsOf(r.param).map((b) => b.file))) {
+        counts.set(f, (counts.get(f) ?? 0) + 1);
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([file, count]) => ({ file, count }));
+  }, [grid.rows]);
 
   // Counts for the draft-status pills, taken before the pill filter applies
   // so the numbers stay stable while switching between them.
@@ -1874,7 +2035,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     visibleInstances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
-  const activeFilters = Number(filters.invalidOnly) + Number(filters.overriddenOnly) + Number(filters.hideNA);
+  const activeFilters =
+    Number(filters.invalidOnly) +
+    Number(filters.overriddenOnly) +
+    Number(filters.hideNA) +
+    Number(filters.files.length > 0);
 
   // Any dimension that narrows the visible rows. Several are independent (the
   // parameter tree's category, the Changed/Added/Removed pill, the row filters,
@@ -1890,7 +2055,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     setPill("all");
     setLocalQ("");
     setSearch("");
-    setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false });
+    setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false, files: [] });
   }, [setCategory, selectParam, setSearch, setFilters]);
 
   // Bring the active cell into view within the virtual body (vertical scrollTop
@@ -1992,7 +2157,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     setJump("param", r.param.id);
   };
 
-  const environments = [...new Set(grid.instances.map((i) => i.environment).filter(Boolean))] as string[];
+  // One environment however its source spelled it: a registry still holding
+  // "lab" beside a preset "Lab" would otherwise offer the same quick selection
+  // twice, each covering half the fleet.
+  const environments = envOptions(grid.instances.map((i) => i.environment)).filter((e) =>
+    grid.instances.some((i) => canonicalEnv(i.environment) === e),
+  );
 
   // Priority overflow: measure the toolbar and degrade the widest controls as
   // width tightens. Before the first measurement (width 0) everything shows, so
@@ -2113,8 +2283,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           ? shownInstances[0].name
           : environments.find(
                 (e) =>
-                  shownInstances.every((i) => i.environment === e) &&
-                  shownInstances.length === grid.instances.filter((i) => i.environment === e).length,
+                  shownInstances.every((i) => canonicalEnv(i.environment) === e) &&
+                  shownInstances.length ===
+                    grid.instances.filter((i) => canonicalEnv(i.environment) === e).length,
               ) ??
             `${shownInstances.length} of ${grid.instances.length} instances`;
 
@@ -2192,6 +2363,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             </Badge>
           </Tooltip>
         </Dropdown>
+        <FilePicker
+          choices={fileChoices}
+          selected={filters.files}
+          onChange={(files) => setFilters({ files })}
+        />
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Grouping. It answers two everyday questions - "which of these are
             set the same across the fleet, and which one is the odd one out"

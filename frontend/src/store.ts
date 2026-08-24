@@ -210,6 +210,10 @@ export interface RowFilters {
   invalidOnly: boolean;
   overriddenOnly: boolean;
   hideNA: boolean;
+  /** binding files to restrict the rows to; empty means every file. A large
+   *  estate spreads one instance across a dozen documents, and "what does THIS
+   *  file configure" is the question somebody reviewing that document has. */
+  files: string[];
 }
 
 interface UIState {
@@ -378,7 +382,7 @@ export const useUI = create<UIState>((set) => ({
   compareLeft: null,
   compareRight: null,
   search: "",
-  filters: { invalidOnly: false, overriddenOnly: false, hideNA: false },
+  filters: { invalidOnly: false, overriddenOnly: false, hideNA: false, files: [] },
   prefs: loadPrefs(),
   navCollapsed: false,
   editorFocus: false,

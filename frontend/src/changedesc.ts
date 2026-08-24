@@ -41,6 +41,7 @@ const INSTANCE_FIELDS: { key: string; label: string }[] = [
   { key: "zone", label: "Zone" },
   { key: "site", label: "Site" },
   { key: "softwareVersion", label: "Software version" },
+  { key: "description", label: "Description" },
   { key: "versionName", label: "Version name" },
   { key: "status", label: "Status" },
   { key: "labels", label: "Labels" },

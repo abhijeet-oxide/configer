@@ -1,0 +1,116 @@
+# Region rules: an instance's name usually says where it runs, and these turn
+# that into its region field - so a new estate arrives sorted by place instead
+# of with a column somebody fills in by hand a hundred times.
+#
+# Matching is case-insensitive. By default a pattern must STAND ALONE in the
+# name, bounded by anything that is not a letter or digit ("edge-tx-02" is
+# Texas; "canyon-01" is not California). A site code runs straight into the rest
+# of the identifier, so those opt in with "where: prefix". The longest match
+# wins, whatever the order here.
+#
+# Defaults, not a fixed vocabulary: a repository's own .configer/regions.yaml
+# wins over anything here, and detection only ever FILLS IN a region nobody set.
+#
+# lat/lon are optional and only place the region on the geography map. A rule
+# without them still names the region; it just gets no pin.
+
+rules:
+  # Site codes. The reason "where: prefix" exists; copy this section for your
+  # own estate.
+  - { match: wnv, where: prefix, region: Warrenville, lat: 41.8236, lon: -88.1734 }
+  - { match: atl, where: prefix, region: Atlanta, lat: 33.7490, lon: -84.3880 }
+  - { match: chc, where: prefix, region: Chicago, lat: 41.8781, lon: -87.6298 }
+  - { match: cle, where: prefix, region: Cleveland, lat: 41.4993, lon: -81.6944 }
+  - { match: dll, where: prefix, region: Dallas, lat: 32.7767, lon: -96.7970 }
+  - { match: hst, where: prefix, region: Houston, lat: 29.7604, lon: -95.3698 }
+  - { match: ksc, where: prefix, region: "Kansas City", lat: 39.0997, lon: -94.5786 }
+  - { match: nsv, where: prefix, region: Nashville, lat: 36.1627, lon: -86.7816 }
+  - { match: nyc, where: prefix, region: "New York", lat: 40.7128, lon: -74.0060 }
+  - { match: okl, where: prefix, region: Oakland, lat: 37.8044, lon: -122.2712 }
+  - { match: rlg, where: prefix, region: Raleigh, lat: 35.7796, lon: -78.6382 }
+  - { match: scr, where: prefix, region: Sacramento, lat: 38.5816, lon: -121.4944 }
+  - { match: sho, where: prefix, region: "Sherman Oaks", lat: 34.1508, lon: -118.4490 }
+  - { match: sna, where: prefix, region: "San Antonio", lat: 29.4241, lon: -98.4936 }
+  - { match: stt, where: prefix, region: Seattle, lat: 47.6062, lon: -122.3321 }
+  - { match: wah, where: prefix, region: "Washington DC", lat: 38.9072, lon: -77.0369 }
+  - { match: way, where: prefix, region: Wayne, lat: 40.0437, lon: -75.3877 }
+  - { match: wnd, where: prefix, region: Windermere, lat: 28.4958, lon: -81.5348 }
+
+  # Cloud regions, spelled the way the providers spell them - long and
+  # delimited, so they need no opt-in.
+  - { match: us-east-1, region: "N. Virginia (us-east-1)", lat: 39.0438, lon: -77.4874 }
+  - { match: us-east-2, region: "Ohio (us-east-2)", lat: 39.9612, lon: -82.9988 }
+  - { match: us-west-1, region: "N. California (us-west-1)", lat: 37.3541, lon: -121.9552 }
+  - { match: us-west-2, region: "Oregon (us-west-2)", lat: 45.8399, lon: -119.7006 }
+  - { match: ca-central-1, region: "Canada Central (ca-central-1)", lat: 45.5019, lon: -73.5674 }
+  - { match: eu-west-1, region: "Ireland (eu-west-1)", lat: 53.3498, lon: -6.2603 }
+  - { match: eu-west-2, region: "London (eu-west-2)", lat: 51.5074, lon: -0.1278 }
+  - { match: eu-central-1, region: "Frankfurt (eu-central-1)", lat: 50.1109, lon: 8.6821 }
+  - { match: ap-south-1, region: "Mumbai (ap-south-1)", lat: 19.0760, lon: 72.8777 }
+  - { match: ap-southeast-1, region: "Singapore (ap-southeast-1)", lat: 1.3521, lon: 103.8198 }
+  - { match: ap-southeast-2, region: "Sydney (ap-southeast-2)", lat: -33.8688, lon: 151.2093 }
+  - { match: ap-northeast-1, region: "Tokyo (ap-northeast-1)", lat: 35.6762, lon: 139.6503 }
+  - { match: eastus, region: "East US (eastus)", lat: 37.3719, lon: -79.8164 }
+  - { match: eastus2, region: "East US 2 (eastus2)", lat: 36.6681, lon: -78.3889 }
+  - { match: centralus, region: "Central US (centralus)", lat: 41.5908, lon: -93.6208 }
+  - { match: westus2, region: "West US 2 (westus2)", lat: 47.2330, lon: -119.8520 }
+  - { match: westus3, region: "West US 3 (westus3)", lat: 33.4484, lon: -112.0740 }
+  - { match: northeurope, region: "North Europe (northeurope)", lat: 53.3478, lon: -6.2597 }
+  - { match: westeurope, region: "West Europe (westeurope)", lat: 52.3667, lon: 4.8945 }
+  - { match: uksouth, region: "UK South (uksouth)", lat: 50.9410, lon: -0.7990 }
+  - { match: southeastasia, region: "Southeast Asia (southeastasia)", lat: 1.2830, lon: 103.8330 }
+  - { match: australiaeast, region: "Australia East (australiaeast)", lat: -33.8600, lon: 151.2094 }
+
+  # US states. Two letters are far too short to hunt for inside a word, so
+  # these stand alone or not at all. Coordinates are the state's centre.
+  - { match: al, region: Alabama, lat: 32.8067, lon: -86.7911 }
+  - { match: ak, region: Alaska, lat: 61.3707, lon: -152.4044 }
+  - { match: az, region: Arizona, lat: 33.7298, lon: -111.4312 }
+  - { match: ar, region: Arkansas, lat: 34.9697, lon: -92.3731 }
+  - { match: ca, region: California, lat: 36.1162, lon: -119.6816 }
+  - { match: co, region: Colorado, lat: 39.0598, lon: -105.3111 }
+  - { match: ct, region: Connecticut, lat: 41.5978, lon: -72.7554 }
+  - { match: de, region: Delaware, lat: 39.3185, lon: -75.5071 }
+  - { match: fl, region: Florida, lat: 27.7663, lon: -81.6868 }
+  - { match: ga, region: Georgia, lat: 33.0406, lon: -83.6431 }
+  - { match: hi, region: Hawaii, lat: 21.0943, lon: -157.4983 }
+  - { match: id, region: Idaho, lat: 44.2405, lon: -114.4788 }
+  - { match: il, region: Illinois, lat: 40.3495, lon: -88.9861 }
+  - { match: in, region: Indiana, lat: 39.8494, lon: -86.2583 }
+  - { match: ia, region: Iowa, lat: 42.0115, lon: -93.2105 }
+  - { match: ks, region: Kansas, lat: 38.5266, lon: -96.7265 }
+  - { match: ky, region: Kentucky, lat: 37.6681, lon: -84.6701 }
+  - { match: la, region: Louisiana, lat: 31.1695, lon: -91.8678 }
+  - { match: me, region: Maine, lat: 44.6939, lon: -69.3819 }
+  - { match: md, region: Maryland, lat: 39.0639, lon: -76.8021 }
+  - { match: ma, region: Massachusetts, lat: 42.2302, lon: -71.5301 }
+  - { match: mi, region: Michigan, lat: 43.3266, lon: -84.5361 }
+  - { match: mn, region: Minnesota, lat: 45.6945, lon: -93.9002 }
+  - { match: ms, region: Mississippi, lat: 32.7416, lon: -89.6787 }
+  - { match: mo, region: Missouri, lat: 38.4561, lon: -92.2884 }
+  - { match: mt, region: Montana, lat: 46.9219, lon: -110.4544 }
+  - { match: ne, region: Nebraska, lat: 41.1254, lon: -98.2681 }
+  - { match: nv, region: Nevada, lat: 38.3135, lon: -117.0554 }
+  - { match: nh, region: "New Hampshire", lat: 43.4525, lon: -71.5639 }
+  - { match: nj, region: "New Jersey", lat: 40.2989, lon: -74.5210 }
+  - { match: nm, region: "New Mexico", lat: 34.8405, lon: -106.2485 }
+  - { match: ny, region: "New York", lat: 42.1657, lon: -74.9481 }
+  - { match: nc, region: "North Carolina", lat: 35.6301, lon: -79.8064 }
+  - { match: nd, region: "North Dakota", lat: 47.5289, lon: -99.7840 }
+  - { match: oh, region: Ohio, lat: 40.3888, lon: -82.7649 }
+  - { match: ok, region: Oklahoma, lat: 35.5653, lon: -96.9289 }
+  - { match: or, region: Oregon, lat: 44.5720, lon: -122.0709 }
+  - { match: pa, region: Pennsylvania, lat: 40.5908, lon: -77.2098 }
+  - { match: ri, region: "Rhode Island", lat: 41.6809, lon: -71.5118 }
+  - { match: sc, region: "South Carolina", lat: 33.8569, lon: -80.9450 }
+  - { match: sd, region: "South Dakota", lat: 44.2998, lon: -99.4388 }
+  - { match: tn, region: Tennessee, lat: 35.7478, lon: -86.6923 }
+  - { match: tx, region: Texas, lat: 31.0545, lon: -97.5635 }
+  - { match: ut, region: Utah, lat: 40.1500, lon: -111.8624 }
+  - { match: vt, region: Vermont, lat: 44.0459, lon: -72.7107 }
+  - { match: va, region: Virginia, lat: 37.7693, lon: -78.1700 }
+  - { match: wa, region: Washington, lat: 47.4009, lon: -121.4905 }
+  - { match: wv, region: "West Virginia", lat: 38.4912, lon: -80.9545 }
+  - { match: wi, region: Wisconsin, lat: 44.2685, lon: -89.6165 }
+  - { match: wy, region: Wyoming, lat: 42.7560, lon: -107.3025 }
+  - { match: dc, region: "District of Columbia", lat: 38.8974, lon: -77.0268 }

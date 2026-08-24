@@ -1,5 +1,5 @@
 import { Tag } from "antd";
-import { envHex } from "../theme";
+import { canonicalEnv, envHex } from "../theme";
 
 // EnvTag is THE way an environment is named anywhere in the product: a pale
 // tint of the environment's identity color (theme.ts envColors - production
@@ -17,6 +17,9 @@ export default function EnvTag({
   style?: React.CSSProperties;
 }) {
   const hex = envHex(env);
+  // A name reaches here spelled however its source wrote it; one environment
+  // must read as one environment wherever it is named.
+  const label = canonicalEnv(env);
   return (
     <Tag
       style={{
@@ -37,7 +40,7 @@ export default function EnvTag({
           marginInlineEnd: 6,
         }}
       />
-      {env || "unspecified"}
+      {label || "unspecified"}
       {count !== undefined ? ` ×${count}` : ""}
     </Tag>
   );

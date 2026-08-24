@@ -73,7 +73,7 @@ export default function MapSourceModal({
       onOk={() => save.mutate()}
       okText="Map"
       okButtonProps={{ disabled: !ready, loading: save.isPending }}
-      destroyOnClose
+      destroyOnHidden
     >
       <Form layout="vertical">
         <Form.Item label="Parameter">

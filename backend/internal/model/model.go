@@ -119,9 +119,9 @@ type Parameter struct {
 	// "." - so a client may always fall back to the split.
 	NameSegments []string  `yaml:"-" json:"nameSegments,omitempty"`
 	DisplayName  string    `yaml:"displayName,omitempty" json:"displayName,omitempty"`
-	Description string    `yaml:"description,omitempty" json:"description,omitempty"`
-	Category    string    `yaml:"category" json:"category"`
-	Type        ParamType `yaml:"type" json:"type"`
+	Description  string    `yaml:"description,omitempty" json:"description,omitempty"`
+	Category     string    `yaml:"category" json:"category"`
+	Type         ParamType `yaml:"type" json:"type"`
 	// ItemType is the element type when Type is "list".
 	ItemType ParamType `yaml:"itemType,omitempty" json:"itemType,omitempty"`
 	Scope    Scope     `yaml:"scope" json:"scope"`
@@ -233,8 +233,14 @@ func IsTemplateExpression(v any) bool {
 // predefined rule library (Preset), or entered by the user. Empty fields are
 // ignored. Explicit fields apply on top of the referenced preset.
 type Validation struct {
-	Required  bool     `yaml:"required,omitempty" json:"required,omitempty"`
-	Pattern   string   `yaml:"pattern,omitempty" json:"pattern,omitempty"`
+	Required bool   `yaml:"required,omitempty" json:"required,omitempty"`
+	Pattern  string `yaml:"pattern,omitempty" json:"pattern,omitempty"`
+	// Patterns are ADDITIONAL regular expressions that must ALL hold on top of
+	// Pattern. One field cannot carry them: a schema may restrict a value
+	// through a chain of type definitions, each adding a pattern of its own,
+	// and a value has to satisfy every one - collapsing them into the last one
+	// read would quietly widen the rule.
+	Patterns  []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
 	Enum      []string `yaml:"enum,omitempty" json:"enum,omitempty"`
 	Min       *float64 `yaml:"min,omitempty" json:"min,omitempty"`
 	Max       *float64 `yaml:"max,omitempty" json:"max,omitempty"`
@@ -242,8 +248,24 @@ type Validation struct {
 	MaxLength *int     `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
 	MinItems  *int     `yaml:"minItems,omitempty" json:"minItems,omitempty"`
 	MaxItems  *int     `yaml:"maxItems,omitempty" json:"maxItems,omitempty"`
-	Preset    string   `yaml:"preset,omitempty" json:"preset,omitempty"` // id of a predefined rule
-	SchemaRef string   `yaml:"schemaRef,omitempty" json:"schemaRef,omitempty"`
+	// Units is the unit the value is expressed in ("seconds", "kbit/s") when
+	// the schema said so. It is shown beside the editor, never parsed.
+	Units string `yaml:"units,omitempty" json:"units,omitempty"`
+	// ErrorMessage is the schema's own wording for a rejected value. When set
+	// it replaces the generic "doesn't match the required format", which tells
+	// the reader nothing about what the value was supposed to look like.
+	ErrorMessage string `yaml:"errorMessage,omitempty" json:"errorMessage,omitempty"`
+	// Constraints are conditions stated in words because they cannot be
+	// checked against a single value on its own: cross-field requirements,
+	// uniqueness, alternatives of a union, disjoint ranges. They are DISPLAYED
+	// and never enforced - a condition nobody can see is worse than one the
+	// product admits it does not police.
+	Constraints []string `yaml:"constraints,omitempty" json:"constraints,omitempty"`
+	Preset      string   `yaml:"preset,omitempty" json:"preset,omitempty"` // id of a predefined rule
+	// SchemaRef names the schema document the rules were derived from (a JSON
+	// Schema, a YANG model), so the UI can say where a rule came from rather
+	// than presenting a vendor's constraint as the product's opinion.
+	SchemaRef string `yaml:"schemaRef,omitempty" json:"schemaRef,omitempty"`
 	// AtLeast / AtMost name another parameter (by id) whose effective value at
 	// the same instance bounds this one: a resource limit must be AtLeast its
 	// request, a request AtMost its limit. The comparison is quantity-aware
@@ -267,14 +289,20 @@ type InstanceRegistry struct {
 // folder in the repository (its files hold the instance's values).
 type Instance struct {
 	Name string `yaml:"name" json:"name"`
+	// Description is what this instance IS, in the owner's own words: which
+	// site it serves, what it is for, what makes it different from its
+	// neighbours. It is never derived from the product - every instance of one
+	// product would then carry the same sentence, which tells a reader nothing
+	// about the one in front of them.
+	Description string `yaml:"description,omitempty" json:"description,omitempty"`
 	// Folder is the instance's directory in the repository, relative to the
 	// root (e.g. "instances/prod-us-east" or "overlays/prod"). Template
 	// bindings expand "{folder}" to this value.
-	Folder          string            `yaml:"folder,omitempty" json:"folder,omitempty"`
-	Environment     string            `yaml:"environment,omitempty" json:"environment,omitempty"`
-	Region          string            `yaml:"region,omitempty" json:"region,omitempty"`
-	Zone            string            `yaml:"zone,omitempty" json:"zone,omitempty"`
-	Site            string            `yaml:"site,omitempty" json:"site,omitempty"`
+	Folder      string `yaml:"folder,omitempty" json:"folder,omitempty"`
+	Environment string `yaml:"environment,omitempty" json:"environment,omitempty"`
+	Region      string `yaml:"region,omitempty" json:"region,omitempty"`
+	Zone        string `yaml:"zone,omitempty" json:"zone,omitempty"`
+	Site        string `yaml:"site,omitempty" json:"site,omitempty"`
 	// SoftwareVersion is the version IDENTIFIER (e.g. "v24.3.1") - stable, what
 	// versionIntroduced/Deprecated compare against. VersionName is an optional
 	// human label for the same release (e.g. "Titanium"); when empty it shows

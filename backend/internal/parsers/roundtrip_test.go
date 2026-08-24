@@ -47,7 +47,7 @@ func TestEveryScannedPathIsWritable(t *testing.T) {
 		"awkward keys": `{
   "value": {
     "query.dependencies": { "dagMaxNumService": 200 },
-    "sbc-storage": { "nodeSelector": {} },
+    "object-store": { "nodeSelector": {} },
     "empty": { "": "blank key" }
   }
 }`,
@@ -58,11 +58,11 @@ func TestEveryScannedPathIsWritable(t *testing.T) {
 
 	for name, src := range docs {
 		t.Run(name, func(t *testing.T) {
-			p, err := reg.ParserFor("ns_input.json", []byte(src))
+			p, err := reg.ParserFor("values.json", []byte(src))
 			if err != nil {
 				t.Fatal(err)
 			}
-			cands, err := p.Extract("ns_input.json", []byte(src))
+			cands, err := p.Extract("values.json", []byte(src))
 			if err != nil {
 				t.Fatal(err)
 			}

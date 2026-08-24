@@ -12,6 +12,7 @@ import { notifyError, setNotifier } from './notify'
 import './styles.css'
 import './tokens.css'
 import './index.css'
+import './geo.css'
 
 // isRetryable governs automatic retries: a client error (4xx) will never
 // succeed on retry, so only network blips, timeouts, rate limits (429), and

@@ -18,7 +18,9 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/plugin"
+	"github.com/abhijeet-oxide/configer/backend/internal/productmeta"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
+	"github.com/abhijeet-oxide/configer/backend/internal/yangschema"
 )
 
 // Result is the discovery proposal shown to the user before initializing.
@@ -34,6 +36,11 @@ type Result struct {
 	Parameters  []model.Parameter    `json:"parameters"`
 	SharedFiles []string             `json:"sharedFiles,omitempty"`
 	Skipped     []ingest.SkippedFile `json:"skipped,omitempty"`
+	// Product is what a product descriptor in the repository says the
+	// application IS - its name, its human title, its release. It is a
+	// proposal like everything else here: the wizard offers it and the user
+	// may write over it. Absent for a repository that ships no descriptor.
+	Product *productmeta.Descriptor `json:"product,omitempty"`
 }
 
 // nonNil turns a nil slice into an empty one, so it marshals as [] not null.
@@ -79,6 +86,13 @@ func DiscoverWith(root string, reg *plugin.Registry, ignore project.Ignore, opts
 			Environment: li.Environment,
 			Status:      "active",
 		})
+	}
+	// An instance that ships a product descriptor knows its own release; that
+	// is also what selects the schema models the parameters are checked against.
+	res.Product = applyDescriptors(root, res.Instances)
+	version := ""
+	if res.Product != nil {
+		version = res.Product.Version
 	}
 
 	// Partition scanned files: inside an instance folder (instance layer,
@@ -309,19 +323,31 @@ func DiscoverWith(root string, reg *plugin.Registry, ignore project.Ignore, opts
 	// Attach schema-derived validation and assign unique IDs. One schema cache
 	// serves every parameter, so a shared schema file is read + parsed once.
 	schemas := schemaCache{}
+	models := loadModels(root, version)
 	used := map[string]bool{}
+	nodesByID := map[string]*yangschema.Node{}
 	for i := range params {
 		attachSchema(root, schemas, &params[i], res.Instances)
-		// After the schema has had first say, sharpen still-generic parameters
-		// into their well-known operational types (CPU/memory/duration/…).
-		refineType(&params[i])
+		// A shipped schema model is the last word: it states what the setting IS,
+		// so it replaces both the JSON-Schema reading and the inference below
+		// rather than being layered under them.
+		node, hasModel := attachModel(models, &params[i])
+		if !hasModel {
+			// After the schema has had first say, sharpen still-generic parameters
+			// into their well-known operational types (CPU/memory/duration/…).
+			refineType(&params[i])
+		}
 		id := slugify(params[i].Name)
 		for n := 2; used[id]; n++ {
 			id = fmt.Sprintf("%s-%d", slugify(params[i].Name), n)
 		}
 		used[id] = true
 		params[i].ID = id
+		if node != nil {
+			nodesByID[id] = node
+		}
 	}
+	linkModelDependencies(models, params, nodesByID)
 	// With IDs assigned, wire resource limit >= request constraints across pairs.
 	linkResourceConstraints(params)
 

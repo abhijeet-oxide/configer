@@ -37,6 +37,47 @@ export const envHex = (env: string | undefined): string =>
 // these are only defaults; any custom value is accepted.
 export const ENV_PRESETS = ["Development", "Lab", "Staging", "Sandbox", "Prod", "Nonprod"];
 
+// An environment is ONE environment however it was spelled. Names reach the
+// product from several places that do not agree on case - a product
+// descriptor writes "lab", the folder-name guess writes "development", a
+// person types "Lab" - and comparing them literally turns one environment into
+// three: three chips, three colours, three entries in every picker, and a
+// fleet that cannot be selected by environment any more.
+//
+// So every name is resolved to the spelling above before it is shown, stored
+// or compared. Only CASE is reconciled, never wording: "prod" and "production"
+// are left as the different words they are, because deciding they mean the
+// same thing is a judgement about somebody's estate rather than about
+// typography.
+export function canonicalEnv(env: string): string;
+export function canonicalEnv(env: undefined): undefined;
+export function canonicalEnv(env: string | undefined): string | undefined;
+export function canonicalEnv(env: string | undefined): string | undefined {
+  if (!env) return env;
+  const trimmed = env.trim();
+  return ENV_PRESETS.find((p) => p.toLowerCase() === trimmed.toLowerCase()) ?? trimmed;
+}
+
+// The choices an environment picker offers: the presets plus whatever the
+// estate already uses, with names that differ only in case folded together.
+export function envOptions(known: (string | undefined)[] = []): string[] {
+  const seen = new Map<string, string>();
+  for (const name of [...ENV_PRESETS, ...known]) {
+    const value = canonicalEnv(name);
+    if (!value) continue;
+    if (!seen.has(value.toLowerCase())) seen.set(value.toLowerCase(), value);
+  }
+  return [...seen.values()];
+}
+
+// Whether an environment label denotes production, so a change touching it can
+// be weighted more heavily at review time. Both spellings, any case - the same
+// question the server answers, asked the same way.
+export function isProductionEnv(env: string | undefined): boolean {
+  const name = env?.trim().toLowerCase();
+  return name === "production" || name === "prod";
+}
+
 export function buildTheme(
   mode: Mode,
   scale: FontScale = "normal",

@@ -37,6 +37,7 @@ import phCloudCheck from "@iconify-icons/ph/cloud-check";
 import phCloudArrowUp from "@iconify-icons/ph/cloud-arrow-up";
 import phStack from "@iconify-icons/ph/stack";
 import phCode from "@iconify-icons/ph/code";
+import biRegex from "@iconify-icons/bi/regex";
 import phArticle from "@iconify-icons/ph/article";
 import phCopy from "@iconify-icons/ph/copy";
 import phDatabase from "@iconify-icons/ph/database";
@@ -141,7 +142,12 @@ function make(slug: string, icon: IconifyIcon, spinDefault = false) {
       (className ? ` ${className}` : "");
     return (
       <span role="img" aria-label={slug} title={title} onClick={onClick} className={cls} style={style}>
-        <Icon icon={icon} />
+        {/* A glyph that did not resolve - a mistyped package, a set that never
+            had the icon - leaves a hole rather than taking the screen with it.
+            Handed undefined, Iconify goes looking for an icon NAMED
+            "undefined" over the network and throws, which is how one wrong
+            import crashed a whole panel. */}
+        {icon ? <Icon icon={icon} /> : null}
       </span>
     );
   }
@@ -279,6 +285,7 @@ export const MergeCellsOutlined = make("merge-cells", phRows);
 export const GithubOutlined = make("github", phGithubLogo);
 export const HistoryOutlined = make("history", phClockCounterClockwise);
 export const CodeOutlined = make("code", phCode);
+export const RegexOutlined = make("regex", biRegex);
 // Prose: a rendered document rather than its source.
 export const ReadOutlined = make("article", phArticle);
 export const DatabaseOutlined = make("database", phDatabase);

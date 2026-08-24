@@ -4713,6 +4713,10 @@
         "model.Instance": {
             "type": "object",
             "properties": {
+                "description": {
+                    "description": "Description is what this instance IS, in the owner's own words: which\nsite it serves, what it is for, what makes it different from its\nneighbours. It is never derived from the product - every instance of one\nproduct would then carry the same sentence, which tells a reader nothing\nabout the one in front of them.",
+                    "type": "string"
+                },
                 "environment": {
                     "type": "string"
                 },
@@ -4933,11 +4937,22 @@
                 "atMost": {
                     "type": "string"
                 },
+                "constraints": {
+                    "description": "Constraints are conditions stated in words because they cannot be\nchecked against a single value on its own: cross-field requirements,\nuniqueness, alternatives of a union, disjoint ranges. They are DISPLAYED\nand never enforced - a condition nobody can see is worse than one the\nproduct admits it does not police.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "enum": {
                     "type": "array",
                     "items": {
                         "type": "string"
                     }
+                },
+                "errorMessage": {
+                    "description": "ErrorMessage is the schema's own wording for a rejected value. When set\nit replaces the generic \"doesn't match the required format\", which tells\nthe reader nothing about what the value was supposed to look like.",
+                    "type": "string"
                 },
                 "max": {
                     "type": "number"
@@ -4960,6 +4975,13 @@
                 "pattern": {
                     "type": "string"
                 },
+                "patterns": {
+                    "description": "Patterns are ADDITIONAL regular expressions that must ALL hold on top of\nPattern. One field cannot carry them: a schema may restrict a value\nthrough a chain of type definitions, each adding a pattern of its own,\nand a value has to satisfy every one - collapsing them into the last one\nread would quietly widen the rule.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "preset": {
                     "description": "id of a predefined rule",
                     "type": "string"
@@ -4968,6 +4990,11 @@
                     "type": "boolean"
                 },
                 "schemaRef": {
+                    "description": "SchemaRef names the schema document the rules were derived from (a JSON\nSchema, a YANG model), so the UI can say where a rule came from rather\nthan presenting a vendor's constraint as the product's opinion.",
+                    "type": "string"
+                },
+                "units": {
+                    "description": "Units is the unit the value is expressed in (\"seconds\", \"kbit/s\") when\nthe schema said so. It is shown beside the editor, never parsed.",
                     "type": "string"
                 }
             }

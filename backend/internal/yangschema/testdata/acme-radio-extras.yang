@@ -1,0 +1,21 @@
+submodule acme-radio-extras {
+    belongs-to acme-radio {
+        prefix acme;
+    }
+    import acme-extensions { prefix x; }
+
+    // The tree this attaches to is declared in another file. Reading only what
+    // this file declares in place would find nothing at all.
+    augment "/radio/cell" {
+        leaf sending-state {
+            type enumeration {
+                enum enable { value 1; }
+                enum disable { value 2; }
+            }
+            description
+                "Enables or disables the sending of information alarms.";
+            default "enable";
+            x:label "Alarm Send State";
+        }
+    }
+}

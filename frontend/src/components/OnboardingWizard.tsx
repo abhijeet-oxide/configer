@@ -30,7 +30,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, type Binding, type Instance, type Parameter, type SkippedFile } from "../api";
 import { groupSkipped, manageWarning, originSentence, SKIP_EXPLANATIONS, SKIP_REASONS } from "../skipped";
-import { ENV_PRESETS } from "../theme";
+import { canonicalEnv, envOptions } from "../theme";
 import { useUI } from "../store";
 import { InlineNotice, Stepper } from "./ui";
 import FileExplorer from "./FileExplorer";
@@ -344,7 +344,31 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   const found = useMemo(() => d?.parameters ?? [], [d]);
   const skipped = useMemo(() => d?.skipped ?? [], [d]);
 
-  const insts = useMemo(() => instances ?? d?.instances ?? [], [instances, d]);
+  // Environments reach the proposal spelled the way their source wrote them -
+  // a product descriptor says "lab", the folder-name guess says "development" -
+  // and left alone each becomes a NEW environment beside the one it already is.
+  // Resolving here fixes the picker, the chips and what is written on Next in
+  // one place, because all three read this list.
+  const insts = useMemo(
+    () =>
+      (instances ?? d?.instances ?? []).map((i) =>
+        i.environment ? { ...i, environment: canonicalEnv(i.environment) } : i,
+      ),
+    [instances, d],
+  );
+
+  // A repository that ships a product descriptor already knows what it is.
+  // The folder name is a fallback for repositories that do not, so the moment
+  // a real name arrives it replaces the guess - but only while the fields are
+  // still the guess: once somebody has typed, what they typed stands.
+  const product = d?.product;
+  const [nameTouched, setNameTouched] = useState(false);
+  const [descTouched, setDescTouched] = useState(false);
+  useEffect(() => {
+    if (!product) return;
+    if (!nameTouched && product.product) setAppName(product.product);
+    if (!descTouched && product.displayName) setDescription(product.displayName);
+  }, [product, nameTouched, descTouched]);
   // Distinct configuration formats found across every discovered parameter -
   // the "3 formats" part of the discovery summary.
   const discoveredFormats = useMemo(() => {
@@ -374,16 +398,34 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
     [allFiles, uncheckedFiles],
   );
 
-  // A parameter survives if at least one of its files is still selected.
-  const includedByFiles = (p: Parameter): boolean => {
-    const files = filesByParam.get(p.id) ?? [];
-    if (files.length === 0) return true; // design-phase params have no file
-    return files.some((f) => !uncheckedFiles.has(f));
+  // A parameter survives if at least one of its files is still selected - and
+  // it survives WITHOUT the bindings into the files that were not. Keeping
+  // them was the bug: unticking every file but the XML still wrote a catalog
+  // mapping the setting to eighteen JSON documents, so the next edit fanned
+  // out into files the user had just said to leave alone. Unticking a file has
+  // to mean the same thing everywhere - it is not managed.
+  //
+  // A templated binding is one binding covering every instance, so it only
+  // goes when ALL of its files are unticked; there is no way to spell "this
+  // file for that instance only" in a single binding, and inventing one would
+  // put the catalog at odds with the layout.
+  const keptBindings = (p: Parameter): Parameter => {
+    const kept = bindingsOf(p).filter((b) =>
+      filesOfBinding(b, insts).some((f) => !uncheckedFiles.has(f)),
+    );
+    return kept.length === bindingsOf(p).length ? p : { ...p, bindings: kept };
   };
   const fileIncludedParams = useMemo(
-    () => found.filter(includedByFiles),
+    () =>
+      found
+        .filter((p) => {
+          const own = filesByParam.get(p.id) ?? [];
+          if (own.length === 0) return true; // design-phase params have no file
+          return own.some((f) => !uncheckedFiles.has(f));
+        })
+        .map(keptBindings),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [found, uncheckedFiles, filesByParam],
+    [found, uncheckedFiles, filesByParam, insts],
   );
   const chosenParams = useMemo(
     () => fileIncludedParams.filter((p) => !deselected.has(p.id)),
@@ -585,17 +627,36 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               <Form.Item label="Application name" required style={{ marginBottom: 0 }}>
                 <Input
                   value={appName}
-                  onChange={(e) => setAppName(e.target.value)}
+                  onChange={(e) => {
+                    setNameTouched(true);
+                    setAppName(e.target.value);
+                  }}
                   placeholder="e.g. telco-platform"
                 />
               </Form.Item>
               <Form.Item label="Description" style={{ marginBottom: 0 }}>
                 <Input
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescTouched(true);
+                    setDescription(e.target.value);
+                  }}
                   placeholder="What does this application configure?"
                 />
               </Form.Item>
+              {/* Where the name came from. A field that filled itself in has to
+                  say who filled it, or the user is left deciding whether to
+                  trust a value with no provenance. */}
+              {product && (
+                <div className="cf-onb-detect">
+                  <PartitionOutlined className="cf-onb-detect-icon" />
+                  <span>
+                    <b>{product.displayName || product.product}</b>
+                    {product.version ? ` ${product.version}` : ""} read from
+                    <span className="cf-onb-detect-note"> {product.file}</span>
+                  </span>
+                </div>
+              )}
               {/* The convention Configer recognized. It is a FINDING, not a
                   choice the user has to make, so it reads as one line of fact
                   rather than as a step of its own. */}
@@ -645,7 +706,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     },
                     {
                       title: "Folder",
-                      width: "30%",
+                      width: "24%",
                       render: (_v, i) => (
                         <span className="mono cf-onb-inst-folder" title={folderOf(i)}>
                           {folderOf(i)}
@@ -654,7 +715,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                     },
                     {
                       title: "Environment",
-                      width: "24%",
+                      width: "20%",
                       render: (_v, i) => (
                         <AutoComplete
                           size="small"
@@ -662,17 +723,36 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                           allowClear
                           placeholder="e.g. Development"
                           value={i.environment || undefined}
-                          options={ENV_PRESETS.map((e) => ({ value: e }))}
+                          options={envOptions(insts.map((x) => x.environment)).map((e) => ({
+                            value: e,
+                          }))}
                           filterOption={(input, option) =>
                             (option?.value as string).toLowerCase().includes(input.toLowerCase())
                           }
-                          onChange={(v) => patchInstance(i.name, { environment: v })}
+                          onChange={(v) => patchInstance(i.name, { environment: canonicalEnv(v) })}
+                        />
+                      ),
+                    },
+                    {
+                      // Read out of the instance's own name where a rule
+                      // recognizes it. It is shown here, editable, because a
+                      // value the product worked out has to be visible at the
+                      // moment it is proposed rather than appear later.
+                      title: "Region",
+                      width: "18%",
+                      render: (_v, i) => (
+                        <Input
+                          size="small"
+                          style={{ maxWidth: 220 }}
+                          placeholder="e.g. eu-central-1"
+                          value={i.region}
+                          onChange={(e) => patchInstance(i.name, { region: e.target.value })}
                         />
                       ),
                     },
                     {
                       title: "Software version",
-                      width: "24%",
+                      width: "20%",
                       render: (_v, i) => (
                         <Input
                           size="small"

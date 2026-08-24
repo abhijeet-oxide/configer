@@ -5,10 +5,11 @@ import {
   Select,
   Switch,
   Space,
+  Tooltip,
   Typography,
   App as AntApp,
 } from "antd";
-import { SaveOutlined } from "../icons";
+import { RegexOutlined, SaveOutlined } from "../icons";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -19,9 +20,26 @@ import { api, type Parameter, type Validation } from "../api";
 // predefined rule library. Saved rules are written to catalog.yaml and
 // immediately enforced by every cell editor and by the server on write.
 
-const typeOptions = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"].map(
-  (t) => ({ value: t, label: t }),
-);
+const typeOptions = [
+  "string",
+  "integer",
+  "number",
+  "boolean",
+  "enum",
+  "ipv4",
+  "ipv6",
+  "cidr",
+  "hostname",
+  "port",
+  "email",
+  "url",
+  "mac",
+  "cpu",
+  "memory",
+  "duration",
+  "percentage",
+  "list",
+].map((t) => ({ value: t, label: t }));
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -30,6 +48,65 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
         {label}
       </Typography.Text>
       {children}
+    </div>
+  );
+}
+
+function formatDefault(value: unknown): string {
+  if (value === undefined || value === null) return "none";
+  if (Array.isArray(value)) return value.join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+// What the release's own schema states about this parameter, above the editor
+// and separate from it.
+//
+// The editable fields below carry the rules the product ENFORCES. A schema also
+// states things no single value can be checked against - a condition about its
+// neighbours, a uniqueness requirement, alternatives of a union, disjoint
+// ranges - and those must still be readable: a constraint nobody can see is
+// worse than one the product admits it does not police. They are shown as facts
+// with their source named, never as controls, because editing them here would
+// only put the catalog at odds with the model on disk.
+function FromSchema({ v }: { v: Validation }) {
+  const extras = v.patterns ?? [];
+  const constraints = v.constraints ?? [];
+  const document = v.schemaRef?.split("/").pop();
+  const hasFacts = !!v.units || !!v.errorMessage || extras.length > 0;
+  return (
+    <div className="cf-schema-note">
+      <div className="cf-schema-note-head">
+        <RegexOutlined />
+        <span>Rules detected in release schema</span>
+        <Tooltip title={v.schemaRef}>
+          <span className="cf-schema-note-file mono">{document}</span>
+        </Tooltip>
+      </div>
+
+      {hasFacts && (
+        <div className="cf-schema-note-facts">
+          {v.units && (
+            <span>
+              Measured in <b>{v.units}</b>
+            </span>
+          )}
+          {v.errorMessage && <span>{v.errorMessage}</span>}
+          {extras.map((p) => (
+            <span key={p}>
+              Must also match <b className="mono">{p}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {constraints.length > 0 && (
+        <ul className="cf-schema-note-list">
+          {constraints.map((c) => (
+            <li key={c}>{c}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -56,14 +133,24 @@ function Editor({ param }: { param: Parameter }) {
     onError: (e: Error) => message.error(e.message),
   });
 
-  const numeric = type === "integer" || type === "number";
-  const stringy = type === "string" || type === "ipv4" || type === "cidr";
+  const numeric = type === "integer" || type === "number" || type === "port";
+  const stringy =
+    type === "string" ||
+    type === "ipv4" ||
+    type === "ipv6" ||
+    type === "cidr" ||
+    type === "hostname" ||
+    type === "email" ||
+    type === "url" ||
+    type === "mac";
   const preset = presetsQ.data?.find((p) => p.id === v.preset);
 
   const patch = (delta: Partial<Validation>) => setV((old) => ({ ...old, ...delta }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {v.schemaRef && <FromSchema v={v} />}
+
       <Field label="Data type">
         <Select
           size="small"
@@ -71,6 +158,20 @@ function Editor({ param }: { param: Parameter }) {
           options={typeOptions}
           onChange={(t) => setType(t)}
         />
+      </Field>
+
+      {/* What the value is when no file carries it - part of the answer to
+          "what may this be", so it is read here rather than only on the
+          Details tab. It stays read-only because one field edited from two
+          forms is one field two forms can disagree about. */}
+      <Field label="Default value">
+        <Typography.Text
+          className="mono"
+          type={param.default == null ? "secondary" : undefined}
+          style={{ fontSize: 12 }}
+        >
+          {formatDefault(param.default)}
+        </Typography.Text>
       </Field>
 
       <Field label="Predefined rule">

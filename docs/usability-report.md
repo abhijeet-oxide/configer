@@ -197,7 +197,7 @@ patch/rollback story a headline feature instead of a gap.
 - **Git jargon surfaces to users** despite the convention: branch names,
   `master`, "Target: master", "merge" appear in user-facing surfaces.
 - Console shows an Ant Design deprecation warning (`destroyOnClose`) - harmless
-  but worth clearing.
+  but worth clearing. replace with `destroyOnHidden`.
 
 ---
 

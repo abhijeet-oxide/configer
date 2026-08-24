@@ -19,7 +19,7 @@ interface BaseNode {
   file: string;
   params: number;
 }
-interface InstNode {
+export interface InstNode {
   name: string;
   environment?: string;
   overrides: number;
@@ -31,7 +31,7 @@ interface Edge {
   count: number;
 }
 
-function derive(grid: Grid): { bases: BaseNode[]; insts: InstNode[]; edges: Edge[] } {
+export function derive(grid: Grid, instances: Instance[]): { bases: BaseNode[]; insts: InstNode[]; edges: Edge[] } {
   // A binding is base-layer when it says so, or when its file template does
   // not depend on the instance (no {folder}/{instance} token).
   const isBase = (file: string, layer?: string) =>
@@ -51,7 +51,7 @@ function derive(grid: Grid): { bases: BaseNode[]; insts: InstNode[]; edges: Edge
   }
 
   const edgeMap = new Map<string, Edge>();
-  const insts: InstNode[] = grid.instances.map((i) => {
+  const insts: InstNode[] = instances.map((i) => {
     let overrides = 0;
     let inherited = 0;
     for (const r of grid.rows) {
@@ -81,8 +81,9 @@ function derive(grid: Grid): { bases: BaseNode[]; insts: InstNode[]; edges: Edge
 }
 
 // The dossier behind an instance click: what this instance is, then the
-// explicit decision to jump into its filtered configuration sheet.
-function InstanceDossier({
+// explicit decision to jump into its filtered configuration sheet. Shared, so
+// clicking an instance means the same thing in every view of the estate.
+export function InstanceDossier({
   node,
   meta,
   onClose,
@@ -206,12 +207,14 @@ function InstanceRow({
   );
 }
 
-export default function InstanceTopology({ grid }: { grid: Grid }) {
+// instances is what the page is currently showing (the Active/Archived/All
+// filter has already been applied), so every view narrows together.
+export default function InstanceTopology({ grid, instances }: { grid: Grid; instances: Instance[] }) {
   const { setSection, setFileFocus } = useUI();
   const [selInst, setSelInst] = useState<InstNode | null>(null);
-  const { bases, insts } = useMemo(() => derive(grid), [grid]);
+  const { bases, insts } = useMemo(() => derive(grid, instances), [grid, instances]);
 
-  const metaOf = (name: string) => grid.instances.find((i) => i.name === name);
+  const metaOf = (name: string) => instances.find((i) => i.name === name);
   const dossier = (
     <InstanceDossier node={selInst} meta={selInst ? metaOf(selInst.name) : undefined} onClose={() => setSelInst(null)} />
   );

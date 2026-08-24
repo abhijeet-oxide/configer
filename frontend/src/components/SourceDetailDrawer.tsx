@@ -41,7 +41,7 @@ export default function SourceDetailDrawer({
       open={!!source}
       onClose={onClose}
       width={640}
-      destroyOnClose
+      destroyOnHidden
     >
       {source && (
         <>

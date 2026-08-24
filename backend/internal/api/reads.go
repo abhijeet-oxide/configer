@@ -21,6 +21,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/pathedit"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
+	"github.com/abhijeet-oxide/configer/backend/internal/region"
 	"github.com/abhijeet-oxide/configer/backend/internal/repobackend"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
 )
@@ -626,4 +627,16 @@ func (s *Server) scan(w http.ResponseWriter, _ *http.Request) {
 // @Router      /api/validation/presets [get]
 func (s *Server) presets(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, validate.Presets())
+}
+
+// regionPlaces returns the regions the rules can put on a map.
+//
+// @Summary     Region places
+// @Description Every region the detection rules can locate, with its coordinates, so an instance's region can be drawn on a map. Combines the repository's own .configer/regions.yaml with the shipped defaults.
+// @Tags        Instances
+// @Produce     json
+// @Success     200 {array} object
+// @Router      /api/regions [get]
+func (s *Server) regionPlaces(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, region.Load(s.RepoPath).Places())
 }

@@ -15,6 +15,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, reviewItems, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
+import { isProductionEnv } from "../theme";
 import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
 import { useIdentity } from "../identity";
 
@@ -56,8 +57,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   // explain is not shown, so counting it would make the button promise one more
   // change than the dialog can show.
   const pending = reviewItems(items).length;
-  const prodTouched = items.some(
-    (it) => instances?.find((i) => i.name === it.instance)?.environment === "production",
+  const prodTouched = items.some((it) =>
+    isProductionEnv(instances?.find((i) => i.name === it.instance)?.environment),
   );
 
   // Arriving from "Review & submit" in the Changes list: open straight onto the

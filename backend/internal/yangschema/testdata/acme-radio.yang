@@ -1,0 +1,115 @@
+module acme-radio {
+    namespace "http://example.com/acme-radio";
+    prefix acme;
+    import ietf-inet-types { prefix inet; }
+    import acme-extensions { prefix x; }
+
+    /* A typedef chain: the pattern on the inner type must survive being
+       wrapped, and the outer length must win over the inner one. */
+    typedef short-name {
+        type string {
+            length "1..32";
+            pattern "[a-zA-Z][a-zA-Z0-9_-]*";
+        }
+    }
+    typedef site-name {
+        type short-name {
+            length "2..8";
+        }
+    }
+
+    grouping addressing {
+        leaf address {
+            description "Management address of the cell.";
+            x:label "Management address";
+            type inet:ipv4-address;
+            mandatory true;
+        }
+        leaf listen-port {
+            type inet:port-number;
+            default 8080;
+        }
+    }
+
+    container radio {
+        list cell {
+            key "name";
+            min-elements 1;
+            max-elements 4;
+            unique "name";
+            must "count(./neighbour) > 0" {
+                error-message "A cell needs at least one neighbour.";
+            }
+
+            leaf name {
+                description
+                    "Short name of the cell,
+                     unique within the site.";
+                x:label "Cell name";
+                type site-name;
+            }
+            leaf power {
+                description "Transmit power.";
+                units "dBm";
+                type int16 {
+                    range "-30..46" {
+                        error-message "Transmit power must sit between -30 and 46 dBm.";
+                    }
+                }
+                default 20;
+            }
+            leaf mode {
+                type enumeration {
+                    enum tdd { description "Time division duplex."; }
+                    enum fdd;
+                }
+                default "fdd";
+            }
+            leaf enabled {
+                type boolean;
+                default true;
+            }
+            leaf enabled-mode {
+                when "../enabled = 'true'";
+                type enumeration {
+                    enum auto;
+                    enum manual;
+                }
+            }
+            leaf primary-cell {
+                type leafref {
+                    path "/radio/cell/name";
+                }
+            }
+            leaf slot {
+                // No explicit range: the width of the type IS the range.
+                type uint8;
+            }
+            leaf bandwidth {
+                type uint16 {
+                    range "5..20 | 40..100";
+                }
+            }
+            leaf tag {
+                type union {
+                    type uint32;
+                    type string { pattern "auto"; }
+                }
+            }
+            leaf-list neighbour {
+                type site-name;
+                min-elements 1;
+                max-elements 16;
+            }
+            leaf counters {
+                config false;
+                type uint32;
+            }
+            uses addressing {
+                refine listen-port {
+                    mandatory true;
+                }
+            }
+        }
+    }
+}

@@ -194,7 +194,7 @@ export default function SearchPalette() {
           background: "var(--surface)",
         },
       }}
-      destroyOnClose
+      destroyOnHidden
     >
       {/* Input row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 18px", borderBottom: "1px solid var(--border)" }}>

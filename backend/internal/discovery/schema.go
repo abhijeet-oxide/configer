@@ -190,6 +190,12 @@ func applySchema(p *model.Parameter, node map[string]any, required bool) {
 	if n, ok := intFromAny(node["maxItems"]); ok && v.MaxItems == nil {
 		v.MaxItems = &n
 	}
+	// A declared default is part of what the schema says a value may be, so it
+	// travels with the rules rather than being left to the guess discovery makes
+	// from what every instance happens to hold today.
+	if d, stated := node["default"]; stated && p.Default == nil {
+		p.Default = d
+	}
 	// Well-known format keywords map to the preset rule library.
 	if format, _ := node["format"].(string); format != "" && v.Preset == "" {
 		switch format {

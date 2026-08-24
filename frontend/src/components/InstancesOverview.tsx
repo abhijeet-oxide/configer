@@ -5,7 +5,7 @@ import { SearchOutlined, TableOutlined, ClusterOutlined } from "../icons";
 import { api, type Instance, readyRepos } from "../api";
 import { useUI } from "../store";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { envHex } from "../theme";
+import { canonicalEnv, envHex, envOptions } from "../theme";
 import { TableSkeleton } from "./Skeletons";
 import { SectionCard, EmptyState } from "./ui";
 import { EmptyArt } from "./illustrations";
@@ -53,11 +53,16 @@ export default function InstancesOverview() {
     for (const inst of instQs[i]?.data?.instances ?? [])
       all.push({ key: `${r.id}:${inst.name}`, repoId: r.id, repoName: r.name, inst });
   });
-  const environments = [...new Set(all.map((r) => r.inst.environment).filter(Boolean))].sort() as string[];
+  // Applications reach this list from different repositories, each spelling an
+  // environment its own way; folding them means "Lab" filters every lab in the
+  // estate rather than the ones that happen to capitalize it.
+  const environments = envOptions(all.map((r) => r.inst.environment)).filter((e) =>
+    all.some((r) => canonicalEnv(r.inst.environment) === e),
+  );
   const needle = q.trim().toLowerCase();
   const shown = all
     .filter((r) => !app || r.repoId === app)
-    .filter((r) => !env || r.inst.environment === env)
+    .filter((r) => !env || canonicalEnv(r.inst.environment) === env)
     .filter(
       (r) =>
         !needle ||

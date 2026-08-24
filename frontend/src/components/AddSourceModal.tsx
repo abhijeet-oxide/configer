@@ -55,7 +55,7 @@ export default function AddSourceModal({ open, onClose }: { open: boolean; onClo
       okButtonProps={{ style: { display: picked ? undefined : "none" }, loading: create.isPending }}
       cancelText={picked ? "Back" : "Cancel"}
       width={560}
-      destroyOnClose
+      destroyOnHidden
     >
       {!picked ? (
         <Space direction="vertical" size={12} style={{ width: "100%" }}>

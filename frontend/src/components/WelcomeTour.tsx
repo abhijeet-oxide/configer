@@ -144,7 +144,7 @@ export default function WelcomeTour() {
       footer={null}
       width={560}
       centered
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
     >
       <div style={{ padding: "8px 4px 0" }}>

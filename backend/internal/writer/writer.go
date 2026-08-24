@@ -350,6 +350,7 @@ func UnmanageParameter(root, paramID string) (model.Parameter, error) {
 // the same way. A nil field is omitted, so the item states what is changing
 // rather than restating the whole record.
 type InstancePatch struct {
+	Description     *string            `json:"description,omitempty"`
 	Environment     *string            `json:"environment,omitempty"`
 	Region          *string            `json:"region,omitempty"`
 	Zone            *string            `json:"zone,omitempty"`
@@ -485,6 +486,9 @@ func applyInstancePatch(inst *model.Instance, patch InstancePatch) {
 	if patch.Environment != nil {
 		inst.Environment = *patch.Environment
 	}
+	if patch.Description != nil {
+		inst.Description = *patch.Description
+	}
 	if patch.Region != nil {
 		inst.Region = *patch.Region
 	}
@@ -570,6 +574,9 @@ func UpdateInstance(root, name string, patch InstancePatch) (model.Instance, err
 		}
 		if patch.Environment != nil {
 			setItemScalar(el, "environment", *patch.Environment)
+		}
+		if patch.Description != nil {
+			setItemScalar(el, "description", *patch.Description)
 		}
 		if patch.Region != nil {
 			setItemScalar(el, "region", *patch.Region)

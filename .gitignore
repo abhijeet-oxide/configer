@@ -32,3 +32,4 @@ graphify-out/
 # every merge and would silently measure the wrong thing.
 .cq/
 quality/bin/
+sample_nokia

@@ -20,11 +20,13 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
 	"github.com/abhijeet-oxide/configer/backend/internal/project"
+	"github.com/abhijeet-oxide/configer/backend/internal/region"
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
 type instanceReq struct {
 	Name            string             `json:"name"`
+	Description     *string            `json:"description,omitempty"`
 	Environment     *string            `json:"environment,omitempty"`
 	Region          *string            `json:"region,omitempty"`
 	Zone            *string            `json:"zone,omitempty"`
@@ -47,6 +49,7 @@ type instanceReq struct {
 
 func (r instanceReq) patch() writer.InstancePatch {
 	return writer.InstancePatch{
+		Description: r.Description,
 		Environment: r.Environment, Region: r.Region, Zone: r.Zone, Site: r.Site,
 		SoftwareVersion: r.SoftwareVersion, VersionName: r.VersionName, Status: r.Status, Labels: r.Labels,
 	}
@@ -64,6 +67,7 @@ func instanceFieldsFor(inst model.Instance, p writer.InstancePatch) map[string]a
 			out[key] = current
 		}
 	}
+	add("description", p.Description != nil, inst.Description)
 	add("environment", p.Environment != nil, inst.Environment)
 	add("region", p.Region != nil, inst.Region)
 	add("zone", p.Zone != nil, inst.Zone)
@@ -141,13 +145,18 @@ func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	}
 
 	meta := model.Instance{
-		Name: name, Environment: str(req.Environment), Region: str(req.Region),
+		Name: name, Description: str(req.Description),
+		Environment: str(req.Environment), Region: str(req.Region),
 		Zone: str(req.Zone), Site: str(req.Site), SoftwareVersion: str(req.SoftwareVersion),
 		VersionName: str(req.VersionName),
 		Status:      str(req.Status), Labels: derefLabels(req.Labels),
 	}
 	if meta.Status == "" {
 		meta.Status = "active"
+	}
+	// A name that says where it runs should not need somebody to retype it.
+	if meta.Region == "" {
+		meta.Region = region.Load(p.Root).Detect(name)
 	}
 	if req.Folder != "" {
 		if req.CloneFrom != "" {

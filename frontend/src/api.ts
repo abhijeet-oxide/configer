@@ -50,6 +50,9 @@ export type CellState = "normal" | "new" | "deprecated" | "na";
 
 export interface Instance {
   name: string;
+  /** what this instance is for, in its owner's words - never derived from the
+   *  product, which would say the same sentence about every instance of it */
+  description?: string;
   /** the instance's directory in the repository (e.g. "instances/prod") */
   folder?: string;
   environment?: string;
@@ -68,6 +71,7 @@ export interface Instance {
 // copies an existing instance's metadata and overlay values.
 export interface InstanceInput {
   name?: string;
+  description?: string;
   environment?: string;
   region?: string;
   zone?: string;
@@ -87,6 +91,10 @@ export interface InstanceInput {
 export interface Validation {
   required?: boolean;
   pattern?: string;
+  /** further regular expressions that must ALL hold on top of `pattern` - a
+   *  schema can restrict a value through a chain of definitions, each adding
+   *  one, and a value has to satisfy every one of them */
+  patterns?: string[];
   enum?: string[];
   min?: number;
   max?: number;
@@ -94,7 +102,15 @@ export interface Validation {
   maxLength?: number;
   minItems?: number;
   maxItems?: number;
+  /** the unit the value is expressed in ("seconds", "mb"); shown, never parsed */
+  units?: string;
+  /** the schema's own wording for a refused value */
+  errorMessage?: string;
+  /** conditions stated in words because they cannot be checked against a
+   *  single value on its own; displayed, never enforced */
+  constraints?: string[];
   preset?: string;
+  /** the schema document the rules were derived from */
   schemaRef?: string;
 }
 
@@ -620,6 +636,29 @@ export interface Discovery {
   parameters: Parameter[];
   sharedFiles?: string[];
   skipped?: SkippedFile[];
+  /** what a product descriptor in the repository says the application IS.
+   *  Absent for a repository that ships none. */
+  product?: ProductDescriptor;
+}
+
+/** A region the detection rules can put on a map. */
+export interface RegionPlace {
+  region: string;
+  lat: number;
+  lon: number;
+}
+
+/** A product descriptor found in an instance's metadata: what the delivery
+ *  pipeline recorded about the product and the release it built. */
+export interface ProductDescriptor {
+  file: string;
+  product?: string;
+  displayName?: string;
+  version?: string;
+  release?: string;
+  variant?: string;
+  environment?: string;
+  extra?: Record<string, string>;
 }
 
 /** Why the scan left a file out. A bare path answers the wrong question: what
@@ -1662,6 +1701,7 @@ export const api = {
     send<{ ok: boolean; file: string; newPath: string; newParameters: number; movedParameters?: number }>(
       "POST", rp("/files/duplicate"), p),
   presets: () => get<PresetRule[]>(rp("/validation/presets")),
+  regions: () => get<RegionPlace[]>(rp("/regions")),
   /** Every value in one file that a parameter is bound to, with the line it
    *  sits on in the content the explorer shows. */
   managedValues: (file: string, instance?: string) =>

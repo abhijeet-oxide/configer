@@ -63,6 +63,13 @@ type Server struct {
 	// configuration files) for as long as the files behind it are unchanged
 	// (see treecache.go).
 	cache *treeCache
+	// modelsCache memoizes the repository's YANG model set, which is expensive
+	// to build and changes only when the tree does (see models.go).
+	modelsCache modelCache
+	// validations holds the pre-submit validation runs in flight. Ephemeral by
+	// design: a run is rebuildable from the draft it describes, so a restart
+	// costs a click and nothing else (see validationrun.go).
+	validations *runs
 }
 
 // branch returns the backend's default working branch (best effort).
@@ -232,6 +239,7 @@ func NewWithBackend(reg *plugin.Registry, backend repobackend.Backend, store crs
 		Environment: getenv("CONFIGER_ENV", "development"),
 		snapshots:   newSnapshotCache(snapshotCacheMax),
 		cache:       newTreeCache(backend.RootDir()),
+		validations: newRuns(),
 	}
 }
 
@@ -291,6 +299,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/changes/{id}/preview", s.previewChange)
 	mux.HandleFunc("GET /api/changes/{id}/pr-status", s.prStatus)
 	mux.HandleFunc("POST /api/changes/{id}/submit", s.submitChange)
+	mux.HandleFunc("GET /api/validation/status", s.validationStatus)
+	mux.HandleFunc("POST /api/changes/{id}/validation", s.startValidation)
+	mux.HandleFunc("GET /api/changes/{id}/validation", s.getValidation)
 	mux.HandleFunc("POST /api/changes/{id}/approve", s.approveChange)
 	mux.HandleFunc("POST /api/changes/{id}/merge", s.mergeChange)
 	mux.HandleFunc("POST /api/changes/{id}/revert", s.revertChange)

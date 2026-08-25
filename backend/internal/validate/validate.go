@@ -79,6 +79,20 @@ func Value(param model.Parameter, v any) Result {
 		return ok()
 	}
 
+	// Layer 0: a union is checked whole, before anything else. Its members
+	// disagree about what the value even IS, so no rule below can speak for all
+	// of them - and the parameter's own type is the widest of them, chosen so an
+	// editor exists at all.
+	if len(val.AnyOf) > 0 {
+		if r := Alternatives(val.AnyOf, v); !r.Valid {
+			if val.ErrorMessage != "" {
+				return invalid(val.ErrorMessage)
+			}
+			return r
+		}
+		return ok()
+	}
+
 	// Layer 1: the declared data type must hold.
 	if r := checkType(param.Type, v); !r.Valid {
 		return r
@@ -108,6 +122,51 @@ func Value(param model.Parameter, v any) Result {
 
 	// Layer 3: explicit rules on the parameter.
 	return applyRules(val, s)
+}
+
+// Alternatives checks a value against a set of alternative rule sets (a schema
+// union): it is valid when at least ONE alternative accepts it.
+//
+// A union cannot be checked by layering its members' rules on top of each
+// other - "either a number in 1..100 or the word auto" would then refuse both
+// legitimate spellings. So each alternative is checked whole and independently,
+// and only a value no alternative accepts is refused. The rejection names the
+// alternatives rather than the last one's arithmetic, because "above maximum
+// 100" is a lie about a value that was allowed to be a word.
+func Alternatives(alts []model.Alternative, v any) Result {
+	if len(alts) == 0 {
+		return ok()
+	}
+	labels := make([]string, 0, len(alts))
+	for _, alt := range alts {
+		t := alt.Type
+		if t == "" {
+			t = model.TypeString
+		}
+		if r := checkType(t, v); !r.Valid {
+			labels = appendLabel(labels, alt, t)
+			continue
+		}
+		if r := applyRules(alt.Rules(), fmt.Sprintf("%v", v)); !r.Valid {
+			labels = appendLabel(labels, alt, t)
+			continue
+		}
+		return ok()
+	}
+	return invalid("must be one of: " + strings.Join(labels, ", "))
+}
+
+func appendLabel(labels []string, alt model.Alternative, t model.ParamType) []string {
+	label := alt.Label
+	if label == "" {
+		label = string(t)
+	}
+	for _, existing := range labels {
+		if existing == label {
+			return labels
+		}
+	}
+	return append(labels, label)
 }
 
 // CoerceValue converts a raw (typically JSON-decoded) value into the
@@ -277,6 +336,22 @@ func applyRules(val model.Validation, s string) Result {
 		}
 	}
 
+	// An inverted restriction is still a restriction. It is checked with the
+	// same wording as its positive twin, because "must not match" is the whole
+	// of what the schema said.
+	for _, pattern := range val.NotPatterns {
+		if pattern == "" {
+			continue
+		}
+		re, err := compiled(pattern)
+		if err != nil {
+			return invalid("invalid validation pattern")
+		}
+		if re.MatchString(s) {
+			return refuse(val, "this form of the value is not allowed here")
+		}
+	}
+
 	if len(val.Enum) > 0 {
 		found := false
 		for _, e := range val.Enum {
@@ -290,15 +365,23 @@ func applyRules(val model.Validation, s string) Result {
 		}
 	}
 
-	if val.Min != nil || val.Max != nil {
-		if f, err := strconv.ParseFloat(s, 64); err == nil {
-			if val.Min != nil && f < *val.Min {
-				return refuse(val, fmt.Sprintf("below minimum %v", *val.Min))
-			}
-			if val.Max != nil && f > *val.Max {
-				return refuse(val, fmt.Sprintf("above maximum %v", *val.Max))
+	// A flags value is any subset of the declared names, in any order, one per
+	// word. Anything else names a flag the product has never heard of.
+	if len(val.Bits) > 0 {
+		allowed := make(map[string]bool, len(val.Bits))
+		for _, b := range val.Bits {
+			allowed[b] = true
+		}
+		for _, word := range strings.Fields(s) {
+			if !allowed[word] {
+				return invalid(fmt.Sprintf("%q is not one of the allowed flags (%s)",
+					word, strings.Join(val.Bits, ", ")))
 			}
 		}
+	}
+
+	if r := checkNumericRules(val, s); !r.Valid {
+		return r
 	}
 
 	n := len([]rune(s))
@@ -308,8 +391,102 @@ func applyRules(val model.Validation, s string) Result {
 	if val.MaxLength != nil && n > *val.MaxLength {
 		return refuse(val, fmt.Sprintf("longer than %d characters", *val.MaxLength))
 	}
+	// Disjoint length spans, for the same reason disjoint ranges exist: a
+	// restriction reading "8 or 16 or 32" is not the span 8..32.
+	if len(val.Lengths) > 1 && !inAnySpan(val.Lengths, float64(n)) {
+		return refuse(val, "the length has to be "+describeSpans(val.Lengths)+" characters")
+	}
 
 	return ok()
+}
+
+// checkNumericRules applies min/max, the disjoint spans that outrank them, and
+// the decimal-place limit. A value that is not a number at all passes: its type
+// check has already had its say, and a string parameter carrying a range is a
+// schema's business, not this function's.
+func checkNumericRules(val model.Validation, s string) Result {
+	if val.Min == nil && val.Max == nil && len(val.Ranges) == 0 && val.MaxDecimals == nil {
+		return ok()
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(s), 64)
+	if err != nil {
+		return ok()
+	}
+	// The disjoint spans are the real rule when there is more than one; Min/Max
+	// only describe their outer edges, and a value in the gap between two spans
+	// passes those while the schema refuses it.
+	if len(val.Ranges) > 1 {
+		if !inAnySpan(val.Ranges, f) {
+			return refuse(val, "has to be "+describeSpans(val.Ranges))
+		}
+	} else {
+		if val.Min != nil && f < *val.Min {
+			return refuse(val, fmt.Sprintf("below minimum %v", *val.Min))
+		}
+		if val.Max != nil && f > *val.Max {
+			return refuse(val, fmt.Sprintf("above maximum %v", *val.Max))
+		}
+	}
+	if val.MaxDecimals != nil && decimals(s) > *val.MaxDecimals {
+		return refuse(val, fmt.Sprintf("has more than %d decimal place(s)", *val.MaxDecimals))
+	}
+	return ok()
+}
+
+func inAnySpan(spans []model.Span, f float64) bool {
+	for _, sp := range spans {
+		if sp.Contains(f) {
+			return true
+		}
+	}
+	return false
+}
+
+// describeSpans words a set of spans the way the schema meant them: exact
+// values stay exact, open ends read as open.
+func describeSpans(spans []model.Span) string {
+	parts := make([]string, 0, len(spans))
+	for _, sp := range spans {
+		switch {
+		case sp.Min != nil && sp.Max != nil && *sp.Min == *sp.Max:
+			parts = append(parts, trimNum(*sp.Min))
+		case sp.Min != nil && sp.Max != nil:
+			parts = append(parts, trimNum(*sp.Min)+" to "+trimNum(*sp.Max))
+		case sp.Min != nil:
+			parts = append(parts, trimNum(*sp.Min)+" or more")
+		case sp.Max != nil:
+			parts = append(parts, trimNum(*sp.Max)+" or less")
+		}
+	}
+	if len(parts) == 0 {
+		return "within the allowed range"
+	}
+	if len(parts) == 1 {
+		return parts[0]
+	}
+	return strings.Join(parts[:len(parts)-1], ", ") + " or " + parts[len(parts)-1]
+}
+
+func trimNum(f float64) string {
+	if f == math.Trunc(f) && math.Abs(f) < 1e15 {
+		return strconv.FormatInt(int64(f), 10)
+	}
+	return strconv.FormatFloat(f, 'g', -1, 64)
+}
+
+// decimals counts the digits after the decimal point in a plain decimal
+// spelling. An exponent form is not counted: nothing in a configuration file
+// writes 1e-9 and pretending to measure it would refuse valid values.
+func decimals(s string) int {
+	s = strings.TrimSpace(s)
+	if strings.ContainsAny(s, "eE") {
+		return 0
+	}
+	i := strings.IndexByte(s, '.')
+	if i < 0 {
+		return 0
+	}
+	return len(strings.TrimRight(s[i+1:], "0"))
 }
 
 // refuse states a rejection in the schema's own words when it supplied any,

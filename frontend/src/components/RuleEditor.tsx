@@ -14,6 +14,7 @@ import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type Parameter, type Validation } from "../api";
+import { describeSpans } from "../rules";
 
 // RuleEditor lets users define a parameter's data type and validation rules:
 // either custom (pattern, min/max, character limits, enum) or picked from the
@@ -73,7 +74,29 @@ function FromSchema({ v }: { v: Validation }) {
   const extras = v.patterns ?? [];
   const constraints = v.constraints ?? [];
   const document = v.schemaRef?.split("/").pop();
-  const hasFacts = !!v.units || !!v.errorMessage || extras.length > 0;
+  // The rules the schema states that the editable fields below cannot carry,
+  // and that ARE checked: alternatives of a union, named flags, disjoint spans,
+  // an inverted pattern, a decimal precision. They read as facts because that
+  // is what they are - the vendor's, not the product's - and because editing
+  // them here would only put the catalog at odds with the model on disk.
+  const enforced: string[] = [];
+  if (v.anyOf?.length) {
+    enforced.push(`Must be one of: ${v.anyOf.map((a) => a.label || a.type || "a value").join(", ")}`);
+  }
+  if (v.bits?.length) enforced.push(`Any combination of: ${v.bits.join(", ")}`);
+  if (v.ranges && v.ranges.length > 1) enforced.push(`Must be ${describeSpans(v.ranges)}`);
+  if (v.lengths && v.lengths.length > 1) {
+    enforced.push(`Length must be ${describeSpans(v.lengths)} characters`);
+  }
+  for (const p of v.notPatterns ?? []) enforced.push(`Must not match ${p}`);
+  if (v.maxDecimals != null) {
+    enforced.push(
+      v.maxDecimals === 0
+        ? "Whole numbers only"
+        : `At most ${v.maxDecimals} decimal place${v.maxDecimals === 1 ? "" : "s"}`,
+    );
+  }
+  const hasFacts = !!v.units || !!v.errorMessage || extras.length > 0 || enforced.length > 0;
   return (
     <div className="cf-schema-note">
       <div className="cf-schema-note-head">
@@ -84,6 +107,18 @@ function FromSchema({ v }: { v: Validation }) {
         </Tooltip>
       </div>
 
+      {/* The model says this value is reported by the device rather than set.
+          Saying so is the difference between "you may not edit this" and a
+          cell that quietly refuses to respond. */}
+      {v.readOnly && (
+        <div className="cf-schema-note-facts">
+          <span>
+            <b>Reported by the device.</b> This value is state, not configuration: it is shown here
+            and never written back.
+          </span>
+        </div>
+      )}
+
       {hasFacts && (
         <div className="cf-schema-note-facts">
           {v.units && (
@@ -92,6 +127,9 @@ function FromSchema({ v }: { v: Validation }) {
             </span>
           )}
           {v.errorMessage && <span>{v.errorMessage}</span>}
+          {enforced.map((e) => (
+            <span key={e}>{e}</span>
+          ))}
           {extras.map((p) => (
             <span key={p}>
               Must also match <b className="mono">{p}</b>

@@ -88,6 +88,31 @@ export interface InstanceInput {
   author?: string;
 }
 
+/** One closed interval of an allowed-value or allowed-length restriction.
+ *  Either end may be open (absent). */
+export interface Span {
+  min?: number;
+  max?: number;
+}
+
+/** One branch of a union: a type plus the rules that go with it. */
+export interface Alternative {
+  /** how the schema spelled it ("uint32", "inet:ipv4-address") */
+  label?: string;
+  type?: string;
+  pattern?: string;
+  patterns?: string[];
+  notPatterns?: string[];
+  enum?: string[];
+  bits?: string[];
+  min?: number;
+  max?: number;
+  minLength?: number;
+  maxLength?: number;
+  ranges?: Span[];
+  lengths?: Span[];
+}
+
 export interface Validation {
   required?: boolean;
   pattern?: string;
@@ -95,6 +120,10 @@ export interface Validation {
    *  schema can restrict a value through a chain of definitions, each adding
    *  one, and a value has to satisfy every one of them */
   patterns?: string[];
+  /** regular expressions the value must NOT match (a schema's inverted
+   *  restriction). Carried as a rule rather than as prose, because the one
+   *  restriction a vendor bothered to invert was the one nothing checked. */
+  notPatterns?: string[];
   enum?: string[];
   min?: number;
   max?: number;
@@ -102,6 +131,21 @@ export interface Validation {
   maxLength?: number;
   minItems?: number;
   maxItems?: number;
+  /** the DISJOINT spans a restriction really allows ("5..20 | 40..100").
+   *  min/max carry only their outer edges, which accept the gap between them -
+   *  when these are present they are what decides. */
+  ranges?: Span[];
+  lengths?: Span[];
+  /** the named flags a value may be built from: any subset, space-separated */
+  bits?: string[];
+  /** alternative rule sets, of which the value must satisfy at least ONE (a
+   *  schema union). Layering them on each other would refuse both legitimate
+   *  spellings of "a number or the word auto". */
+  anyOf?: Alternative[];
+  /** digits allowed after the decimal point */
+  maxDecimals?: number;
+  /** the model declares this as state the device reports, not configuration */
+  readOnly?: boolean;
   /** the unit the value is expressed in ("seconds", "mb"); shown, never parsed */
   units?: string;
   /** the schema's own wording for a refused value */
@@ -1146,6 +1190,112 @@ export interface SyntaxDetail {
  * produces one, so a handler that receives data can trust it succeeded: there
  * is no path where a failure is silently rendered as success.
  */
+// --- pre-submit validation ------------------------------------------------
+// Submitting a change is the moment it stops being one person's work, so it is
+// the moment everything that can be checked gets checked. The check is a RUN
+// with stages rather than a request that either answers or does not: on a
+// fleet-sized change it takes seconds, and seconds behind a silent spinner is
+// a screen that looks broken at exactly the wrong moment.
+
+/** How a validation run ended. "error" is not a pass: a check that could not
+ *  run has found nothing and proved nothing. */
+export type ValidationRunState = "running" | "passed" | "failed" | "error";
+
+export type ValidationStageState = "pending" | "running" | "passed" | "failed" | "skipped";
+
+export interface ValidationStage {
+  id: string;
+  label: string;
+  state: ValidationStageState;
+  /** one line saying what this stage actually did ("128 values checked"),
+   *  which is the difference between a progress bar and knowing something is
+   *  happening */
+  detail?: string;
+  startedAt?: string;
+  endedAt?: string;
+}
+
+/** One problem found in the change, named the way the person who made it would
+ *  recognize it. */
+export interface ValidationFinding {
+  severity: "error" | "warning";
+  /** what kind of check found it: type, mandatory, key, unique, leafref, must,
+   *  when, choice, count, feature, status, schema */
+  rule: string;
+  file?: string;
+  path?: string;
+  line?: number;
+  instance?: string;
+  /** the catalog parameter this lands on, when one could be identified - what
+   *  makes "fix this" a click rather than an investigation */
+  paramId?: string;
+  name?: string;
+  message: string;
+  /** the schema's own expression, for the reader who wants it */
+  detail?: string;
+  /** the model file the rule came from, so a vendor's constraint is never
+   *  shown as the product's opinion */
+  schema?: string;
+  engine?: string;
+}
+
+/** An edit that could not be applied to the files at all. */
+export interface ItemProblem {
+  paramId?: string;
+  instance?: string;
+  action?: string;
+  file?: string;
+  message: string;
+}
+
+export interface ValidationRun {
+  id: string;
+  changeId: number;
+  state: ValidationRunState;
+  /** identifies the draft this run validated; a submit only trusts a run whose
+   *  fingerprint still matches */
+  fingerprint: string;
+  stages: ValidationStage[];
+  findings: ValidationFinding[];
+  problems: ItemProblem[];
+  engine?: string;
+  /** false when no full-document validator could run. NOT the same as "no
+   *  findings" - a client that treats them alike is telling the user their
+   *  change was checked when nothing looked at it. */
+  available: boolean;
+  reason?: string;
+  errors: number;
+  warnings: number;
+  documents: number;
+  values: number;
+  unmatched: number;
+  /** checks passed over, with the reason - silence about them would present a
+   *  partial check as a complete one */
+  skipped?: string[];
+  startedAt: string;
+  endedAt?: string;
+}
+
+export interface EngineStatus {
+  name: string;
+  available: boolean;
+  reason?: string;
+}
+
+/** What this deployment can actually check, for the panel that says so. */
+export interface ValidationStatus {
+  schemaDetected: boolean;
+  modules: number;
+  nodes: number;
+  schemaDirs?: string[];
+  schemaVersion?: string;
+  engine?: string;
+  available: boolean;
+  reason?: string;
+  engineVersion?: string;
+  engines: EngineStatus[];
+}
+
 export class ApiError extends Error {
   readonly status: number;
   readonly code: string;
@@ -1155,6 +1305,10 @@ export class ApiError extends Error {
   readonly fields?: FieldError[];
   /** where a document stopped parsing, when that is what was rejected */
   readonly syntax?: SyntaxDetail;
+  /** the validation run that refused a submit. A 422 from the gate carries the
+   *  whole run, not just the fact of the refusal, so the dialog can show what
+   *  is wrong and where instead of a red toast saying "invalid". */
+  readonly validation?: ValidationRun;
   constructor(init: {
     status: number;
     code: string;
@@ -1163,6 +1317,7 @@ export class ApiError extends Error {
     retryAfter?: number;
     fields?: FieldError[];
     syntax?: SyntaxDetail;
+    validation?: ValidationRun;
   }) {
     super(init.message);
     this.name = "ApiError";
@@ -1172,6 +1327,7 @@ export class ApiError extends Error {
     this.retryAfter = init.retryAfter;
     this.fields = init.fields;
     this.syntax = init.syntax;
+    this.validation = init.validation;
   }
   get isUnauthorized() { return this.status === 401; }
   get isForbidden() { return this.status === 403; }
@@ -1286,7 +1442,7 @@ async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promis
 async function httpError(res: Response): Promise<ApiError> {
   let body: {
     error?: string; code?: string; requestId?: string;
-    fields?: FieldError[]; syntax?: SyntaxDetail;
+    fields?: FieldError[]; syntax?: SyntaxDetail; validation?: ValidationRun;
   } = {};
   try {
     body = await res.json();
@@ -1302,6 +1458,7 @@ async function httpError(res: Response): Promise<ApiError> {
     retryAfter: retryHeader ? Number(retryHeader) || undefined : undefined,
     fields: body.fields,
     syntax: body.syntax,
+    validation: body.validation,
   });
   if (err.isUnauthorized) emitUnauthorized();
   return err;
@@ -1798,8 +1955,26 @@ export const api = {
   prStatus: (id: number) => get<PrStatus>(rp(`/changes/${id}/pr-status`)),
   submitChange: (
     id: number,
-    p: { title: string; description?: string; reference?: string; category?: string; author?: string },
+    p: {
+      title: string;
+      description?: string;
+      reference?: string;
+      category?: string;
+      author?: string;
+      /** submit despite blocking findings. Not a way around the gate: the
+       *  reason is written into the change itself, where the approver reads it. */
+      override?: boolean;
+      overrideReason?: string;
+    },
   ) => send<ChangeRequest>("POST", rp(`/changes/${id}/submit`), p),
+  /** What this deployment can check. Workspace-wide question, repo-scoped
+   *  answer: the models live in the repository. */
+  validationStatus: () => get<ValidationStatus>(rp("/validation/status")),
+  /** Start validating a change. Returns immediately with a run to watch. */
+  startValidation: (id: number) => send<ValidationRun>("POST", rp(`/changes/${id}/validation`), {}),
+  /** The run's current state. Poll while `state` is "running". */
+  validationRun: (id: number, runId?: string) =>
+    get<ValidationRun>(rp(`/changes/${id}/validation${runId ? `?run=${encodeURIComponent(runId)}` : ""}`)),
   approveChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/approve`), { author: "Local user" }),
   mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
   rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),

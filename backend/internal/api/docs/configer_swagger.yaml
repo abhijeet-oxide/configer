@@ -128,6 +128,15 @@ definitions:
         example: https://github.com/acme/platform-config
         type: string
     type: object
+  api.EngineStatus:
+    properties:
+      available:
+        type: boolean
+      name:
+        type: string
+      reason:
+        type: string
+    type: object
   api.FieldError:
     properties:
       field:
@@ -362,6 +371,130 @@ definitions:
         example: '  port 8080'
         type: string
     type: object
+  api.ValidationRun:
+    properties:
+      available:
+        type: boolean
+      changeId:
+        type: integer
+      documents:
+        type: integer
+      endedAt:
+        type: string
+      engine:
+        description: |-
+          Engine names what validated; Available is false when no full-document
+          validator could run, and Reason says why in words an operator can act on.
+        type: string
+      errors:
+        description: Counts the UI states plainly rather than making the reader total
+          a list.
+        type: integer
+      findings:
+        description: |-
+          Findings are the model's objections; Problems are edits that could not be
+          applied at all. Both block, and they are kept apart because they are
+          fixed in different places.
+        items:
+          $ref: '#/definitions/yangvalidate.Finding'
+        type: array
+      fingerprint:
+        description: |-
+          Fingerprint identifies the draft this run validated. A submit only trusts
+          a run whose fingerprint still matches, so an edit made between validating
+          and submitting cannot ride in on the previous run's verdict.
+        type: string
+      id:
+        type: string
+      problems:
+        items:
+          $ref: '#/definitions/changeset.ItemProblem'
+        type: array
+      reason:
+        type: string
+      skipped:
+        description: |-
+          Skipped are the checks that were passed over with an explanation - an
+          unparseable file, a condition outside what the built-in evaluator reads.
+          Silence about them would present a partial check as a complete one.
+        items:
+          type: string
+        type: array
+      stages:
+        items:
+          $ref: '#/definitions/api.ValidationStage'
+        type: array
+      startedAt:
+        type: string
+      state:
+        type: string
+      unmatched:
+        type: integer
+      values:
+        type: integer
+      warnings:
+        type: integer
+    type: object
+  api.ValidationStage:
+    properties:
+      detail:
+        description: |-
+          Detail is one line saying what this stage actually did ("checked 128
+          values across 6 files"), which is the difference between a progress bar
+          and knowing something is happening.
+        type: string
+      endedAt:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      startedAt:
+        type: string
+      state:
+        type: string
+    type: object
+  api.ValidationStatus:
+    properties:
+      available:
+        type: boolean
+      engine:
+        description: |-
+          Engine is what would run a full-document validation, Available whether it
+          can, and Reason why not in words an operator can act on.
+        type: string
+      engineVersion:
+        description: |-
+          EngineVersion is the external validator's own version string, when there
+          is one.
+        type: string
+      engines:
+        description: |-
+          Engines lists every validator this build knows about and whether each is
+          usable here, so an operator can see what installing something would buy.
+        items:
+          $ref: '#/definitions/api.EngineStatus'
+        type: array
+      modules:
+        description: Modules and Nodes size what was read.
+        type: integer
+      nodes:
+        type: integer
+      reason:
+        type: string
+      schemaDetected:
+        description: 'SchemaDetected: the repository ships YANG models at all.'
+        type: boolean
+      schemaDirs:
+        description: |-
+          SchemaDirs are the repo-relative directories the models came from, and
+          SchemaVersion the release they were selected for.
+        items:
+          type: string
+        type: array
+      schemaVersion:
+        type: string
+    type: object
   api.ValueEditRequest:
     properties:
       action:
@@ -563,6 +696,19 @@ definitions:
     - StateApproved
     - StatePublished
     - StateRejected
+  changeset.ItemProblem:
+    properties:
+      action:
+        type: string
+      file:
+        type: string
+      instance:
+        type: string
+      message:
+        type: string
+      paramId:
+        type: string
+    type: object
   changeset.NameConflict:
     properties:
       id:
@@ -576,6 +722,50 @@ definitions:
         $ref: '#/definitions/change.State'
       title:
         type: string
+    type: object
+  model.Alternative:
+    properties:
+      bits:
+        items:
+          type: string
+        type: array
+      enum:
+        items:
+          type: string
+        type: array
+      label:
+        description: |-
+          Label is how the schema spelled this alternative ("uint32",
+          "inet:ipv4-address"), used to explain a rejection in the reader's terms.
+        type: string
+      lengths:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      max:
+        type: number
+      maxLength:
+        type: integer
+      min:
+        type: number
+      minLength:
+        type: integer
+      notPatterns:
+        items:
+          type: string
+        type: array
+      pattern:
+        type: string
+      patterns:
+        items:
+          type: string
+        type: array
+      ranges:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      type:
+        $ref: '#/definitions/model.ParamType'
     type: object
   model.Application:
     properties:
@@ -819,8 +1009,25 @@ definitions:
       sourceId:
         type: string
     type: object
+  model.Span:
+    properties:
+      max:
+        type: number
+      min:
+        type: number
+    type: object
   model.Validation:
     properties:
+      anyOf:
+        description: |-
+          AnyOf are alternative rule sets, of which the value must satisfy at least
+          ONE (a YANG union). Each alternative carries its own type and rules, so a
+          union of "uint32 or the word auto" refuses "atuo" while accepting both
+          legitimate spellings - where naming the alternatives in prose refused
+          nothing at all.
+        items:
+          $ref: '#/definitions/model.Alternative'
+        type: array
       atLeast:
         description: |-
           AtLeast / AtMost name another parameter (by id) whose effective value at
@@ -832,6 +1039,13 @@ definitions:
         type: string
       atMost:
         type: string
+      bits:
+        description: |-
+          Bits are the named flags a bits-typed value may be built from: the value
+          is a space-separated subset of these, in any order.
+        items:
+          type: string
+        type: array
       constraints:
         description: |-
           Constraints are conditions stated in words because they cannot be
@@ -852,8 +1066,18 @@ definitions:
           it replaces the generic "doesn't match the required format", which tells
           the reader nothing about what the value was supposed to look like.
         type: string
+      lengths:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
       max:
         type: number
+      maxDecimals:
+        description: |-
+          MaxDecimals is the number of digits allowed after the decimal point
+          (YANG's fraction-digits). A value with more is not representable in the
+          type the product declared.
+        type: integer
       maxItems:
         type: integer
       maxLength:
@@ -864,6 +1088,15 @@ definitions:
         type: integer
       minLength:
         type: integer
+      notPatterns:
+        description: |-
+          NotPatterns are regular expressions the value must NOT match. A schema
+          can state a restriction the other way round (YANG's "invert-match"), and
+          carrying it only as prose meant the one rule the vendor bothered to
+          invert was the one rule nothing checked.
+        items:
+          type: string
+        type: array
       pattern:
         type: string
       patterns:
@@ -879,6 +1112,23 @@ definitions:
       preset:
         description: id of a predefined rule
         type: string
+      ranges:
+        description: |-
+          Ranges / Lengths are the DISJOINT spans a restriction really allows
+          ("5..20 | 40..100"). Min/Max carry the outer span so an old client still
+          validates loosely; these carry the truth, and when they are present the
+          value has to land inside one of them. Without this a bandwidth of 30 was
+          accepted by a rule the vendor had written to refuse it.
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      readOnly:
+        description: |-
+          ReadOnly marks a setting the model declares as operational state rather
+          than configuration ("config false"). It is shown, never edited: the
+          device owns the value and writing it back would be overwritten by the
+          next read.
+        type: boolean
       required:
         type: boolean
       schemaRef:
@@ -891,6 +1141,56 @@ definitions:
         description: |-
           Units is the unit the value is expressed in ("seconds", "kbit/s") when
           the schema said so. It is shown beside the editor, never parsed.
+        type: string
+    type: object
+  yangvalidate.Finding:
+    properties:
+      detail:
+        type: string
+      engine:
+        description: |-
+          Engine names what produced the finding, because "yanglint says so" and
+          "our own reading says so" are different weights of evidence.
+        type: string
+      file:
+        description: |-
+          File is repo-relative; Path is the route inside it, in the same spelling
+          the editor uses to open a value.
+        type: string
+      instance:
+        description: |-
+          Instance is the deployment target the file belongs to, empty for a
+          shared file.
+        type: string
+      line:
+        type: integer
+      message:
+        description: |-
+          Message is written for the person who has to fix it, in words, never in
+          XPath. Detail carries the schema's own expression for the reader who
+          wants it.
+        type: string
+      name:
+        description: |-
+          Name is the human name of the setting, for a message a non-engineer can
+          read.
+        type: string
+      paramId:
+        description: |-
+          ParamID is the catalog parameter this lands on, when one can be
+          identified. It is what lets the UI offer "open this setting" rather than
+          "here is a path in a file".
+        type: string
+      path:
+        type: string
+      rule:
+        type: string
+      schema:
+        description: |-
+          Schema names the model file the rule came from, so a vendor's constraint
+          is never presented as the product's opinion.
+        type: string
+      severity:
         type: string
     type: object
 info:
@@ -1516,6 +1816,64 @@ paths:
       security:
       - CookieSession: []
       summary: Submit a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/validation:
+    get:
+      description: 'The latest validation run for a change request: its stages, what
+        each one found, and the verdict. Poll while `state` is "running". Returns
+        404 when the change has never been validated.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: A specific run id; defaults to the latest for this change
+        in: query
+        name: run
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValidationRun'
+        "404":
+          description: No validation has been run
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Validation run state
+      tags:
+      - Editing & change requests
+    post:
+      description: 'Start a pre-submit validation of a change request: every staged
+        value against its rules, then the whole candidate document against the repository''s
+        YANG models. Returns 202 with the run resource; poll `GET /api/changes/{id}/validation`
+        for its stages, findings and verdict. Nothing is written, branched or committed.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.ValidationRun'
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Validate a change request
       tags:
       - Editing & change requests
   /api/changes/draft:
@@ -2661,6 +3019,23 @@ paths:
       summary: Readiness probe
       tags:
       - Health
+  /api/regions:
+    get:
+      description: Every region the detection rules can locate, with its coordinates,
+        so an instance's region can be drawn on a map. Combines the repository's own
+        .configer/regions.yaml with the shipped defaults.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Region places
+      tags:
+      - Instances
   /api/render/{instance}:
     get:
       description: 'The instance''s REAL repository files (write-back-native: nothing
@@ -3485,6 +3860,23 @@ paths:
       summary: Validation presets
       tags:
       - Plugins & validation
+  /api/validation/status:
+    get:
+      description: 'What this deployment can check before a change is submitted: whether
+        the repository ships YANG models, how many were read, which full-document
+        validator is available (and why one is not), and the release the models were
+        selected for. The UI uses it to say what was actually checked instead of implying
+        a change is fully model-valid when nothing looked.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValidationStatus'
+      summary: Validation capability
+      tags:
+      - Editing & change requests
   /api/values:
     delete:
       description: Drop one pending edit (identified by paramId + instance) from the

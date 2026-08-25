@@ -240,14 +240,44 @@ type Validation struct {
 	// through a chain of type definitions, each adding a pattern of its own,
 	// and a value has to satisfy every one - collapsing them into the last one
 	// read would quietly widen the rule.
-	Patterns  []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
-	Enum      []string `yaml:"enum,omitempty" json:"enum,omitempty"`
-	Min       *float64 `yaml:"min,omitempty" json:"min,omitempty"`
-	Max       *float64 `yaml:"max,omitempty" json:"max,omitempty"`
-	MinLength *int     `yaml:"minLength,omitempty" json:"minLength,omitempty"`
-	MaxLength *int     `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
-	MinItems  *int     `yaml:"minItems,omitempty" json:"minItems,omitempty"`
-	MaxItems  *int     `yaml:"maxItems,omitempty" json:"maxItems,omitempty"`
+	Patterns []string `yaml:"patterns,omitempty" json:"patterns,omitempty"`
+	// NotPatterns are regular expressions the value must NOT match. A schema
+	// can state a restriction the other way round (YANG's "invert-match"), and
+	// carrying it only as prose meant the one rule the vendor bothered to
+	// invert was the one rule nothing checked.
+	NotPatterns []string `yaml:"notPatterns,omitempty" json:"notPatterns,omitempty"`
+	Enum        []string `yaml:"enum,omitempty" json:"enum,omitempty"`
+	Min         *float64 `yaml:"min,omitempty" json:"min,omitempty"`
+	Max         *float64 `yaml:"max,omitempty" json:"max,omitempty"`
+	MinLength   *int     `yaml:"minLength,omitempty" json:"minLength,omitempty"`
+	MaxLength   *int     `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
+	MinItems    *int     `yaml:"minItems,omitempty" json:"minItems,omitempty"`
+	MaxItems    *int     `yaml:"maxItems,omitempty" json:"maxItems,omitempty"`
+	// Ranges / Lengths are the DISJOINT spans a restriction really allows
+	// ("5..20 | 40..100"). Min/Max carry the outer span so an old client still
+	// validates loosely; these carry the truth, and when they are present the
+	// value has to land inside one of them. Without this a bandwidth of 30 was
+	// accepted by a rule the vendor had written to refuse it.
+	Ranges  []Span `yaml:"ranges,omitempty" json:"ranges,omitempty"`
+	Lengths []Span `yaml:"lengths,omitempty" json:"lengths,omitempty"`
+	// Bits are the named flags a bits-typed value may be built from: the value
+	// is a space-separated subset of these, in any order.
+	Bits []string `yaml:"bits,omitempty" json:"bits,omitempty"`
+	// AnyOf are alternative rule sets, of which the value must satisfy at least
+	// ONE (a YANG union). Each alternative carries its own type and rules, so a
+	// union of "uint32 or the word auto" refuses "atuo" while accepting both
+	// legitimate spellings - where naming the alternatives in prose refused
+	// nothing at all.
+	AnyOf []Alternative `yaml:"anyOf,omitempty" json:"anyOf,omitempty"`
+	// MaxDecimals is the number of digits allowed after the decimal point
+	// (YANG's fraction-digits). A value with more is not representable in the
+	// type the product declared.
+	MaxDecimals *int `yaml:"maxDecimals,omitempty" json:"maxDecimals,omitempty"`
+	// ReadOnly marks a setting the model declares as operational state rather
+	// than configuration ("config false"). It is shown, never edited: the
+	// device owns the value and writing it back would be overwritten by the
+	// next read.
+	ReadOnly bool `yaml:"readOnly,omitempty" json:"readOnly,omitempty"`
 	// Units is the unit the value is expressed in ("seconds", "kbit/s") when
 	// the schema said so. It is shown beside the editor, never parsed.
 	Units string `yaml:"units,omitempty" json:"units,omitempty"`
@@ -274,6 +304,59 @@ type Validation struct {
 	// parameter can be resolved.
 	AtLeast string `yaml:"atLeast,omitempty" json:"atLeast,omitempty"`
 	AtMost  string `yaml:"atMost,omitempty" json:"atMost,omitempty"`
+}
+
+// Span is one closed interval of an allowed-value or allowed-length
+// restriction. Either end may be open (nil), which is what "min"/"max" mean in
+// a schema.
+type Span struct {
+	Min *float64 `yaml:"min,omitempty" json:"min,omitempty"`
+	Max *float64 `yaml:"max,omitempty" json:"max,omitempty"`
+}
+
+// Contains reports whether f falls inside the span.
+func (s Span) Contains(f float64) bool {
+	if s.Min != nil && f < *s.Min {
+		return false
+	}
+	if s.Max != nil && f > *s.Max {
+		return false
+	}
+	return true
+}
+
+// Alternative is one branch of an AnyOf: a data type plus the rules that go
+// with it. It is deliberately NOT a full Validation - an alternative has no
+// business being required, carrying a preset, or nesting further alternatives,
+// and allowing it would make "which rule refused this value" unanswerable.
+type Alternative struct {
+	// Label is how the schema spelled this alternative ("uint32",
+	// "inet:ipv4-address"), used to explain a rejection in the reader's terms.
+	Label       string    `yaml:"label,omitempty" json:"label,omitempty"`
+	Type        ParamType `yaml:"type,omitempty" json:"type,omitempty"`
+	Pattern     string    `yaml:"pattern,omitempty" json:"pattern,omitempty"`
+	Patterns    []string  `yaml:"patterns,omitempty" json:"patterns,omitempty"`
+	NotPatterns []string  `yaml:"notPatterns,omitempty" json:"notPatterns,omitempty"`
+	Enum        []string  `yaml:"enum,omitempty" json:"enum,omitempty"`
+	Bits        []string  `yaml:"bits,omitempty" json:"bits,omitempty"`
+	Min         *float64  `yaml:"min,omitempty" json:"min,omitempty"`
+	Max         *float64  `yaml:"max,omitempty" json:"max,omitempty"`
+	MinLength   *int      `yaml:"minLength,omitempty" json:"minLength,omitempty"`
+	MaxLength   *int      `yaml:"maxLength,omitempty" json:"maxLength,omitempty"`
+	Ranges      []Span    `yaml:"ranges,omitempty" json:"ranges,omitempty"`
+	Lengths     []Span    `yaml:"lengths,omitempty" json:"lengths,omitempty"`
+}
+
+// Rules renders the alternative as the validation rules it stands for, so one
+// code path checks a value whether it came from a union branch or the
+// parameter itself.
+func (a Alternative) Rules() Validation {
+	return Validation{
+		Pattern: a.Pattern, Patterns: a.Patterns, NotPatterns: a.NotPatterns,
+		Enum: a.Enum, Bits: a.Bits, Min: a.Min, Max: a.Max,
+		MinLength: a.MinLength, MaxLength: a.MaxLength,
+		Ranges: a.Ranges, Lengths: a.Lengths,
+	}
 }
 
 // InstanceRegistry is the central instance catalog (.configer/instances.yaml).

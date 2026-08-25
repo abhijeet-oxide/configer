@@ -1,0 +1,22 @@
+module acme-deviations {
+    namespace "http://example.com/acme-deviations";
+    prefix dev;
+
+    import acme-features { prefix feat; }
+
+    // A deviation is the vendor saying "the model says this, my box does
+    // something else". Reading the model without applying them produces rules
+    // that are confidently wrong.
+    deviation "/feat:transport-config/feat:hold-timer" {
+        deviate replace {
+            type uint16 { range "5..600"; }
+        }
+        deviate add {
+            mandatory true;
+        }
+    }
+
+    deviation "/feat:transport-config/feat:legacy-mode" {
+        deviate not-supported;
+    }
+}

@@ -8,13 +8,13 @@ cell:
   earfcn: 640000
   pci: 301
   tac: 300
-  txPowerDbm: 37
+  txPowerDbm: 37 # conducted power at the antenna port
   bandwidthMhz: 20
   duplexMode: TDD
   enabled: true
 transport:
   gateway: 10.52.0.1
-  vlan: 100
+  vlan: 100 # fronthaul VLAN, must match the switch
   mtu: 1500
   qos:
     dscp: 46

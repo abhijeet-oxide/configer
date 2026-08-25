@@ -43,6 +43,7 @@ import { useSwitchRepo } from "../useSwitchRepo";
 import FileExplorer from "./FileExplorer";
 import { InSyncArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
 import { InlineNotice, Stepper } from "./ui";
+import { c } from "../uikit";
 
 // ImportWizard turns a repository scan into managed catalog parameters in
 // three clear steps: scan the files, choose and enrich the parameters, then
@@ -644,7 +645,7 @@ function ScanStep({
     >
       <Space size={28} wrap style={{ marginBottom: 14 }}>
         <Statistic title="Config files" value={files.length} />
-        <Statistic title="New settings found" value={totalNew} valueStyle={{ color: totalNew ? "#1baf7a" : undefined }} />
+        <Statistic title="New settings found" value={totalNew} valueStyle={{ color: totalNew ? c.ok : undefined }} />
         <Statistic title="Already managed" value={totalManaged} />
         {(scan.skipped?.length ?? 0) > 0 && (
           // Not all of these are ignore rules - most are files that declare
@@ -961,7 +962,7 @@ function ReviewStep({
         <Statistic title="Parameters to import" value={chosen.length} />
         <Statistic title="Source files" value={files.length} />
         <Statistic title="Categories" value={byCategory.length} />
-        {secrets > 0 && <Statistic title="Marked secret" value={secrets} valueStyle={{ color: "#eda100" }} />}
+        {secrets > 0 && <Statistic title="Marked secret" value={secrets} valueStyle={{ color: c.pending }} />}
         {ignoredFiles.length > 0 && <Statistic title="Files to ignore" value={ignoredFiles.length} />}
       </Space>
       <Space size={6} wrap style={{ marginBottom: 12 }}>

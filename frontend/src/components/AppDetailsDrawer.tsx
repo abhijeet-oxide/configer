@@ -32,6 +32,7 @@ import EnvTag from "./EnvTag";
 import { relTime } from "./DashboardView";
 import { InlineListSkeleton } from "./Skeletons";
 import { InlineNotice } from "./ui";
+import { c } from "../uikit";
 
 // AppDetailsDrawer is the quick-glance side panel for one application: the
 // card on the Applications page stays lightweight, and everything deeper -
@@ -201,8 +202,8 @@ export default function AppDetailsDrawer({
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
             <StatCard title="Parameters" value={r.params} />
             <StatCard title="Instances" value={r.instances} />
-            <StatCard title="Invalid values" value={totalInvalid} tone={totalInvalid ? "#cf1322" : undefined} />
-            <StatCard title="Waiting for approval" value={r.openChanges} tone={r.openChanges ? "#1677ff" : undefined} />
+            <StatCard title="Invalid values" value={totalInvalid} tone={totalInvalid ? c.danger : undefined} />
+            <StatCard title="Waiting for approval" value={r.openChanges} tone={r.openChanges ? c.brand : undefined} />
           </div>
 
           {/* System health: the same signal as the Overview's health map, so

@@ -36,6 +36,7 @@ import { InlineNotice, Stepper } from "./ui";
 import FileExplorer from "./FileExplorer";
 import InitProgress from "./InitProgress";
 import { OfflineArt, ScanArt, StatePanel, SuccessArt } from "./illustrations";
+import { c } from "../uikit";
 
 // OnboardingWizard turns a freshly connected repository into a managed
 // application: detect the layout, confirm the instances, CHOOSE WHICH FILES to
@@ -977,7 +978,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           </div>
         ) : (
           <Result
-            icon={<CloudUploadOutlined style={{ color: "var(--ant-color-primary, #2f6bff)" }} />}
+            icon={<CloudUploadOutlined style={{ color: c.brand }} />}
             title={`Initialize ${appName}`}
             subTitle={
               <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "left" }}>

@@ -1,7 +1,8 @@
-# The repository's own end-to-end script: onboard a fixture, edit through the
-# API, submit, and assert the branch carries exactly the expected surgical
-# diffs. It is the one check that proves the product's central promise, so it is
-# a first-class analyzer rather than a CI step somebody might reorder away.
+# The repository's own end-to-end script: point Configer at a repository nobody
+# prepared for it, let it onboard itself, edit through the API, submit, and
+# assert the branch carries exactly the expected surgical diffs. It is the one
+# check that proves the product's central promise, so it is a first-class
+# analyzer rather than a CI step somebody might reorder away.
 id: smoke
 name: End-to-end write-back
 description: The write-back path does not produce the expected diffs.
@@ -24,4 +25,6 @@ defaults:
   effort: medium
   recommendation: "The smoke script says which assertion failed. It is the product's central promise, so treat a failure here as blocking whatever else is green."
 cache:
-  inputs: ["backend/**/*.go", "sample-repo/**", "scripts/smoke.sh"]
+  # The fixture is part of the input: a change to the sample repository changes
+  # what the script asserts, so a cached pass over the old one would be a lie.
+  inputs: ["backend/**/*.go", "sample-repos/telco-ran/**", "scripts/smoke.sh"]

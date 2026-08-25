@@ -16,8 +16,13 @@ correctly.
 | `kustomize-fleet` | kustomize (base + overlays)     | One overlay per cluster; base shared; `kustomization.yaml` skipped; strategic-merge patches with Kubernetes envelope fields filtered out. |
 | `kpt-network`     | kpt (Kptfile packages)          | Setter-annotated values named after their `# kpt-set:` setter; `Kptfile` skipped; list/CIDR/IPv4 type inference. |
 | `k8s-multicluster`| plain-folders (`clusters/`)     | Raw Kubernetes manifests, envelope filtering at scale, and multi-document (`---`) files addressed per document. |
-| `telco-ran`       | plain-folders (`sites/`)        | Mixed YAML + NETCONF/YANG XML per site, a shared base file, list parameters, and a large parameter surface with JSON-Schema validation. |
+| `telco-ran`       | plain-folders (`sites/`)        | Mixed YAML + NETCONF/YANG XML per site, a shared base file, list parameters, and a large parameter surface with JSON-Schema validation. Also the fixture `./scripts/smoke.sh` drives end to end. |
 | `helm-microservices` | Helm umbrella (aliased subcharts) | A deliberately messy probe (not part of the pass/fail suite): templated value strings, a `global:` block, list-of-maps env vars, YAML anchors, subchart-default duplication, ragged overrides, and a committed rendered manifest. Use it to see where the parameter grid stops being a faithful view. See its own README. |
+
+A few values in `telco-ran` carry trailing `#` comments on purpose. Real
+configuration files do, and comment-preserving surgical editing is the promise
+the smoke test exists to prove - so those comments are assertions, not
+decoration. Leave them where they are.
 
 ## Running the checks
 

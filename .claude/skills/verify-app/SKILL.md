@@ -1,6 +1,6 @@
 ---
 name: verify-app
-description: Verify a Configer change end-to-end - build, lint, unit tests, and the write-back smoke test against the bundled fixture. Use after any nontrivial backend or frontend change.
+description: Verify a Configer change end-to-end - build, lint, unit tests, and the write-back smoke test against a sample repository. Use after any nontrivial backend or frontend change.
 ---
 
 # Verify Configer
@@ -22,12 +22,15 @@ cd ../frontend && npx tsc --noEmit && npx eslint src
 ./scripts/smoke.sh
 ```
 
-This boots the backend on a copy of `sample-repo/`, stages a cell edit, a
-deduplicated edit (fans out to YAML + XML), a global (shared-file) edit, and
-an invalid value (must 422), submits the draft, and asserts the
-`configer/cr-1` branch carries exactly the expected surgical diffs - inline
-comments preserved, no `generated/` artifacts, untouched instances unchanged.
-`SMOKE OK` is the pass signal.
+This boots the backend on a copy of `sample-repos/telco-ran/` - a repository
+with no `.configer/`, so ONBOARDING is part of the test - discovers and
+initializes it, checks that rules read out of the site's own JSON Schema are
+enforced (four 422s), then stages a scalar edit, a fan-out edit (one setting,
+two files, YAML + XML) and a global (shared-file) edit, validates the change,
+submits it, and asserts the `hotfix/cr-1-smoke-test` branch carries exactly the
+expected surgical diffs - inline comments preserved, no `generated/` artifacts,
+untouched sites unchanged, no values in `.configer/`. `SMOKE OK` is the pass
+signal.
 
 ## 3. When the UI changed
 

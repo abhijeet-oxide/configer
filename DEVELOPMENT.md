@@ -36,8 +36,9 @@ Copy `.env.example` to `.env` to override anything. Interactive API docs:
 ```bash
 make test            # go test ./... + tsc --noEmit
 make lint            # go vet + eslint + no em-dashes (CI also runs golangci-lint)
-./scripts/smoke.sh   # end-to-end: boot on a fixture copy, stage edits via the
-                     # API, submit, assert the CR branch's surgical diffs
+./scripts/smoke.sh   # end-to-end: onboard sample-repos/telco-ran from scratch,
+                     # stage edits via the API, validate, submit, and assert the
+                     # CR branch's surgical diffs
 make functional-test # scanner functional + scale suite over sample-repos/
 ```
 

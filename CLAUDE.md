@@ -14,7 +14,7 @@ make dev            # backend :8080 (serves ./sample-repo) + frontend :5173
 make test           # go test ./... + tsc --noEmit
 make lint           # go vet + golangci-lint + eslint
 make build          # backend binary + frontend dist
-./scripts/smoke.sh  # end-to-end: onboard fixture, edit, submit, assert branch diff
+./scripts/smoke.sh  # end-to-end: onboard sample-repos/telco-ran, edit, validate, submit, assert branch diff
 make functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
 make quality        # the quality platform, incremental against origin/main
 make quality-local  # the fast loop (< 30s): formatting, types, vet

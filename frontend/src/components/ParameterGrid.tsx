@@ -82,6 +82,7 @@ import { useIdentity } from "../identity";
 import { enqueueEdit, OfflineError } from "../offline";
 import { useDebounced, useElementSize } from "../hooks";
 import { useUI, type GroupBy } from "../store";
+import { c } from "../uikit";
 
 function EditableCell({
   cell,
@@ -1771,7 +1772,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                     <PushpinFilled style={{ color: "var(--c-review)", fontSize: 11, flexShrink: 0 }} />
                   </Tooltip>
                 )}
-                {r.param.secret && <LockOutlined style={{ color: "#faad14", flexShrink: 0 }} />}
+                {r.param.secret && <LockOutlined style={{ color: c.pending, flexShrink: 0 }} />}
                 <span
                   className="cf-pname-leaf"
                   style={r.pendingUnmanage ? { textDecoration: "line-through", opacity: 0.65 } : undefined}
@@ -3061,7 +3062,7 @@ function GlobalPrompt({
       onCancel={onClose}
       title={
         <Space>
-          <GlobalOutlined style={{ color: "#722ed1" }} />
+          <GlobalOutlined style={{ color: c.base }} />
           You are changing a global value
         </Space>
       }
@@ -3084,7 +3085,7 @@ function GlobalPrompt({
             setting: all {instanceCount} systems currently share one value.
           </Typography.Paragraph>
           <Typography.Paragraph style={{ marginBottom: 8 }}>
-            New value: <span className="mono" style={{ color: "#389e0d" }}>{fmtValue(ask.value)}</span>
+            New value: <span className="mono" style={{ color: c.ok }}>{fmtValue(ask.value)}</span>
           </Typography.Paragraph>
           <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
             "Change it for everyone" updates the shared global value. "Only for {ask.instance}" sets an

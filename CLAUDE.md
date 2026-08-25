@@ -293,8 +293,12 @@ copies of the same intentions. It holds the palette (light and dark, plus the
 presets and the one `ACTIVE_PRESET` switch), the structural tokens, the Ant
 Design bridge, the `ThemeProvider` and the primitives (`SectionCard`,
 `PageHeader`, `StatTile`, `StatusPill`, `InlineNotice`, `EmptyState`,
-`Stepper`, `Toolbar`, `Kbd`, the motion vocabulary). Read `uikit/README.md`
-before touching it; the rules that matter:
+`Stepper`, `Toolbar`, `Kbd`, the motion vocabulary) - AND the chrome: the frame,
+the navigation and the bar above the page (`AppShell`/`SideNav`/`TopBar`), plus
+the full-page states (`StatusScreen`, `BootSplash`). `NavRail`, `TopBar` and
+`BootGate` here are thin adapters that hand those components Configer's own
+entries, breadcrumb and copy. Read `uikit/README.md` before touching it; the
+rules that matter:
 
 - **Nothing in `uikit/` names a product.** Identity - the name, the mark, the
   caption, the favicon - lives in `src/brand.ts`, which is what survives the
@@ -308,6 +312,11 @@ before touching it; the rules that matter:
   the moment it is copied there. Tailwind stays fine everywhere else here.
 - **`react` and `antd` are its only dependencies.** Adding a third is how a
   copyable folder turns into a package with a release process.
+- **A lockup aligns to itself**, never to whatever it was dropped into. The
+  name and the caption are different widths, so on a card that centres its text
+  the short name floated to the middle of the box the caption sized and read as
+  a hole punched beside the mark. That is why `BrandLockup` exists rather than
+  three hand-built copies of the same two lines.
 - After changing it, copy the whole folder across and verify with
   `diff -r frontend/src/uikit ../softwareGateway/web/src/uikit` - empty output
   means the tools are still on one design system. Fix a drift by copying, never

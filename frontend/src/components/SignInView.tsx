@@ -3,7 +3,7 @@ import { GithubOutlined, CheckCircleFilled, MoonOutlined, SunOutlined } from "..
 import { theme as brand } from "../theme.config";
 import { useDeployment } from "../deployment";
 import { type SignedOutReason } from "../session";
-import BrandMark from "./BrandMark";
+import { BrandLockup } from "../uikit";
 import { toggleThemeWithReveal } from "../themeTransition";
 import { useUI } from "../store";
 import { SessionExpiredArt, SignedOutArt, WorkspaceArt } from "./illustrations";
@@ -59,18 +59,15 @@ function AuthCanvas({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** The brand lockup: the mark, the product, and what it does. Repeated on every
- *  page of the family in the same place and size. */
+/** The brand lockup: the mark, the product, and what it does. It is the shared
+ *  design system's, so it is the same block on the boot screen, the
+ *  service-unavailable page and here - and so the alignment bug it used to
+ *  carry cannot come back on one page and not the others. (The name and the
+ *  caption are different widths, and this card centres its text: aligned to
+ *  the card rather than to itself, the short name floated to the middle of the
+ *  box the caption sized and read as a hole punched beside the mark.) */
 function Lockup({ size = 34 }: { size?: number }) {
-  return (
-    <div className="auth-lockup">
-      <BrandMark size={size} />
-      <div className="auth-lockup-text">
-        <span className="auth-lockup-name">{brand.appName}</span>
-        <span className="auth-lockup-tag">Config lifecycle</span>
-      </div>
-    </div>
-  );
+  return <BrandLockup brand={brand} size={size} />;
 }
 
 function DeploymentLine() {

@@ -21,6 +21,7 @@ import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { modLabel, shortcut } from "../platform";
 import { AppContextChips, Kbd } from "./ui";
+import { TopBar as Bar } from "../uikit";
 import MembersModal from "./MembersModal";
 
 // The application context bar: breadcrumb with the app switcher, then the
@@ -95,8 +96,8 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   // Cmd/Ctrl-K is owned by the command palette (a richer jump-to-anything
   // surface); this box stays a quick filter of the current view.
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", minWidth: 0, flexWrap: "nowrap" }}>
-      <div style={{ minWidth: 0, flexShrink: 1, overflow: "hidden" }}>
+    <Bar
+      left={
         <Breadcrumb
           items={[
             // Every trail starts at Home: on the start page it is the only
@@ -181,50 +182,54 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
               : []),
           ]}
         />
-      </div>
-      {/* Context chips ride in the bar on every tab except Overview, where
-          the page header itself carries them (stated once per screen). */}
+      }
+      right={
+        <>
+          {/* Global "search anything" opener: applications, actions, and
+              (inside an app) that app's parameters, values, and changes.
+              Cmd/Ctrl-K opens the same palette. */}
+          <Tooltip title={`Search everything (${shortcut("K")})`}>
+            <Button
+              size="small"
+              icon={<SearchOutlined />}
+              onClick={() => openSearch(inApp ? "app" : "global")}
+              style={{ flexShrink: 0, color: "var(--text-3)" }}
+            >
+              Search
+              <span style={{ marginLeft: 8 }}>
+                <Kbd>{modLabel} K</Kbd>
+              </span>
+            </Button>
+          </Tooltip>
+          <Space size={4} style={{ flexShrink: 0 }}>
+            {inApp && gitUrl && (
+              <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">
+                {isGitHub ? "Open in GitHub" : "View in Git"}
+              </Button>
+            )}
+            <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
+              <Button
+                size="small"
+                type="text"
+                aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
+                onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+              />
+            </Tooltip>
+            <NotificationsPanel awaiting={awaiting} />
+            <IdentityControl repoId={repoId} />
+          </Space>
+        </>
+      }
+    >
+      {/* Context chips ride in the bar on every tab except Overview, where the
+          page header itself carries them (stated once per screen). */}
       {inApp && section !== "overview" && (
         <div style={{ flexShrink: 0, display: "flex", alignItems: "center", minWidth: 0, overflow: "hidden" }}>
           <AppContextChips />
         </div>
       )}
-      <div style={{ flex: 1, minWidth: 8 }} />
-      {/* Global "search anything" opener: applications, actions, and (inside an
-          app) that app's parameters, values, and changes. Cmd/Ctrl-K opens the
-          same palette. */}
-      <Tooltip title={`Search everything (${shortcut("K")})`}>
-        <Button
-          size="small"
-          icon={<SearchOutlined />}
-          onClick={() => openSearch(inApp ? "app" : "global")}
-          style={{ flexShrink: 0, color: "var(--text-3)" }}
-        >
-          Search
-          <span style={{ marginLeft: 8 }}>
-            <Kbd>{modLabel} K</Kbd>
-          </span>
-        </Button>
-      </Tooltip>
-      <Space size={4} style={{ flexShrink: 0 }}>
-        {inApp && gitUrl && (
-          <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">
-            {isGitHub ? "Open in GitHub" : "View in Git"}
-          </Button>
-        )}
-        <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-          <Button
-            size="small"
-            type="text"
-            aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-            onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
-          />
-        </Tooltip>
-        <NotificationsPanel awaiting={awaiting} />
-        <IdentityControl repoId={repoId} />
-      </Space>
-    </div>
+    </Bar>
   );
 }
 

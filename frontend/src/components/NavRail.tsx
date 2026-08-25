@@ -1,38 +1,29 @@
-import { Badge, Tooltip, Typography } from "antd";
+import { useQuery } from "@tanstack/react-query";
 import {
   HomeOutlined,
   AppstoreOutlined,
   InboxOutlined,
   FileProtectOutlined,
-  DoubleLeftOutlined,
-  DoubleRightOutlined,
   UserOutlined,
 } from "../icons";
-import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
-import { envHex } from "../theme";
-import { theme as brand } from "../theme.config";
+import { envHex, NavEntry, SideNav, type NavItem, type NavProfile } from "../uikit";
+import brand from "../brand";
 import { useUI } from "../store";
 import { useIdentity } from "../identity";
 import { useDeployment } from "../deployment";
-import BrandMark from "./BrandMark";
 
-// The navigation rail: the product's one piece of dark chrome, and the ONLY
-// organization-scope navigator. It holds just what crosses applications:
-// Home, Applications, Inbox (every change and approval that needs someone),
-// Audit. Instances and Repositories are not top-level nouns - they live
-// inside an application, reached through its tab strip. The rail's foot is
-// the person: a profile card (who you are, what you can do) that opens the
-// Settings page, where every personal preference lives.
-
-interface RailItem {
-  key: string;
-  label: string;
-  icon: React.ReactNode;
-  section?: string;
-  needsApp?: boolean;
-  badge?: number;
-}
+// The navigation rail: the ONLY organization-scope navigator. It holds just
+// what crosses applications: Home, Applications, Inbox (every change and
+// approval that needs someone), Audit. Instances and Repositories are not
+// top-level nouns - they live inside an application, reached through its tab
+// strip. The rail's foot is the person: a profile card (who you are) that opens
+// the Settings page, where every personal preference lives.
+//
+// The rail itself - its width, its item heights, the hover and active language,
+// the collapse behaviour, the profile card, the badges - is `SideNav` from the
+// shared design system, identical to the one the sibling tool mounts. What is
+// Configer's is only WHICH entries there are and what they do.
 
 // Which rail entry a section lights up. Every workspace-wide change and
 // approval surface (changelog, drafts, approvals) resolves to the one Inbox
@@ -59,43 +50,6 @@ function railKey(section: string): string {
   }
 }
 
-function RailEntry({
-  item,
-  active,
-  collapsed,
-  disabled,
-  onClick,
-}: {
-  item: RailItem;
-  active: boolean;
-  collapsed: boolean;
-  disabled: boolean;
-  onClick: () => void;
-}) {
-  const inner = (
-    <div
-      className={`rail-item${active ? " rail-item-active" : ""}${disabled ? " rail-item-disabled" : ""}`}
-      onClick={disabled ? undefined : onClick}
-      role="button"
-      aria-disabled={disabled}
-      style={{ justifyContent: collapsed ? "center" : "flex-start" }}
-    >
-      <Badge count={item.badge ?? 0} size="small" offset={collapsed ? [2, 0] : [4, 0]} color="var(--nav-bg-active)">
-        <span className="rail-item-icon">{item.icon}</span>
-      </Badge>
-      {!collapsed && <span className="rail-item-label">{item.label}</span>}
-    </div>
-  );
-  const tip = disabled ? `${item.label}: select an application first` : collapsed ? item.label : "";
-  return tip ? (
-    <Tooltip title={tip} placement="right">
-      {inner}
-    </Tooltip>
-  ) : (
-    inner
-  );
-}
-
 export default function NavRail({
   collapsed = false,
   onToggleCollapse,
@@ -103,7 +57,8 @@ export default function NavRail({
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
-  const { section, setSection, repoId } = useUI();
+  const { section, setSection } = useUI();
+  const profile = useRailProfile(railKey(section) === "profile");
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
   const repos = wsQ.data?.repos ?? [];
@@ -114,134 +69,78 @@ export default function NavRail({
   const awaiting = repos.reduce((n, r) => n + (r.openChanges || 0), 0);
   const activeKey = railKey(section);
 
-  const items: RailItem[] = [
-    { key: "home", label: "Home", icon: <HomeOutlined />, section: "home" },
-    { key: "applications", label: "Applications", icon: <AppstoreOutlined />, section: "workspace" },
-    { key: "inbox", label: "Inbox", icon: <InboxOutlined />, section: "inbox", badge: awaiting },
+  const items: NavItem[] = [
+    { key: "home", label: "Home", icon: <HomeOutlined />, onClick: () => setSection("home") },
+    {
+      key: "applications",
+      label: "Applications",
+      icon: <AppstoreOutlined />,
+      onClick: () => setSection("workspace"),
+    },
+    {
+      key: "inbox",
+      label: "Inbox",
+      icon: <InboxOutlined />,
+      badge: awaiting,
+      onClick: () => setSection("inbox"),
+    },
     // The trail spans every application, so it stands at the workspace level
     // alongside the others - it never needs one selected.
-    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "audit" },
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, onClick: () => setSection("audit") },
   ];
 
   return (
-    <div className="rail" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
-      <div
-        style={{
-          padding: collapsed ? "14px 0 10px" : "14px 16px 10px",
-          display: "flex",
-          gap: 10,
-          alignItems: "center",
-          justifyContent: collapsed ? "center" : "flex-start",
-        }}
-      >
-        <BrandMark />
-        {!collapsed && (
-          <div style={{ lineHeight: 1.1, minWidth: 0 }}>
-            <Typography.Text strong style={{ color: "var(--nav-fg-active)" }}>
-              {brand.appName}
-            </Typography.Text>
-            <div style={{ fontSize: 10, color: "var(--nav-fg)", letterSpacing: 0.4 }}>{brand.navCaption}</div>
-          </div>
-        )}
-      </div>
-      <div style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "4px 8px" }}>
-        {items.map((it) => (
-          <RailEntry
-            key={it.key}
-            item={it}
-            active={activeKey === it.key}
-            collapsed={collapsed}
-            disabled={!!it.needsApp && !repoId}
-            onClick={() => {
-              if (it.section) setSection(it.section);
-            }}
-          />
-        ))}
-      </div>
-      <div style={{ padding: "4px 8px 10px", borderTop: "1px solid var(--nav-border)" }}>
-        <ProfileCard collapsed={collapsed} active={activeKey === "profile"} />
-        <RailEntry
-          item={{
-            key: "collapse",
-            label: "Collapse",
-            icon: collapsed ? <DoubleRightOutlined /> : <DoubleLeftOutlined />,
-          }}
-          active={false}
-          collapsed={collapsed}
-          disabled={false}
-          onClick={() => onToggleCollapse?.()}
-        />
-        {!collapsed && <DeploymentChip />}
-      </div>
-    </div>
+    <SideNav
+      brand={brand}
+      items={items}
+      activeKey={activeKey}
+      collapsed={collapsed}
+      onToggleCollapse={onToggleCollapse}
+      profile={profile}
+      profileSlot={<SignInEntry collapsed={collapsed} />}
+      footer={<DeploymentChip />}
+    />
   );
 }
 
-// ProfileCard grounds the rail in the person using it: who you are and what
-// you can do here, one click from every personal preference. On a multi-user
-// deployment that is the signed-in account and its role on the active
-// application; in single-user mode it is the local operator. Signed out, it
-// becomes the sign-in entry - the one place identity starts.
-function ProfileCard({ collapsed, active }: { collapsed: boolean; active: boolean }) {
+// The person at the rail's foot. On a multi-user deployment that is the
+// signed-in account; in single-user mode it is the local operator. Signed out,
+// the card is replaced by the sign-in entry - the one place identity starts -
+// which is why this returns null and the caller renders that instead.
+function useRailProfile(active: boolean): NavProfile | null {
   const setSection = useUI((s) => s.setSection);
   const id = useIdentity();
-
   if (id.loading) return null;
+  if (id.authEnabled && !id.signedIn) return null;
+  return {
+    name: id.displayName,
+    // The person, and nothing about permissions: access belongs to an
+    // application, not to a name in a sidebar. It is shown on each
+    // application's card and in its context strip instead.
+    ...(id.authEnabled && id.user?.login ? { sub: id.user.login } : {}),
+    ...(id.user?.avatarUrl ? { avatarUrl: id.user.avatarUrl } : {}),
+    active,
+    onClick: () => setSection("settings"),
+  };
+}
 
-  if (id.authEnabled && !id.signedIn) {
-    const login = () => {
-      window.location.href = `/api/auth/login?return_to=${encodeURIComponent(
-        window.location.pathname + window.location.search,
-      )}`;
-    };
-    return (
-      <RailEntry
-        item={{ key: "signin", label: "Sign in", icon: <UserOutlined /> }}
-        active={false}
-        collapsed={collapsed}
-        disabled={false}
-        onClick={login}
-      />
-    );
-  }
-
-  const avatar = id.user?.avatarUrl ? (
-    <img className="rail-profile-avatar" src={id.user.avatarUrl} alt="" />
-  ) : (
-    <span className="rail-profile-avatar rail-profile-initials">
-      {(id.displayName || "?").slice(0, 2).toUpperCase()}
-    </span>
-  );
-
-  const inner = (
-    <div
-      className={`rail-profile${active ? " rail-profile-active" : ""}`}
-      role="button"
-      aria-label={`${id.displayName} - open settings`}
-      onClick={() => setSection("settings")}
-      style={{ justifyContent: collapsed ? "center" : "flex-start" }}
-    >
-      {avatar}
-      {/* The person, and nothing about permissions: access belongs to an
-          application, not to a name in a sidebar. It is shown on each
-          application's card and in its context strip instead. */}
-      {!collapsed && (
-        <div style={{ minWidth: 0, lineHeight: 1.25 }}>
-          <div className="rail-profile-name">{id.displayName}</div>
-          {id.authEnabled && id.user?.login && (
-            <div className="rail-profile-role">{id.user.login}</div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+/** The sign-in entry, standing in the profile card's place when nobody is
+ *  signed in. Identity is where a session starts, so the rail's foot must not
+ *  simply go blank. */
+function SignInEntry({ collapsed }: { collapsed: boolean }) {
+  const id = useIdentity();
+  if (id.loading || !id.authEnabled || id.signedIn) return null;
+  const login = () => {
+    window.location.href = `/api/auth/login?return_to=${encodeURIComponent(
+      window.location.pathname + window.location.search,
+    )}`;
+  };
   return (
-    <Tooltip
-      title={collapsed ? id.displayName : "Profile and settings"}
-      placement="right"
-    >
-      {inner}
-    </Tooltip>
+    <NavEntry
+      item={{ key: "signin", label: "Sign in", icon: <UserOutlined />, onClick: login }}
+      active={false}
+      collapsed={collapsed}
+    />
   );
 }
 
@@ -252,20 +151,15 @@ function DeploymentChip() {
   const m = useDeployment();
   if (!m.reachable) return null;
   return (
-    <div
-      style={{
-        margin: "8px 8px 0",
-        fontSize: 10.5,
-        color: "var(--nav-fg)",
-        display: "flex",
-        alignItems: "center",
-        gap: 6,
-        overflow: "hidden",
-        whiteSpace: "nowrap",
-      }}
-    >
+    <div className="ui-nav-note">
       <span
-        style={{ width: 6, height: 6, borderRadius: 3, flexShrink: 0, background: envHex(m.environment) }}
+        style={{
+          width: 6,
+          height: 6,
+          borderRadius: 3,
+          flexShrink: 0,
+          background: envHex(m.environment),
+        }}
       />
       {m.name} {m.version} · {m.environment}
     </div>

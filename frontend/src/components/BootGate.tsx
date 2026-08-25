@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
-import { Button, Typography } from "antd";
 import { ReloadOutlined } from "../icons";
 import { ApiError, apiBaseUrl } from "../api";
 import { useHealth } from "../deployment";
-import { theme as brand } from "../theme.config";
-import BrandMark from "./BrandMark";
+import brand from "../brand";
+import { BootSplash as SharedBootSplash, StatusScreen } from "../uikit";
 import { ServiceDownArt } from "./illustrations";
 
 // BootGate answers the first question the app has to ask: is the service there?
@@ -58,18 +57,10 @@ function isWrongAddress(err: unknown): boolean {
 
 // BootSplash is the in-between: the product's own mark on its own canvas, so
 // the first paint already belongs to the app rather than being a blank page.
+// The screen itself is the shared design system's, so this moment looks the
+// same in every tool on the platform.
 export function BootSplash({ label = "Starting" }: { label?: string }) {
-  return (
-    <div className="boot-screen">
-      <div className="boot-splash">
-        <BrandMark size={44} />
-        <Typography.Text strong style={{ fontSize: 15 }}>
-          {brand.appName}
-        </Typography.Text>
-        <span className="boot-progress" aria-label={label} />
-      </div>
-    </div>
-  );
+  return <SharedBootSplash brand={brand} label={label} />;
 }
 
 // ServiceUnavailable is the full-page state for "the probe did not succeed".
@@ -98,72 +89,46 @@ function ServiceUnavailable({
 
   const misaddressed = isWrongAddress(error);
   return (
-    <div className="auth-screen">
-      <div className="auth-centered">
-        <div className="auth-card">
-          <div className="auth-lockup">
-            <BrandMark size={30} />
-            <div className="auth-lockup-text">
-              <span className="auth-lockup-name">{brand.appName}</span>
-              <span className="auth-lockup-tag">Config lifecycle</span>
-            </div>
-          </div>
-          <div className="auth-card-art">
-            <ServiceDownArt size={140} />
-          </div>
-          <Typography.Title level={3} className="auth-title">
-            {misaddressed ? "Service not found at this address" : "Service unavailable"}
-          </Typography.Title>
-          <Typography.Paragraph type="secondary" className="auth-body">
-            {misaddressed ? (
-              <>
-                Something answered at the configured address, but it isn&rsquo;t the{" "}
-                {brand.appName} API. The address this page is built with looks wrong - an
-                administrator can correct it.
-              </>
-            ) : (
-              <>
-                {brand.appName} can&rsquo;t reach its service right now. It may be starting up,
-                restarting, or briefly under maintenance. Nothing you have saved is affected - your
-                configuration lives in Git.
-              </>
-            )}
-          </Typography.Paragraph>
-          {misaddressed && (
-            <code className="auth-detail">
-              {apiBaseUrl()}/health {"->"} {(error as ApiError).status}
-            </code>
-          )}
-          {/* The wait is shown as progress rather than a number that ticks down
-              in prose: it says "this page is working on it" at a glance. */}
-          {!misaddressed && (
-            <div className="auth-retry" role="status" aria-live="polite">
-              <div className="auth-retry-track">
-                <span
-                  className="auth-retry-fill"
-                  style={{ width: `${((RETRY_SECONDS - left) / RETRY_SECONDS) * 100}%` }}
-                />
-              </div>
-              <span className="auth-retry-label">
-                {retrying ? "Checking…" : `Checking again in ${left}s`}
-              </span>
-            </div>
-          )}
-          <div className="auth-card-actions">
-            <Button
-              type="primary"
-              size="large"
-              icon={<ReloadOutlined />}
-              loading={retrying}
-              onClick={onRetry}
-              className="auth-cta"
-            >
-              Try again now
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+    <StatusScreen
+      brand={brand}
+      art={<ServiceDownArt size={140} />}
+      title={misaddressed ? "Service not found at this address" : "Service unavailable"}
+      actions={[
+        {
+          label: "Try again now",
+          primary: true,
+          icon: <ReloadOutlined />,
+          loading: retrying,
+          onClick: onRetry,
+        },
+      ]}
+      note={
+        misaddressed ? (
+          <code>
+            {apiBaseUrl()}/health {"->"} {(error as ApiError).status}
+          </code>
+        ) : (
+          // The wait is said plainly rather than as a number nobody asked for:
+          // it tells the reader the page is working on it, and that they do not
+          // have to do anything.
+          <span role="status" aria-live="polite">
+            {retrying ? "Checking\u2026" : `Checking again in ${left}s`}
+          </span>
+        )
+      }
+    >
+      {misaddressed ? (
+        <>
+          Something answered at the configured address, but it isn&rsquo;t the {brand.appName}{" "}
+          API. The address this page is built with looks wrong - an administrator can correct it.
+        </>
+      ) : (
+        <>
+          {brand.appName} can&rsquo;t reach its service right now. It may be starting up,
+          restarting, or briefly under maintenance. Nothing you have saved is affected - your
+          configuration lives in Git.
+        </>
+      )}
+    </StatusScreen>
   );
-
 }

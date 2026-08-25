@@ -59,6 +59,7 @@ import MobileParamList from "./components/MobileParamList";
 import { loginHref } from "./components/SignInView";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { EmptyState } from "./components/ui";
+import { AppShell } from "./uikit";
 import { NotFoundArt, OfflineArt, ServiceDownArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
@@ -70,7 +71,7 @@ import {
   ListSkeleton,
 } from "./components/Skeletons";
 
-const { Header, Sider, Content } = Layout;
+const { Content } = Layout;
 
 function ResizeHandleV({ hidden, onDragging }: { hidden?: boolean; onDragging?: (b: boolean) => void }) {
   return (
@@ -791,41 +792,29 @@ export default function App() {
   }
 
   return (
-    <Layout style={{ height: "100vh" }}>
-      {!focusMode && (
-        <Sider
-          width={216}
-          collapsedWidth={60}
-          collapsible
-          collapsed={navCollapsed}
-          trigger={null}
-          style={{ background: "var(--nav-bg)" }}
-        >
+    <AppShell
+      flush
+      nav={
+        focusMode ? null : (
           <NavRail collapsed={navCollapsed} onToggleCollapse={toggleRail} />
-        </Sider>
-      )}
-      <Layout style={{ minWidth: 0 }}>
-        {/* More room on the right than on the left. The last control in the bar
-            is a small icon button, and a tooltip centred on something 16px from
-            the window edge hangs over it - which grew the document by a pixel,
-            which put a horizontal scrollbar on the page, which moved the layout,
-            which moved the pointer off the button. Padding here keeps the tip
-            inside the window; index.css makes sure a stray pixel could never
-            scroll the page anyway. */}
-        {!focusMode && (
-          <Header style={{ borderBottom: border, background: token.colorBgContainer, paddingLeft: 16, paddingRight: 28 }}>
+        )
+      }
+      header={
+        <>
+          {!focusMode && (
             <TopBar project={grid?.project ?? meta?.project} instances={grid?.instances} />
-          </Header>
-        )}
-        <OfflineReplay />
-        <ConnectionBanner />
-        <Content style={{ overflow: "hidden" }}>{body()}</Content>
-      </Layout>
+          )}
+          <OfflineReplay />
+          <ConnectionBanner />
+        </>
+      }
+    >
+      {body()}
       <SearchPalette />
       <GlobalNewApplication />
       <WelcomeTour />
       <PendingChangesBar />
-    </Layout>
+    </AppShell>
   );
 }
 

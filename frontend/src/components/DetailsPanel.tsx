@@ -11,6 +11,7 @@ import RuleEditor from "./RuleEditor";
 import PathPicker from "./PathPicker";
 import { relTime } from "./DashboardView";
 import { useIdentity } from "../identity";
+import { c } from "../uikit";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
 // value summary across instances. One overall Edit button turns every major
@@ -467,7 +468,7 @@ function CellValue({ cell }: { cell?: Cell }) {
   if (!cell.set) return <Tag color="default" style={{ marginInlineEnd: 0 }}>absent</Tag>;
   return (
     <Space size={4}>
-      <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : "#cf1322" }}>
+      <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : c.danger }}>
         {fmtValue(cell.value)}
       </span>
       {cell.set && cell.source !== "instance" && (
@@ -488,7 +489,7 @@ function OverviewTab({ row, grid }: { row: GridRow; grid: Grid }) {
       <ARow gutter={8} style={{ marginBottom: 12 }}>
         <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
         <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? "#cf1322" : undefined }} /></Col>
+        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? c.danger : undefined }} /></Col>
       </ARow>
       <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>VALUE PER INSTANCE</Typography.Text>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -666,7 +667,7 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
                     width: e.changed ? 11 : 8,
                     height: e.changed ? 11 : 8,
                     borderRadius: "50%",
-                    background: e.changed ? "#2f6bff" : "rgba(127,137,160,0.6)",
+                    background: e.changed ? c.brand : "rgba(127,137,160,0.6)",
                     marginTop: 4,
                     flexShrink: 0,
                   }}

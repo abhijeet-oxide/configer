@@ -4,7 +4,7 @@ import { theme as brand } from "../theme.config";
 import { useDeployment } from "../deployment";
 import { type SignedOutReason } from "../session";
 import { BrandLockup } from "../uikit";
-import { toggleThemeWithReveal } from "../themeTransition";
+import { pointOf, useTheme } from "../uikit";
 import { useUI } from "../store";
 import { SessionExpiredArt, SignedOutArt, WorkspaceArt } from "./illustrations";
 
@@ -45,6 +45,7 @@ export function loginHref(returnTo?: string): string {
  *  signing in. */
 function AuthCanvas({ children }: { children: React.ReactNode }) {
   const mode = useUI((s) => s.mode);
+  const { toggleMode } = useTheme();
   return (
     <div className="auth-screen">
       <Button
@@ -52,7 +53,7 @@ function AuthCanvas({ children }: { children: React.ReactNode }) {
         type="text"
         aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
         icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-        onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+        onClick={(e) => toggleMode(pointOf(e))}
       />
       {children}
     </div>

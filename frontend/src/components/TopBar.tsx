@@ -8,7 +8,7 @@ import {
   Typography,
 } from "antd";
 import { SearchOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
-import { toggleThemeWithReveal } from "../themeTransition";
+import { pointOf, useTheme } from "../uikit";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -77,6 +77,7 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
   const { setSection, repoId, section, mode } = useUI();
+  const { toggleMode } = useTheme();
   const switchRepo = useSwitchRepo();
   const openSearch = useSearchOpen((s) => s.openSearch);
 
@@ -213,7 +214,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                 type="text"
                 aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
                 icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-                onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+                onClick={(e) => toggleMode(pointOf(e))}
               />
             </Tooltip>
             <NotificationsPanel awaiting={awaiting} />

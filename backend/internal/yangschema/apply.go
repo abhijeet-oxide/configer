@@ -2,7 +2,6 @@ package yangschema
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -31,6 +30,21 @@ func Apply(p *model.Parameter, n *Node) {
 	}
 	if n.Units != "" {
 		v.Units = n.Units
+	}
+	// Operational state belongs to the device: it is worth SEEING beside the
+	// settings that shape it, and writing it back would be overwritten by the
+	// next read. An obsolete setting is read-only for a different reason and
+	// the same effect - the vendor has withdrawn it.
+	if !n.Editable() {
+		v.ReadOnly = true
+	}
+	if n.Status == "deprecated" || n.Status == "obsolete" {
+		// The version this stops being usable at is not stated by the model,
+		// only that it has. The grid's version machinery wants an identifier;
+		// what it gets is the truthful one the schema gave.
+		if p.VersionDeprecated == "" {
+			p.VersionDeprecated = n.Status
+		}
 	}
 	if n.Kind == "leaf-list" || n.Kind == "list" {
 		// A repeated node says how many entries the collection may hold - but
@@ -97,6 +111,13 @@ func mapType(n *Node, v *model.Validation) model.ParamType {
 		return model.TypeInteger
 	case "decimal64":
 		applyBounds(t, v, model.TypeNumber)
+		// A decimal64 is exact to a stated number of places. A value with more
+		// of them is not a value the device can hold, so this is a rule and not
+		// a note: "fraction-digits 2" refuses 1.005 the way the box will.
+		if t.FractionDigits > 0 {
+			fd := t.FractionDigits
+			v.MaxDecimals = &fd
+		}
 		return model.TypeNumber
 	case "boolean", "empty":
 		return model.TypeBoolean
@@ -110,30 +131,113 @@ func mapType(n *Node, v *model.Validation) model.ParamType {
 			return model.TypeEnum
 		}
 		return model.TypeString
+	case "identityref":
+		// The values an identityref may hold are the identities derived from
+		// its base - an ordinary list of choices, once every module has been
+		// read. Left as "a string" this is the most useful thing the schema
+		// knew about the setting and the one thing nothing checked.
+		if len(t.Identities) > 0 {
+			v.Enum = append(v.Enum, t.Identities...)
+			return model.TypeEnum
+		}
+		if t.IdentityBase != "" {
+			v.Constraints = append(v.Constraints, "an identity derived from "+t.IdentityBase)
+		}
+		return model.TypeString
 	case "bits":
-		if len(t.Bits) > 0 {
-			v.Constraints = append(v.Constraints, "flags: "+strings.Join(t.Bits, ", "))
+		// A flags value is a subset of the declared names. That IS checkable -
+		// listing them in prose let a typo through to the device.
+		if names := t.BitNames(); len(names) > 0 {
+			v.Bits = names
+			v.Constraints = append(v.Constraints, "any combination of: "+strings.Join(names, ", "))
 		}
 		return model.TypeString
 	case "union":
-		// A value only has to satisfy ONE member, so no member's restriction
-		// can be enforced alone. Naming the alternatives is the honest answer.
-		if names := unionNames(t); names != "" {
-			v.Constraints = append(v.Constraints, "one of: "+names)
-		}
-		return model.TypeString
+		// A value has to satisfy ONE member, so no member's restriction can be
+		// layered on the others - but the members TOGETHER are a rule, and
+		// checking "any of these accepts it" refuses the values none of them
+		// would. Naming the alternatives in prose refused nothing at all.
+		return applyUnion(t, v)
 	case "leafref":
 		if t.LeafrefPath != "" {
-			v.Constraints = append(v.Constraints, "references "+t.LeafrefPath)
+			v.Constraints = append(v.Constraints, "must match an existing "+leafrefTail(t.LeafrefPath))
 		}
 		return model.TypeString
-	case "identityref", "instance-identifier", "binary":
+	case "instance-identifier", "binary":
+		applyLengths(t, v)
 		return model.TypeString
 	}
 
 	applyLengths(t, v)
 	applyPatterns(t, v)
 	return model.TypeString
+}
+
+// applyUnion turns a union's members into alternative rule sets, and chooses
+// the parameter's own type as the WIDEST of them - which is a string unless
+// every member agrees, because an editor that only accepts numbers cannot type
+// the word the other member allows.
+func applyUnion(t *Type, v *model.Validation) model.ParamType {
+	var alts []model.Alternative
+	common := model.ParamType("")
+	agreed := true
+	for _, m := range t.Union {
+		if m == nil {
+			continue
+		}
+		sub := &model.Validation{}
+		mt := mapType(&Node{Type: m, Config: true}, sub)
+		alts = append(alts, model.Alternative{
+			Label: firstArg(m.Qualified, m.Base), Type: mt,
+			Pattern: sub.Pattern, Patterns: sub.Patterns, NotPatterns: sub.NotPatterns,
+			Enum: sub.Enum, Bits: sub.Bits, Min: sub.Min, Max: sub.Max,
+			MinLength: sub.MinLength, MaxLength: sub.MaxLength,
+			Ranges: sub.Ranges, Lengths: sub.Lengths,
+		})
+		switch {
+		case common == "":
+			common = mt
+		case common != mt:
+			agreed = false
+		}
+	}
+	if len(alts) == 0 {
+		return model.TypeString
+	}
+	v.AnyOf = alts
+	if names := unionNames(t); names != "" {
+		v.Constraints = append(v.Constraints, "one of: "+names)
+	}
+	if agreed && common != "" {
+		// Every member is the same kind of thing (a union of two integer
+		// ranges, say): the editor for that kind is the right one, and the
+		// alternatives still decide what it accepts.
+		return common
+	}
+	return model.TypeString
+}
+
+// leafrefTail words a leafref target the way a reader would say it: the last
+// two steps of the route, which is what identifies the thing being pointed at
+// without reciting the whole model.
+func leafrefTail(path string) string {
+	var steps []string
+	for _, s := range strings.Split(path, "/") {
+		s = strings.TrimSpace(s)
+		if i := strings.IndexByte(s, '['); i >= 0 {
+			s = s[:i]
+		}
+		if s = bare(s); s != "" && s != ".." && s != "." {
+			steps = append(steps, s)
+		}
+	}
+	if len(steps) == 0 {
+		return "referenced value"
+	}
+	if len(steps) == 1 {
+		return steps[0]
+	}
+	return strings.Join(steps[len(steps)-2:], " ")
 }
 
 // semanticTypes maps the standard type libraries' well-known names onto the
@@ -173,11 +277,22 @@ func applyRanges(t *Type, v *model.Validation) {
 	lo, hi := Span(t.Ranges)
 	v.Min, v.Max = lo, hi
 	if len(t.Ranges) > 1 {
-		// A single min/max cannot say "1..10 or 20..30". It validates the
-		// outer span, and the real spans are stated in words rather than
-		// quietly dropped.
+		// A single min/max cannot say "5..20 or 40..100": it accepts 30, which
+		// the vendor wrote the restriction to refuse. So the real spans travel
+		// too, they are what the write path checks, and the outer span stays
+		// only so a reader (and an older client) still sees a range at all.
+		v.Ranges = spans(t.Ranges)
 		v.Constraints = append(v.Constraints, "allowed ranges: "+describeBounds(t.Ranges))
 	}
+}
+
+// spans converts the schema's own bound list into the model's.
+func spans(bounds []Bound) []model.Span {
+	out := make([]model.Span, 0, len(bounds))
+	for _, b := range bounds {
+		out = append(out, model.Span{Min: b.Min, Max: b.Max})
+	}
+	return out
 }
 
 // applyIntegerBounds adds the width of the integer type itself when the schema
@@ -218,6 +333,7 @@ func applyLengths(t *Type, v *model.Validation) {
 		v.MaxLength = &n
 	}
 	if len(t.Lengths) > 1 {
+		v.Lengths = spans(t.Lengths)
 		v.Constraints = append(v.Constraints, "allowed lengths: "+describeBounds(t.Lengths))
 	}
 }
@@ -225,20 +341,31 @@ func applyLengths(t *Type, v *model.Validation) {
 // applyPatterns translates the schema's regular expressions.
 //
 // A YANG pattern is an XSD regular expression, which is anchored to the WHOLE
-// value; the engine here is not, so each one is anchored explicitly. Every
-// pattern in the chain must hold, which is why they do not collapse into one
-// field. One that will not compile is stated in words instead of being
-// enforced wrongly, and so is an inverted one: a rule that cannot be checked
-// must still be readable.
+// value and speaks a dialect Go does not; both are handled by TranslateRegex.
+// Every pattern in the chain must hold, which is why they do not collapse into
+// one field - and an INVERTED one is a rule in its own right rather than a
+// sentence, because the restriction a vendor bothered to invert was exactly the
+// one nothing used to check.
+//
+// One that still has no faithful Go equivalent is stated in words instead of
+// being enforced wrongly. Enforcing an approximation of somebody's restriction
+// is the one outcome worse than not enforcing it.
 func applyPatterns(t *Type, v *model.Validation) {
 	for _, p := range t.Patterns {
-		expr := anchor(p.Regex)
-		if p.Invert {
-			v.Constraints = append(v.Constraints, "must not match "+p.Regex)
+		expr, translated := TranslateRegex(anchor(p.Regex))
+		if !translated {
+			if p.Invert {
+				v.Constraints = append(v.Constraints, "must not match "+p.Regex)
+			} else {
+				v.Constraints = append(v.Constraints, "must match "+p.Regex)
+			}
 			continue
 		}
-		if _, err := regexp.Compile(expr); err != nil {
-			v.Constraints = append(v.Constraints, "must match "+p.Regex)
+		if p.Invert {
+			if !containsString(v.NotPatterns, expr) {
+				v.NotPatterns = append(v.NotPatterns, expr)
+				v.Constraints = append(v.Constraints, "must not match "+p.Regex)
+			}
 			continue
 		}
 		if v.Pattern == "" {

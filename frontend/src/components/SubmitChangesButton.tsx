@@ -17,6 +17,7 @@ import { api, reviewItems, type ChangeItem, type ChangeNameCheck, type Instance 
 import { useUI } from "../store";
 import { isProductionEnv } from "../theme";
 import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
+import ValidationFlow from "./ValidationFlow";
 import { useIdentity } from "../identity";
 
 // SubmitChangesButton lives in the editor toolbar (where edits happen, not in
@@ -52,6 +53,12 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const titleRef = useRef<InputRef>(null);
 
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  // What this deployment can actually check. Read once, so the dialog can
+  // promise a model check only where there is a model to check against - "your
+  // change is valid" and "nothing looked at your change" must never read the
+  // same.
+  const vstatusQ = useRepoQuery({ queryKey: ["validation-status"], queryFn: api.validationStatus });
+  const vstatus = vstatusQ.data;
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   // Counted the way the list is COUNTED: a file row the parameter rows already
   // explain is not shown, so counting it would make the button promise one more
@@ -162,31 +169,28 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
     },
   });
 
-  const submit = useMutation({
-    mutationFn: (v: { title: string; description?: string; reference?: string; category?: string }) =>
-      api.submitChange(draftQ.data!.draft!.id, { ...v, author: "Local user" }),
-    onSuccess: (cr) => {
-      setOpen(false);
-      form.resetFields();
-      qc.invalidateQueries();
-      message.success(
-        cr.prUrl
-          ? `Submitted for review as CR-${cr.number ?? cr.id}, PR ${cr.prUrl}`
-          : `Submitted for review as CR-${cr.number ?? cr.id}`,
-        6,
-      );
-      setSection("changes");
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
+  // Submitting is not one call any more: the change is VALIDATED first, and
+  // the validation is something the user watches happen rather than a spinner
+  // they wait out. So the dialog has two faces - the review list with its form,
+  // and the flow - and the form's details are held here for the flow to use.
+  const [flowFor, setFlowFor] = useState<{
+    id: number;
+    values: { title: string; description?: string; reference?: string; category?: string };
+  } | null>(null);
 
   // Undoing the last staged change leaves nothing to review, so the dialog
   // closes itself rather than sitting over an empty list with a form asking
-  // what the change is about.
-  const nothingLeft = open && pending === 0 && !submit.isPending && !revertMany.isPending;
+  // what the change is about. While the flow is up there IS nothing staged -
+  // the change has been submitted - so the rule is suspended there.
+  const nothingLeft = open && pending === 0 && !flowFor && !revertMany.isPending;
   useEffect(() => {
     if (nothingLeft) setOpen(false);
   }, [nothingLeft]);
+
+  const closeDialog = () => {
+    setOpen(false);
+    setFlowFor(null);
+  };
 
   if (!canEdit) return null;
 
@@ -206,28 +210,41 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
       </Badge>
 
       <Modal
-        title={`Review your changes (${pending})`}
+        title={flowFor ? "Validating and submitting" : `Review your changes (${pending})`}
         open={open}
-        onCancel={() => setOpen(false)}
+        onCancel={closeDialog}
         onOk={() => form.submit()}
-        okText="Submit for review"
+        okText="Validate & submit"
         // A name another OPEN change already holds is refused by the server
         // too; blocking here means the user finds out while they can still fix
         // it, rather than through a failed submit.
         okButtonProps={{ disabled: pending === 0 || nameCheck?.available === false }}
-        confirmLoading={submit.isPending}
+        // The flow carries its own buttons, because what they say depends on
+        // what the validation found - and closing it mid-check would leave the
+        // user with no idea whether anything was submitted.
+        maskClosable={!flowFor}
+        closable={!flowFor}
+        keyboard={!flowFor}
         // The sentence that explains the buttons sits WITH the buttons, not in
         // the body: it is fixed text, and every line of it in the body is a line
         // the list of changes does not get.
-        footer={(buttons) => (
-          <div className="cf-submit-foot">
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              Saved to a review branch named after this change; nothing goes live until an
-              approver publishes it.
-            </Typography.Text>
-            <span className="cf-submit-foot-actions">{buttons}</span>
-          </div>
-        )}
+        footer={
+          flowFor
+            ? null
+            : (buttons) => (
+                <div className="cf-submit-foot">
+                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    {/* What is about to happen, in the terms it will happen in.
+                        "Checked against the data model" is a promise, so it is
+                        only made where a model exists to check against. */}
+                    {vstatus?.schemaDetected && vstatus.available
+                      ? `Checked against ${vstatus.modules} data model${vstatus.modules === 1 ? "" : "s"} first, then saved to a review branch; nothing goes live until an approver publishes it.`
+                      : "Checked against the rules in the catalogue, then saved to a review branch; nothing goes live until an approver publishes it."}
+                  </Typography.Text>
+                  <span className="cf-submit-foot-actions">{buttons}</span>
+                </div>
+              )
+        }
         width={760}
         // Pinned near the top and capped to the viewport: the dialog can never
         // be taller than the screen it is on, on a phone or a laptop.
@@ -254,6 +271,38 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
           setCategory(suggestedCategory);
         }}
       >
+        {/* Once the flow is up, the review list has done its job: what matters
+            is what the check is finding. Two screens in one dialog rather than
+            a second window, so "did that go through?" is never answered by a
+            dialog that closed itself. */}
+        {flowFor ? (
+          <ValidationFlow
+            changeId={flowFor.id}
+            submit={(opts) =>
+              api.submitChange(flowFor.id, { ...flowFor.values, author: "Local user", ...opts })
+            }
+            onDone={(cr) => {
+              closeDialog();
+              form.resetFields();
+              qc.invalidateQueries();
+              if (cr.prUrl) message.success(`CR-${cr.number ?? cr.id} opened: ${cr.prUrl}`, 6);
+              setSection("changes");
+            }}
+            onCancel={() => {
+              // Back to the list with the form intact: whatever needs fixing is
+              // a cell in the grid, and retyping the title to get there is a
+              // punishment for having run the check.
+              setFlowFor(null);
+              qc.invalidateQueries();
+            }}
+            onOpenParam={(paramId) => {
+              selectParam(paramId);
+              setSection("config");
+              closeDialog();
+            }}
+          />
+        ) : (
+          <>
         {prodTouched && (
           <div
             style={{
@@ -305,7 +354,10 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
         <Form
           form={form}
           layout="vertical"
-          onFinish={(v) => submit.mutate(v)}
+          onFinish={(v) => {
+            const id = draftQ.data?.draft?.id;
+            if (id) setFlowFor({ id, values: v });
+          }}
           initialValues={{ title: "" }}
           style={{ flexShrink: 0 }}
         >
@@ -358,6 +410,8 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             <Input.TextArea rows={2} placeholder="Shown to the approver, and kept in the Git history" />
           </Form.Item>
         </Form>
+          </>
+        )}
       </Modal>
     </>
   );

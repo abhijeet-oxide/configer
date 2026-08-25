@@ -4158,3 +4158,282 @@ mark.vd-ins {
   line-height: 1.45;
   color: var(--text-2);
 }
+
+/* ---------------------------------------------------------------------------
+   The pre-submit validation flow (ValidationFlow.tsx).
+
+   Submitting is the moment a change stops being one person's work, so it is
+   the moment everything that can be checked gets checked - and several seconds
+   behind a spinner, at exactly that moment, reads as a broken dialog. So the
+   check is DRAWN: a rail of stages laid out before any of them starts, one
+   thing moving at a time, and a verdict that is a shape and a colour and a
+   sentence at once.
+
+   Every state here says itself in more than one channel. A node is a check, a
+   cross, a dash, a sweeping arc or a hollow ring BEFORE it is green, red or
+   grey, so the rail survives greyscale, a small screen, and a reader who
+   cannot separate the hues.
+--------------------------------------------------------------------------- */
+.cf-vflow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cf-stages {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0 0;
+  display: flex;
+  flex-direction: column;
+}
+.cf-stage {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 10px;
+  padding-bottom: 14px;
+  align-items: start;
+}
+.cf-stage:last-child { padding-bottom: 0; }
+
+.cf-stage-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--text-3);
+  background: var(--surface);
+  border-radius: 50%;
+  position: relative;
+  z-index: 1;
+}
+/* The line joining two nodes. It is drawn from the node's own column so it
+   stays put whatever the label below it wraps to. */
+.cf-stage-line {
+  position: absolute;
+  left: 10px;
+  top: 22px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+  border-radius: 1px;
+}
+.cf-stage.is-passed .cf-stage-line { background: var(--c-ok-bd); }
+.cf-stage.is-failed .cf-stage-line { background: var(--c-danger-bd); }
+
+.cf-stage-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+.cf-stage-label {
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+/* What a stage actually DID. A stage that only reports "passed" cannot be
+   told from one that did nothing, which is the whole reason this line exists. */
+.cf-stage-detail {
+  font-size: 12px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
+.cf-stage.is-running .cf-stage-label { color: var(--text); font-weight: 600; }
+.cf-stage.is-passed .cf-stage-mark { color: var(--c-ok); }
+.cf-stage.is-failed .cf-stage-mark { color: var(--c-danger); }
+.cf-stage.is-failed .cf-stage-label { color: var(--text); font-weight: 600; }
+.cf-stage.is-running .cf-stage-mark { color: var(--brand); }
+.cf-stage.is-skipped .cf-stage-mark,
+.cf-stage.is-skipped .cf-stage-label { color: var(--text-3); }
+.cf-stage.is-pending .cf-stage-label { color: var(--text-3); }
+
+.cf-stage-track { stroke: var(--border-strong); }
+.cf-stage-arc { stroke: currentColor; }
+.cf-stage-spin { animation: cf-vspin 900ms linear infinite; transform-origin: 50% 50%; }
+@keyframes cf-vspin { to { transform: rotate(360deg); } }
+
+/* The running stage breathes, so "something is happening" is visible from the
+   corner of the eye without anything jumping. */
+.cf-stage.is-running .cf-stage-mark::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 2px solid var(--brand);
+  opacity: 0.35;
+  animation: cf-vhalo 1.8s ease-out infinite;
+}
+@keyframes cf-vhalo {
+  0%   { transform: scale(0.8); opacity: 0.4; }
+  70%  { transform: scale(1.25); opacity: 0; }
+  100% { transform: scale(1.25); opacity: 0; }
+}
+
+/* The verdict. A rail of colour, the faintest wash of it, and a mark - never a
+   solid block: the sentence stays the loudest thing on it. */
+.cf-verdict {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--border);
+  border-top-width: 3px;
+  background: var(--surface-2);
+  animation: cf-vland 260ms cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+@keyframes cf-vland {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.cf-verdict-mark { font-size: 26px; line-height: 1; flex-shrink: 0; }
+.cf-verdict-head { font-size: 14.5px; font-weight: 650; color: var(--text); }
+.cf-verdict-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+
+.cf-verdict.is-ok { border-top-color: var(--c-ok); background: var(--c-ok-bg); border-color: var(--c-ok-bd); border-top-color: var(--c-ok); }
+.cf-verdict.is-ok .cf-verdict-mark { color: var(--c-ok); }
+.cf-verdict.is-bad { background: var(--c-danger-bg); border-color: var(--c-danger-bd); border-top-color: var(--c-danger); }
+.cf-verdict.is-bad .cf-verdict-mark { color: var(--c-danger); }
+.cf-verdict.is-unknown { background: var(--c-pending-bg); border-color: var(--c-pending-bd); border-top-color: var(--c-pending); }
+.cf-verdict.is-unknown .cf-verdict-mark { color: var(--c-pending); }
+
+/* The check that just landed gets one beat of emphasis, so the eye goes to the
+   answer rather than hunting for it. */
+.cf-verdict.is-ok .cf-verdict-mark { animation: cf-vpop 420ms cubic-bezier(0.2, 1.4, 0.4, 1) both; }
+@keyframes cf-vpop {
+  0%   { transform: scale(0.4); opacity: 0; }
+  60%  { transform: scale(1.12); opacity: 1; }
+  100% { transform: scale(1); }
+}
+
+/* The list of what is wrong. Each row is one problem with somewhere to go. */
+.cf-findings {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--surface);
+}
+.cf-findings.is-error { border-color: var(--c-danger-bd); }
+.cf-findings.is-warn { border-color: var(--c-pending-bd); }
+
+.cf-findings-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+}
+.cf-findings-title { font-size: 13px; font-weight: 600; }
+.cf-findings-sub { font-size: 12px; color: var(--text-3); }
+.cf-findings-caret { transition: transform 140ms ease; color: var(--text-3); }
+.cf-findings-caret.is-open { transform: rotate(90deg); }
+
+.cf-findings-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.cf-finding {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+  padding: 9px 12px;
+  border-top: 1px solid var(--border);
+}
+.cf-finding-rule {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  margin-top: 1px;
+}
+.cf-findings.is-error .cf-finding-rule { background: var(--c-danger-bg); color: var(--c-danger); border-color: var(--c-danger-bd); }
+.cf-findings.is-warn .cf-finding-rule { background: var(--c-pending-bg); color: var(--c-pending); border-color: var(--c-pending-bd); }
+
+.cf-finding-body { min-width: 0; }
+.cf-finding-msg { font-size: 13px; color: var(--text); line-height: 1.4; }
+.cf-finding-where {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.cf-finding-name { font-weight: 600; color: var(--text-2); }
+.cf-finding-chip {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.cf-finding-file { font-family: var(--font-mono); word-break: break-all; }
+/* The schema's own expression, for the reader who wants to check the
+   constraint rather than take it on trust. */
+.cf-finding-detail {
+  margin-top: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-3);
+  word-break: break-word;
+}
+.cf-finding-src { margin-top: 2px; font-size: 11px; color: var(--text-3); font-style: italic; }
+
+.cf-vflow-skipped { font-size: 12px; color: var(--text-3); }
+.cf-vflow-skipped summary { cursor: pointer; }
+.cf-vflow-skipped ul { margin: 6px 0 0; padding-left: 18px; max-height: 140px; overflow-y: auto; }
+
+.cf-vflow-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.cf-vflow-override {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--c-danger-bd);
+  border-radius: var(--r-lg);
+  background: var(--c-danger-bg);
+}
+
+/* Motion is decoration here: every state is already said by a shape and a
+   word, so removing the movement loses nothing. */
+@media (prefers-reduced-motion: reduce) {
+  .cf-stage-spin,
+  .cf-stage.is-running .cf-stage-mark::after,
+  .cf-verdict,
+  .cf-verdict.is-ok .cf-verdict-mark {
+    animation: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .cf-finding { grid-template-columns: auto 1fr; }
+  .cf-finding > .ant-btn { grid-column: 2; justify-self: start; padding-left: 0; }
+}

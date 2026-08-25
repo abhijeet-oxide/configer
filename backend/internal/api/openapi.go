@@ -16,7 +16,7 @@ package api
 // docs.go), so the interactive Swagger UI at /api/docs and the raw spec at
 // /api/openapi.json ship inside the binary and work fully offline.
 //
-//go:generate go run github.com/swaggo/swag/cmd/swag init --generalInfo openapi.go --dir ./,../model,../auth,../change,../changeset --parseInternal --parseDepth 2 --output ./docs --outputTypes go,json,yaml --instanceName configer
+//go:generate go run github.com/swaggo/swag/cmd/swag init --generalInfo openapi.go --dir ./,../model,../auth,../change,../changeset,../yangvalidate --parseInternal --parseDepth 2 --output ./docs --outputTypes go,json,yaml --instanceName configer
 
 // @title                      Configer API
 // @version                    1.0.0

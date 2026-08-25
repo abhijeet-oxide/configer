@@ -979,6 +979,86 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/{id}/validation": {
+            "get": {
+                "description": "The latest validation run for a change request: its stages, what each one found, and the verdict. Poll while ` + "`" + `state` + "`" + ` is \"running\". Returns 404 when the change has never been validated.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Validation run state",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "A specific run id; defaults to the latest for this change",
+                        "name": "run",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ValidationRun"
+                        }
+                    },
+                    "404": {
+                        "description": "No validation has been run",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Start a pre-submit validation of a change request: every staged value against its rules, then the whole candidate document against the repository's YANG models. Returns 202 with the run resource; poll ` + "`" + `GET /api/changes/{id}/validation` + "`" + ` for its stages, findings and verdict. Nothing is written, branched or committed.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Validate a change request",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/api.ValidationRun"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "Unknown change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/compare": {
             "get": {
                 "description": "Semantic, parameter-level diff between two instances. Without refs it compares the current project (pending edits included); with leftRef/rightRef it materializes each side at that git ref and compares across them.",
@@ -2536,6 +2616,29 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/regions": {
+            "get": {
+                "description": "Every region the detection rules can locate, with its coordinates, so an instance's region can be drawn on a map. Combines the repository's own .configer/regions.yaml with the shipped defaults.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Instances"
+                ],
+                "summary": "Region places",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/api/render/{instance}": {
             "get": {
                 "description": "The instance's REAL repository files (write-back-native: nothing is generated). By default the current draft is applied in memory so the preview shows exactly what a publish would write; ` + "`" + `?draft=false` + "`" + ` serves the committed working tree (the diff baseline); ` + "`" + `?ref=` + "`" + ` serves the files at a git ref.",
@@ -3718,6 +3821,26 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/validation/status": {
+            "get": {
+                "description": "What this deployment can check before a change is submitted: whether the repository ships YANG models, how many were read, which full-document validator is available (and why one is not), and the release the models were selected for. The UI uses it to say what was actually checked instead of implying a change is fully model-valid when nothing looked.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Validation capability",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/api.ValidationStatus"
+                        }
+                    }
+                }
+            }
+        },
         "/api/values": {
             "put": {
                 "security": [
@@ -4086,6 +4209,20 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "api.EngineStatus": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
         "api.FieldError": {
             "type": "object",
             "properties": {
@@ -4398,6 +4535,153 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "api.ValidationRun": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "changeId": {
+                    "type": "integer"
+                },
+                "documents": {
+                    "type": "integer"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "engine": {
+                    "description": "Engine names what validated; Available is false when no full-document\nvalidator could run, and Reason says why in words an operator can act on.",
+                    "type": "string"
+                },
+                "errors": {
+                    "description": "Counts the UI states plainly rather than making the reader total a list.",
+                    "type": "integer"
+                },
+                "findings": {
+                    "description": "Findings are the model's objections; Problems are edits that could not be\napplied at all. Both block, and they are kept apart because they are\nfixed in different places.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/yangvalidate.Finding"
+                    }
+                },
+                "fingerprint": {
+                    "description": "Fingerprint identifies the draft this run validated. A submit only trusts\na run whose fingerprint still matches, so an edit made between validating\nand submitting cannot ride in on the previous run's verdict.",
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "problems": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/changeset.ItemProblem"
+                    }
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "skipped": {
+                    "description": "Skipped are the checks that were passed over with an explanation - an\nunparseable file, a condition outside what the built-in evaluator reads.\nSilence about them would present a partial check as a complete one.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "stages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.ValidationStage"
+                    }
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                },
+                "unmatched": {
+                    "type": "integer"
+                },
+                "values": {
+                    "type": "integer"
+                },
+                "warnings": {
+                    "type": "integer"
+                }
+            }
+        },
+        "api.ValidationStage": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "description": "Detail is one line saying what this stage actually did (\"checked 128\nvalues across 6 files\"), which is the difference between a progress bar\nand knowing something is happening.",
+                    "type": "string"
+                },
+                "endedAt": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                },
+                "label": {
+                    "type": "string"
+                },
+                "startedAt": {
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string"
+                }
+            }
+        },
+        "api.ValidationStatus": {
+            "type": "object",
+            "properties": {
+                "available": {
+                    "type": "boolean"
+                },
+                "engine": {
+                    "description": "Engine is what would run a full-document validation, Available whether it\ncan, and Reason why not in words an operator can act on.",
+                    "type": "string"
+                },
+                "engineVersion": {
+                    "description": "EngineVersion is the external validator's own version string, when there\nis one.",
+                    "type": "string"
+                },
+                "engines": {
+                    "description": "Engines lists every validator this build knows about and whether each is\nusable here, so an operator can see what installing something would buy.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/api.EngineStatus"
+                    }
+                },
+                "modules": {
+                    "description": "Modules and Nodes size what was read.",
+                    "type": "integer"
+                },
+                "nodes": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "schemaDetected": {
+                    "description": "SchemaDetected: the repository ships YANG models at all.",
+                    "type": "boolean"
+                },
+                "schemaDirs": {
+                    "description": "SchemaDirs are the repo-relative directories the models came from, and\nSchemaVersion the release they were selected for.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "schemaVersion": {
+                    "type": "string"
+                }
+            }
+        },
         "api.ValueEditRequest": {
             "type": "object",
             "properties": {
@@ -4644,6 +4928,26 @@ const docTemplateconfiger = `{
                 "StateRejected"
             ]
         },
+        "changeset.ItemProblem": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string"
+                },
+                "file": {
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "paramId": {
+                    "type": "string"
+                }
+            }
+        },
         "changeset.NameConflict": {
             "type": "object",
             "properties": {
@@ -4659,6 +4963,69 @@ const docTemplateconfiger = `{
                 },
                 "title": {
                     "type": "string"
+                }
+            }
+        },
+        "model.Alternative": {
+            "type": "object",
+            "properties": {
+                "bits": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "enum": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "label": {
+                    "description": "Label is how the schema spelled this alternative (\"uint32\",\n\"inet:ipv4-address\"), used to explain a rejection in the reader's terms.",
+                    "type": "string"
+                },
+                "lengths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Span"
+                    }
+                },
+                "max": {
+                    "type": "number"
+                },
+                "maxLength": {
+                    "type": "integer"
+                },
+                "min": {
+                    "type": "number"
+                },
+                "minLength": {
+                    "type": "integer"
+                },
+                "notPatterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "pattern": {
+                    "type": "string"
+                },
+                "patterns": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "ranges": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Span"
+                    }
+                },
+                "type": {
+                    "$ref": "#/definitions/model.ParamType"
                 }
             }
         },
@@ -4930,15 +5297,40 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "model.Span": {
+            "type": "object",
+            "properties": {
+                "max": {
+                    "type": "number"
+                },
+                "min": {
+                    "type": "number"
+                }
+            }
+        },
         "model.Validation": {
             "type": "object",
             "properties": {
+                "anyOf": {
+                    "description": "AnyOf are alternative rule sets, of which the value must satisfy at least\nONE (a YANG union). Each alternative carries its own type and rules, so a\nunion of \"uint32 or the word auto\" refuses \"atuo\" while accepting both\nlegitimate spellings - where naming the alternatives in prose refused\nnothing at all.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Alternative"
+                    }
+                },
                 "atLeast": {
                     "description": "AtLeast / AtMost name another parameter (by id) whose effective value at\nthe same instance bounds this one: a resource limit must be AtLeast its\nrequest, a request AtMost its limit. The comparison is quantity-aware\n(CPU millicores, memory bytes, otherwise numeric), so \"1\" \u003e= \"500m\" and\n\"1Gi\" \u003e= \"512Mi\" compare correctly. Enforced on write when the related\nparameter can be resolved.",
                     "type": "string"
                 },
                 "atMost": {
                     "type": "string"
+                },
+                "bits": {
+                    "description": "Bits are the named flags a bits-typed value may be built from: the value\nis a space-separated subset of these, in any order.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
                 },
                 "constraints": {
                     "description": "Constraints are conditions stated in words because they cannot be\nchecked against a single value on its own: cross-field requirements,\nuniqueness, alternatives of a union, disjoint ranges. They are DISPLAYED\nand never enforced - a condition nobody can see is worse than one the\nproduct admits it does not police.",
@@ -4957,8 +5349,18 @@ const docTemplateconfiger = `{
                     "description": "ErrorMessage is the schema's own wording for a rejected value. When set\nit replaces the generic \"doesn't match the required format\", which tells\nthe reader nothing about what the value was supposed to look like.",
                     "type": "string"
                 },
+                "lengths": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Span"
+                    }
+                },
                 "max": {
                     "type": "number"
+                },
+                "maxDecimals": {
+                    "description": "MaxDecimals is the number of digits allowed after the decimal point\n(YANG's fraction-digits). A value with more is not representable in the\ntype the product declared.",
+                    "type": "integer"
                 },
                 "maxItems": {
                     "type": "integer"
@@ -4975,6 +5377,13 @@ const docTemplateconfiger = `{
                 "minLength": {
                     "type": "integer"
                 },
+                "notPatterns": {
+                    "description": "NotPatterns are regular expressions the value must NOT match. A schema\ncan state a restriction the other way round (YANG's \"invert-match\"), and\ncarrying it only as prose meant the one rule the vendor bothered to\ninvert was the one rule nothing checked.",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
                 "pattern": {
                     "type": "string"
                 },
@@ -4989,6 +5398,17 @@ const docTemplateconfiger = `{
                     "description": "id of a predefined rule",
                     "type": "string"
                 },
+                "ranges": {
+                    "description": "Ranges / Lengths are the DISJOINT spans a restriction really allows\n(\"5..20 | 40..100\"). Min/Max carry the outer span so an old client still\nvalidates loosely; these carry the truth, and when they are present the\nvalue has to land inside one of them. Without this a bandwidth of 30 was\naccepted by a rule the vendor had written to refuse it.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/model.Span"
+                    }
+                },
+                "readOnly": {
+                    "description": "ReadOnly marks a setting the model declares as operational state rather\nthan configuration (\"config false\"). It is shown, never edited: the\ndevice owns the value and writing it back would be overwritten by the\nnext read.",
+                    "type": "boolean"
+                },
                 "required": {
                     "type": "boolean"
                 },
@@ -4998,6 +5418,54 @@ const docTemplateconfiger = `{
                 },
                 "units": {
                     "description": "Units is the unit the value is expressed in (\"seconds\", \"kbit/s\") when\nthe schema said so. It is shown beside the editor, never parsed.",
+                    "type": "string"
+                }
+            }
+        },
+        "yangvalidate.Finding": {
+            "type": "object",
+            "properties": {
+                "detail": {
+                    "type": "string"
+                },
+                "engine": {
+                    "description": "Engine names what produced the finding, because \"yanglint says so\" and\n\"our own reading says so\" are different weights of evidence.",
+                    "type": "string"
+                },
+                "file": {
+                    "description": "File is repo-relative; Path is the route inside it, in the same spelling\nthe editor uses to open a value.",
+                    "type": "string"
+                },
+                "instance": {
+                    "description": "Instance is the deployment target the file belongs to, empty for a\nshared file.",
+                    "type": "string"
+                },
+                "line": {
+                    "type": "integer"
+                },
+                "message": {
+                    "description": "Message is written for the person who has to fix it, in words, never in\nXPath. Detail carries the schema's own expression for the reader who\nwants it.",
+                    "type": "string"
+                },
+                "name": {
+                    "description": "Name is the human name of the setting, for a message a non-engineer can\nread.",
+                    "type": "string"
+                },
+                "paramId": {
+                    "description": "ParamID is the catalog parameter this lands on, when one can be\nidentified. It is what lets the UI offer \"open this setting\" rather than\n\"here is a path in a file\".",
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "rule": {
+                    "type": "string"
+                },
+                "schema": {
+                    "description": "Schema names the model file the rule came from, so a vendor's constraint\nis never presented as the product's opinion.",
+                    "type": "string"
+                },
+                "severity": {
                     "type": "string"
                 }
             }

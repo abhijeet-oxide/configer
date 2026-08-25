@@ -227,6 +227,12 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 		Reference   string `json:"reference"`
 		Category    string `json:"category"`
 		Author      string `json:"author"`
+		// Override submits despite blocking validation findings. It is not a
+		// way around the gate: the reason is written into the change itself, so
+		// the approver reads "this was submitted over N objections" rather than
+		// discovering it from a device.
+		Override       bool   `json:"override"`
+		OverrideReason string `json:"overrideReason"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
@@ -239,6 +245,27 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	// change's state. An edit staged in between would be swept into the change
 	// without ever being committed.
 	defer s.lockDraftOf(id)()
+
+	// Validate before anything is branched, committed or pushed. The client
+	// normally ran this already and watched it happen; it runs again here
+	// because a gate a caller can skip by not calling an endpoint is not a
+	// gate, and because the draft may have moved since.
+	draft, derr := s.Store.Get(id)
+	if derr != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, derr.Error())
+		return
+	}
+	if draft.State == change.StateDraft && len(draft.Items) > 0 {
+		run := s.validationGate(r.Context(), draft)
+		if run != nil && !run.OK() {
+			if !req.Override {
+				writeValidationRefusal(w, r, run)
+				return
+			}
+			req.Description = overrideNote(req.Description, run, req.OverrideReason)
+		}
+	}
+
 	cr, err := s.Changes.Submit(r.Context(), changeset.SubmitRequest{
 		ID:          id,
 		Title:       req.Title,

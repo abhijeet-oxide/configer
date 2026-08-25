@@ -36,10 +36,22 @@ type Set struct {
 	// Dirs are the repo-relative directories the models were read from.
 	Dirs    []string
 	Modules []*Module
+	// Roots are the top-level data nodes of every module, which is what a
+	// document validator walks a configuration file against.
+	Roots []*Node
 
 	entries []entry
 	byLeaf  map[string][]int
 	byNode  map[*Node][]string
+}
+
+// LoadOptions steer one model load.
+type LoadOptions struct {
+	// Features names the YANG features this deployment has enabled. Nil means
+	// "assume all", which is the honest default: nothing in a repository says
+	// which features a build shipped with, and dropping a node on a guess costs
+	// every rule on a setting somebody may be editing right now.
+	Features []string
 }
 
 type entry struct {
@@ -120,8 +132,21 @@ func ForVersion(dirs []string, version string) []string {
 // and builds the lookup index. Files that do not parse are passed over: one
 // unreadable model must not cost the validation the other five hundred carry.
 func Load(root string, dirs []string) *Set {
+	return LoadWith(root, dirs, LoadOptions{})
+}
+
+// LoadWith is Load with an explicit feature set.
+func LoadWith(root string, dirs []string, opts LoadOptions) *Set {
 	set := &Set{Dirs: dirs, byLeaf: map[string][]int{}, byNode: map[*Node][]string{}}
 	defs := newDefinitions()
+	ids := newIdentities()
+	feats := features{}
+	if opts.Features != nil {
+		feats.known = map[string]bool{}
+		for _, f := range opts.Features {
+			feats.known[bare(strings.TrimSpace(f))] = true
+		}
+	}
 
 	type parsed struct {
 		mod *Module
@@ -175,19 +200,106 @@ func Load(root string, dirs []string) *Set {
 			}
 			// Definitions are collected across the WHOLE set first: a submodule
 			// routinely uses a typedef its sibling declares, and resolving each
-			// file alone would lose every restriction those types carry.
+			// file alone would lose every restriction those types carry. The
+			// same goes for identities, which are derived from ACROSS modules
+			// by design - that is the entire point of the construct.
 			defs.collect(st)
+			ids.collect(st)
 			mods = append(mods, parsed{mod: m, st: st})
 		}
 	}
 
+	var devs []deviation
 	for _, p := range mods {
 		set.Modules = append(set.Modules, p.mod)
-		for _, n := range p.mod.buildNodes(p.st, defs, 0) {
-			set.index(nil, n)
+		set.Roots = append(set.Roots, p.mod.buildNodes(p.st, defs, 0)...)
+		devs = collectDeviations(p.st, devs)
+	}
+	// An augment spells out the whole route to its target, so a module and the
+	// file augmenting it both produce a top-level node of the same name. They
+	// describe ONE place in the tree and are merged into one node before
+	// anything is indexed - see Node.Merge.
+	set.Roots = mergeSiblings(set.Roots)
+	for _, n := range set.Roots {
+		set.index(nil, n)
+	}
+
+	// A deviation targets a node another file declares, so it can only be
+	// applied once every file has been read and indexed.
+	if removed := set.applyDeviations(devs, defs); len(removed) > 0 {
+		set.reindexWithout(removed)
+	}
+	// An identityref's allowed values are the identities deriving from its
+	// base, which is knowable only now that every module has been read.
+	for _, e := range set.entries {
+		resolveIdentities(e.node.Type, ids, 0)
+	}
+	set.applyFeatures(feats)
+	return set
+}
+
+// resolveIdentities fills in the values an identityref may hold, following
+// unions down to their members.
+func resolveIdentities(t *Type, ids *identities, depth int) {
+	if t == nil || depth > maxDepth {
+		return
+	}
+	if t.IdentityBase != "" && len(t.Identities) == 0 {
+		t.Identities = ids.derivedFrom(t.IdentityBase)
+	}
+	for _, m := range t.Union {
+		resolveIdentities(m, ids, depth+1)
+	}
+}
+
+// applyFeatures marks nodes whose feature gate this deployment does not have.
+// They are not removed: a rule attached to a node that turns out not to exist
+// costs a warning about a setting nobody set, where removing it costs every
+// rule on a setting somebody is editing. So the fact is recorded and the node
+// still validates.
+func (s *Set) applyFeatures(f features) {
+	if f.known == nil {
+		return
+	}
+	for _, e := range s.entries {
+		for _, expr := range e.node.IfFeatures {
+			if !f.enabled(expr) {
+				e.node.FeatureOff = true
+				break
+			}
 		}
 	}
-	return set
+}
+
+// reindexWithout rebuilds the index after "not-supported" deviations removed
+// nodes. Rebuilding is cheaper to reason about than surgery on three indexes,
+// and this runs once per load.
+func (s *Set) reindexWithout(removed map[*Node]bool) {
+	var keptRoots []*Node
+	for _, r := range s.Roots {
+		if pruned := prune(r, removed); pruned != nil {
+			keptRoots = append(keptRoots, pruned)
+		}
+	}
+	s.Roots = keptRoots
+	s.entries, s.byLeaf, s.byNode = nil, map[string][]int{}, map[*Node][]string{}
+	for _, r := range s.Roots {
+		s.index(nil, r)
+	}
+}
+
+func prune(n *Node, removed map[*Node]bool) *Node {
+	if removed[n] {
+		return nil
+	}
+	kept := n.Children[:0]
+	for _, c := range n.Children {
+		if p := prune(c, removed); p != nil {
+			kept = append(kept, p)
+		}
+	}
+	n.Children = kept
+	return n
 }
 
 // Empty reports whether the set carries no usable models.
@@ -247,7 +359,7 @@ func (s *Set) lookup(steps []string, exclude *Node) (*Node, bool) {
 		if len(e.node.Children) > 0 {
 			continue // only leaves hold values
 		}
-		score := commonSuffix(e.path, norm)
+		score := alignSuffix(e.path, norm)
 		if score == 0 {
 			continue
 		}
@@ -351,13 +463,51 @@ func isNumeric(s string) bool {
 	return s != ""
 }
 
-// commonSuffix counts the trailing elements two routes agree on.
-func commonSuffix(a, b []string) int {
-	n := 0
-	for n < len(a) && n < len(b) && a[len(a)-1-n] == b[len(b)-1-n] {
-		n++
+// maxRouteSkips caps how many document steps an alignment may pass over. Two
+// covers the cases that really occur - a list entry's own identity and one
+// wrapper the file adds - and a third would start matching routes that merely
+// share a few words.
+const maxRouteSkips = 2
+
+// alignSuffix scores how well a document route agrees with a model route,
+// reading both from the RIGHT (routes differ in length, and it is the leaf end
+// that identifies the setting).
+//
+// A strict suffix comparison is not enough, because a document route carries
+// steps a model has never had. The clearest case is a list addressed by
+// identity: "$.api.env[name=LOG_LEVEL].value" spells four steps where the model
+// has three, and comparing them strictly agreed on the single word "value" -
+// which is the score a completely unrelated leaf called "value" also gets. So
+// the alignment may SKIP a document step, capped, and each skip costs the
+// match a point: an exact route therefore always outranks one that had to be
+// nudged into place, and two models that need different nudges stay
+// distinguishable.
+//
+// The MODEL route is never skipped. A model step with nothing answering it in
+// the document means the document is addressing something else.
+func alignSuffix(modelRoute, docRoute []string) int {
+	i, j := len(modelRoute)-1, len(docRoute)-1
+	score, skips := 0, 0
+	for i >= 0 && j >= 0 {
+		if modelRoute[i] == docRoute[j] {
+			score += 2
+			i--
+			j--
+			continue
+		}
+		if skips >= maxRouteSkips || score == 0 {
+			// A leaf that does not even agree on its own name is not this node,
+			// and no amount of skipping makes it one.
+			break
+		}
+		skips++
+		score--
+		j--
 	}
-	return n
+	if score < 0 {
+		return 0
+	}
+	return score
 }
 
 // fingerprint summarizes everything about a node that changes the rules it

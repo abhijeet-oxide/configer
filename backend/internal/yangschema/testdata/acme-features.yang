@@ -1,0 +1,81 @@
+module acme-features {
+    namespace "http://example.com/acme-features";
+    prefix feat;
+
+    feature carrier-aggregation {
+        description "The build supports aggregating carriers.";
+    }
+
+    // Identities are an extensible enumeration: the values a leaf of type
+    // "identityref { base transport; }" may hold are declared here and in any
+    // module that derives from them, quite possibly a file away.
+    identity transport {
+        description "How a cell reaches the core.";
+    }
+    identity fibre  { base transport; }
+    identity copper { base transport; }
+
+    // A typedef may carry the default and the unit that belong to the TYPE,
+    // not to any one leaf using it.
+    typedef timer-seconds {
+        type uint16 { range "1..3600"; }
+        units "seconds";
+        default 30;
+        description "A timer, in whole seconds.";
+    }
+
+    container transport-config {
+        presence "Configuring transport at all is a decision.";
+
+        leaf link {
+            type identityref { base transport; }
+        }
+        leaf hold-timer {
+            type timer-seconds;
+        }
+        leaf ratio {
+            type decimal64 {
+                fraction-digits 2;
+                range "0.0..1.0";
+            }
+        }
+        leaf flags {
+            type bits {
+                bit low-latency { position 0; }
+                bit redundant   { position 1; }
+            }
+        }
+        // A pattern in XSD's own dialect: class subtraction, which Go reads as
+        // something else entirely unless it is translated.
+        leaf code {
+            type string {
+                pattern "[a-z-[aeiou]]{3}";
+            }
+        }
+        leaf reserved-name {
+            type string {
+                pattern "tmp.*" {
+                    modifier invert-match;
+                }
+            }
+        }
+        leaf legacy-mode {
+            status deprecated;
+            type string;
+        }
+        leaf aggregated-carriers {
+            if-feature carrier-aggregation;
+            type uint8 { range "1..8"; }
+        }
+
+        choice backhaul {
+            mandatory true;
+            case wired {
+                leaf wired-mtu { type uint16; }
+            }
+            case wireless {
+                leaf wireless-band { type string; }
+            }
+        }
+    }
+}

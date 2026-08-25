@@ -2,11 +2,15 @@
 // effective rules are its explicit Validation fields merged over the preset it
 // references. The editors use these rules to constrain input before anything
 // is ever sent to the server (which re-validates anyway).
-import type { Parameter, PresetRule, Validation } from "./api";
+import type { Alternative, Parameter, PresetRule, Span, Validation } from "./api";
 
 export interface Rules {
   required?: boolean;
   pattern?: string;
+  /** further expressions that must ALL hold on top of `pattern` */
+  patterns?: string[];
+  /** expressions the value must NOT match */
+  notPatterns?: string[];
   enum?: string[];
   min?: number;
   max?: number;
@@ -14,12 +18,28 @@ export interface Rules {
   maxLength?: number;
   minItems?: number;
   maxItems?: number;
+  /** the DISJOINT spans a restriction really allows. When present they decide,
+   *  and min/max only describe their outer edges - a value in the gap between
+   *  two spans satisfies those and not the rule the vendor wrote. */
+  ranges?: Span[];
+  lengths?: Span[];
+  /** named flags a value may be built from: any subset, space-separated */
+  bits?: string[];
+  /** alternative rule sets, of which the value must satisfy at least ONE */
+  anyOf?: Alternative[];
+  /** digits allowed after the decimal point */
+  maxDecimals?: number;
+  /** the model reports this value rather than taking it: shown, never edited */
+  readOnly?: boolean;
   /** the value's format type (ipv4, ipv6, cidr, port, …) for live per-entry
    *  validation; for a list this is the element type */
   formatType?: string;
   /** human name + example from the referenced preset, for friendly errors */
   presetName?: string;
   example?: string;
+  /** the schema's own wording for a refused value, which beats every generic
+   *  sentence this file can write */
+  errorMessage?: string;
 }
 
 export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
@@ -31,6 +51,8 @@ export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
   return {
     required: v.required,
     pattern: v.pattern ?? pre?.pattern,
+    patterns: v.patterns,
+    notPatterns: v.notPatterns,
     enum: v.enum,
     min: v.min ?? pre?.min,
     max: v.max ?? pre?.max,
@@ -38,10 +60,141 @@ export function effectiveRules(p: Parameter, presets?: PresetRule[]): Rules {
     maxLength: v.maxLength ?? pre?.maxLength,
     minItems: v.minItems,
     maxItems: v.maxItems,
+    ranges: v.ranges,
+    lengths: v.lengths,
+    bits: v.bits,
+    anyOf: v.anyOf,
+    maxDecimals: v.maxDecimals,
+    readOnly: v.readOnly,
     formatType: formatType && FORMAT_TYPES.has(formatType) ? formatType : undefined,
     presetName: pre?.name,
     example: pre?.example,
+    errorMessage: v.errorMessage,
   };
+}
+
+// --- the rules a single value can be held against -------------------------
+// Mirrored from backend/internal/validate. The server re-checks everything;
+// this is what makes a bad value visible while it is still being typed, which
+// is the only moment fixing it is free.
+
+/** Does a number land inside any of the spans? */
+function inAnySpan(spans: Span[] | undefined, n: number): boolean {
+  if (!spans?.length) return true;
+  return spans.some((s) => (s.min == null || n >= s.min) && (s.max == null || n <= s.max));
+}
+
+/** Word a set of spans the way the schema meant them. */
+export function describeSpans(spans: Span[]): string {
+  const parts = spans.map((s) => {
+    if (s.min != null && s.max != null) return s.min === s.max ? `${s.min}` : `${s.min} to ${s.max}`;
+    if (s.min != null) return `${s.min} or more`;
+    if (s.max != null) return `${s.max} or less`;
+    return "";
+  }).filter(Boolean);
+  if (!parts.length) return "within the allowed range";
+  if (parts.length === 1) return parts[0];
+  return `${parts.slice(0, -1).join(", ")} or ${parts[parts.length - 1]}`;
+}
+
+function decimalsOf(raw: string): number {
+  if (/[eE]/.test(raw)) return 0;
+  const dot = raw.indexOf(".");
+  return dot < 0 ? 0 : raw.slice(dot + 1).replace(/0+$/, "").length;
+}
+
+/** Check a value against one alternative of a union. */
+function altAccepts(alt: Alternative, value: string): boolean {
+  if (alt.type && FORMAT_TYPES.has(alt.type) && validateTyped(value, alt.type)) return false;
+  for (const p of [alt.pattern, ...(alt.patterns ?? [])]) {
+    if (!p) continue;
+    try {
+      if (!new RegExp(p).test(value)) return false;
+    } catch {
+      return true; // an expression this engine cannot read decides nothing
+    }
+  }
+  for (const p of alt.notPatterns ?? []) {
+    try {
+      if (new RegExp(p).test(value)) return false;
+    } catch {
+      /* as above */
+    }
+  }
+  if (alt.enum?.length && !alt.enum.includes(value)) return false;
+  if (alt.bits?.length && value.trim() && !value.trim().split(/\s+/).every((w) => alt.bits!.includes(w))) return false;
+  const n = Number(value);
+  if (Number.isFinite(n) && value.trim() !== "") {
+    if (alt.ranges?.length) {
+      if (!inAnySpan(alt.ranges, n)) return false;
+    } else {
+      if (alt.min != null && n < alt.min) return false;
+      if (alt.max != null && n > alt.max) return false;
+    }
+  }
+  const len = [...value].length;
+  if (alt.minLength != null && len < alt.minLength) return false;
+  if (alt.maxLength != null && len > alt.maxLength) return false;
+  if (alt.lengths?.length && !inAnySpan(alt.lengths, len)) return false;
+  return true;
+}
+
+/** validateSchemaRules applies the rules a schema states that the type checks
+ *  and the plain min/max do not carry: alternatives, flags, disjoint spans,
+ *  inverted patterns and decimal precision.
+ *
+ *  It returns the SCHEMA's own wording whenever the schema supplied any: a
+ *  vendor sentence naming the setting beats a generic one describing
+ *  arithmetic, and it is the same sentence the server will answer with. */
+export function validateSchemaRules(value: string, rules: Rules): string | null {
+  const v = value.trim();
+  if (v === "") return null;
+  const refuse = (generic: string) => rules.errorMessage || generic;
+
+  // A union is checked WHOLE and first. Its members disagree about what the
+  // value even is, so layering their rules would refuse both legitimate
+  // spellings of "a number or the word auto".
+  if (rules.anyOf?.length) {
+    if (rules.anyOf.some((a) => altAccepts(a, v))) return null;
+    const labels = rules.anyOf.map((a) => a.label || a.type || "a value");
+    return refuse(`Needs to be one of: ${[...new Set(labels)].join(", ")}`);
+  }
+
+  for (const p of rules.patterns ?? []) {
+    try {
+      if (!new RegExp(p).test(v)) return refuse("This doesn't match the required format");
+    } catch {
+      /* an expression this engine cannot read decides nothing */
+    }
+  }
+  for (const p of rules.notPatterns ?? []) {
+    try {
+      if (new RegExp(p).test(v)) return refuse("This form of the value is not allowed here");
+    } catch {
+      /* as above */
+    }
+  }
+  if (rules.bits?.length) {
+    const bad = v.split(/\s+/).find((w) => !rules.bits!.includes(w));
+    if (bad) return `"${bad}" is not one of the allowed flags (${rules.bits.join(", ")})`;
+  }
+  const n = Number(v);
+  if (Number.isFinite(n)) {
+    if (rules.ranges && rules.ranges.length > 1 && !inAnySpan(rules.ranges, n)) {
+      return refuse(`Needs to be ${describeSpans(rules.ranges)}`);
+    }
+    if (rules.maxDecimals != null && decimalsOf(v) > rules.maxDecimals) {
+      return refuse(
+        rules.maxDecimals === 0
+          ? "Needs to be a whole number"
+          : `Keep it to ${rules.maxDecimals} decimal place${rules.maxDecimals === 1 ? "" : "s"}`,
+      );
+    }
+  }
+  if (rules.lengths && rules.lengths.length > 1 && !inAnySpan(rules.lengths, [...v].length)) {
+    return refuse(`The length has to be ${describeSpans(rules.lengths)} characters`);
+  }
+  return null;
 }
 
 // The operational scalar types that carry a real format, mirrored from the
@@ -149,9 +302,17 @@ export function validateNumber(value: string | number, rules: Rules, integer: bo
     const typed = validateTyped(raw, rules.formatType);
     if (typed) return typed;
   }
-  if (rules.min != null && n < rules.min) return `Needs to be ${rules.min} or more`;
-  if (rules.max != null && n > rules.max) return `Needs to be ${rules.max} or less`;
-  return null;
+  // The disjoint spans are the real rule when there is more than one: min/max
+  // describe only their outer edges, and a value in the gap between two spans
+  // satisfies those while the schema refuses it.
+  if (rules.ranges && rules.ranges.length > 1) {
+    const schema = validateSchemaRules(raw, rules);
+    if (schema) return schema;
+  } else {
+    if (rules.min != null && n < rules.min) return `Needs to be ${rules.min} or more`;
+    if (rules.max != null && n > rules.max) return `Needs to be ${rules.max} or less`;
+  }
+  return validateSchemaRules(raw, rules);
 }
 
 // validateString returns an error message, or null when the value satisfies
@@ -159,6 +320,10 @@ export function validateNumber(value: string | number, rules: Rules, integer: bo
 // they name the expected format and show an example instead of a regex.
 export function validateString(value: string, rules: Rules): string | null {
   if (rules.required && value.trim() === "") return "A value is required here";
+  // A union is checked whole and before everything else: its members disagree
+  // about what the value even is, so the parameter's own format type is the
+  // widest of them and cannot speak for any one branch.
+  if (rules.anyOf?.length) return validateSchemaRules(value, rules);
   // Format types (ipv4, ipv6, cidr, port, …) get a friendly, example-led check
   // before the pattern/length rules.
   if (rules.formatType) {
@@ -172,6 +337,7 @@ export function validateString(value: string, rules: Rules): string | null {
   if (rules.pattern) {
     try {
       if (!new RegExp(rules.pattern).test(value)) {
+        if (rules.errorMessage) return rules.errorMessage;
         if (rules.presetName) {
           return `Needs to be a valid ${rules.presetName}${rules.example ? `, for example ${rules.example}` : ""}`;
         }
@@ -181,7 +347,7 @@ export function validateString(value: string, rules: Rules): string | null {
       // invalid regex in metadata: let the server be the judge
     }
   }
-  return null;
+  return validateSchemaRules(value, rules);
 }
 
 // unitOf returns the unit a CPU or memory value carries ("" when it is a bare

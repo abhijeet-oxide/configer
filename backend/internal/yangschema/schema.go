@@ -34,16 +34,95 @@ type Node struct {
 	MaxElements *int
 	Type        *Type
 	// Constraints are the human sentences the schema attached to conditions it
-	// cannot express as a type restriction: "must" error messages and "when"
-	// expressions. They are shown, never enforced - enforcing an XPath
-	// expression against a single value is not something this product does, and
-	// hiding the condition would be worse than saying it in words.
+	// cannot express as a type restriction. They are what a reader is SHOWN; the
+	// machine-readable originals live in Musts / Whens / Uniques, because a
+	// full-document validator can act on those and a sentence is only ever
+	// something to read.
 	Constraints     []string
 	DependencyPaths []string
-	Module          string
-	File            string
-	Children        []*Node
+	// Musts and Whens are the raw XPath conditions, kept so document-level
+	// validation can evaluate them. A "when" is a condition on the node
+	// EXISTING; a "must" is a condition on the tree once it does.
+	Musts []Condition
+	Whens []Condition
+	// Uniques are the leaf routes a list's entries must not repeat, one entry
+	// per "unique" statement (a statement may name several leaves, which are
+	// unique in combination, not individually).
+	Uniques [][]string
+	// Presence marks a container whose mere existence carries meaning, so an
+	// empty one is not the same as an absent one.
+	Presence bool
+	// Status is "current", "deprecated" or "obsolete" - the vendor's own word
+	// on whether a setting should still be used.
+	Status string
+	// IfFeatures are the feature expressions gating this node's existence.
+	IfFeatures []string
+	// FeatureOff is set when the deployment's declared feature set does not
+	// include what this node needs. The node is kept anyway - see
+	// Set.applyFeatures - so its rules still explain the value in front of the
+	// user; document validation reports it as a warning rather than an error.
+	FeatureOff bool
+	// Choice / Case name the choice construct this node was declared under, so
+	// document validation can enforce that only one case's nodes are present.
+	// Empty for the overwhelming majority of nodes, which are under no choice.
+	Choice string
+	Case   string
+	// ChoiceMandatory marks a choice that must have exactly one case chosen.
+	ChoiceMandatory bool
+	// OrderedBy is "user" or "system"; only the former makes entry order
+	// meaningful.
+	OrderedBy string
+	// Synthetic marks a node this package invented to spell out the route an
+	// augment names, rather than one the schema declared. It exists to be
+	// merged into the real declaration, never to stand in for it.
+	Synthetic bool
+	Module    string
+	File      string
+	Children  []*Node
 }
+
+// Condition is one "must" or "when" expression with the wording the schema gave
+// for its failure.
+type Condition struct {
+	Expr         string
+	ErrorMessage string
+}
+
+// addMust records a must expression on the node, along with the dependency it
+// implies.
+func (n *Node) addMust(st *Statement) {
+	expr := collapse(st.Arg)
+	if expr == "" {
+		return
+	}
+	for _, existing := range n.Musts {
+		if existing.Expr == expr {
+			return
+		}
+	}
+	n.Musts = append(n.Musts, Condition{Expr: expr, ErrorMessage: collapse(st.ChildArg("error-message"))})
+	for _, p := range pathRefs(expr) {
+		n.DependencyPaths = appendUnique(n.DependencyPaths, p)
+	}
+}
+
+// dropMust removes a must expression a deviation deleted.
+func (n *Node) dropMust(expr string) {
+	expr = collapse(expr)
+	out := n.Musts[:0]
+	for _, m := range n.Musts {
+		if m.Expr != expr {
+			out = append(out, m)
+		}
+	}
+	n.Musts = out
+}
+
+// Editable reports whether a value of this node is something a person may set.
+// Operational state and an obsolete setting are both shown and neither is
+// written: one belongs to the device, the other to a release nobody should be
+// building against any more.
+func (n *Node) Editable() bool { return n.Config && n.Status != "obsolete" }
 
 // Type is a resolved YANG type: the builtin it bottoms out at, plus every
 // restriction collected on the way down through the typedefs.
@@ -57,12 +136,49 @@ type Type struct {
 	Lengths        []Bound
 	Patterns       []Pattern
 	Enums          []EnumValue
-	Bits           []string
+	Bits           []Bit
 	FractionDigits int
 	LeafrefPath    string
-	Union          []*Type
+	// RequireInstance is the leafref/instance-identifier modifier: false means
+	// the reference may point at something that does not exist yet, so document
+	// validation must not refuse it.
+	RequireInstance *bool
+	Union           []*Type
+	// IdentityBase is the base of an identityref, from which the allowed values
+	// are the identities deriving from it.
+	IdentityBase string
+	// Identities are those derived values, resolved once the whole set is read.
+	Identities []string
+	// Default / Units / Description may be declared on a TYPEDEF rather than on
+	// the leaf using it, which is where a shared type keeps the fallback and the
+	// unit that belong to the type itself. Read only from the leaf, every leaf
+	// of a well-factored model came out with no default and no unit.
+	Default     string
+	Units       string
+	Description string
 	// ErrorMessage is the schema's own wording for a failed restriction.
 	ErrorMessage string
+}
+
+// Bit is one named flag of a "bits" type.
+type Bit struct {
+	Name        string
+	Position    int
+	Description string
+}
+
+// BitNames returns just the flag names.
+func (t *Type) BitNames() []string {
+	if t == nil || len(t.Bits) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(t.Bits))
+	for _, b := range t.Bits {
+		if b.Name != "" {
+			out = append(out, b.Name)
+		}
+	}
+	return out
 }
 
 // Bound is one span of a YANG "range" or "length" restriction. Either end may
@@ -160,7 +276,28 @@ func (m *Module) buildNodes(parent *Statement, defs *definitions, depth int) []*
 			if n := m.buildNode(sub, defs, depth); n != nil {
 				out = append(out, n)
 			}
-		case name == "choice" || name == "case":
+		case name == "choice":
+			// A choice is an authoring construct: the data tree underneath it
+			// is addressed as if it were not there. But WHICH branch a document
+			// took is a real constraint, so every node under it is stamped with
+			// the choice and the case it belongs to - that is the only way a
+			// document validator can later say "these two cannot both be set".
+			mandatory := sub.ChildArg("mandatory") == "true"
+			for _, c := range sub.Sub {
+				switch c.Name() {
+				case "case":
+					stampChoice(m.buildNodes(c, defs, depth+2), sub.Arg, c.Arg, mandatory, &out)
+				default:
+					// A shorthand case: one data node standing in for a case of
+					// its own name.
+					if dataKeywords[c.Name()] {
+						if n := m.buildNode(c, defs, depth+1); n != nil {
+							stampChoice([]*Node{n}, sub.Arg, c.Arg, mandatory, &out)
+						}
+					}
+				}
+			}
+		case name == "case":
 			out = append(out, m.buildNodes(sub, defs, depth+1)...)
 		case name == "uses":
 			g := defs.groupings[bare(sub.Arg)]
@@ -197,6 +334,15 @@ func (m *Module) buildNodes(parent *Statement, defs *definitions, depth int) []*
 	return out
 }
 
+// stampChoice records which choice and case a set of nodes was declared under
+// and adds them to the parent's child list.
+func stampChoice(nodes []*Node, choice, kase string, mandatory bool, out *[]*Node) {
+	for _, n := range nodes {
+		n.Choice, n.Case, n.ChoiceMandatory = bare(choice), bare(kase), mandatory
+		*out = append(*out, n)
+	}
+}
+
 // buildAugment wraps an augment's nodes in the route its target names, so they
 // are addressed the way the real tree addresses them.
 func (m *Module) buildAugment(st *Statement, defs *definitions, depth int) *Node {
@@ -215,11 +361,94 @@ func (m *Module) buildAugment(st *Statement, defs *definitions, depth int) *Node
 	}
 	// The chain is built from the leaf end back, so the outermost step is what
 	// comes out and the whole route is walked on the way to the real nodes.
-	node := &Node{Name: steps[len(steps)-1], Kind: "container", Config: true, Module: m.Name, File: m.File, Children: children}
+	node := &Node{Name: steps[len(steps)-1], Kind: "container", Config: true, Synthetic: true, Module: m.Name, File: m.File, Children: children}
 	for i := len(steps) - 2; i >= 0; i-- {
-		node = &Node{Name: steps[i], Kind: "container", Config: true, Module: m.Name, File: m.File, Children: []*Node{node}}
+		node = &Node{Name: steps[i], Kind: "container", Config: true, Synthetic: true, Module: m.Name, File: m.File, Children: []*Node{node}}
 	}
 	return node
+}
+
+// Merge folds another node describing the SAME place in the tree into this one.
+//
+// An augment declares its target's whole route, so reading a module set
+// produces two nodes called "radio": the module's own list-bearing one and the
+// bare wrapper the augment spelled to reach it. Left side by side, whichever
+// happened to be read first (which is whichever filename sorted first, so
+// "acme-radio-extras.yang" before "acme-radio.yang") became the tree, and a
+// walk down it found one leaf where the model has fifteen.
+//
+// So the two are merged: a real declaration outranks a synthesized wrapper for
+// everything the node itself says, and their children are merged in turn.
+func (n *Node) Merge(other *Node) {
+	if other == nil || n == other {
+		return
+	}
+	if n.Synthetic && !other.Synthetic {
+		// The other node is the real declaration: take its identity wholesale
+		// and keep only the children this wrapper contributed.
+		mine := n.Children
+		kind, module, file := other.Kind, other.Module, other.File
+		contributed := *other
+		*n = contributed
+		n.Kind, n.Module, n.File, n.Synthetic = kind, module, file, false
+		n.Children = append(append([]*Node{}, other.Children...), mine...)
+		n.dedupeChildren()
+		return
+	}
+	if n.Type == nil {
+		n.Type = other.Type
+	}
+	n.Description = firstArg(n.Description, other.Description)
+	n.Label = firstArg(n.Label, other.Label)
+	n.Units = firstArg(n.Units, other.Units)
+	n.Default = firstArg(n.Default, other.Default)
+	n.Mandatory = n.Mandatory || other.Mandatory
+	n.Presence = n.Presence || other.Presence
+	if len(n.Keys) == 0 {
+		n.Keys = other.Keys
+	}
+	if n.MinElements == nil {
+		n.MinElements = other.MinElements
+	}
+	if n.MaxElements == nil {
+		n.MaxElements = other.MaxElements
+	}
+	n.Musts = append(n.Musts, other.Musts...)
+	n.Whens = append(n.Whens, other.Whens...)
+	for _, u := range other.Uniques {
+		n.Uniques = appendUniqueList(n.Uniques, u)
+	}
+	for _, d := range other.DependencyPaths {
+		n.DependencyPaths = appendUnique(n.DependencyPaths, d)
+	}
+	n.Children = append(n.Children, other.Children...)
+	n.dedupeChildren()
+	n.Constraints = describeConditions(n)
+}
+
+// dedupeChildren merges children sharing a name, which is what an augment
+// contributing into an existing container produces.
+func (n *Node) dedupeChildren() { n.Children = mergeSiblings(n.Children) }
+
+// mergeSiblings folds a list of nodes so that one name appears once, with
+// everything every declaration of it said. Declaration order is preserved: the
+// tree a reader walks should look like the model they read.
+func mergeSiblings(nodes []*Node) []*Node {
+	if len(nodes) < 2 {
+		return nodes
+	}
+	seen := map[string]*Node{}
+	out := nodes[:0]
+	for _, c := range nodes {
+		key := strings.ToLower(c.Name)
+		if first, taken := seen[key]; taken {
+			first.Merge(c)
+			continue
+		}
+		seen[key] = c
+		out = append(out, c)
+	}
+	return out
 }
 
 func (m *Module) buildNode(st *Statement, defs *definitions, depth int) *Node {
@@ -234,11 +463,19 @@ func (m *Module) buildNode(st *Statement, defs *definitions, depth int) *Node {
 		Label:       extensionArg(st, "label", "info"),
 		Config:      st.ChildArg("config") != "false",
 		Units:       st.ChildArg("units"),
+		Status:      strings.TrimSpace(st.ChildArg("status")),
+		Presence:    st.Child("presence") != nil,
+		OrderedBy:   strings.TrimSpace(st.ChildArg("ordered-by")),
 		Module:      m.Name,
 		File:        m.File,
 	}
 	if st.ChildArg("mandatory") == "true" {
 		n.Mandatory = true
+	}
+	for _, f := range st.Children("if-feature") {
+		if f.Arg != "" {
+			n.IfFeatures = appendUnique(n.IfFeatures, collapse(f.Arg))
+		}
 	}
 	n.Default = firstArg(st.ChildArg("default"), extensionArg(st, "default"))
 	if keys := st.ChildArg("key"); keys != "" {
@@ -250,13 +487,42 @@ func (m *Module) buildNode(st *Statement, defs *definitions, depth int) *Node {
 	if v, ok := parseInt(st.ChildArg("max-elements")); ok {
 		n.MaxElements = &v
 	}
-	n.Constraints = conditions(st)
-	n.DependencyPaths = dependencyPaths(st)
+	for _, u := range st.Children("unique") {
+		if u.Arg != "" {
+			n.Uniques = appendUniqueList(n.Uniques, strings.Fields(u.Arg))
+		}
+	}
+	for _, c := range st.Children("must") {
+		n.addMust(c)
+	}
+	for _, c := range st.Children("when") {
+		if expr := collapse(c.Arg); expr != "" {
+			n.Whens = append(n.Whens, Condition{Expr: expr, ErrorMessage: collapse(c.ChildArg("error-message"))})
+			for _, p := range pathRefs(expr) {
+				n.DependencyPaths = appendUnique(n.DependencyPaths, p)
+			}
+		}
+	}
+	n.Constraints = describeConditions(n)
 
 	if t := st.Child("type"); t != nil {
 		n.Type = resolveType(t, defs, 0)
-		if n.Type != nil && n.Type.LeafrefPath != "" {
-			n.DependencyPaths = append(n.DependencyPaths, n.Type.LeafrefPath)
+		if n.Type != nil {
+			if n.Type.LeafrefPath != "" {
+				n.DependencyPaths = appendUnique(n.DependencyPaths, n.Type.LeafrefPath)
+			}
+			// A typedef carries its own default and unit; the leaf only
+			// overrides them. Reading the leaf alone left every user of a
+			// well-factored shared type with neither.
+			if n.Default == "" {
+				n.Default = n.Type.Default
+			}
+			if n.Units == "" {
+				n.Units = n.Type.Units
+			}
+			if n.Description == "" {
+				n.Description = n.Type.Description
+			}
 		}
 	}
 	// A list key is mandatory by definition, whether or not it says so.
@@ -271,41 +537,42 @@ func (m *Module) buildNode(st *Statement, defs *definitions, depth int) *Node {
 	return n
 }
 
-// conditions collects the human wording of every constraint the type system
-// cannot carry.
-func conditions(st *Statement) []string {
+// describeConditions words every constraint the type system cannot carry, for
+// a reader rather than an engine. The engine gets the expressions themselves
+// from Musts / Whens / Uniques; this is what appears beside the editor, so it
+// prefers the vendor's own error message and falls back to the expression only
+// because a condition nobody can see is worse than one stated in XPath.
+func describeConditions(n *Node) []string {
 	var out []string
-	for _, c := range st.Children("must", "when") {
-		if msg := collapse(c.ChildArg("error-message")); msg != "" {
-			out = append(out, msg)
-			continue
+	add := func(c Condition, prefix string) {
+		if c.ErrorMessage != "" {
+			out = append(out, c.ErrorMessage)
+			return
 		}
-		if expr := collapse(c.Arg); expr != "" {
-			out = append(out, expr)
+		if c.Expr != "" {
+			out = append(out, prefix+c.Expr)
 		}
 	}
-	for _, u := range st.Children("unique") {
-		if u.Arg != "" {
-			out = append(out, "unique: "+u.Arg)
-		}
+	for _, c := range n.Whens {
+		add(c, "applies when ")
 	}
-	return out
-}
-
-// dependencyPaths extracts the path-like references from "must" and "when".
-// The whole XPath language is larger than what is useful for the dependency
-// graph, so this deliberately keeps only explicit node paths. They are later
-// resolved to real parameters only if the target is unambiguous.
-func dependencyPaths(st *Statement) []string {
-	seen := map[string]bool{}
-	var out []string
-	for _, c := range st.Children("must", "when") {
-		for _, p := range pathRefs(c.Arg) {
-			if !seen[p] {
-				seen[p] = true
-				out = append(out, p)
-			}
-		}
+	for _, c := range n.Musts {
+		add(c, "must satisfy ")
+	}
+	for _, u := range n.Uniques {
+		out = append(out, "unique: "+strings.Join(u, ", "))
+	}
+	switch n.Status {
+	case "deprecated":
+		out = append(out, "deprecated: the vendor advises against new use")
+	case "obsolete":
+		out = append(out, "obsolete: no longer supported")
+	}
+	for _, f := range n.IfFeatures {
+		out = append(out, "available only where the feature \""+f+"\" is supported")
+	}
+	if !n.Config {
+		out = append(out, "read-only: reported by the device, not configured")
 	}
 	return out
 }
@@ -333,6 +600,19 @@ func resolveType(st *Statement, defs *definitions, depth int) *Type {
 				// "string" has thrown away.
 				t.Qualified = st.Arg
 			}
+		}
+		// A typedef may carry the default, the unit and the prose that belong
+		// to the TYPE rather than to any one leaf using it. The nearest
+		// definition wins, which is why these are only filled when the inner
+		// resolution left them empty.
+		if v := td.ChildArg("default"); v != "" && t.Default == "" {
+			t.Default = v
+		}
+		if v := td.ChildArg("units"); v != "" && t.Units == "" {
+			t.Units = v
+		}
+		if v := collapse(td.ChildArg("description")); v != "" && t.Description == "" {
+			t.Description = v
 		}
 	} else {
 		// An unresolvable type (imported from a module we were not given)
@@ -369,13 +649,24 @@ func restrictions(st *Statement, defs *definitions, depth int) *Type {
 		r.Enums = append(r.Enums, EnumValue{Name: e.Arg, Description: collapse(e.ChildArg("description"))})
 	}
 	for _, b := range st.Children("bit") {
-		r.Bits = append(r.Bits, b.Arg)
+		if b.Arg == "" {
+			continue
+		}
+		pos, _ := parseInt(b.ChildArg("position"))
+		r.Bits = append(r.Bits, Bit{Name: b.Arg, Position: pos, Description: collapse(b.ChildArg("description"))})
 	}
 	if fd, ok := parseInt(st.ChildArg("fraction-digits")); ok {
 		r.FractionDigits = fd
 	}
 	if p := st.ChildArg("path"); p != "" {
 		r.LeafrefPath = p
+	}
+	if v := st.ChildArg("require-instance"); v != "" {
+		b := v == "true"
+		r.RequireInstance = &b
+	}
+	if b := st.ChildArg("base"); b != "" {
+		r.IdentityBase = b
 	}
 	// A union's members are types in their own right; the value must satisfy
 	// one of them, so no single restriction of theirs can be enforced alone.
@@ -409,6 +700,12 @@ func mergeRestrictions(t, r *Type) {
 	}
 	if r.LeafrefPath != "" {
 		t.LeafrefPath = r.LeafrefPath
+	}
+	if r.RequireInstance != nil {
+		t.RequireInstance = r.RequireInstance
+	}
+	if r.IdentityBase != "" {
+		t.IdentityBase = r.IdentityBase
 	}
 	if r.ErrorMessage != "" {
 		t.ErrorMessage = r.ErrorMessage
@@ -444,6 +741,15 @@ func applyRefinements(nodes []*Node, uses *Statement) {
 		if v, ok := parseInt(ref.ChildArg("max-elements")); ok {
 			target.MaxElements = &v
 		}
+		if u := ref.ChildArg("units"); u != "" {
+			target.Units = u
+		}
+		// A refine ADDS musts rather than replacing them (RFC 7950 §7.13.2):
+		// the grouping's own conditions still hold at the call site.
+		for _, mst := range ref.Children("must") {
+			target.addMust(mst)
+		}
+		target.Constraints = describeConditions(target)
 	}
 }
 

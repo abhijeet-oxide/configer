@@ -133,7 +133,10 @@ func BuildWith(p *project.Project, docs resolver.Docs) Grid {
 				Set:       res.Set,
 				State:     state,
 				Templated: templated,
-				Editable:  state != StateNotApplicable && state != StateDeprecated && !templated,
+				// A setting the model declares as operational state belongs to
+				// the device: it is worth SEEING beside the settings that shape
+				// it, and writing it back would be overwritten by the next read.
+				Editable: state != StateNotApplicable && state != StateDeprecated && !templated && !param.Validation.ReadOnly,
 			}
 			if state == StateNotApplicable || !res.Set {
 				cell.Valid = true
@@ -272,7 +275,7 @@ func applyStructuralPreview(g *Grid, it change.Item, r *resolver.Resolver) {
 			// change is published is an ordinary edit - it just lands in a
 			// folder that does not exist yet.
 			cell.Editable = state != StateNotApplicable && state != StateDeprecated &&
-				!model.IsTemplateExpression(cell.Value)
+				!model.IsTemplateExpression(cell.Value) && !g.Rows[i].Param.Validation.ReadOnly
 			g.Rows[i].Cells[it.Instance] = cell
 		}
 	case change.ActionRemoveInstance:

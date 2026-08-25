@@ -1,288 +1,257 @@
-# YANG validation roadmap
+# YANG validation
 
-This note is for future agents working on Configer's schema validation. It captures what exists today, what it guarantees, what it does not guarantee yet, and the recommended next steps.
+This note is for future agents working on Configer's schema validation. It
+captures what exists today, what it guarantees, what it deliberately does not,
+and what is left.
 
-## Current shape
+## The shape: two tiers, and why neither replaces the other
 
-Configer has two validation layers today:
+**Tier 1 - extraction and per-value rules.** `yangschema` reads the models a
+repository ships and turns what they say into `model.Validation`. Those rules
+are enforced by `validate.Value` on every write path and mirrored in the browser
+(`frontend/src/rules.ts`) so a bad value is visible while it is still being
+typed. This is what an editor needs.
 
-1. **Catalog validation** - parameter metadata in `.configer/parameters.yaml` carries `model.Validation` rules. Those rules are enforced by the backend write paths with `validate.CoerceValue` and `validate.Value`.
-2. **Schema extraction** - discovery reads schema files and converts schema facts into `model.Validation`, parameter descriptions, display names, defaults, types, and dependencies.
+**Tier 2 - whole-document validation.** `yangvalidate` holds the candidate
+document a change WOULD commit against the model set. It answers the questions
+that only have an answer once the whole file exists: a mandatory leaf left out,
+two list entries colliding on a key, a reference pointing at nothing, a `must`
+condition spanning three settings. It runs at SUBMIT, when the change is
+complete and about to become somebody else's problem.
 
-The schema extraction layer is intentionally optional. A repository without schema files still onboards and edits normally.
+Neither tier replaces the other. Tier 1 cannot see across values; tier 2 cannot
+run per keystroke.
 
-## Where YANG is read
+A **missing validator is a STATE, not a pass.** `Report.Available` says whether
+full validation actually ran. Anything that treats "no findings" and "nothing
+looked" alike has turned the gate off without noticing, and the UI is written to
+never say a change is model-valid when nothing checked it.
 
-The YANG support lives in:
+## Where the code is
 
-- `backend/internal/yangschema/` - parses YANG files, builds a model index, maps YANG nodes to Configer parameter validation.
-- `backend/internal/discovery/models.go` - detects product metadata, loads YANG model sets, attaches model facts to discovered parameters, and links dependencies.
-- `backend/internal/discovery/discovery.go` - calls the YANG attachment after JSON Schema attachment and before fallback type inference.
+- `backend/internal/yangschema/` - the parser, the model index, and the mapping
+  from YANG facts to Configer validation.
+  - `parse.go` - the statement tree (every YANG construct is `keyword arg { … }`,
+    extensions included, so an unknown vendor keyword is carried not refused)
+  - `schema.go` - nodes, types, restrictions, `uses`/`refine`/`augment`/`choice`
+  - `index.go` - loading a set, route indexing, lookup, feature gating
+  - `identity.go` - identity/identityref resolution and `if-feature` expressions
+  - `deviation.go` - applying `deviation` after the whole set is indexed
+  - `regex.go` - XSD regular expression to Go translation
+  - `apply.go` - mapping a model node onto a `model.Parameter`
+- `backend/internal/yangvalidate/` - whole-document validation.
+  - `validate.go` - `Engine`, `Finding`, `Report`, engine selection
+  - `document.go` - YAML/JSON/XML into a named node tree with paths and lines
+  - `native.go` - the built-in document walker
+  - `xpath.go` - the bounded XPath subset for `must`/`when`
+  - `yanglint.go` - the libyang bridge and diagnostic normalization
+- `backend/internal/api/models.go` - the cached model set, and the
+  `(file, path) -> parameter` locator that puts a finding on the row somebody
+  edited
+- `backend/internal/api/validation.go` / `validationrun.go` - the run resource
+  and the submit gate
+- `backend/internal/discovery/models.go` - attaching model facts during
+  onboarding and linking dependencies
+- `frontend/src/components/ValidationFlow.tsx` - the staged, live submit UI
 
-Product metadata discovery lives in:
+## What tier 1 extracts
 
-- `backend/internal/productmeta/` - detects instance folders containing `CONFIGURATION`, `METADATA`, and a descriptor such as `METADATA/product.txt`.
+Structure: `module`, `submodule`, `belongs-to`, `include`, `typedef` (including
+chained restrictions and typedef-level `default` / `units` / `description`),
+`grouping`, `uses`, `refine` (description, mandatory, default, config,
+min/max-elements, units, and ADDED `must`), `augment` (module-level and
+`uses`-local), `container`, `list`, `leaf`, `leaf-list`, `choice`/`case` (with
+the choice and case each node belongs to recorded), `key`, `mandatory`,
+`presence`, `status`, `ordered-by`, `unique`, `min-elements`/`max-elements`,
+`if-feature`, `deviation` (`not-supported`, `add`, `replace`, `delete`),
+`identity`/`base`, vendor extension labels and defaults by unprefixed keyword.
 
-That descriptor is not Nokia-specific in code. It is just a recognized product descriptor pattern. When found, it fills:
+Types: every integer width, `decimal64` with `fraction-digits`, `boolean`,
+`empty`, `enumeration`, `bits`, `union`, `leafref` (with `require-instance`),
+`identityref`, `instance-identifier`, `binary`, `string`, plus RFC 6991 semantic
+types mapped onto Configer's operational types (IPv4/IPv6/prefix/port/
+domain-name/URI/MAC).
 
-- application proposal product metadata (`discovery.Result.Product`)
-- instance software version
-- instance environment from `envtype`
-- product/release/variant labels
+Restrictions: `range`, `length`, `pattern` (including `invert-match` and
+accumulated patterns through a typedef chain), `enum`, `bit`, `error-message`,
+`units`, `default`.
 
-## What YANG extraction handles today
+**An augment and the module it targets produce two top-level nodes of the same
+name**, because an augment spells out the whole route to its target. They are
+MERGED (`Node.Merge`, `mergeSiblings`) before anything is indexed. Without that,
+whichever file sorted first became the tree - and a walk down it found one leaf
+where the model has fifteen.
 
-The native Go extractor currently parses and uses these YANG constructs:
+## What is enforced, and where
 
-- `module` and `submodule`
-- `include`, in practice by loading all `.yang` files in the selected schema directories
-- `belongs-to`
-- `typedef`, including chained typedef restrictions
-- `grouping` and `uses`
-- `refine` under `uses`
-- `augment`, including module-level augment and `uses`-local augment
-- `container`, `list`, `leaf`, `leaf-list`
-- `choice` and `case`, flattened for address lookup
-- `key`, making list key leaves required
-- `mandatory`
-- `default`, including vendor extension defaults such as `alu:default`
-- `description`
-- extension labels such as `alu:label`, `nok-ext:label`, and other prefixed `label` or `info`
-- `units`
-- `min-elements` and `max-elements`
-- `type` restrictions:
-  - integer and unsigned integer widths
-  - `range`
-  - `length`
-  - `pattern`, including multiple accumulated patterns from typedef chains
-  - `enumeration`
-  - `bits`, as readable constraints
-  - `union`, as readable constraints
-  - `leafref`, as readable constraints and as dependency references
-- common semantic YANG types mapped to Configer types:
-  - IPv4 and IPv6 address types
-  - IP prefix types
-  - port number types
-  - domain/host name types
-  - URI
-  - MAC/physical address types
-- `must` and `when` expressions, currently as readable constraints and conservative dependency references
-- `unique`, currently as a readable constraint
+Enforced per value, by `validate.Value`, on every write path and in the browser:
 
-The extractor indexes nodes by route rather than by namespace. Config documents and YANG modules often spell prefixes differently, while the route of node names is the stable common ground. Matching prefers the longest common suffix and refuses ambiguous matches when two different schema nodes would produce different rules.
+- `required` from `mandatory` and list keys
+- data type and format (integer/number/boolean/enum/IPv4/IPv6/CIDR/hostname/
+  port/email/URL/MAC/CPU/memory/duration/percentage)
+- numeric min/max from `range`, and the integer type's own width when no range
+  was stated
+- **disjoint ranges and lengths** (`Validation.Ranges` / `Lengths`). A single
+  min/max cannot say "5..20 or 40..100": it accepts 30, which the vendor wrote
+  the restriction to refuse. Min/Max still carry the outer span so an older
+  client validates loosely; the spans are what decides.
+- string min/max length
+- `enum`, including **the identities derived from an `identityref`'s base** -
+  an ordinary list of choices, and the most useful thing the schema knew about
+  a setting that used to arrive as "a string"
+- regular expressions, **translated from XSD rather than hoped over**. Class
+  subtraction (`[a-z-[aeiou]]`) compiles in Go as a DIFFERENT rule - one that
+  admits exactly the characters the vendor excluded - so `regex.go` translates
+  `\i`, `\c`, `\p{Is…}` blocks and subtraction, and refuses (falling back to
+  prose) rather than enforcing an approximation.
+- **inverted patterns** (`NotPatterns`) - the one restriction a vendor bothered
+  to invert used to be the one nothing checked
+- **`bits`** - a value is any subset of the declared flags; listing them in
+  prose let a typo through to the device
+- **`union`** (`AnyOf`) - checked WHOLE, so "a number in 1..100 or the word
+  auto" accepts both legitimate spellings and refuses neither
+- **`fraction-digits`** (`MaxDecimals`)
+- **`config false`** (`ReadOnly`) - the cell is shown and never editable
+  (`grid.Cell.Editable`); writing device state back would be overwritten by the
+  next read
+- cross-parameter relations Configer already had (`AtLeast`/`AtMost`)
 
-## What is enforced today
+Enforced per document, by `yangvalidate`, at submit:
 
-Once YANG facts are mapped into `model.Validation`, they are enforced server-side anywhere Configer writes values through normal parameter write paths.
+- mandatory leaves absent from a level the document has reached
+- list keys: present, and not repeated across entries
+- `unique` statements (entries missing any named leaf are exempt, per RFC 7950)
+- `leafref` targets that exist, honouring `require-instance false`
+- `min-elements` / `max-elements`, including on an EMPTY collection
+  (`Node.Repeated` exists for exactly this: read as "no entries", an empty list
+  looked like an absent one and slipped through saying nothing)
+- `choice`: two cases filled in, or a mandatory choice with none
+- `must` and `when`, within the subset `xpath.go` reads
+- every leaf's own type and restrictions, because a file edited by hand never
+  went through the cell write path
 
-Enforced today:
+## What is deliberately NOT done
 
-- required values from `mandatory` and list keys
-- data type coercion and checks:
-  - integer
-  - number
-  - boolean
-  - enum
-  - IPv4
-  - IPv6
-  - CIDR
-  - hostname
-  - port
-  - email
-  - URL
-  - MAC
-  - CPU, memory, duration, percentage where inferred or mapped
-- numeric min/max from YANG `range`
-- integer built-in bounds for types like `uint8`, `uint16`, `int16`, etc. where representable
-- string min/max length from YANG `length`
-- enum allowed values
-- regular expression patterns that compile in Go
-- multiple accumulated patterns via `Validation.Pattern` plus `Validation.Patterns`
-- list min/max item counts when the Configer parameter represents the whole list
-- cross-parameter resource relations already present in Configer (`AtLeast`, `AtMost`) for resource limits and requests
+- **An expression outside the XPath subset produces NO finding.** A condition
+  guessed at is worse than one nobody checked, because a reader cannot tell them
+  apart, and a false refusal on a correct change is how people learn to click
+  past a gate. The count of skipped checks is reported.
+- **A path that leaves the file says nothing.** A datastore has one tree; a
+  repository has files. A `leafref` or `../..` reaching past what this file holds
+  is a question the file cannot answer, not a violation.
+- **Predicates in a location path are stripped, not evaluated.** That widens a
+  node set, which for the supported comparisons can only turn a refusal into a
+  pass - never a pass into a refusal. Widening in that direction is the safe
+  error to make.
+- **Only the files a change TOUCHES are validated.** A repository whose
+  committed state already breaks a rule is not this change's fault, and
+  reporting it would make every submit carry somebody else's backlog.
+- **Unmodelled content is counted, not refused.** Real repositories hold
+  Kubernetes envelopes, Helm values and readme fragments beside whatever the
+  models describe. `Report.Unmatched` says how much, and the UI says so.
+- **`if-feature` defaults to "every feature enabled".** Nothing in a repository
+  says which features a build shipped with. A rule attached to a node that turns
+  out not to exist costs a warning about a setting nobody set; dropping the node
+  costs every rule on a setting somebody is editing right now.
+  `CONFIGER_YANG_FEATURES` makes the gate real where a deployment knows.
 
-The backend write paths that call validation include at least:
+## The engines
 
-- cell value edits in `backend/internal/api/values.go`
-- file draft catalog deltas in `backend/internal/api/files.go`
-- restores in `backend/internal/api/restore.go`
-- source accepts in `backend/internal/api/sources.go`
-- grid validity calculation in `backend/internal/grid/grid.go`
+`yangvalidate.Select()` picks one, most capable first:
 
-## What is displayed but not fully enforced
+| engine | available | covers |
+|---|---|---|
+| `yanglint` | when the binary is on PATH (or `CONFIGER_YANGLINT` names it) | the whole language: full XPath, deviations, features, cross-module leafrefs, unique, keys |
+| `native` | always | the checks listed above, over one file at a time |
 
-Some YANG facts are preserved as readable constraints rather than enforced rules:
+`CONFIGER_YANG_VALIDATOR=auto|native|yanglint|off` overrides. Naming an engine
+explicitly reports it unavailable rather than falling back, because a deployment
+that asked for yanglint wants to know when it is missing.
 
-- `must` XPath expressions
-- `when` XPath expressions
-- `unique`
-- disjoint ranges that cannot be represented as a single min/max span
-- inverted patterns that cannot be represented directly
-- uncompiled YANG/XSD regex features that Go regexp cannot compile
-- `union` member validation
-- `bits` semantics
-- `leafref` target existence and target-value checking
+**yanglint is not required, and must not become required.** libyang is a C
+library: a package on Linux, an afternoon with MSYS2 or vcpkg on Windows.
+Demanding it would mean a developer cannot run the product on their own laptop.
+Ship it in the production container; let a Windows developer use WSL or Docker
+if they want the deeper checks; carry the tier with `native` everywhere else.
 
-This is deliberate. Enforcing these correctly requires whole-document validation, not single-cell validation.
+## The submit gate
 
-## Dependencies today
+`POST /api/changes/{id}/submit` validates before anything is branched,
+committed or pushed. The client normally ran the check already and watched it
+happen (`POST /api/changes/{id}/validation` then poll `GET`), and the gate runs
+again at submit because **a gate a caller can skip by not calling an endpoint is
+not a gate**. A run is reused only when its fingerprint still matches the draft.
 
-`Parameter.DependsOn` is now built conservatively from YANG references:
+Blocking findings answer 422 with the whole run attached, so the dialog can show
+what is wrong and where rather than a toast saying "invalid".
 
-- `leafref { path "..."; }`
-- path-like references inside `when`
-- path-like references inside `must`
-
-The flow is:
-
-1. `yangschema.Node.DependencyPaths` records the raw schema paths.
-2. `yangschema.Set.LookupDependency` resolves absolute paths like `/a/b/c` and relative paths like `../enabled` from the source node.
-3. `discovery.linkModelDependencies` converts resolved target nodes into actual parameter IDs after discovery has assigned IDs.
-4. The frontend dependency tab reads the existing `Parameter.DependsOn` field and shows reverse dependencies by scanning the grid rows.
-
-Rules for dependency linking:
-
-- Only leaf-like schema targets become dependencies.
-- The target must correspond to a discovered Configer parameter.
-- Ambiguous references are ignored rather than guessed.
-- Structural references and unresolved expressions remain readable validation constraints.
-
-This means the dependency graph is useful and safe, but not complete.
-
-## Important known gaps
-
-The native Go extractor is not a complete YANG validator. It is a metadata, rule, and dependency extractor.
-
-Missing or incomplete areas:
-
-- full namespace-aware XML-to-module resolution
-- full RFC 7950 XPath evaluation for `must` and `when`
-- full `leafref` validation against candidate document values
-- `unique` enforcement over list entries
-- `choice` and `case` exclusivity validation
-- `presence` container semantics
-- `if-feature` evaluation and feature-set configuration
-- `deviation` handling
-- `identity`, `identityref`, and base identity resolution
-- exact XSD regular expression semantics beyond what can be safely converted to Go regexp
-- complete document-level validation before save/submit
-- high-quality mapping of full-schema validation errors back to Configer parameter IDs and editor locations
-
-## Recommended next step: add full-document YANG validation
-
-Do not try to hand-roll the missing YANG validation in Go. Keep the Go extractor for UI metadata and fast local rules, and add an optional full-document validator for backend write gates.
-
-Recommended architecture:
-
-1. Add a package such as `backend/internal/yangvalidate`.
-2. Define a small interface:
-
-```go
-type Validator interface {
-    Available() bool
-    Validate(ctx Context, doc Document) Result
-}
-```
-
-3. Provide implementations:
-
-- `NoopValidator` - used when no full validator is available. It reports unavailable, not success.
-- `YanglintValidator` - shells out to `yanglint` from libyang.
-- Optional future `LibyangValidator` - direct bindings, only if worth the operational cost.
-
-4. Cache schema contexts by product version and schema root.
-5. On save or submit, apply the candidate edit to a temporary copy of the whole file, then validate that whole file.
-6. Reject the save with normalized file/path/message diagnostics if validation fails.
-
-## Why `yanglint`
-
-`yanglint` is the best practical validation engine for full YANG semantics. It comes from libyang, is widely used, and supports the hard parts that should not be reimplemented casually:
-
-- imports/includes
-- augment
-- deviations
-- features
-- leafrefs
-- must/when XPath
-- list keys and uniqueness
-- full data tree validation
-
-## Windows support
-
-Do not make `yanglint` mandatory for ordinary Windows development.
-
-Native Windows support is possible but awkward because libyang is a C library. Developers usually need MSYS2, vcpkg, or custom setup. The better path is:
-
-- Linux production container: include `yanglint`/libyang tools.
-- Windows developer machine: support WSL or Docker for full validation.
-- If `yanglint` is absent: keep Go-derived validation active and expose full YANG validation as unavailable.
-
-Missing validator must be a state, not a fatal error.
+`override: true` with `overrideReason` submits anyway and writes the reason into
+the change's own description, which travels into the commit message and the PR
+body. This exists because the alternative to a recorded override is not "no
+overrides" - it is somebody switching the validator off in an environment
+variable, where no reviewer will ever see it.
 
 ## Capability reporting
 
-Expose this in capabilities or repo metadata so the UI and operators know what level is active:
+`GET /api/validation/status` answers what this deployment can check: whether the
+repository ships models, how many were read, which engine would run, why one
+would not, and every engine's availability. The UI uses it to promise a model
+check only where there is a model to check against.
 
-```json
-{
-  "yangSchemaDetected": true,
-  "yangValidationAvailable": true,
-  "yangValidator": "yanglint",
-  "schemaVersion": "25.7.1120"
-}
-```
+## The UI
 
-When unavailable, the UI should avoid saying the repository is fully YANG-valid. It can still say schema-derived rules are active.
+`ValidationFlow.tsx` draws the check rather than spinning through it. Five
+stages are laid out before any of them starts (so the reader sees the whole road
+rather than a list growing under them), the running one is the only thing
+moving, each finished one says in words what it actually did, and it ends on a
+verdict that is a shape AND a colour AND a sentence. A failure lists each
+problem with the setting it belongs to, the file and line, the schema's own
+expression, which model file stated the rule, and a way to go and fix it.
 
-## Validation pipeline target state
+`Rules detected in release schema` (RuleEditor) shows the enforceable facts the
+editable fields cannot carry - alternatives, flags, disjoint spans, an inverted
+pattern, a decimal precision, and read-only state - as facts with their source
+named, never as controls.
 
-Target state for a parameter edit:
+## What is left
 
-1. UI editor uses `model.Validation` for immediate feedback.
-2. Backend coerces and validates the scalar value using `validate.Value`.
-3. Backend applies the edit to a temporary full document.
-4. Full-document YANG validator validates the candidate document.
-5. If valid, Configer stages the draft item or file draft.
-6. If invalid, the response includes the validator message, file, line/path when available, and ideally the mapped parameter ID.
+Worth doing, roughly in order:
 
-Target state for direct file edit:
-
-1. Syntax check first, as today.
-2. Catalog delta calculation, as today.
-3. Apply candidate text to temp file.
-4. Full-document YANG validation when schema applies to that file.
-5. Reject with document diagnostics if invalid.
+1. **Merge documents per instance scope before validating.** Today each changed
+   file is validated on its own, so a `leafref` crossing from one file to
+   another in the same instance folder resolves to "not answerable" and is
+   passed over. Merging an instance's config files into one tree (with
+   per-node file provenance, which `Node.File` already carries) would make those
+   references real.
+2. **Wire tier 2 into the direct file-draft save** (`api/files.go`), after the
+   syntax check and the catalog delta. It is the same call; it just needs the
+   candidate bytes.
+3. **`instance-identifier` resolution** and `identityref` values spelled with a
+   module prefix in the document.
+4. **Feature discovery from a product descriptor**, so `CONFIGER_YANG_FEATURES`
+   stops being the only way to make the gate real.
+5. **Widen the XPath subset** only where real models need it, and only with a
+   test per construct. Every addition is a chance to refuse a correct change.
+6. **Ship yanglint in the deployment image** and document the WSL/Docker route
+   for Windows developers.
 
 ## Test coverage to keep
 
-Current YANG tests should keep covering:
+`yangschema`: typedef chains, enum/range/length/pattern/default/label/
+description, grouping and refine, augment from another file, dependency
+extraction from `when`/`must`/`leafref`, ambiguity refusal, prefix and index
+stripping, identityref values, deviations (replace and not-supported),
+disjoint ranges, unions, bits, inverted patterns, XSD class subtraction,
+`config false`, choice/case/presence, feature gating.
 
-- typedef restriction chains
-- enum/range/length/pattern/default/label/description extraction
-- grouping and refine
-- augment from a different file
-- dependency extraction from `when`, `must`, and `leafref`
-- ambiguity refusal
-- prefix/index stripping during route matching
+`yangvalidate`: a valid document producing NOTHING (a validator that cries wolf
+is one people click past), mandatory, keys, unique, leafref, min-elements,
+`must`, `when`, choice both-branches and none, per-value rules on a hand-edited
+file, JSON and XML documents, unmodelled content counted not refused, an
+unparseable file skipped not blamed on the model, and no-models reported as a
+state rather than a pass.
 
-When full validation is added, add tests for:
-
-- valid and invalid `must`
-- valid and invalid `when`
-- `leafref` target exists / missing
-- `unique` violations
-- list key violations
-- choice/case violations
-- feature-disabled nodes
-- deviation-modified constraints
-- error normalization from `yanglint` output
-
-## Practical priority order
-
-1. Keep strengthening extraction only where it improves UI and safe scalar validation.
-2. Add the `yangvalidate` abstraction.
-3. Implement `YanglintValidator` behind capability detection.
-4. Wire full validation into cell writes and direct file draft saves.
-5. Normalize errors and map them to parameter IDs where possible.
-6. Add container/WSL documentation and Docker packaging.
-7. Only then consider deeper native Go validation for the small subset that remains useful without invoking a full validator.
+`api`: capability reporting with and without models, every stage passing on a
+valid change, a model-range violation refused with the finding mapped to its
+parameter, a submit that never called the validation endpoint still gated, and
+an override recorded in the change.

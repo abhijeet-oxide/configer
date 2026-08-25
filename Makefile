@@ -127,11 +127,11 @@ functional-test: ## Scanner functional + scale tests over sample-repos/ (backend
 	./scripts/functional-test.sh
 
 .PHONY: lint
-lint: ## go vet + ESLint + TypeScript typecheck + no em-dashes
+lint: ## go vet + ESLint + TypeScript typecheck + no em-dashes + no orphaned CSS
 	./scripts/no-emdash.sh
 	cd $(BACKEND) && go vet ./...
 	cd $(QUALITY) && go vet ./...
-	cd $(FRONTEND) && npx eslint src && npx tsc --noEmit
+	cd $(FRONTEND) && npx eslint src && npx tsc --noEmit && node src/uikit/check-styles.mjs
 
 .PHONY: fmt
 fmt: ## Format Go code

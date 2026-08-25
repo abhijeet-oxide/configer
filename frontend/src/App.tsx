@@ -23,7 +23,7 @@ import { useDeployment, useHealth } from "./deployment";
 import { useUI } from "./store";
 import { useIdentity } from "./identity";
 import { theme as brand } from "./theme.config";
-import { toggleThemeWithReveal } from "./themeTransition";
+import { pointOf, useTheme } from "./uikit";
 import NavRail from "./components/NavRail";
 import BrandMark from "./components/BrandMark";
 import TopBar from "./components/TopBar";
@@ -206,6 +206,7 @@ export default function App() {
     setEditorFocus,
     mode,
   } = useUI();
+  const { toggleMode } = useTheme();
   const { token } = antdTheme.useToken();
   const screens = AntGrid.useBreakpoint();
   // The side panels collapse rather than unmount, so their width can be
@@ -763,7 +764,7 @@ export default function App() {
               type="text"
               aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-              onClick={(e) => toggleThemeWithReveal({ x: e.clientX, y: e.clientY })}
+              onClick={(e) => toggleMode(pointOf(e))}
             />
           </Tooltip>
           {/* Profile and every personal preference, one tap away - the phone's

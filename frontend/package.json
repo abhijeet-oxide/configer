@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
-    "lint": "eslint src",
+    "lint": "eslint src && node src/uikit/check-styles.mjs",
     "preview": "vite preview",
     "test:functional": "node functional/discovery.test.mjs"
   },

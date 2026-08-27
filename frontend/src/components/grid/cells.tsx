@@ -33,13 +33,6 @@ export const scopeExplain: Record<string, string> = {
   instance: "Set in this instance's own files",
 };
 
-// Tag colors for the declared parameter scope column.
-export const scopeColor: Record<string, string> = {
-  global: "purple",
-  instance: "default",
-  default: "default",
-};
-
 export function SourceBadge({ cell }: { cell: Cell }) {
   // No badge for instance values (the norm): a chip marks values inherited
   // from the shared base layer or the declared default. A leading colored dot

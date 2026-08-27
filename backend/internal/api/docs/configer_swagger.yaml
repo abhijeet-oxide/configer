@@ -995,10 +995,16 @@ definitions:
   model.Scope:
     enum:
     - instance
+    - site
+    - zone
+    - environment
     - global
     type: string
     x-enum-varnames:
     - ScopeInstance
+    - ScopeSite
+    - ScopeZone
+    - ScopeEnvironment
     - ScopeGlobal
   model.SourceRef:
     properties:
@@ -3993,11 +3999,13 @@ paths:
     put:
       consumes:
       - application/json
-      description: Stage the same parameter's edit on several instances at once. `edits`
-        is a list of `{instance, value}`; `action` defaults to "set" ("reset"/"exclude"
-        drop the override and ignore value). Each value is coerced and validated independently;
+      description: 'Stage several value edits at once. `edits` is a list of `{instance,
+        value}`, and each entry may add its own `paramId` (defaulting to the top-level
+        one) and `scope: "global"` (a shared-file edit that applies to every instance,
+        ignoring `instance`). `action` defaults to "set" ("reset"/"exclude" drop the
+        override and ignore value). Each value is coerced and validated independently;
         invalid targets are reported in `results` while valid ones still stage. Nothing
-        touches Git until the draft is submitted.
+        touches Git until the draft is submitted.'
       parameters:
       - description: paramId, action, edits[]
         in: body
@@ -4022,7 +4030,7 @@ paths:
             $ref: '#/definitions/api.APIError'
       security:
       - CookieSession: []
-      summary: Stage a value edit across many instances
+      summary: Stage value edits across parameters and instances
       tags:
       - Editing & change requests
   /api/workspace:

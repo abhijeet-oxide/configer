@@ -1,10 +1,11 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
+import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
+import { effectiveScope, SCOPE_META } from "../scope";
 import { useUI } from "../store";
 import ValueDiff from "./ui/ValueDiff";
 import RuleEditor from "./RuleEditor";
@@ -20,7 +21,11 @@ import { c } from "../uikit";
 // text. A parameter without a source is in the design phase: fully editable
 // and valued, rendered nowhere until attached.
 
-const scopeOptions: Scope[] = ["global", "instance"];
+// Widest reach to narrowest, and every scope the catalog understands is
+// offered: the editor can filter by "site-specific", so there has to be
+// somewhere to say a setting IS one. A group scope names which grouping is
+// meant, because "these systems" is not an answer on its own.
+const scopeOptions: Scope[] = ["global", "site", "zone", "environment", "instance"];
 const typeOptions = [
   "string", "integer", "number", "boolean", "enum",
   "ipv4", "ipv6", "cidr", "port", "hostname", "email", "url", "mac",
@@ -279,16 +284,22 @@ function DetailsTab({
         {
           key: "scope",
           label: "Scope",
-          children: (
-            <Tag>
-              {p.scope === "global" ? (
-                <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
-              ) : (
-                <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
-              )}
-              {p.scope}
-            </Tag>
-          ),
+          children: (() => {
+            // The facet says what an edit DOES; the declared word is kept
+            // beside it when it says more (which grouping a site scope means),
+            // and dropped when it would only repeat the tag.
+            const f = effectiveScope(p);
+            const Icon = f === "global" ? ScopeGlobalOutlined : f === "site" ? ScopeSiteOutlined : ScopeInstanceOutlined;
+            return (
+              <Tooltip title={SCOPE_META[f].explain}>
+                <Tag color={SCOPE_META[f].color}>
+                  <Icon style={{ marginInlineEnd: 4 }} />
+                  {SCOPE_META[f].label}
+                  {p.scope && p.scope !== f ? ` · ${p.scope}` : ""}
+                </Tag>
+              </Tooltip>
+            );
+          })(),
         },
         { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">yes</Tag> : "no" },
         { key: "default", label: "Default Value", children: <span className="mono">{p.default === undefined || p.default === null ? "-" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default)}</span> },

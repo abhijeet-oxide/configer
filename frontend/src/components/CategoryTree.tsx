@@ -4,7 +4,7 @@ import {
 } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CopyOutlined } from "../icons";
+import { CopyOutlined, EditOutlined, FilterFilled } from "../icons";
 import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
 import { useUI } from "../store";
@@ -13,10 +13,21 @@ import { useUI } from "../store";
 // hero). It holds the parameter NAME hierarchy - a dotted name like
 // admin.rebuildslave.failretryInterval nests as admin › rebuildslave ›
 // failretryInterval, with each parameter a clickable leaf. Selecting one
-// scrolls the grid to that row; selecting a group filters to that name prefix;
-// and in reverse, selecting a grid row reveals its leaf here. Instance columns
-// are steered from the grid itself (click a header, or the column manager),
-// not a second tree.
+// scrolls the grid to that row; and in reverse, selecting a grid row reveals
+// its leaf here. Instance columns are steered from the grid itself (click a
+// header, or the column manager), not a second tree.
+//
+// A GROUP answers to three different intentions, and they are three different
+// gestures rather than one gesture that guesses:
+//
+//   click        - LOOK at it. Its rows are picked out in the grid and
+//                  everything around them stays where it is. Clicking a folder
+//                  used to hide the rest of the estate, which answers "show me
+//                  only this" - an instruction nobody gave.
+//   double click - EDIT it. Every setting under the branch opens as one form,
+//                  with what it applies to said out loud.
+//   right click  - the rest: filter the grid down to it, or duplicate an entry
+//                  of a repeated structure.
 
 interface TreeItem {
   key: string;
@@ -152,7 +163,7 @@ function ancestorPrefixes(parts: string[]): string[] {
 }
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
+  const { categoryKey, setCategory, groupKey, setGroup, openGroupEditor, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
   const [filter, setFilter] = useState("");
   const [showFull, setShowFull] = useState(false);
   const { ref, height } = useElementSize<HTMLDivElement>();
@@ -253,30 +264,48 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>{c.count}</Typography.Text>
           </span>
         );
+        const filtered = categoryKey === c.prefix;
         entries.push({
           seg: c.seg,
           item: {
             key: c.prefix,
             searchText: c.prefix.toLowerCase(),
-            // An entry of a repeated structure answers a right-click: "give me
-            // another one of these". Doing it by hand meant selecting the block
-            // in the editor, pasting it, fixing the indentation, and hoping the
-            // paste did not land somewhere that renumbered its neighbours.
-            title: entry ? (
+            // Right-click is where the instructions live, so that clicking a
+            // folder can stay the harmless thing it looks like. Duplicating is
+            // here too: an entry of a repeated structure answers "give me
+            // another one of these", and doing it by hand meant selecting the
+            // block in the editor, pasting it, fixing the indentation, and
+            // hoping the paste did not land somewhere that renumbered its
+            // neighbours.
+            title: (
               <Dropdown
                 trigger={["contextMenu"]}
                 menu={{
-                  items: [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }],
+                  items: [
+                    { key: "edit", icon: <EditOutlined />, label: `Edit ${c.count} setting${c.count === 1 ? "" : "s"} here…` },
+                    {
+                      key: "filter",
+                      icon: <FilterFilled />,
+                      label: filtered ? "Stop showing only this group" : "Show only this group",
+                    },
+                    ...(entry
+                      ? [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }]
+                      : []),
+                  ],
                   onClick: ({ key, domEvent }) => {
                     domEvent.stopPropagation();
-                    if (key === "dup") setDuplicating(entry);
+                    if (key === "dup" && entry) setDuplicating(entry);
+                    else if (key === "edit") openGroupEditor(c.prefix);
+                    else if (key === "filter") {
+                      setCategory(filtered ? null : c.prefix);
+                      setGroup(c.prefix);
+                      selectParam(null);
+                    }
                   },
                 }}
               >
                 {label}
               </Dropdown>
-            ) : (
-              label
             ),
             children: toItems(c),
           },
@@ -306,7 +335,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
       { key: "__all__", searchText: "all parameters", title: <b>All Parameters ({grid.rows.length})</b> },
       ...toItems(nameRoot),
     ];
-  }, [nameRoot, dupEntries, grid.rows.length, showFull]);
+  }, [nameRoot, dupEntries, grid.rows.length, showFull, categoryKey, openGroupEditor, setCategory, setGroup, selectParam]);
 
 
   // Reverse sync: when a parameter becomes selected (typically by clicking a
@@ -349,7 +378,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             virtual
             expandedKeys={expandedKeys}
             onExpand={(keys) => setExpandedKeys(keys)}
-            selectedKeys={leafKey ? [leafKey] : categoryKey ? [categoryKey] : ["__all__"]}
+            selectedKeys={leafKey ? [leafKey] : groupKey ? [groupKey] : categoryKey ? [categoryKey] : ["__all__"]}
             onSelect={(keys) => {
               const k = keys[0] as string | undefined;
               if (!k) return;
@@ -362,25 +391,39 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                 const name = paramByID.get(id)?.name ?? "";
                 if (categoryKey && name !== categoryKey && !name.startsWith(categoryKey + "."))
                   setCategory(null);
+                setGroup(null);
                 selectParam(id);
                 setJump("param", id);
                 return;
               }
-              // A group node filters the grid to that name prefix. It also
-              // clears the parameter selection: "All Parameters" (or any
-              // category) means the whole view again, so the ?param=
-              // refinement must leave the URL too. Picking "All Parameters" is
-              // an explicit "show everything", so it also lifts the hidden row
-              // filters (invalid-only, overrides-only, hide-n/a) - otherwise the
-              // list can stay narrowed for a reason nothing on screen explains.
+              // A group node picks its rows out in the grid and leaves the rest
+              // of the estate where it is. It clears the parameter selection,
+              // because ?param= refines a view of one row and the reader has
+              // just asked for a branch. Picking "All Parameters" is an
+              // explicit "show everything", so it also lifts the name filter
+              // and the hidden row filters (invalid-only, overrides-only,
+              // hide-n/a) - otherwise the list can stay narrowed for a reason
+              // nothing on screen explains.
               if (k === "__all__") {
                 setCategory(null);
+                setGroup(null);
                 if (filters.invalidOnly || filters.overriddenOnly || filters.hideNA || filters.files.length)
                   setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false, files: [] });
               } else {
-                setCategory(k);
+                setGroup(k);
+                // A filter left on from a different branch would hide the very
+                // rows this click is asking to see.
+                if (categoryKey && k !== categoryKey && !k.startsWith(categoryKey + ".")) setCategory(null);
               }
               selectParam(null);
+            }}
+            // Double click EDITS the branch: every setting under it as one
+            // form. A leaf is one row, which the grid already edits in place,
+            // so it opens nothing rather than a dialog around a single cell.
+            onDoubleClick={(_e, node) => {
+              const k = String((node as unknown as { key: React.Key }).key);
+              if (k === "__all__" || k.startsWith("p:")) return;
+              openGroupEditor(k);
             }}
             filterTreeNode={filter ? (node) => node.searchText.includes(filter) : undefined}
           />

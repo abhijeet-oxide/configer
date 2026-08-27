@@ -259,6 +259,13 @@ func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName 
 	if vr := validate.Value(param, coerced); !vr.Valid {
 		return false, vr.Message
 	}
+	// The same rule the single-cell path applies: a committed template
+	// expression is computed when the chart renders, and writing a literal over
+	// it corrupts the template. A fan-out reaches instances the person never
+	// looked at, so it is exactly where this must not be skipped.
+	if committed := rv.Resolve(param, baseline).Value; model.IsTemplateExpression(committed) && !model.IsTemplateExpression(coerced) {
+		return false, "this value is a template expression, computed when the chart renders; edit it in file mode so the template is preserved"
+	}
 	if vr := validate.UnitChange(param, rv.Resolve(param, baseline).Value, coerced); !vr.Valid {
 		return false, vr.Message
 	}
@@ -286,14 +293,74 @@ func stageSetItem(cr *change.ChangeRequest, param model.Parameter, instanceName 
 	return true, ""
 }
 
-// bulkStageValue stages one parameter's edit across many instances in a single
-// request and one draft lock: the fan-out a grid exists for ("set this
-// everywhere", "copy a column"). Each target carries its own value, so it also
-// expresses copying differing values. Per-target failures are reported
-// individually; valid targets still stage.
+// stageGlobalItem is stageSetItem's sibling for a SCOPE-level edit: one value,
+// written to the shared file every instance reads, staged as a single draft
+// item with no instance on it. It exists so a batch can carry global and
+// per-instance edits together - a group of settings is rarely all one or all
+// the other, and asking the client to split them into two requests is how half
+// a save ends up staged and half of it refused.
+func stageGlobalItem(cr *change.ChangeRequest, param model.Parameter, rawValue any, rv *resolver.Resolver) (staged bool, msg string) {
+	if len(param.BindingsOn(model.LayerBase, model.Instance{})) == 0 {
+		return false, "this parameter has no shared file location; edit it per instance"
+	}
+	coerced, err := validate.CoerceValue(param, rawValue)
+	if err != nil {
+		return false, err.Error()
+	}
+	if vr := validate.Value(param, coerced); !vr.Valid {
+		return false, vr.Message
+	}
+	old := rv.Resolve(param, model.Instance{}).Value
+	if model.IsTemplateExpression(old) && !model.IsTemplateExpression(coerced) {
+		return false, "this value is a template expression, computed when the chart renders; edit it in file mode so the template is preserved"
+	}
+	if vr := validate.UnitChange(param, old, coerced); !vr.Valid {
+		return false, vr.Message
+	}
+	if param.Validation.AtLeast != "" || param.Validation.AtMost != "" {
+		related := func(id string) (model.Parameter, any, bool) {
+			sp, ok := rv.Param(id)
+			if !ok {
+				return model.Parameter{}, nil, false
+			}
+			return sp, rv.Resolve(sp, model.Instance{}).Value, true
+		}
+		if vr := validate.RelationCheck(param, coerced, related); !vr.Valid {
+			return false, vr.Message
+		}
+	}
+	cr.UpsertItem(change.Item{
+		ParamID: param.ID, Instance: "", Scope: string(model.ScopeGlobal), Action: change.ActionSet,
+		Old: old, New: coerced, UpdatedAt: time.Now().UTC(),
+	})
+	// Typing the committed value back in cancels the edit, exactly as it does
+	// on a single cell.
+	if stringify(old) == stringify(coerced) {
+		cr.RemoveItem(param.ID, "")
+		return false, ""
+	}
+	return true, ""
+}
+
+// bulkStageValue stages many value edits in a single request and one draft
+// lock: the fan-out a grid exists for ("set this everywhere", "copy a column")
+// and the save behind a form that edits a whole group of settings at once.
 //
-// @Summary     Stage a value edit across many instances
-// @Description Stage the same parameter's edit on several instances at once. `edits` is a list of `{instance, value}`; `action` defaults to "set" ("reset"/"exclude" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in `results` while valid ones still stage. Nothing touches Git until the draft is submitted.
+// Each edit carries its own value, and MAY carry its own parameter and its own
+// scope - so one request expresses "this value on those instances", "these
+// settings on this instance", and a global setting sitting among per-instance
+// ones, which is what a group of related settings actually looks like. Omitting
+// them falls back to the request's `paramId` and a per-instance edit, which is
+// the shape every existing caller sends.
+//
+// One request is not a nicety here: it is one draft lock and one read of the
+// tree, where N requests are N of each, and a form that saves twenty settings
+// must not be twenty chances to stage half a change.
+//
+// Per-target failures are reported individually; valid targets still stage.
+//
+// @Summary     Stage value edits across parameters and instances
+// @Description Stage several value edits at once. `edits` is a list of `{instance, value}`, and each entry may add its own `paramId` (defaulting to the top-level one) and `scope: "global"` (a shared-file edit that applies to every instance, ignoring `instance`). `action` defaults to "set" ("reset"/"exclude" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in `results` while valid ones still stage. Nothing touches Git until the draft is submitted.
 // @Tags        Editing & change requests
 // @Accept      json
 // @Produce     json
@@ -308,6 +375,8 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		ParamID string `json:"paramId"`
 		Action  string `json:"action"`
 		Edits   []struct {
+			ParamID  string `json:"paramId"`
+			Scope    string `json:"scope"`
 			Instance string `json:"instance"`
 			Value    any    `json:"value"`
 		} `json:"edits"`
@@ -322,9 +391,19 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	param, found := p.ParamByID(req.ParamID)
-	if !found {
-		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
+	// A request naming one parameter is checked up front, so "no such
+	// parameter" stays a 404 about the request rather than N identical
+	// per-target errors. A batch that names a parameter per edit is checked as
+	// it goes: one unknown id must not refuse the other nineteen edits.
+	var param model.Parameter
+	if req.ParamID != "" {
+		var found bool
+		if param, found = p.ParamByID(req.ParamID); !found {
+			writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
+			return
+		}
+	} else if len(req.Edits) > 0 && req.Edits[0].ParamID == "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "each edit needs a paramId when the request does not name one")
 		return
 	}
 	action := change.Action(req.Action)
@@ -337,7 +416,9 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type result struct {
+		ParamID  string `json:"paramId"`
 		Instance string `json:"instance"`
+		Scope    string `json:"scope,omitempty"`
 		OK       bool   `json:"ok"`
 		Error    string `json:"error,omitempty"`
 	}
@@ -354,6 +435,36 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 	pendingDraft := s.Store.CurrentDraft(draftOwner(r))
 	if _, err = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for _, e := range req.Edits {
+			target := param
+			if e.ParamID != "" && e.ParamID != param.ID {
+				var found bool
+				if target, found = p.ParamByID(e.ParamID); !found {
+					results = append(results, result{ParamID: e.ParamID, Instance: e.Instance, Error: "parameter not found"})
+					continue
+				}
+			}
+			// A global edit names no instance: it is one value in the shared
+			// file, so it is staged once whatever the caller put in `instance`.
+			if e.Scope == string(model.ScopeGlobal) {
+				if action != change.ActionSet {
+					results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: "a global value cannot be reset or excluded; that is a per-instance action"})
+					continue
+				}
+				didStage, errMsg := stageGlobalItem(cr, target, e.Value, rv)
+				if errMsg != "" {
+					results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: errMsg})
+					continue
+				}
+				if didStage {
+					staged++
+				}
+				results = append(results, result{ParamID: target.ID, Scope: e.Scope, OK: true})
+				continue
+			}
+			if e.Scope != "" {
+				results = append(results, result{ParamID: target.ID, Instance: e.Instance, Scope: e.Scope, Error: "only the global scope supports scope-level edits today"})
+				continue
+			}
 			inst, ok := p.InstanceByName(e.Instance)
 			baseline := inst
 			if !ok {
@@ -361,7 +472,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 				var cloneFrom string
 				inst, cloneFrom, ok = draftInstance(pendingDraft, p, e.Instance)
 				if !ok {
-					results = append(results, result{Instance: e.Instance, Error: "instance not found"})
+					results = append(results, result{ParamID: target.ID, Instance: e.Instance, Error: "instance not found"})
 					continue
 				}
 				baseline, _ = p.InstanceByName(cloneFrom)
@@ -369,24 +480,24 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 			var errMsg string
 			didStage := false
 			if action == change.ActionSet {
-				didStage, errMsg = stageSetItem(cr, param, e.Instance, inst, baseline, e.Value, rv)
-			} else if len(param.BindingsOn(model.LayerInstance, inst)) == 0 {
+				didStage, errMsg = stageSetItem(cr, target, e.Instance, inst, baseline, e.Value, rv)
+			} else if len(target.BindingsOn(model.LayerInstance, inst)) == 0 {
 				errMsg = "this parameter has no instance override to drop"
 			} else {
 				cr.UpsertItem(change.Item{
-					ParamID: param.ID, Instance: e.Instance, Action: action,
-					Old: rv.Resolve(param, inst).Value, UpdatedAt: time.Now().UTC(),
+					ParamID: target.ID, Instance: e.Instance, Action: action,
+					Old: rv.Resolve(target, inst).Value, UpdatedAt: time.Now().UTC(),
 				})
 				didStage = true
 			}
 			if errMsg != "" {
-				results = append(results, result{Instance: e.Instance, Error: errMsg})
+				results = append(results, result{ParamID: target.ID, Instance: e.Instance, Error: errMsg})
 				continue
 			}
 			if didStage {
 				staged++
 			}
-			results = append(results, result{Instance: e.Instance, OK: true})
+			results = append(results, result{ParamID: target.ID, Instance: e.Instance, OK: true})
 		}
 		return nil
 	}); err != nil {

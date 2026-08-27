@@ -1,9 +1,9 @@
 /* Geography view: the estate on a map.
    The sea is a flat wash and the land a muted grey - this is a diagram of
    where machines are, not an atlas, and a saturated ocean would outshout the
-   pins that carry the meaning. The map fills its frame (preserveAspectRatio
-   slice) rather than being letterboxed inside it: a band of empty sea down one
-   side reads as a broken layout, not as geography. */
+   pins that carry the meaning. Borders sit between the two: state lines are
+   what make a site recognisable without reading its label, and they only do
+   that if they are visible and still quieter than a pin. */
 .cf-geo {
   position: relative;
   display: flex;
@@ -13,27 +13,100 @@
   background: var(--surface);
   min-height: 300px;
 }
+/* The stage is the frame, and CSS alone decides its shape. The map is then
+   PROJECTED into whatever box that turns out to be (see geo/world.ts), so the
+   picture fills the frame exactly at every window size - a fixed viewBox has
+   one aspect ratio, and the moment the frame is a different shape the browser
+   letterboxes it and puts a band of dead space down one side. */
+.cf-geo-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: min(52vh, 560px);
+  min-height: 300px;
+}
 .cf-geo-svg {
   display: block;
-  flex: 1 1 auto;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-width: 0;
-  height: 52vh;
-  min-height: 300px;
-  max-height: 560px;
+  height: 100%;
+  cursor: grab;
+  /* The browser's own pan/zoom would fight the map's; the map wins, because it
+     is the thing being panned. */
+  touch-action: none;
+}
+.cf-geo-svg:active {
+  cursor: grabbing;
+}
+.cf-geo-svg:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
 }
 .cf-geo-sea {
   fill: var(--surface-2);
 }
 .cf-geo-land {
-  fill: color-mix(in srgb, var(--text-3) 26%, var(--surface));
+  fill: color-mix(in srgb, var(--text-3) 34%, var(--surface));
+  stroke: none;
+}
+/* Interior lines (states, countries) as one mesh: hairlines that stay
+   hairlines however far the map is zoomed in, which is what non-scaling-stroke
+   is for. Drawn under the pins and over the fill. */
+.cf-geo-border {
+  fill: none;
   stroke: var(--surface);
-  stroke-width: 0.7;
+  stroke-width: 1;
+  stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
+}
+.cf-geo-coast {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-3) 62%, var(--surface));
+  stroke-width: 1;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+/* A pin close up names itself. Two-tone so it stays readable over land and
+   over sea without a box behind it. */
+.cf-geo-label {
+  fill: var(--text);
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  font-weight: 600;
+  text-anchor: middle;
+  pointer-events: none;
+}
+/* What the pointer is over, said in words. The pin's number says how many; a
+   dot on a map cannot say WHICH place without this. */
+.cf-geo-tip {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: var(--el-2);
+  pointer-events: none;
+}
+.cf-geo-tip span:last-child {
+  color: var(--text-3);
 }
 
 .cf-geo-pin {
   cursor: pointer;
+}
+/* A pin has to stay a target while the map is being dragged past it. */
+.cf-geo-pin > circle {
+  pointer-events: auto;
 }
 .cf-geo-core {
   stroke: var(--surface);
@@ -162,7 +235,8 @@
     border-top: 1px solid var(--border);
     max-height: 240px;
   }
-  .cf-geo-svg {
-    height: 34vh;
+  .cf-geo-stage {
+    height: 40vh;
+    min-height: 240px;
   }
 }

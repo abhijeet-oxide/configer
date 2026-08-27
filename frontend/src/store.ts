@@ -237,6 +237,16 @@ interface UIState {
   repoReadable: boolean;
   section: string;
   categoryKey: string | null;
+  /** the parameter-tree group the reader is LOOKING AT: its rows are picked
+   *  out in the grid and everything else stays visible. Clicking a group used
+   *  to filter the grid down to it, which answers a different question - "show
+   *  me only this" is an instruction, and clicking a folder to see where its
+   *  settings are is not. Filtering is still one menu item away (categoryKey);
+   *  this is what a plain click does. */
+  groupKey: string | null;
+  /** the group whose editor dialog is open: every setting under one branch as
+   *  a form, edited together. Opened by double-clicking the group. */
+  groupEdit: string | null;
   selectedParamId: string | null;
   /** which tab the inspector opens on. The grid's parameter menu leads
    *  straight to a question ("what are its rules?", "who changed it?"), so the
@@ -308,6 +318,8 @@ interface UIState {
   setRepoReadable: (readable: boolean) => void;
   setSection: (s: string) => void;
   setCategory: (k: string | null) => void;
+  setGroup: (k: string | null) => void;
+  openGroupEditor: (k: string | null) => void;
   selectParam: (id: string | null) => void;
   /** select a parameter AND open the inspector on one of its tabs */
   inspectParam: (id: string, tab: string) => void;
@@ -376,6 +388,8 @@ export const useUI = create<UIState>((set) => ({
   repoReadable: false,
   section: initialSection,
   categoryKey: null,
+  groupKey: null,
+  groupEdit: null,
   selectedParamId: initialParam,
   inspectorTab: "overview",
   selectedInstance: initialInstance,
@@ -443,6 +457,8 @@ export const useUI = create<UIState>((set) => ({
     set({
       repoId,
       categoryKey: null,
+      groupKey: null,
+      groupEdit: null,
       selectedParamId: null,
       selectedInstance: null,
       compareLeft: null,
@@ -454,6 +470,8 @@ export const useUI = create<UIState>((set) => ({
   },
   setSection: (section) => set({ section }),
   setCategory: (categoryKey) => set({ categoryKey }),
+  setGroup: (groupKey) => set({ groupKey }),
+  openGroupEditor: (groupEdit) => set({ groupEdit }),
   selectParam: (selectedParamId) => set({ selectedParamId }),
   inspectParam: (selectedParamId, inspectorTab) =>
     set((s) => {

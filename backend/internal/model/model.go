@@ -30,16 +30,68 @@ type Application struct {
 	Metadata map[string]string `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
-// Scope declares how widely an edit to a parameter lands. An instance-scoped
-// parameter is bound inside each instance's own folder, so a cell edit touches
-// one instance. A global parameter is bound in a shared (base-layer) file every
-// instance reads, so an edit applies to all of them.
+// Scope declares how widely an edit to a parameter lands - the first thing
+// somebody needs to know before they change a value, and the thing the grid
+// cannot say from a row of identical numbers.
+//
+// An instance-scoped parameter is bound inside each instance's own folder, so a
+// cell edit touches one instance. A global parameter is bound in a shared
+// (base-layer) file every instance reads, so an edit applies to all of them.
+//
+// Between those sits a setting that a GROUP of instances shares - the machines
+// at one site, in one zone, in one environment. That is a property of the
+// estate rather than of a file: the value still lives in each instance's own
+// folder, so an edit to it fans out to the instances of that group and to
+// nothing else. Declaring it is what lets the editor say "this applies to these
+// four systems in Dallas" instead of leaving the reader to work out from four
+// identical cells whether they were meant to move together. ScopeSite is the
+// family; ScopeZone and ScopeEnvironment name which grouping is meant.
 type Scope string
 
 const (
-	ScopeInstance Scope = "instance"
-	ScopeGlobal   Scope = "global"
+	ScopeInstance    Scope = "instance"
+	ScopeSite        Scope = "site"
+	ScopeZone        Scope = "zone"
+	ScopeEnvironment Scope = "environment"
+	ScopeGlobal      Scope = "global"
 )
+
+// GroupsBy returns the instance field a group-scoped parameter is shared
+// across, and whether the scope is a group scope at all. It is what turns a
+// declaration into the list of instances an edit will really touch.
+func (s Scope) GroupsBy() (field string, ok bool) {
+	switch s {
+	case ScopeSite:
+		return "site", true
+	case ScopeZone:
+		return "zone", true
+	case ScopeEnvironment:
+		return "environment", true
+	}
+	return "", false
+}
+
+// GroupKey returns the value of the field this scope groups by for one
+// instance ("dallas-2" for a site-scoped parameter at an instance in that
+// site), and whether the instance carries one. An instance with no site is in
+// no site group, and an edit must not silently sweep it in with the rest.
+func (s Scope) GroupKey(inst Instance) (string, bool) {
+	field, ok := s.GroupsBy()
+	if !ok {
+		return "", false
+	}
+	var v string
+	switch field {
+	case "site":
+		v = inst.Site
+	case "zone":
+		v = inst.Zone
+	case "environment":
+		v = inst.Environment
+	}
+	v = strings.TrimSpace(v)
+	return v, v != ""
+}
 
 // Layer identifies which precedence layer supplied a resolved value: the
 // parameter's declared default (metadata), a shared base file, or the

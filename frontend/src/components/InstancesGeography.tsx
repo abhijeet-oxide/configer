@@ -1,11 +1,14 @@
-import { useMemo, useState } from "react";
-import { Empty, Tag, Typography } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { Button, Empty, Segmented, Tag, Tooltip, Typography } from "antd";
 import { useQuery } from "@tanstack/react-query";
 import { api, type Grid, type Instance, type RegionPlace } from "../api";
 import { useRepoQuery } from "../repoQuery";
 import { canonicalEnv, envHex } from "../theme";
 import { InstanceDossier, derive, type InstNode } from "./InstanceTopology";
 import { InlineNotice } from "./ui";
+import { boxOf, geography, inUnitedStates, type Mode } from "./geo/world";
+import { usePanZoom } from "./geo/usePanZoom";
+import { useElementSize } from "../hooks";
 
 // The estate on a map: where its instances actually are.
 //
@@ -19,73 +22,24 @@ import { InlineNotice } from "./ui";
 // guessed at: it is named beside the map, so the gap is visible instead of
 // silently absent.
 //
+// Two things make this a map rather than a diagram of dots. The projection is a
+// real one, chosen for what is being looked at (see geo/world.ts): a US estate
+// gets the projection American maps are drawn in, with state lines, so a site is
+// recognisable without reading its label. And it MOVES - drag, wheel, double
+// click, arrow keys - because three sites on one campus are one dot until
+// somebody can get closer.
+//
 // Clicking a pin opens the SAME dossier a topology click opens. An instance has
 // to mean the same thing wherever it is clicked, or each view becomes its own
 // little product with its own rules.
 
-// The projection is equirectangular: longitude and latitude map straight onto x
-// and y. It distorts area badly toward the poles and is the right choice
-// anyway - this is a map for FINDING a site, not measuring one, and it needs no
-// projection library to draw or to invert.
-const W = 1000;
-const H = 500;
-const RATIO = 2.6; // width : height of the viewport the map is drawn into
-const projectX = (lon: number) => ((lon + 180) / 360) * W;
-const projectY = (lat: number) => ((90 - lat) / 180) * H;
-
 interface Pin {
   region: string;
+  lat: number;
+  lon: number;
   x: number;
   y: number;
   instances: Instance[];
-}
-
-// ring turns one polygon ring into SVG path data, BREAKING it wherever it
-// crosses the antimeridian. Drawn naively, a country that spans 180 degrees
-// (Russia, Fiji, Antarctica's outline) sends a segment straight back across the
-// whole map, which is where the grey streaks came from.
-function ring(coords: number[][]): string {
-  const parts: string[] = [];
-  let cur: string[] = [];
-  let prevLon: number | null = null;
-  const flush = () => {
-    if (cur.length > 2) parts.push(cur.join("") + "Z");
-    cur = [];
-  };
-  for (const [lon, lat] of coords) {
-    if (prevLon !== null && Math.abs(lon - prevLon) > 180) flush();
-    cur.push(`${cur.length ? "L" : "M"}${projectX(lon).toFixed(1)} ${projectY(lat).toFixed(1)}`);
-    prevLon = lon;
-  }
-  flush();
-  return parts.join("");
-}
-
-// worldPaths reads the land outline once and projects it. The geometry is
-// ~100KB, so it is imported DYNAMICALLY: a view nobody opens must not be paid
-// for by everyone who opens the app.
-async function worldPaths(): Promise<string[]> {
-  const [topo, { feature }] = await Promise.all([
-    import("world-atlas/countries-110m.json"),
-    import("topojson-client"),
-  ]);
-  const topology = (topo.default ?? topo) as unknown as Parameters<typeof feature>[0];
-  const objects = (topology as unknown as { objects: Record<string, never> }).objects;
-  const collection = feature(topology, objects.countries) as unknown as {
-    features: { geometry: { type: string; coordinates: unknown } | null }[];
-  };
-
-  const out: string[] = [];
-  for (const f of collection.features) {
-    const g = f.geometry;
-    if (!g) continue;
-    if (g.type === "Polygon") {
-      out.push((g.coordinates as number[][][]).map(ring).join(""));
-    } else if (g.type === "MultiPolygon") {
-      out.push((g.coordinates as number[][][][]).map((p) => p.map(ring).join("")).join(""));
-    }
-  }
-  return out.filter(Boolean);
 }
 
 export default function InstancesGeography({
@@ -100,23 +54,26 @@ export default function InstancesGeography({
     queryFn: api.regions,
     staleTime: 5 * 60_000,
   });
-  // The world does not change, so it is fetched once per session and shared by
-  // every application.
-  const worldQ = useQuery({
-    queryKey: ["world-map"],
-    queryFn: worldPaths,
-    staleTime: Infinity,
-    gcTime: Infinity,
-  });
 
   const [hovered, setHovered] = useState<string | null>(null);
   const [selected, setSelected] = useState<InstNode | null>(null);
-  const [whole, setWhole] = useState(true);
+  const [mode, setMode] = useState<Mode | null>(null);
+  // The stage's own box IS the drawing box - see boxOf. Its size comes from
+  // CSS, so the map is whatever shape the layout gives it and fills it exactly.
+  const { ref: stageRef, width: stageW, height: stageH } = useElementSize<HTMLDivElement>();
+  const { w: W, h: H } = boxOf(stageW || 960, stageH || 420);
 
   const nodes = useMemo(() => derive(grid, instances).insts, [grid, instances]);
   const nodeOf = (name: string) => nodes.find((n) => n.name === name) ?? null;
 
-  const { pins, unplaced, unset } = useMemo(() => {
+  // The places, in ESTATE order. `instances` arrives sorted the way every list
+  // of instances is sorted (see backend/internal/region: east coast to west
+  // coast, then by name, then by number), so building the map in the order they
+  // arrive means the rail beside it reads in the same order as the table and
+  // the grid's columns - rather than in a third order of its own.
+  const { placed, unplaced, unset, usOnly } = useMemo(() => {
+    const located = new Map((placesQ.data ?? []).map((p) => [p.region.toLowerCase(), p]));
+    const order: string[] = [];
     const byRegion = new Map<string, Instance[]>();
     const noRegion: Instance[] = [];
     for (const i of instances) {
@@ -125,80 +82,134 @@ export default function InstancesGeography({
         noRegion.push(i);
         continue;
       }
-      byRegion.set(key, [...(byRegion.get(key) ?? []), i]);
-    }
-    const located = new Map((placesQ.data ?? []).map((p) => [p.region.toLowerCase(), p]));
-    const pins: Pin[] = [];
-    const unplaced: { region: string; instances: Instance[] }[] = [];
-    for (const [key, list] of byRegion) {
-      const place = located.get(key);
-      if (place) {
-        pins.push({ region: place.region, x: projectX(place.lon), y: projectY(place.lat), instances: list });
-      } else {
-        unplaced.push({ region: list[0].region ?? key, instances: list });
+      if (!byRegion.has(key)) {
+        byRegion.set(key, []);
+        order.push(key);
       }
+      byRegion.get(key)!.push(i);
     }
-    pins.sort((a, b) => b.instances.length - a.instances.length || a.region.localeCompare(b.region));
-    unplaced.sort((a, b) => a.region.localeCompare(b.region));
-    return { pins, unplaced, unset: noRegion };
+    const placed: { region: string; lat: number; lon: number; instances: Instance[] }[] = [];
+    const unplaced: { region: string; instances: Instance[] }[] = [];
+    for (const key of order) {
+      const list = byRegion.get(key)!;
+      const place = located.get(key);
+      if (place) placed.push({ region: place.region, lat: place.lat, lon: place.lon, instances: list });
+      else unplaced.push({ region: list[0].region ?? key, instances: list });
+    }
+    return {
+      placed,
+      unplaced,
+      unset: noRegion,
+      usOnly: placed.length > 0 && placed.every((p) => inUnitedStates(p.lat, p.lon)),
+    };
   }, [instances, placesQ.data]);
 
-  // Fit the frame to the pins: an estate entirely in one country should read as
-  // that country, not as specks on an ocean. The box is then grown to the
-  // viewport's own shape, because a mismatched one is letterboxed by the
-  // browser - which is what put an empty band down the side of the map.
-  const [view, zoom] = useMemo(() => {
-    if (whole || pins.length === 0) return [`0 0 ${W} ${W / RATIO}`, 1] as const;
-    const xs = pins.map((p) => p.x);
-    const ys = pins.map((p) => p.y);
-    const pad = 70;
-    let minX = Math.min(...xs) - pad;
-    let minY = Math.min(...ys) - pad;
-    let w = Math.max(...xs) - Math.min(...xs) + pad * 2;
-    let h = Math.max(...ys) - Math.min(...ys) + pad * 2;
-    // A single site would otherwise zoom to a street corner.
-    w = Math.max(w, 300);
-    h = Math.max(h, 150);
-    if (w / h < RATIO) {
-      const need = h * RATIO;
-      minX -= (need - w) / 2;
-      w = need;
-    } else {
-      const need = w / RATIO;
-      minY -= (need - h) / 2;
-      h = need;
+  // Which map to draw. An estate entirely inside the United States gets the US
+  // one, because that is the map its owners already have in their heads; the
+  // moment one site is elsewhere the world map is the only honest choice, since
+  // Albers USA cannot draw a place outside the country at all. The reader can
+  // still zoom out to the world - but never INTO a country map that would
+  // silently drop half their fleet.
+  const effectiveMode: Mode = mode ?? (usOnly ? "us" : "world");
+  useEffect(() => {
+    if (!usOnly && mode === "us") setMode(null);
+  }, [usOnly, mode]);
+
+  const geoQ = useQuery({
+    queryKey: ["map", effectiveMode, W, H],
+    queryFn: () => geography(effectiveMode, W, H),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    // The previous size's map stays on screen while the new one projects, so
+    // resizing the window never blinks the map away.
+    placeholderData: (prev) => prev,
+  });
+
+  const pins = useMemo<Pin[]>(() => {
+    const project = geoQ.data?.project;
+    if (!project) return [];
+    const out: Pin[] = [];
+    for (const p of placed) {
+      const xy = project(p.lon, p.lat);
+      // The projection is the authority on whether a place can be drawn. On the
+      // US map anywhere abroad answers "no", and a pin invented at the edge of
+      // the frame would be a lie about where a machine is.
+      if (!xy) continue;
+      out.push({ ...p, x: xy[0], y: xy[1] });
     }
-    if (w > W) {
-      w = W;
-      h = W / RATIO;
-    }
-    minX = Math.min(Math.max(minX, 0), W - w);
-    minY = Math.min(Math.max(minY, 0), H - h);
-    return [`${minX} ${minY} ${w} ${h}`, W / w] as const;
-  }, [pins, whole]);
+    return out;
+  }, [placed, geoQ.data]);
+
+  const offMap = placed.length - pins.length;
+
+  const { svgRef, transform, handlers, reset, zoomIn, zoomOut, fitTo, wasDragged } = usePanZoom(W, H);
+
+  // Open framed on the estate rather than on the whole country: a fleet in
+  // three states should read as three states, not as three specks.
+  const [framed, setFramed] = useState<string>("");
+  useEffect(() => {
+    const key = `${effectiveMode}:${W}x${H}:${pins.map((p) => p.region).join(",")}`;
+    if (!pins.length || framed === key) return;
+    setFramed(key);
+    fitTo({
+      minX: Math.min(...pins.map((p) => p.x)),
+      maxX: Math.max(...pins.map((p) => p.x)),
+      minY: Math.min(...pins.map((p) => p.y)),
+      maxY: Math.max(...pins.map((p) => p.y)),
+    });
+    // fitTo is stable; re-running on every render would fight the user's own
+    // panning.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pins, effectiveMode, framed, W, H]);
 
   // A pin takes the environment's colour only when everything under it agrees.
   // One dot covering a production box and a lab box cannot honestly claim to be
   // either, so it stays neutral.
   const pinColor = (p: Pin) => {
-    const envs = new Set(p.instances.map((i) => canonicalEnv(i.environment) ?? ""));
-    return envs.size === 1 ? envHex([...envs][0] || undefined) : "var(--brand)";
+    const envs = new Set(p.instances.map((i) => canonicalEnv(i.environment)).filter(Boolean));
+    // Nothing under the pin names an environment, so the pin has none to show
+    // and takes the brand colour - the same answer it gives when the instances
+    // disagree. The grey it used to take was the "unknown environment" tint,
+    // which is a claim about the environment rather than an absence of one, and
+    // it left the white count on the pin unreadable.
+    return envs.size === 1 ? envHex([...envs][0] as string) : "var(--brand)";
   };
-  // Pins are sized in SCREEN terms, so zooming in does not inflate them.
-  const radius = (p: Pin) => (7 + Math.min(7, p.instances.length * 1.4)) / zoom;
+  // Pins are sized in SCREEN terms, so zooming in does not inflate them into
+  // blobs that cover the very ground the reader zoomed in to see.
+  const radius = (p: Pin) => (7 + Math.min(7, p.instances.length * 1.4)) / transform.k;
+
+  const hoveredPin = pins.find((p) => p.region === hovered);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
           Where this application runs. A pin comes from the instance's region, read from its name
-          unless somebody set it. Click one to open the instance.
+          unless somebody set it. Drag to move, scroll to zoom, click a pin to open the instance.
         </Typography.Text>
-        {pins.length > 0 && (
-          <button type="button" className="cf-geo-zoom" onClick={() => setWhole(!whole)}>
-            {whole ? "Fit to instances" : "Zoom out"}
-          </button>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+          {usOnly && (
+            <Segmented
+              size="small"
+              value={effectiveMode}
+              onChange={(v) => setMode(v as Mode)}
+              options={[
+                { value: "us", label: "United States" },
+                { value: "world", label: "World" },
+              ]}
+            />
+          )}
+          <Tooltip title="Zoom out">
+            <Button size="small" onClick={zoomOut} aria-label="Zoom out">-</Button>
+          </Tooltip>
+          <Tooltip title="Zoom in">
+            <Button size="small" onClick={zoomIn} aria-label="Zoom in">+</Button>
+          </Tooltip>
+          <Button size="small" onClick={() => setFramed("")} disabled={!pins.length}>
+            Fit to instances
+          </Button>
+          <Button size="small" type="text" onClick={reset}>Reset</Button>
+        </div>
       </div>
 
       {instances.length === 0 ? (
@@ -206,51 +217,88 @@ export default function InstancesGeography({
       ) : (
         <>
           <div className="cf-geo">
+            <div className="cf-geo-stage" ref={stageRef}>
             <svg
-              viewBox={view}
-              preserveAspectRatio="xMidYMid slice"
+              ref={svgRef}
+              viewBox={`0 0 ${W} ${H}`}
+              preserveAspectRatio="xMidYMid meet"
               className="cf-geo-svg"
               role="img"
-              aria-label="Instances by region"
+              tabIndex={0}
+              aria-label={`Instances by region on a ${effectiveMode === "us" ? "United States" : "world"} map. Arrow keys pan, plus and minus zoom.`}
+              {...handlers}
             >
-              <rect x={-W} y={-H} width={W * 3} height={H * 3} className="cf-geo-sea" />
-              {(worldQ.data ?? []).map((d, i) => (
-                <path key={i} d={d} className="cf-geo-land" />
-              ))}
-              {pins.map((p) => {
-                const on = hovered === p.region;
-                const r = radius(p);
-                return (
-                  <g
-                    key={p.region}
-                    className={"cf-geo-pin" + (on ? " is-on" : "")}
-                    onMouseEnter={() => setHovered(p.region)}
-                    onMouseLeave={() => setHovered(null)}
-                    onClick={() =>
-                      p.instances.length === 1
-                        ? setSelected(nodeOf(p.instances[0].name))
-                        : setHovered(p.region)
-                    }
-                  >
-                    <circle cx={p.x} cy={p.y} r={r * 2.4} className="cf-geo-halo" style={{ fill: pinColor(p) }} />
-                    <circle cx={p.x} cy={p.y} r={r} className="cf-geo-core" style={{ fill: pinColor(p) }} />
-                    <text x={p.x} y={p.y + r * 0.36} className="cf-geo-count" style={{ fontSize: r * 1.15 }}>
-                      {p.instances.length}
-                    </text>
-                  </g>
-                );
-              })}
+              <rect x={0} y={0} width={W} height={H} className="cf-geo-sea" />
+              <g transform={`translate(${transform.x} ${transform.y}) scale(${transform.k})`}>
+                {geoQ.data && (
+                  <>
+                    <path d={geoQ.data.land} className="cf-geo-land" />
+                    <path d={geoQ.data.borders} className="cf-geo-border" />
+                    <path d={geoQ.data.outline} className="cf-geo-coast" />
+                  </>
+                )}
+                {pins.map((p) => {
+                  const on = hovered === p.region;
+                  const r = radius(p);
+                  return (
+                    <g
+                      key={p.region}
+                      className={"cf-geo-pin" + (on ? " is-on" : "")}
+                      onMouseEnter={() => setHovered(p.region)}
+                      onMouseLeave={() => setHovered(null)}
+                      onClick={() => {
+                        // Letting go of a drag on top of a pin is not a click on
+                        // the pin.
+                        if (wasDragged()) return;
+                        if (p.instances.length === 1) setSelected(nodeOf(p.instances[0].name));
+                        else setHovered(p.region);
+                      }}
+                    >
+                      <circle cx={p.x} cy={p.y} r={r * 2.4} className="cf-geo-halo" style={{ fill: pinColor(p) }} />
+                      <circle cx={p.x} cy={p.y} r={r} className="cf-geo-core" style={{ fill: pinColor(p) }} />
+                      <text x={p.x} y={p.y + r * 0.36} className="cf-geo-count" style={{ fontSize: r * 1.15 }}>
+                        {p.instances.length}
+                      </text>
+                      {/* Close in, the pin names itself: at that magnification
+                          the reader has stopped recognising states and started
+                          asking which of these is which. */}
+                      {transform.k >= 3 && (
+                        <text
+                          x={p.x}
+                          y={p.y - r * 1.9}
+                          className="cf-geo-label"
+                          style={{ fontSize: 12 / transform.k }}
+                        >
+                          {p.region}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </g>
             </svg>
+            </div>
 
-            {worldQ.isLoading && <div className="cf-geo-veil">Drawing the map…</div>}
-            {!worldQ.isLoading && pins.length === 0 && (
+            {hoveredPin && (
+              <div className="cf-geo-tip">
+                <span className="cf-geo-dot" style={{ background: pinColor(hoveredPin) }} />
+                <b>{hoveredPin.region}</b>
+                <span>
+                  {hoveredPin.instances.length} instance{hoveredPin.instances.length === 1 ? "" : "s"}
+                </span>
+              </div>
+            )}
+
+            {geoQ.isLoading && <div className="cf-geo-veil">Drawing the map…</div>}
+            {!geoQ.isLoading && pins.length === 0 && (
               <div className="cf-geo-veil">No instance has a region that can be placed yet.</div>
             )}
 
             {/* Every pin is also a row, because a map is a poor list: pins
                 overlap, a small one is a hard target, and a keyboard cannot
                 hover. The rows carry the same colour and open the same
-                dossier. */}
+                dossier, in the same order the rest of the product lists an
+                estate. */}
             {pins.length > 0 && (
               <div className="cf-geo-rail">
                 {pins.map((p) => (
@@ -282,6 +330,13 @@ export default function InstancesGeography({
               </div>
             )}
           </div>
+
+          {offMap > 0 && (
+            <InlineNotice tone="neutral">
+              {offMap === 1 ? "One region is" : `${offMap} regions are`} outside this map. Switch to
+              the world map to see {offMap === 1 ? "it" : "them"}.
+            </InlineNotice>
+          )}
 
           {unplaced.length > 0 && (
             <InlineNotice tone="neutral">

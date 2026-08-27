@@ -44,8 +44,10 @@ const FORK_X = 26;
 /** The node's height inside its row: level with the first line of text beside
  *  it, so a dot always points at the thing it labels. */
 const NODE_Y = 13;
-/** The least a row can be. Rows size to their content; the rail stretches. */
-const MIN_ROW = 46;
+/** The least a row can be. Rows size to their CONTENT and the rail stretches to
+ *  match, so this is a floor for a sparse row rather than a height anything is
+ *  padded out to. */
+const MIN_ROW = 30;
 
 type Row =
   | { kind: "trunk"; key: string; at: string; entry: ParamHistoryEntry; change: ParamChange | null }
@@ -110,33 +112,42 @@ function Rail({ row, first, last }: { row: Row; first: boolean; last: boolean })
   // renders. It is a short peel-off just below the node rather than a sweep
   // from the row's floor, which says the same thing and cannot depend on a
   // height nothing here knows.
+  // The svg is ABSOLUTELY POSITIONED inside a plain div, and that div is the
+  // thing sitting in the row. An <svg> is a REPLACED element: given no height
+  // it falls back to its intrinsic 150px, so every row in this picture was at
+  // least that tall and two consecutive commits sat an inch apart with nothing
+  // whatsoever between them. Taking it out of flow hands the row's height back
+  // to the text, which is the only thing that should be deciding it.
   return (
-    <svg className={`pf-rail${status ? ` is-${status}` : ""}`} width={RAIL_W} aria-hidden="true">
-      {/* The trunk. It runs the full height of every row except where the
-          picture actually ends, so the line never stops mid-story. A last row
-          that is a FORK still has trunk below it - older commits the window
-          simply did not reach - so only a last TRUNK row closes the line off. */}
-      <line
-        className="pf-trunk"
-        x1={TRUNK_X}
-        y1={first && row.kind === "trunk" ? NODE_Y : 0}
-        x2={TRUNK_X}
-        y2={last && row.kind === "trunk" ? NODE_Y : "100%"}
-      />
-      {row.kind === "fork" && (
-        <path
-          className="pf-fork"
-          d={`M${TRUNK_X},${NODE_Y + 26} C${TRUNK_X},${NODE_Y + 12} ${FORK_X},${NODE_Y + 17} ${FORK_X},${NODE_Y}`}
-          fill="none"
-          stroke={tone}
+    <div className="pf-railwrap" style={{ flexBasis: RAIL_W, width: RAIL_W }}>
+      <svg className={`pf-rail${status ? ` is-${status}` : ""}`} aria-hidden="true">
+        {/* The trunk. It runs the full height of every row except where the
+            picture actually ends, so the line never stops mid-story. A last row
+            that is a FORK still has trunk below it - older commits the window
+            simply did not reach - so only a last TRUNK row closes the line
+            off. */}
+        <line
+          className="pf-trunk"
+          x1={TRUNK_X}
+          y1={first && row.kind === "trunk" ? NODE_Y : 0}
+          x2={TRUNK_X}
+          y2={last && row.kind === "trunk" ? NODE_Y : "100%"}
         />
-      )}
-      {row.kind === "trunk" ? (
-        <Node kind={row.change ? "merge" : "commit"} tone={tone} />
-      ) : (
-        <Node kind={row.change.state === "rejected" ? "rejected" : "pending"} tone={tone} />
-      )}
-    </svg>
+        {row.kind === "fork" && (
+          <path
+            className="pf-fork"
+            d={`M${TRUNK_X},${NODE_Y + 20} C${TRUNK_X},${NODE_Y + 9} ${FORK_X},${NODE_Y + 13} ${FORK_X},${NODE_Y}`}
+            fill="none"
+            stroke={tone}
+          />
+        )}
+        {row.kind === "trunk" ? (
+          <Node kind={row.change ? "merge" : "commit"} tone={tone} />
+        ) : (
+          <Node kind={row.change.state === "rejected" ? "rejected" : "pending"} tone={tone} />
+        )}
+      </svg>
+    </div>
   );
 }
 

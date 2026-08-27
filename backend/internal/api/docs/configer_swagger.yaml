@@ -3627,6 +3627,26 @@ paths:
       summary: Restore configuration to a snapshot
       tags:
       - Editing & change requests
+  /api/revision:
+    get:
+      description: 'A tiny answer to "has anything moved?": the repository''s `head`
+        (files, catalog, publishes) and an opaque `changes` token for the change-request
+        store (drafts, submissions, approvals, rejections). Clients poll THIS instead
+        of re-reading the grid, the draft and the change list on their own timers,
+        and refresh those only when one of these two values differs from the last
+        answer. Cheap enough to poll often; carries no data of its own on purpose.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Current revision
+      tags:
+      - Reads
   /api/scan:
     post:
       description: 'Read-only ingest scan: detect config files and extract candidate

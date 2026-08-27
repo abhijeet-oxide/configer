@@ -73,18 +73,28 @@ type paramChange struct {
 // touches reports whether an item is part of THIS parameter's story, given the
 // instance the timeline is being read for.
 //
-// A global-scope edit belongs to every instance's story: it is exactly the kind
-// of change that moves a cell nobody remembers editing. An instance-scoped edit
-// belongs only to its own. With no instance selected the timeline is the base
-// value, so instance-scoped edits are somebody else's cell and stay out.
+// With an instance NAMED, the story is that cell's: its own edits plus the
+// global ones, which belong to every instance's story because they are exactly
+// the kind of change that moves a cell nobody remembers editing. Another
+// instance's override is somebody else's cell and stays out.
+//
+// With NO instance named the story is the PARAMETER'S, and everything that
+// touched it belongs in it. This started as the opposite - no instance meant
+// the base value, so instance-scoped edits were filtered out - and it was
+// wrong in the one way a history cannot afford to be: opening a parameter from
+// its row rather than a cell (which is how people open it) showed a history
+// with no change requests in it at all, on a parameter somebody had just
+// edited. An edit was made, and the screen said nothing had happened. Each
+// edit carries the instance it applies to, so the reader can see whose cell it
+// was; showing none of them to avoid mixing them up is the worse trade by far.
 func touches(it change.Item, id, instance string) bool {
 	if it.ParamID != id {
 		return false
 	}
-	if it.Scope == "global" || it.Instance == "" {
+	if instance == "" {
 		return true
 	}
-	return instance != "" && it.Instance == instance
+	return it.Scope == "global" || it.Instance == "" || it.Instance == instance
 }
 
 // paramChanges collects every change request that touched one parameter,

@@ -165,11 +165,7 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
   // the picture a commit list cannot contain - a commit list only knows what
   // already happened - and leaving them out was why the timeline could show an
   // application as quiet while two changes were in flight against it.
-  const changesQ = useRepoQuery({
-    queryKey: ["changes"],
-    queryFn: api.changes,
-    refetchInterval: 20_000,
-  });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
   const inFlight = useMemo(
     () =>
       (changesQ.data ?? [])

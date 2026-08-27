@@ -147,7 +147,7 @@ export default function RepoChangesView() {
   const { setSection, setImportFocus, selectParam } = useUI();
   const [filter, setFilter] = useState<DriftFilter>(null);
 
-  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000 });
+  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings });
   const data = findingsQ.data;
   const findings = data?.findings ?? [];
   const managedCount = findings.filter(isManagedDrift).length;

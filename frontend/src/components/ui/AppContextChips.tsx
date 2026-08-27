@@ -55,7 +55,6 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
   const statusQ = useRepoQuery({
     queryKey: ["repo-status"],
     queryFn: api.repoStatus,
-    refetchInterval: 30_000,
     enabled: !!repoId,
   });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, enabled: !!repoId && showDraft });

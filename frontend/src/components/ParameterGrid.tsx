@@ -1147,7 +1147,7 @@ function instanceHeader(
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, groupKey, setGroup, groupEdit, openGroupEditor, selectedParamId, selectParam, inspectParam, togglePin, unpinAll, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, groupKey, setGroup, groupEdit, openGroupEditor, selectedParamId, selectParam, inspectParam, togglePin, unpinAll, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel, viewChangeId } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -1180,6 +1180,36 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const qc = useQueryClient();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
+  // The change this grid is being READ THROUGH, when it is not the workspace
+  // (see ChangeViewPicker). The server has already applied its edits to the
+  // cell VALUES; what is fetched here is the item list, which is what every
+  // other answer on this screen is built from.
+  const viewedQ = useRepoQuery({
+    queryKey: ["change", viewChangeId],
+    queryFn: () => api.change(viewChangeId as number),
+    enabled: viewChangeId != null,
+  });
+
+  // THE pending edits this grid is showing, and the single place that decides
+  // whose they are.
+  //
+  // Everything downstream reads from this: which cells are highlighted as
+  // changed, the before -> after on hover, the per-row status pills, the
+  // Changed / Added / Removed filter, the instance columns a change would add
+  // or retire. All of it used to come straight off the reader's OWN draft, and
+  // that was invisible until the grid could be pointed at somebody else's
+  // change - at which point the screen said "CR-3" in the bar, showed CR-3's
+  // values in the cells, and highlighted, filtered and explained the reader's
+  // own unrelated draft on top of them. Two changes' answers in one picture,
+  // with nothing saying which was which.
+  //
+  // While a viewed change is still loading this is EMPTY rather than the
+  // draft's items: a flash of the wrong change's highlights is the same lie,
+  // just briefer.
+  const shownItems = useMemo<ChangeItem[]>(() => {
+    if (viewChangeId != null) return viewedQ.data?.items ?? [];
+    return draftQ.data?.draft?.items ?? [];
+  }, [viewChangeId, viewedQ.data, draftQ.data]);
   // key: `${paramId}|${instance}` of the cell currently in edit mode
   const [editing, setEditing] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -1271,11 +1301,11 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // a global item is stored under `${paramId}|` (empty instance)
   const pendingMap = useMemo(() => {
     const m = new Map<string, ChangeItem>();
-    for (const it of draftQ.data?.draft?.items ?? []) {
+    for (const it of shownItems) {
       m.set(`${it.paramId}|${it.instance}`, it);
     }
     return m;
-  }, [draftQ.data]);
+  }, [shownItems]);
 
   const revert = useMutation({
     mutationFn: (p: { paramId: string; instance: string }) => api.revertValue(p.paramId, p.instance),
@@ -1403,26 +1433,26 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // Draft items per parameter, for the status pills and the Changed column.
   const pendingByParam = useMemo(() => {
     const m = new Map<string, ChangeItem[]>();
-    for (const it of draftQ.data?.draft?.items ?? []) {
+    for (const it of shownItems) {
       if (!it.paramId) continue;
       const arr = m.get(it.paramId) ?? [];
       arr.push(it);
       m.set(it.paramId, arr);
     }
     return m;
-  }, [draftQ.data]);
+  }, [shownItems]);
   // Instances that exist only in the draft (staged add) or are staged for
   // removal. Their columns are previewed wholesale by the service, so their
   // cells carry `pending` without any per-cell change behind them - which is
   // why nothing here may offer a per-cell undo for them.
   const pendingInstances = useMemo(() => {
     const m = new Map<string, "added" | "retiring">();
-    for (const it of draftQ.data?.draft?.items ?? []) {
+    for (const it of shownItems) {
       if (it.action === "add-instance") m.set(it.instance, "added");
       else if (it.action === "remove-instance") m.set(it.instance, "retiring");
     }
     return m;
-  }, [draftQ.data]);
+  }, [shownItems]);
 
   // The one answer to "does THIS cell carry a change of its own?". A global
   // edit surfaces on every cell it would affect; a staged instance's cells are
@@ -2072,7 +2102,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             allInstances={instanceNames}
             presets={presetsQ.data}
             pendingItem={pendingItem}
-            beforeAfter={prefs.showBeforeAfter}
+            // Reading the grid THROUGH a change makes before -> after the point
+            // of the screen rather than a preference: somebody who has pointed
+            // the page at CR-3 is asking what CR-3 did, and a cell showing only
+            // the value it would end up at answers a different question. The
+            // saved preference is untouched, so returning to Main returns to
+            // whatever this person normally reads.
+            beforeAfter={prefs.showBeforeAfter || viewChangeId != null}
             canEdit={canEdit}
             revertible={!!pendingItem}
             editing={editing === key}
@@ -2158,7 +2194,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc, facet, scopeCounts]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, viewChangeId, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc, facet, scopeCounts]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -2803,10 +2839,20 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         {/* Primary action, always visible and never shrinks. Its badge is the
             single source of truth for how many edits are waiting. The auto
             margin keeps it hard right even when the bar has wrapped and it is
-            alone on the second line. */}
-        <span style={{ marginLeft: "auto", flexShrink: 0 }}>
-          <SubmitChangesButton instances={grid.instances} />
-        </span>
+            alone on the second line.
+
+            It steps aside while the grid is being read through SOMEBODY ELSE'S
+            change. It submits YOUR draft and counts YOUR edits, both of which
+            are true and neither of which is what this screen is currently
+            about: "Review 2 changes" sitting a centimetre under "CR-1, 1
+            change" reads as an offer to submit CR-1, and its badge reads as
+            CR-1's size. Your draft has not gone anywhere - Back to Main brings
+            the whole screen, button included, back to it. */}
+        {!grid.viewing?.readOnly && (
+          <span style={{ marginLeft: "auto", flexShrink: 0 }}>
+            <SubmitChangesButton instances={grid.instances} />
+          </span>
+        )}
       </div>
 
       <Modal

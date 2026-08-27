@@ -1,14 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { App as AntApp, Button, Dropdown, Tooltip } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BranchesOutlined, DownOutlined, UndoOutlined } from "../icons";
+import { BranchesOutlined, DownOutlined, ReloadOutlined, UndoOutlined } from "../icons";
 import { api, crRef, type ChangeRequest } from "../api";
 import { useUI } from "../store";
 import { useIdentity } from "../identity";
 import { STATUS, statusColor, statusOf } from "../changestatus";
 import { relTime } from "./DashboardView";
 import { StatusPill } from "./ui";
+import { useRefreshRepo } from "../pulse";
 
 // "Whose values am I looking at?" - one question, one control.
 //
@@ -56,7 +57,30 @@ function label(cr: ChangeRequest, mine: (author: string) => boolean): string {
   return mine(cr.author) ? "Your draft" : "Draft";
 }
 
-export default function ChangeViewPicker({ changes }: { changes: ChangeRequest[] | undefined }) {
+/** How long ago, in the fewest words that are still true. Deliberately coarse:
+ *  the exact second is noise, and "just now" is the answer somebody wants 95%
+ *  of the time they glance at it. */
+function freshness(at: number, now: number): string {
+  if (!at) return "checking…";
+  const secs = Math.max(0, Math.round((now - at) / 1000));
+  if (secs < 45) return "up to date";
+  const mins = Math.round(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.round(mins / 60)}h ago`;
+}
+
+export default function ChangeViewPicker({
+  changes,
+  checkedAt,
+  checking,
+  failed,
+}: {
+  changes: ChangeRequest[] | undefined;
+  /** epoch ms of the last confirmed heartbeat (see pulse.ts) */
+  checkedAt: number;
+  checking: boolean;
+  failed: boolean;
+}) {
   const { viewChangeId, viewChange, setSection } = useUI();
   const me = useIdentity();
   // "Yours" is matched the way the Change Flow matches it: a change records the
@@ -66,6 +90,16 @@ export default function ChangeViewPicker({ changes }: { changes: ChangeRequest[]
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
+  const refresh = useRefreshRepo();
+  // The clock the freshness label reads. It ticks on its own, because
+  // "up to date" has to become "2m ago" while nobody is touching anything -
+  // a label that only re-renders when the data changes says "up to date"
+  // forever, which is the one thing it must never do.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 20_000);
+    return () => clearInterval(t);
+  }, []);
 
   const offerable = useMemo(() => {
     const list = (changes ?? []).filter((c) => (OFFERED as readonly string[]).includes(c.state));
@@ -211,6 +245,29 @@ export default function ChangeViewPicker({ changes }: { changes: ChangeRequest[]
           </Button>
         </>
       )}
+
+      {/* Freshness, and the way to insist on it.
+          The page keeps itself current on its own (pulse.ts), which is exactly
+          the kind of thing nobody believes without being shown - so the strip
+          says when it last confirmed, and offers the button anyway. Somebody
+          who presses refresh is telling you they do not trust the last answer,
+          and "the revision is unchanged, nothing to do" is a correct and
+          useless reply, so it re-reads outright. */}
+      {!viewed && <span className="cf-viewbar-spacer" />}
+      <span className={`cf-viewbar-fresh${failed ? " is-stale" : ""}`}>
+        {failed ? "Not reaching the service" : freshness(checkedAt, now)}
+      </span>
+      <Tooltip title="Check for changes now">
+        <Button
+          size="small"
+          type="text"
+          aria-label="Refresh"
+          icon={<ReloadOutlined />}
+          loading={checking}
+          onClick={refresh}
+          className="cf-viewbar-refresh"
+        />
+      </Tooltip>
     </div>
   );
 }

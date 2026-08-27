@@ -21,6 +21,7 @@ import { notifyError, sentence } from "./notify";
 import { useRepoQuery } from "./repoQuery";
 import { useDeployment, useHealth } from "./deployment";
 import { useUI } from "./store";
+import { useRepoPulse } from "./pulse";
 import { useIdentity } from "./identity";
 import { theme as brand } from "./theme.config";
 import { pointOf, useTheme } from "./uikit";
@@ -287,6 +288,11 @@ export default function App() {
   // automatic. The same probe gated the boot (see BootGate), so it is already
   // warm here.
   useHealth();
+  // The application's heartbeat, mounted EXACTLY ONCE (see pulse.ts): one tiny
+  // poll that notices a colleague's edit, a publish or a push, and re-reads the
+  // expensive things only when something actually moved. It is why nothing else
+  // on a repo-scoped screen needs a timer of its own.
+  useRepoPulse();
   const metaQ = useRepoQuery({ queryKey: ["meta"], queryFn: api.meta, staleTime: 300_000, enabled: readable });
   const qc = useQueryClient();
 

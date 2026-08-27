@@ -249,3 +249,63 @@ func gridCell(t *testing.T, g gridResponse, paramID, instance string) any {
 	t.Fatalf("no row for parameter %q", paramID)
 	return nil
 }
+
+// TestRevisionMovesWithTheWorld covers the heartbeat every screen now depends
+// on (see frontend pulse.ts): if it fails to move when something changes, the
+// UI silently shows a stale repository - which is worse than not polling at
+// all, because it looks current.
+func TestRevisionMovesWithTheWorld(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+
+	read := func() (string, string) {
+		t.Helper()
+		var r struct {
+			Head    string `json:"head"`
+			Changes string `json:"changes"`
+		}
+		doJSON(t, h, http.MethodGet, "/api/revision", nil, &r)
+		return r.Head, r.Changes
+	}
+
+	head0, changes0 := read()
+	if head0 == "" || changes0 == "" {
+		t.Fatalf("revision must always answer: head=%q changes=%q", head0, changes0)
+	}
+	// Asking twice without touching anything must give the same answer, or the
+	// client refreshes everything on every beat.
+	if h1, c1 := read(); h1 != head0 || c1 != changes0 {
+		t.Fatalf("revision moved while nothing happened: %q/%q then %q/%q", head0, changes0, h1, c1)
+	}
+
+	// Staging an edit changes no file, so only the change-store half moves.
+	doJSON(t, h, http.MethodPut, "/api/values", map[string]any{
+		"paramId": "p1", "instance": "staging", "value": 9090, "author": "alice",
+	}, nil)
+	head1, changes1 := read()
+	if changes1 == changes0 {
+		t.Fatal("staging an edit did not move the change-store revision")
+	}
+	if head1 != head0 {
+		t.Fatal("staging an edit must not move the repository revision: nothing was committed")
+	}
+
+	// Publishing does move the repository half.
+	var draft struct {
+		Draft struct {
+			ID int `json:"id"`
+		} `json:"draft"`
+	}
+	doJSON(t, h, http.MethodGet, "/api/changes/draft", nil, &draft)
+	doRaw(t, h, http.MethodPost, "/api/changes/"+itoa(draft.Draft.ID)+"/submit",
+		map[string]any{"title": "raise the port", "author": "alice"})
+	doJSON(t, h, http.MethodPost, "/api/changes/"+itoa(draft.Draft.ID)+"/approve", map[string]any{"author": "bob"}, nil)
+	doRaw(t, h, http.MethodPost, "/api/changes/"+itoa(draft.Draft.ID)+"/merge", map[string]any{"author": "bob"})
+	if head2, _ := read(); head2 == head1 {
+		t.Fatal("publishing a change did not move the repository revision")
+	}
+}

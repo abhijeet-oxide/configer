@@ -55,7 +55,7 @@ export function crEvents(crs: ChangeRequest[]): ActivityItem[] {
 
 export function useActivity(limit = 8): { items: ActivityItem[]; loading: boolean } {
   const repoId = useUI((s) => s.repoId);
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
   const historyQ = useRepoQuery({ queryKey: ["history"], queryFn: () => api.history(20), staleTime: 30_000 });
   const auditQ = useQuery({
     queryKey: ["audit", repoId],

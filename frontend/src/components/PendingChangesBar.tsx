@@ -31,7 +31,7 @@ export default function PendingChangesBar() {
   const [focus, setFocus] = useState(false);
   const [pinned, setPinned] = useState(false);
 
-  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const draft = draftQ.data?.draft;
   // The same count the review dialog shows (see api.reviewItems), so the bar
   // and the dialog can never disagree about how many changes there are.

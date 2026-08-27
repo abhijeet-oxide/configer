@@ -47,8 +47,8 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
   const qc = useQueryClient();
   const { selectParam } = useUI();
 
-  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
   const items = useMemo(() => draftQ.data?.draft?.items ?? [], [draftQ.data]);
   const st = statusQ.data;
 

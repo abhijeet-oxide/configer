@@ -52,7 +52,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
 
-  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   // What this deployment can actually check. Read once, so the dialog can
   // promise a model check only where there is a model to check against - "your
   // change is valid" and "nothing looked at your change" must never read the

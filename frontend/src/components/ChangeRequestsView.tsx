@@ -51,7 +51,7 @@ export default function ChangeRequestsView() {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const { setSection, setReviewCr, setOpenSubmit } = useUI();
-  const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
 
   const invalidate = () => qc.invalidateQueries();
 

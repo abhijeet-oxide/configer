@@ -309,6 +309,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/changes/{id}/reopen", s.reopenChange)
 	mux.HandleFunc("POST /api/changes/{id}/comments", s.addChangeComment)
 	mux.HandleFunc("PUT /api/changes/{id}/reviewers", s.setChangeReviewers)
+	mux.HandleFunc("GET /api/revision", s.revision)
 	mux.HandleFunc("GET /api/repo/status", s.repoStatus)
 	mux.HandleFunc("GET /api/repo/refs", s.repoRefs)
 	mux.HandleFunc("GET /api/history", s.history)

@@ -1889,6 +1889,10 @@ export const api = {
     if (opts?.rightRef) qs.set("rightRef", opts.rightRef);
     return get<DiffResult>(rp(`/compare?${qs.toString()}`));
   },
+  // The heartbeat (see pulse.ts). Deliberately tiny and deliberately carrying
+  // no data of its own: its whole job is to say whether anything moved, so the
+  // expensive reads can stay off timers entirely.
+  revision: () => get<{ head: string; changes: string; branch: string }>(rp("/revision")),
   refs: () => get<{ current: string; branches: string[] | null; tags: string[] | null }>(rp("/repo/refs")),
   history: (limit?: number) =>
     get<{ commits: Commit[] | null; supported: boolean }>(rp(`/history${limit ? `?limit=${limit}` : ""}`)),

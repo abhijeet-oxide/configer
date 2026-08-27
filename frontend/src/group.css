@@ -53,8 +53,23 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   margin-bottom: 6px;
+}
+/* The scope tag and what it applies to are one fact, read left to right; a
+   long instance list is truncated rather than pushed onto its own line. */
+.cf-group-reach {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* The Form/JSON toggle carries an icon per option, the way "which view" is
+   read faster as a glyph than as the word alone. */
+.cf-group-viewopt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* The form proper: as many COLUMNS as the dialog is wide, as many ROWS as the

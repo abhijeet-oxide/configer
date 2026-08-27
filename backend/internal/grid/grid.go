@@ -7,7 +7,6 @@ package grid
 import (
 	"encoding/json"
 	"path"
-	"sort"
 	"strings"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
@@ -445,11 +444,10 @@ func buildCategoryTree(rows []Row) []CategoryNode {
 
 	var conv func(prefix string, n *node) []CategoryNode
 	conv = func(prefix string, n *node) []CategoryNode {
-		keys := make([]string, len(n.order))
-		copy(keys, n.order)
-		sort.Strings(keys)
-		out := make([]CategoryNode, 0, len(keys))
-		for _, k := range keys {
+		// Catalog order, not alphabetical: the catalog is what discovery read
+		// out of the files, so a group reads the way its file does.
+		out := make([]CategoryNode, 0, len(n.order))
+		for _, k := range n.order {
 			c := n.children[k]
 			key := prefix + "/" + k
 			out = append(out, CategoryNode{

@@ -67,7 +67,7 @@ import {
 } from "../api";
 import { effectiveRules, fmtValue, typeLabel } from "../rules";
 import { effectiveScope, SCOPE_META, type ScopeFacet, type ScopeFilter } from "../scope";
-import { inGroup } from "../paramtree";
+import { buildNameTree, inGroup, nameTreeOrder } from "../paramtree";
 import GroupEditorModal from "./GroupEditorModal";
 import {
   CellView,
@@ -378,16 +378,24 @@ function fitColumns(instances: Instance[], rows: Row[], budget: number): Record<
 // What the grouping control is doing, said in the words of the question it
 // answers rather than the mechanism.
 const GROUP_HINT: Record<GroupBy, string> = {
-  none: "Rows in their natural order. Group them to compare across the fleet.",
+  none: "Rows in the order the files spell them, the same order the parameter tree reads in.",
   value: "Rows that carry the same value across every instance are brought together and boxed, so the one that differs stands out.",
   path: "Rows are gathered under the path they live at, the way the parameter tree presents them.",
 };
 
 // What a row is grouped BY: the values it carries across the fleet, or the
-// category path it lives under (a parameter with no category groups with the
-// other uncategorized ones).
+// path it lives under. For path grouping that is the FULL route - category
+// plus whatever repeated-structure step it sits in (net-info[1] vs
+// net-info[2]) - not just the top-level category, so a list's entries band
+// together as the distinct groups they are rather than one group per file
+// section. A parameter with no route at all (a flat, top-level setting)
+// falls back to its category.
 function groupSig(r: Row, by: GroupBy, instances: Instance[]): string {
-  return by === "path" ? r.param.category || "\uffffUncategorized" : valueSig(r, instances);
+  if (by === "path") {
+    const { route } = splitName(r.param);
+    return route.length ? route.join("\u0000") : r.param.category || "\uffffUncategorized";
+  }
+  return valueSig(r, instances);
 }
 
 function rowMatches(r: Row, q: string, scope: SearchScope = "all"): boolean {
@@ -1328,17 +1336,18 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     },
   });
 
-  // Canonical order matching the left parameter tree: the tree groups by the
-  // dotted name and orders each node's children (sub-groups and leaves) by
-  // segment, which is exactly a full-name sort. So the table, ordered by full
-  // name, reads top-to-bottom in the same order as the tree.
-  const treeOrder = useMemo(() => {
-    const order = new Map<string, number>();
-    [...grid.rows]
-      .sort((a, b) => a.param.name.localeCompare(b.param.name))
-      .forEach((r, i) => order.set(r.param.id, i));
-    return order;
-  }, [grid.rows]);
+  // Canonical order matching the left parameter tree - by walking the very same
+  // tree, which is the only way the two can be guaranteed to agree.
+  //
+  // Catalog order is not enough, because the panel is a TRIE and therefore
+  // hoists: it draws every row of a group where that group first appears, and a
+  // setting written into two files keeps the position of the first and the name
+  // of the other. So the last leaf in the panel sat nowhere near the last row of
+  // the table, and clicking a row below it jumped to the middle of the panel.
+  const treeOrder = useMemo(
+    () => nameTreeOrder(buildNameTree(grid.rows.map((r) => r.param))),
+    [grid.rows],
+  );
 
   // The instance columns currently on screen: the user's chosen order and
   // visibility, then the environment filter and single-instance view on top.
@@ -1569,10 +1578,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     });
     if (prefs.groupBy === "none") return dropPinned(pilled);
     // Clustering: rows that share a signature are brought next to each other.
-    // By VALUE the signature is what the parameter is set to across the fleet,
-    // and groups keep the order they first appear in so the list stays
-    // familiar. By PATH it is the category the parameter lives under, and the
-    // groups are sorted, so the grid reads the way the parameter tree does.
+    // By VALUE the signature is what the parameter is set to across the fleet;
+    // by PATH it is the category the parameter lives under. Either way groups
+    // keep the order they first appear in, which is the catalog's order, so the
+    // grid still reads the way the parameter tree and the file do.
     const bySig = new Map<string, Row[]>();
     const order: string[] = [];
     for (const r of pilled) {
@@ -1583,7 +1592,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       }
       bySig.get(s)!.push(r);
     }
-    if (prefs.groupBy === "path") order.sort((a, b) => a.localeCompare(b));
     return dropPinned(order.flatMap((s) => bySig.get(s)!));
   }, [baseRows, pill, pendingByParam, prefs.groupBy, grid.instances, dropPinned]);
 
@@ -2562,9 +2570,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               onChange={(v) => setPrefs({ groupBy: v as GroupBy })}
               style={{ flexShrink: 0 }}
               options={[
-                { value: "none", label: "Ungrouped" },
-                { value: "value", label: "By value" },
                 { value: "path", label: "By path" },
+                { value: "value", label: "By value" },
+                { value: "none", label: "Ungrouped" },
               ]}
             />
           ) : (
@@ -2574,9 +2582,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               onChange={(v) => setPrefs({ groupBy: v })}
               style={{ width: 116, flexShrink: 0 }}
               options={[
-                { value: "none", label: "Ungrouped" },
-                { value: "value", label: "By value" },
                 { value: "path", label: "By path" },
+                { value: "value", label: "By value" },
+                { value: "none", label: "Ungrouped" },
               ]}
             />
           )}

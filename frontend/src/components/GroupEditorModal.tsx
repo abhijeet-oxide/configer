@@ -27,7 +27,7 @@ import { effectiveScope, groupField, SCOPE_META, type ScopeFacet } from "../scop
 import { groupLeaf, groupTrail, trailLabel } from "../paramtree";
 import { useIdentity } from "../identity";
 import { useUI } from "../store";
-import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined } from "../icons";
+import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined, FormOutlined, CodeOutlined } from "../icons";
 import EnvTag from "./EnvTag";
 import { EmptyState, InlineNotice } from "./ui";
 import GroupField, { fieldError, lockedReason } from "./group/GroupField";
@@ -154,6 +154,18 @@ function fieldsets(members: Member[]): { key: string; members: Member[] }[] {
   return out;
 }
 
+/** How wide a column needs to be for this fieldset's longest label to read in
+ *  full. A fixed column width is why four long names got jammed into four
+ *  narrow columns and every one of them was cut - the grid never knew the
+ *  labels needed more room than a short boolean's did. Sized to the longest
+ *  member, a small fieldset of long names naturally settles into fewer, wider
+ *  columns (four settings as 2x2 rather than 4x1) while a fieldset of short
+ *  ones still fills the row. */
+function fieldColWidth(members: Member[]): number {
+  const longest = members.reduce((n, m) => Math.max(n, m.trail[m.trail.length - 1].length), 0);
+  return Math.min(460, Math.max(220, longest * 8 + 70));
+}
+
 /** Whether a field needs the whole row rather than a column of the form: a list
  *  of entries and a paragraph of text are unreadable in a third of a dialog. */
 function isWide(param: Parameter, value: unknown): boolean {
@@ -211,6 +223,11 @@ export default function GroupEditorModal({
   const [jsonText, setJsonText] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
 
+  // grid.rows is already in the catalog's own document order - the same order
+  // CategoryTree walks for the name tree - so a member here lands exactly
+  // where its leaf sits there. Sorting alphabetically once put "add" ahead of
+  // "warning" in the dialog while the tree beside it still read the file's
+  // own order, so the same branch told two different stories.
   const members = useMemo<Member[]>(() => {
     const out: Member[] = [];
     for (const row of grid.rows) {
@@ -218,7 +235,6 @@ export default function GroupEditorModal({
       if (!trail) continue;
       out.push({ row, trail, label: trailLabel(trail), facet: effectiveScope(row.param) });
     }
-    out.sort((a, b) => a.label.localeCompare(b.label));
     return out;
   }, [grid.rows, groupKey]);
 
@@ -586,35 +602,53 @@ export default function GroupEditorModal({
                 </Space>
               )}
             </div>
-            <Space size={8} wrap>
-              {hasInstanceTargets && selected.length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              {/* A lone section's scope reads on the same line as the view
+                  toggle - two facts about the same edit belong on one row.
+                  A second section (a different scope reached at once) still
+                  gets its own line below, where there is room to tell them
+                  apart. */}
+              {sections.length === 1 ? (
+                <div className="cf-group-sec-head" style={{ marginBottom: 0 }}>
+                  <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sections[0].reach}</Typography.Text>
+                  <Tooltip title={SCOPE_META[sections[0].facet].explain}>
+                    <Tag color={SCOPE_META[sections[0].facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                      {(() => { const Icon = FACET_ICON[sections[0].facet]; return <Icon style={{ marginInlineEnd: 4 }} />; })()}
+                      {SCOPE_META[sections[0].facet].label}
+                    </Tag>
+                  </Tooltip>
+                </div>
+              ) : <span />}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {hasInstanceTargets && selected.length > 1 && (
+                  <Segmented
+                    size="small"
+                    value={perInstance ? "each" : "same"}
+                    onChange={(v) => setPerInstance(v === "each")}
+                    options={[
+                      { value: "same", label: "One value for all" },
+                      { value: "each", label: "A value per instance" },
+                    ]}
+                  />
+                )}
                 <Segmented
                   size="small"
-                  value={perInstance ? "each" : "same"}
-                  onChange={(v) => setPerInstance(v === "each")}
+                  value={view}
+                  onChange={(v) => {
+                    const next = v as "form" | "json";
+                    // Leaving JSON carries what was typed there into the form,
+                    // so the two views are one document rather than two drafts.
+                    if (view === "json" && jsonText !== null && !applyJson(jsonText)) return;
+                    if (next === "json") setJsonText(null);
+                    setView(next);
+                  }}
                   options={[
-                    { value: "same", label: "One value for all" },
-                    { value: "each", label: "A value per instance" },
+                    { value: "form", label: (<span className="cf-group-viewopt"><FormOutlined />Form</span>) },
+                    { value: "json", label: (<span className="cf-group-viewopt"><CodeOutlined />JSON</span>) },
                   ]}
                 />
-              )}
-              <Segmented
-                size="small"
-                value={view}
-                onChange={(v) => {
-                  const next = v as "form" | "json";
-                  // Leaving JSON carries what was typed there into the form,
-                  // so the two views are one document rather than two drafts.
-                  if (view === "json" && jsonText !== null && !applyJson(jsonText)) return;
-                  if (next === "json") setJsonText(null);
-                  setView(next);
-                }}
-                options={[
-                  { value: "form", label: "Form" },
-                  { value: "json", label: "JSON" },
-                ]}
-              />
-            </Space>
+              </div>
+            </div>
           </div>
 
           {view === "json" ? (
@@ -647,15 +681,19 @@ export default function GroupEditorModal({
                 const Icon = FACET_ICON[sec.facet];
                 return (
                   <section key={sec.facet} className="cf-group-sec">
-                    <div className="cf-group-sec-head">
-                      <Tooltip title={SCOPE_META[sec.facet].explain}>
-                        <Tag color={SCOPE_META[sec.facet].color} style={{ marginInlineEnd: 0 }}>
-                          <Icon style={{ marginInlineEnd: 4 }} />
-                          {SCOPE_META[sec.facet].label}
-                        </Tag>
-                      </Tooltip>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>{sec.reach}</Typography.Text>
-                    </div>
+                    {/* Shown up in the header already when this is the only
+                        section - see cf-group-head above. */}
+                    {sections.length > 1 && (
+                      <div className="cf-group-sec-head">
+                        <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sec.reach}</Typography.Text>
+                        <Tooltip title={SCOPE_META[sec.facet].explain}>
+                          <Tag color={SCOPE_META[sec.facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                            <Icon style={{ marginInlineEnd: 4 }} />
+                            {SCOPE_META[sec.facet].label}
+                          </Tag>
+                        </Tooltip>
+                      </div>
+                    )}
                     {sec.cols.length === 0 ? (
                       <InlineNotice tone="neutral">Nothing selected to edit these on.</InlineNotice>
                     ) : sec.cols.length === 1 ? (
@@ -677,7 +715,10 @@ export default function GroupEditorModal({
                                 heading, the fields underneath get to be called
                                 what they are. */}
                             {fs.key && <div className="cf-group-set-head mono">{fs.key}</div>}
-                            <div className="cf-group-form">
+                            <div
+                              className="cf-group-form"
+                              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${fieldColWidth(fs.members)}px, 1fr))` }}
+                            >
                               {fs.members.map((m) => {
                                 const p = m.row.param;
                                 const rules = rulesFor(p);
@@ -695,7 +736,13 @@ export default function GroupEditorModal({
                                     className={"cf-group-field" + (isWide(p, shown) ? " is-wide" : "")}
                                   >
                                     <label className="cf-group-label">
-                                      <span className="mono">{m.trail[m.trail.length - 1]}</span>
+                                      {/* Sized to fit its column, not its name - a
+                                          route several levels deep still gets cut,
+                                          and the tooltip is the one place the whole
+                                          thing is guaranteed to be readable. */}
+                                      <Tooltip title={m.trail[m.trail.length - 1]}>
+                                        <span className="mono">{m.trail[m.trail.length - 1]}</span>
+                                      </Tooltip>
                                       {/* A red star, the way every form has
                                           said "required" for thirty years. The
                                           word spelled out beside a third of the

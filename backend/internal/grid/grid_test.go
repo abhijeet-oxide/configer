@@ -188,6 +188,21 @@ func TestCategoryTree(t *testing.T) {
 	}
 }
 
+// The tree follows the CATALOG, which follows the files. Sorted alphabetically
+// it disagreed with the grid beside it, scattered the settings of one block
+// among unrelated neighbours, and put net-info[10] before net-info[2].
+func TestCategoryTreeFollowsTheCatalogNotTheAlphabet(t *testing.T) {
+	g := Build(mkProject(t))
+	var got []string
+	for _, c := range g.Categories {
+		got = append(got, c.Title)
+	}
+	// Catalog order is Net/IP, Net/TLS, Adv - alphabetical would lead with Adv.
+	if len(got) != 2 || got[0] != "Net" || got[1] != "Adv" {
+		t.Errorf("categories = %v, want [Net Adv]", got)
+	}
+}
+
 // A pending edit must be re-validated against the STAGED value, not the value
 // on Git. Regression test for the bug where the grid showed a staged value but
 // reported validity computed from the pre-draft value (a valid edit rendered as

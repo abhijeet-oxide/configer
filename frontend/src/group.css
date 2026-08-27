@@ -1,0 +1,207 @@
+/* ----------------------------------------------- the group editor dialog
+
+   One branch of the parameter tree, on its own, as a form. Its shape is a
+   table on purpose: the settings run down and what each is being applied to
+   runs across, so "which of these am I changing, and where" is answered by
+   looking rather than by reading a label on every field.
+
+   Everything here reads a token. Nothing hardcodes a colour - the dialog has
+   to look like the rest of the product in both themes and under every preset,
+   and a hex typed in here is how that stops being true. */
+
+.cf-group-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+}
+.cf-group-head > div:first-child {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cf-group-notice {
+  margin-bottom: 8px;
+}
+
+/* The fields scroll; the header above and the count below do not. A dialog
+   whose "apply to" line scrolled off the top is a dialog you have to scroll
+   back up to trust. */
+.cf-group-body {
+  max-height: min(56vh, 560px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.cf-group-json {
+  height: min(56vh, 560px);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  overflow: hidden;
+}
+
+.cf-group-sec + .cf-group-sec {
+  margin-top: 18px;
+}
+.cf-group-sec-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+/* The form proper: as many COLUMNS as the dialog is wide, as many ROWS as the
+   branch has settings. auto-fill rather than auto-fit, so a group of two
+   settings sits in two columns at the left instead of stretching each field
+   across half the dialog - a form whose column count changes with its contents
+   never looks like the same form twice. */
+.cf-group-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px 20px;
+  align-items: start;
+}
+.cf-group-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* A list of entries or a paragraph of text has nowhere to go in a third of the
+   dialog, so it takes the whole row. */
+.cf-group-field.is-wide {
+  grid-column: 1 / -1;
+}
+.cf-group-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.cf-group-label > .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The type is part of the label but never competes with it: it answers "what
+   may I type here", which matters only once. */
+.cf-group-type {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* "required" is a fact about the field, not a warning about it. It sits beside
+   the type in the same quiet size - three fields of eight shouting in capitals
+   made the labels the second thing on the row. */
+.cf-group-req {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-review, var(--text-3));
+  white-space: nowrap;
+}
+/* A switch is half the height of an input, so on a row that mixes the two it
+   would float at the top of its cell. Nudge it onto the same line the text
+   fields start on. */
+.cf-group-field .ant-switch {
+  align-self: flex-start;
+  margin-top: 3px;
+}
+.cf-group-hint {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
+.cf-group-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+.cf-group-table th,
+.cf-group-table td {
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.cf-group-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  font-size: 11px;
+  font-weight: 650;
+  color: var(--text-2);
+  border-bottom: 1px solid var(--border-strong, var(--border));
+}
+/* The setting's own name is a row header, not a cell: it names the row for a
+   screen reader the same way the column head names the column. */
+.cf-group-table .cf-group-name {
+  width: 34%;
+  font-weight: 500;
+  color: var(--text);
+}
+.cf-group-table tbody tr:hover > * {
+  background: var(--surface-2);
+}
+.cf-group-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cf-group-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+/* On a phone the columns have nowhere to go, so the table scrolls sideways
+   inside the dialog rather than pushing the dialog off the screen. */
+@media (max-width: 720px) {
+  /* One column on a phone: two 240px columns do not fit, and a form that
+     squeezes them anyway is a form nobody can read. */
+  .cf-group-form {
+    grid-template-columns: 1fr;
+  }
+  .cf-group-body {
+    overflow-x: auto;
+  }
+  .cf-group-table {
+    min-width: 560px;
+  }
+}
+
+/* ------------------------------------------------ a group picked out in the grid
+
+   Clicking a group in the tree does not hide anything: it marks the rows that
+   belong to it, so the reader can see where in the estate they sit. A left
+   edge and the faintest wash - the same idea as a change request's status rail
+   - because these rows are being POINTED AT, not selected, and anything
+   heavier competes with the cells for attention. */
+.param-grid .ant-table-row.cf-group-hit > .ant-table-cell {
+  background: var(--brand-soft);
+}
+.param-grid .ant-table-row.cf-group-hit > .ant-table-cell:first-child {
+  box-shadow: inset 2px 0 0 var(--brand);
+}
+.param-grid .ant-table-row.cf-group-hit:hover > .ant-table-cell {
+  background: var(--brand-soft);
+  filter: brightness(1.02);
+}

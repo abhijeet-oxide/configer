@@ -124,6 +124,7 @@ import phUsersThree from "@iconify-icons/ph/users-three";
 import phSparkle from "@iconify-icons/ph/sparkle";
 import phGlobeHemisphereWest from "@iconify-icons/ph/globe-hemisphere-west";
 import phMapPin from "@iconify-icons/ph/map-pin";
+import phBuildings from "@iconify-icons/ph/buildings";
 
 export interface AppIconProps {
   className?: string;
@@ -177,9 +178,12 @@ export const TableOutlined = make("table", phTable);
 export const UnorderedListOutlined = make("list", phListDashes);
 export const InboxOutlined = make("inbox", phTray);
 export const GlobalOutlined = make("global", phGlobe);
-// Scope glyphs: a filled hemisphere globe for global (shared everywhere) and
-// a map pin for instance (a specific deployment target).
+// Scope glyphs, and they read as a sequence from widest to narrowest: a filled
+// hemisphere globe for global (shared everywhere), a row of buildings for a
+// site (a group of systems in one place), a map pin for instance (one specific
+// deployment target).
 export const ScopeGlobalOutlined = make("scope-global", phGlobeHemisphereWest);
+export const ScopeSiteOutlined = make("scope-site", phBuildings);
 export const ScopeInstanceOutlined = make("scope-instance", phMapPin);
 export const SettingOutlined = make("setting", phGear);
 export const SunOutlined = make("sun", phSun);

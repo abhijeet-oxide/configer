@@ -38,8 +38,12 @@ import (
 
 // configerFiles are the metadata files project.Load reads. Stamping them is
 // what tells a cached Project from a stale one.
+// regions.yaml is here because project.Load reads it too: it decides the order
+// every instance list comes out in, so a repository that adds a site to it must
+// see its estate re-order without waiting for something else to change.
 var configerFiles = []string{
 	"application.yaml", "parameters.yaml", "instances.yaml", "sources.yaml", "ignore.yaml",
+	"regions.yaml",
 }
 
 // stamp is a file's identity for caching purposes. A missing file stamps as

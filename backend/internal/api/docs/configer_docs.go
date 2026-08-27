@@ -3962,7 +3962,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Stage the same parameter's edit on several instances at once. ` + "`" + `edits` + "`" + ` is a list of ` + "`" + `{instance, value}` + "`" + `; ` + "`" + `action` + "`" + ` defaults to \"set\" (\"reset\"/\"exclude\" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in ` + "`" + `results` + "`" + ` while valid ones still stage. Nothing touches Git until the draft is submitted.",
+                "description": "Stage several value edits at once. ` + "`" + `edits` + "`" + ` is a list of ` + "`" + `{instance, value}` + "`" + `, and each entry may add its own ` + "`" + `paramId` + "`" + ` (defaulting to the top-level one) and ` + "`" + `scope: \"global\"` + "`" + ` (a shared-file edit that applies to every instance, ignoring ` + "`" + `instance` + "`" + `). ` + "`" + `action` + "`" + ` defaults to \"set\" (\"reset\"/\"exclude\" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in ` + "`" + `results` + "`" + ` while valid ones still stage. Nothing touches Git until the draft is submitted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -3972,7 +3972,7 @@ const docTemplateconfiger = `{
                 "tags": [
                     "Editing \u0026 change requests"
                 ],
-                "summary": "Stage a value edit across many instances",
+                "summary": "Stage value edits across parameters and instances",
                 "parameters": [
                     {
                         "description": "paramId, action, edits[]",
@@ -5276,10 +5276,16 @@ const docTemplateconfiger = `{
             "type": "string",
             "enum": [
                 "instance",
+                "site",
+                "zone",
+                "environment",
                 "global"
             ],
             "x-enum-varnames": [
                 "ScopeInstance",
+                "ScopeSite",
+                "ScopeZone",
+                "ScopeEnvironment",
                 "ScopeGlobal"
             ]
         },

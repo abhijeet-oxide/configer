@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/model"
+	"github.com/abhijeet-oxide/configer/backend/internal/region"
 	"gopkg.in/yaml.v3"
 )
 
@@ -52,6 +53,16 @@ func Load(root string) (*Project, error) {
 	if p.App.Name == "" {
 		p.App.Name = filepath.Base(root)
 	}
+	// The registry is a FILE, in whatever order it was written or appended to.
+	// Every view of an estate reads it geographically instead (see
+	// region.Rules.Sort), so the order is settled once here rather than by each
+	// screen deciding for itself - which is how the grid's columns and the
+	// instances table came to disagree about where a site was.
+	//
+	// This orders the in-memory view only. Nothing rewrites instances.yaml:
+	// writer edits that file surgically, so an entry stays where its author
+	// put it.
+	region.Load(root).Sort(p.Registry.Instances)
 	return p, nil
 }
 

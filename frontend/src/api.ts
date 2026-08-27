@@ -2,9 +2,14 @@
 import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 
 /** How widely an edit to a parameter lands: an instance-scoped parameter is
- *  bound inside each instance's own folder; a global one lives in a shared
- *  file every instance reads, so one edit applies to all. */
-export type Scope = "instance" | "global";
+ *  bound inside each instance's own folder; a global one lives in a shared file
+ *  every instance reads, so one edit applies to all; and a group scope
+ *  ("site" / "zone" / "environment") is shared by the instances of one group,
+ *  so an edit reaches that group and nothing else.
+ *
+ *  Read it through `effectiveScope` (scope.ts) rather than switching on it
+ *  here: the repository has the last word on what an edit really does. */
+export type Scope = "instance" | "site" | "zone" | "environment" | "global";
 
 /** Which precedence layer supplied a cell's value. */
 export type CellSource = "default" | "derived" | "base" | "instance" | "";
@@ -686,6 +691,26 @@ export interface Discovery {
 }
 
 /** A region the detection rules can put on a map. */
+/** One edit in a batch. `scope: "global"` stages a single shared-file edit and
+ *  ignores `instance`; anything else is an edit to one instance's own files. */
+export interface BatchEdit {
+  paramId: string;
+  instance?: string;
+  scope?: "global";
+  value?: unknown;
+}
+
+/** What a batch did, edit by edit. A failure is reported against the edit that
+ *  caused it and does not refuse the others: one bad value must not throw away
+ *  nineteen good ones. */
+export interface BatchResult {
+  ok: boolean;
+  staged: number;
+  results: { paramId?: string; instance: string; scope?: string; ok: boolean; error?: string }[];
+  pending: number;
+  changeId: number;
+}
+
 export interface RegionPlace {
   region: string;
   lat: number;
@@ -1870,8 +1895,14 @@ export const api = {
   // Fan a single parameter's edit across many instances in one request. Each
   // target reports success or a per-target error; valid targets still stage.
   bulkSetValue: (p: { paramId: string; edits: { instance: string; value?: unknown }[]; action?: CellAction }) =>
-    put<{ ok: boolean; staged: number; results: { instance: string; ok: boolean; error?: string }[]; pending: number; changeId: number }>(
-      rp("/values/bulk"), p),
+    put<BatchResult>(rp("/values/bulk"), p),
+  // Stage a whole FORM in one request: several parameters, several instances,
+  // and a global value among them, which is what a group of related settings
+  // actually looks like. One request is one draft lock and one read of the
+  // tree - saving a group of twenty settings as twenty requests is twenty
+  // chances to end up with half of it staged.
+  batchSetValues: (edits: BatchEdit[], action?: CellAction) =>
+    put<BatchResult>(rp("/values/bulk"), { edits, action }),
   // Seed one instance from another: stage every parameter whose value differs.
   copyInstanceFrom: (target: string, source: string) =>
     send<{ ok: boolean; staged: number; source: string; pending: number; changeId: number }>(

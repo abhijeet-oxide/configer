@@ -25,6 +25,7 @@ import {
   SearchOutlined,
   GlobalOutlined,
   ScopeGlobalOutlined,
+  ScopeSiteOutlined,
   ScopeInstanceOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
@@ -65,6 +66,9 @@ import {
   type Row,
 } from "../api";
 import { effectiveRules, fmtValue, typeLabel } from "../rules";
+import { effectiveScope, SCOPE_META, type ScopeFacet, type ScopeFilter } from "../scope";
+import { groupLeaf, inGroup } from "../paramtree";
+import GroupEditorModal from "./GroupEditorModal";
 import {
   CellView,
   EnumEditor,
@@ -72,8 +76,6 @@ import {
   NumberEditor,
   SourceBadge,
   StringEditor,
-  scopeColor,
-  scopeExplain,
 } from "./grid/cells";
 import ValueDiff from "./ui/ValueDiff";
 import { stageEdit, unstageEdit, type ValueEdit } from "./grid/optimistic";
@@ -936,6 +938,15 @@ const clampCol = (w: number) => Math.min(Math.max(Math.round(w), COL_MIN), COL_M
 // The metadata columns, their default widths, and their default order. Only
 // these three move: the parameter name is the row's identity and stays first
 // (it is the fixed-left column the rest scrolls under).
+// Widest reach to narrowest: the only order in which a scope column tells the
+// reader anything.
+const SCOPE_ORDER: Record<ScopeFacet, number> = { global: 0, site: 1, instance: 2 };
+const SCOPE_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
+  global: ScopeGlobalOutlined,
+  site: ScopeSiteOutlined,
+  instance: ScopeInstanceOutlined,
+};
+
 const META_DEFAULTS: Record<string, number> = { param: 240, type: 104, scope: 96, desc: 140 };
 const META_MOVABLE = ["type", "scope", "desc"];
 
@@ -1109,7 +1120,7 @@ function instanceHeader(
 }
 
 export default function ParameterGrid({ grid }: { grid: Grid }) {
-  const { categoryKey, setCategory, selectedParamId, selectParam, inspectParam, togglePin, unpinAll, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
+  const { categoryKey, setCategory, groupKey, setGroup, groupEdit, openGroupEditor, selectedParamId, selectParam, inspectParam, togglePin, unpinAll, selectedInstance, selectInstance, search, setSearch, filters, setFilters, prefs, setPrefs, jump, setJump, editorFocus, setEditorFocus, setFileFocus, setSection, panels, togglePanel } =
     useUI();
 
   // Clicking a parameter row opens the details panel on it; clicking the same
@@ -1188,6 +1199,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const [resizing, setResizing] = useState<{ name: string; width: number } | null>(null);
   // Draft-status filter pills (All / Changed / Added / Removed).
   const [pill, setPill] = useState<"all" | "changed" | "added" | "removed">("all");
+  // Which SCOPE of settings the grid is showing. "How widely does an edit
+  // land" is the first question anybody has in front of a fleet, and a row of
+  // identical values cannot answer it: twelve columns reading "example.com"
+  // look the same whether that is one shared line or twelve copies. So it is a
+  // dimension of the view, not a column somebody sorts by.
+  const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
   const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string; n?: number } | null>(null);
@@ -1388,6 +1405,31 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const isRemoved = (it: ChangeItem) =>
     it.action === "exclude" || it.action === "reset" || it.action === "remove-instance";
 
+  // Each row's scope facet, worked out once per catalog rather than per render:
+  // it reads bindings, and it is asked by the filter, the counts and the column
+  // on every keystroke.
+  const facetOf = useMemo(() => {
+    const m = new Map<string, ScopeFacet>();
+    for (const r of grid.rows) m.set(r.param.id, effectiveScope(r.param));
+    return m;
+  }, [grid.rows]);
+  const facet = useCallback(
+    (r: Row): ScopeFacet => facetOf.get(r.param.id) ?? effectiveScope(r.param),
+    [facetOf],
+  );
+
+  // The rows of the branch the reader clicked in the tree. Clicking a group
+  // POINTS at it - the rest of the estate stays on screen - so this is a set of
+  // ids to mark, never a filter. Computed off the catalog, not the filtered
+  // list, so marks do not appear and disappear as somebody types in the search
+  // box.
+  const groupHits = useMemo(() => {
+    const hits = new Set<string>();
+    if (!groupKey) return hits;
+    for (const r of grid.rows) if (inGroup(r.param, groupKey)) hits.add(r.param.id);
+    return hits;
+  }, [grid.rows, groupKey]);
+
   const q = search.trim().toLowerCase();
   // What the grid acts on: the search box stays instant to type in, but
   // filtering 800 rows, rebuilding every column and re-rendering the sheet on
@@ -1402,6 +1444,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       // categoryKey is a dotted NAME prefix selected in the tree.
       if (categoryKey && r.param.name !== categoryKey && !r.param.name.startsWith(categoryKey + "."))
         return false;
+      if (scopeFilter !== "all" && facet(r) !== scopeFilter) return false;
       if (q && !rowMatches(r, q, searchScope)) return false;
       if (lq && !rowMatches(r, lq, searchScope)) return false;
       // A parameter belongs to a file if ANY of its bindings lives there: a
@@ -1417,7 +1460,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
     );
     return filtered;
-  }, [grid.rows, categoryKey, q, lq, filters, fileFilter, searchScope, treeOrder]);
+  }, [grid.rows, categoryKey, q, lq, filters, fileFilter, searchScope, treeOrder, scopeFilter, facet]);
+
+  // How many settings sit at each scope. Counted over ALL rows for the same
+  // reason the file counts are: what the estate holds is a fact about the
+  // estate, and a number that moved while you were choosing from it would be
+  // describing the answer rather than the choice.
+  const scopeCounts = useMemo(() => {
+    const n: Record<ScopeFacet, number> = { global: 0, site: 0, instance: 0 };
+    for (const r of grid.rows) n[facetOf.get(r.param.id) ?? "instance"]++;
+    return n;
+  }, [grid.rows, facetOf]);
 
   // Every file the catalog writes to, with how many parameters each carries.
   // Counted over ALL rows, never the filtered ones: the counts are a property
@@ -1721,6 +1774,29 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const hlParam = searchScope === "all" || searchScope === "param" ? hlq : "";
   const hlDesc = searchScope === "all" || searchScope === "desc" ? hlq : "";
 
+  // Marking a branch is no use if it is eight hundred rows below the fold, so
+  // the grid scrolls to the first of its rows. No flash: the wash already says
+  // where they are, and a row that pulses as well reads as "this one" when the
+  // reader asked about all of them.
+  const scrolledTo = useRef<string | null>(null);
+  useEffect(() => {
+    if (!groupKey) {
+      scrolledTo.current = null;
+      return;
+    }
+    if (scrolledTo.current === groupKey) return;
+    const idx = rows.findIndex((r) => groupHits.has(r.param.id));
+    if (idx < 0) return; // not in the filtered list; nothing to scroll to
+    scrolledTo.current = groupKey;
+    const root = rootRef.current;
+    const holder = root?.querySelector<HTMLElement>(".ant-table-tbody-virtual-holder");
+    if (!holder) return;
+    const rowH =
+      root?.querySelector<HTMLElement>(".ant-table-tbody-virtual .ant-table-row")?.getBoundingClientRect()
+        .height || (prefs.density === "compact" ? 39 : 48);
+    holder.scrollTop = Math.max(idx * rowH - rowH, 0);
+  }, [groupKey, groupHits, rows, prefs.density]);
+
   // The pinned rows, in the order they were pinned. Taken from the FULL set
   // rather than the filtered one: a pin means "keep this in front of me", and a
   // search that happens not to match it should not take it away.
@@ -1732,7 +1808,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
 
   const columns: ColumnsType<Row> = useMemo(() => {
     const types = [...new Set(grid.rows.map((r) => r.param.type))].sort();
-    const scopes = [...new Set(grid.rows.map((r) => r.param.scope))].sort();
     const base: ColumnsType<Row> = [
       {
         title: metaHeader("Parameter", startResize("param", PARAM_W, true)),
@@ -1837,21 +1912,30 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         title: metaHeader("Scope", startResize("scope", SCOPE_W, true), dragProps("meta", "scope", reorderMeta)),
         key: "scope",
         width: SCOPE_W,
-        sorter: (a, b) => a.param.scope.localeCompare(b.param.scope),
-        filters: scopes.map((s) => ({ text: s, value: s })),
-        onFilter: (v, r) => r.param.scope === v,
-        render: (_v, r) => (
-          <Tooltip title={scopeExplain[r.param.scope]}>
-            <Tag color={scopeColor[r.param.scope]} style={{ marginInlineEnd: 0 }}>
-              {r.param.scope === "global" ? (
-                <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
-              ) : (
-                <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
-              )}
-              {r.param.scope}
-            </Tag>
-          </Tooltip>
-        ),
+        // Widest reach first: global, then a group, then one system. That is
+        // the order the column means something in - alphabetical would put
+        // "global" between "environment" and "instance" and say nothing.
+        sorter: (a, b) => SCOPE_ORDER[facet(a)] - SCOPE_ORDER[facet(b)],
+        filters: (["global", "site", "instance"] as ScopeFacet[])
+          .filter((f) => scopeCounts[f] > 0)
+          .map((f) => ({ text: SCOPE_META[f].label, value: f })),
+        onFilter: (v, r) => facet(r) === v,
+        render: (_v, r) => {
+          const f = facet(r);
+          const Icon = SCOPE_ICON[f];
+          return (
+            // The declared scope is named in full on hover when it says more
+            // than the facet does: "zone" and "environment" are both groups,
+            // and which grouping is meant is exactly what the reader wants
+            // before they change the value.
+            <Tooltip title={`${SCOPE_META[f].explain}${r.param.scope && r.param.scope !== f ? ` (declared "${r.param.scope}")` : ""}`}>
+              <Tag color={SCOPE_META[f].color} style={{ marginInlineEnd: 0 }}>
+                <Icon style={{ marginInlineEnd: 4 }} />
+                {SCOPE_META[f].label}
+              </Tag>
+            </Tooltip>
+          );
+        },
       });
     }
     if (prefs.showDescCol) {
@@ -2029,7 +2113,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     return [...base, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc, facet, scopeCounts]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
@@ -2049,15 +2133,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // reliable way back to everything.
   const total = grid.rows.length;
   const isFiltered =
-    !!categoryKey || pill !== "all" || !!q || !!lq || activeFilters > 0;
+    !!categoryKey || pill !== "all" || scopeFilter !== "all" || !!q || !!lq || activeFilters > 0;
   const clearAllFilters = useCallback(() => {
     setCategory(null);
+    setGroup(null);
     selectParam(null);
     setPill("all");
+    setScopeFilter("all");
     setLocalQ("");
     setSearch("");
     setFilters({ invalidOnly: false, overriddenOnly: false, hideNA: false, files: [] });
-  }, [setCategory, selectParam, setSearch, setFilters]);
+  }, [setCategory, setGroup, selectParam, setSearch, setFilters]);
 
   // Bring the active cell into view within the virtual body (vertical scrollTop
   // + horizontal wheel-delta, mirroring the jump-to-cell scroller above).
@@ -2174,9 +2260,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   const colsCustomized =
     colLayout.hidden.length > 0 || Object.keys(colLayout.widths).length > 0 || colLayout.order.length > 0;
   const showFilterSeg = w >= 820;
-  // The grouping control degrades to a select of the same three choices before
-  // the row filter does.
-  const showGroupSeg = w >= 1040;
+  // Scope outlives grouping, which outlives nothing. The order is what each
+  // control DOES: the row filter and the scope filter change which settings are
+  // on screen, and grouping only rearranges the ones already there - so when
+  // space runs out, the arrangement gives way before the contents do. Neither
+  // is ever hidden; both say the same thing in a select a third of the width.
+  const showScopeSeg = w >= 960;
+  const showGroupSeg = w >= 1180;
 
   // The empty state and the pinned shelf are whole subtrees; rebuilding them on
   // every render of this component rebuilt the sticky rows and the empty state
@@ -2195,6 +2285,24 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   actionLabel={canEdit ? "Add parameter" : undefined}
                   onAction={canEdit ? () => setAddOpen(true) : undefined}
                 />
+              ) : scopeFilter !== "all" && scopeCounts[scopeFilter] === 0 ? (
+                // An empty scope is a FACT about the estate, not a failed
+                // search: nothing here is declared that way. Saying so - and
+                // saying what would make it true - beats "nothing matches",
+                // which reads as though the filter were broken.
+                <EmptyState
+                  icon={<SearchOutlined />}
+                  title={`Nothing is ${SCOPE_META[scopeFilter].label.toLowerCase()} here`}
+                  hint={
+                    scopeFilter === "site"
+                      ? "No setting is declared as shared by a group of systems. Set a parameter's scope to site, zone or environment in its details panel to manage one that way."
+                      : scopeFilter === "global"
+                        ? "Every setting here lives in an instance's own files, so each one is changed per instance."
+                        : "Every setting here is shared, so there is nothing to change for one instance alone."
+                  }
+                  actionLabel="Show all scopes"
+                  onAction={() => setScopeFilter("all")}
+                />
               ) : (
                 <EmptyState
                   icon={<SearchOutlined />}
@@ -2204,7 +2312,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   onAction={clearAllFilters}
                 />
               ),
-          }), [total, canEdit, clearAllFilters]);
+          }), [total, canEdit, clearAllFilters, scopeFilter, scopeCounts]);
   const summary = useMemo(
     () => (pinnedRows.length
               ? () => (
@@ -2252,10 +2360,13 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       return (
         flashCls +
         (r.param.id === selectedParamId ? "row-selected " : "") +
+        // The branch the reader clicked in the tree: marked where it sits,
+        // with everything around it still on screen.
+        (groupHits.has(r.param.id) ? "cf-group-hit " : "") +
         (g ? `vgrp vgrp-c${g.color}${g.top ? " vgrp-top" : ""}${g.bot ? " vgrp-bot" : ""}` : "")
       ).trim();
     },
-    [groupMeta, flash, selectedParamId],
+    [groupMeta, flash, selectedParamId, groupHits],
   );
   const onRow = useCallback(
     (r: Row) => ({ onClick: () => toggleParamPanel(r.param.id), style: { cursor: "pointer" } }),
@@ -2370,6 +2481,67 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           onChange={(files) => setFilters({ files })}
         />
         <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
+        {/* Scope: how widely an edit to these settings lands. It is the first
+            thing anybody needs to know in front of a fleet and the one thing
+            the values themselves cannot say - a row of twelve identical
+            domains looks the same whether it is one shared line every system
+            reads or twelve copies that happen to agree. The counts are of the
+            whole estate, so picking one narrows the list without the numbers
+            moving underneath the choice. */}
+        <Tooltip title={scopeFilter === "all" ? "Show settings by how widely an edit to them lands" : SCOPE_META[scopeFilter].explain}>
+          {showScopeSeg ? (
+            <Segmented
+              size="small"
+              value={scopeFilter}
+              onChange={(v) => setScopeFilter(v as ScopeFilter)}
+              style={{ flexShrink: 0 }}
+              options={[
+                { value: "all", label: "All scopes" },
+                {
+                  value: "global",
+                  label: (
+                    <span>
+                      <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
+                      Global{scopeCounts.global ? ` (${scopeCounts.global})` : ""}
+                    </span>
+                  ),
+                },
+                {
+                  value: "site",
+                  label: (
+                    <span>
+                      <ScopeSiteOutlined style={{ marginInlineEnd: 4 }} />
+                      Site{scopeCounts.site ? ` (${scopeCounts.site})` : ""}
+                    </span>
+                  ),
+                },
+                {
+                  value: "instance",
+                  label: (
+                    <span>
+                      <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
+                      Instance{scopeCounts.instance ? ` (${scopeCounts.instance})` : ""}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+          ) : (
+            <Select
+              size="small"
+              value={scopeFilter}
+              onChange={(v) => setScopeFilter(v)}
+              style={{ width: 128, flexShrink: 0 }}
+              options={[
+                { value: "all", label: "All scopes" },
+                { value: "global", label: `Global (${scopeCounts.global})` },
+                { value: "site", label: `Site (${scopeCounts.site})` },
+                { value: "instance", label: `Instance (${scopeCounts.instance})` },
+              ]}
+            />
+          )}
+        </Tooltip>
+        <span style={{ width: 1, height: 20, background: "var(--border)", flexShrink: 0 }} />
         {/* Grouping. It answers two everyday questions - "which of these are
             set the same across the fleet, and which one is the odd one out"
             (by value) and "show me this the way the tree does" (by path) - so
@@ -2445,6 +2617,41 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               Clear filters
             </Button>
           </Tooltip>
+        )}
+        {/* The branch that is marked in the grid, and what else can be done
+            with it. Without this the marks are the only sign a group was ever
+            clicked, and "how do I get back to a plain list" has no answer on
+            screen. */}
+        {groupKey && groupHits.size > 0 && (
+          <Tag
+            closable
+            closeIcon={<CloseCircleFilled />}
+            onClose={() => setGroup(null)}
+            style={{ flexShrink: 0, marginInlineEnd: 0, display: "inline-flex", alignItems: "center", gap: 6 }}
+          >
+            <span className="mono">{groupLeaf(groupKey)}</span>
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{groupHits.size}</Typography.Text>
+            <Tooltip title="Edit every setting under this group as one form">
+              <Button
+                size="small"
+                type="link"
+                style={{ padding: 0, height: "auto" }}
+                onClick={() => openGroupEditor(groupKey)}
+              >
+                Edit
+              </Button>
+            </Tooltip>
+            <Tooltip title={categoryKey === groupKey ? "Show the rest of the estate again" : "Hide everything that is not in this group"}>
+              <Button
+                size="small"
+                type="link"
+                style={{ padding: 0, height: "auto" }}
+                onClick={() => setCategory(categoryKey === groupKey ? null : groupKey)}
+              >
+                {categoryKey === groupKey ? "Show all" : "Only this"}
+              </Button>
+            </Tooltip>
+          </Tag>
         )}
         {q && (
           <Tag
@@ -2635,6 +2842,12 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         />
       )}
       <AddParameterModal open={addOpen} onClose={() => setAddOpen(false)} grid={grid} />
+      {/* One branch of the parameter tree as a form. It lives here, not in the
+          tree, because everything it needs is the grid: the settings, their
+          committed values, and the instances they can be written to. */}
+      {groupEdit && (
+        <GroupEditorModal groupKey={groupEdit} grid={grid} onClose={() => openGroupEditor(null)} />
+      )}
       {bulkSet && (
         <BulkSetModal
           grid={grid}

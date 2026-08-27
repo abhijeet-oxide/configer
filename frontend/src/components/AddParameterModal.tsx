@@ -10,7 +10,10 @@ import { api, bindingsOf, type Grid } from "../api";
 // real file later from the details panel.
 const types = ["string", "integer", "number", "boolean", "enum", "ipv4", "cidr", "list"];
 const itemTypes = ["string", "integer", "number", "ipv4", "cidr"];
-const scopes = ["instance", "zone", "site", "environment", "global"];
+// Widest reach to narrowest, the same order the grid's scope filter and the
+// details panel use: the list is about how far an edit travels, and reading it
+// in that direction is what makes the choice mean something.
+const scopes = ["global", "site", "zone", "environment", "instance"];
 
 interface FormValues {
   name: string;

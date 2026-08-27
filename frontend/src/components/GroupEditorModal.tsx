@@ -101,6 +101,14 @@ function committedFor(row: Row, col: Col): { value: unknown; mixed: boolean } {
   return { value: mixed ? undefined : values[0], mixed };
 }
 
+/** Whether a field needs the whole row rather than a column of the form: a list
+ *  of entries and a paragraph of text are unreadable in a third of a dialog. */
+function isWide(param: Parameter, value: unknown): boolean {
+  if (param.type === "list") return true;
+  const s = value === null || value === undefined ? "" : String(value);
+  return s.length > 60;
+}
+
 /** The cell a column's lock state is read from: the first instance it writes
  *  to. A setting that is read-only or templated is that way in the files, so
  *  any of the column's instances answers the question. */
@@ -586,7 +594,68 @@ export default function GroupEditorModal({
                     </div>
                     {sec.cols.length === 0 ? (
                       <InlineNotice tone="neutral">Nothing selected to edit these on.</InlineNotice>
+                    ) : sec.cols.length === 1 ? (
+                      // ONE thing being edited, so this is a form and it is laid
+                      // out like one: label over field, flowing into as many
+                      // columns as the dialog is wide and as many rows as the
+                      // branch has settings. A table with a single value column
+                      // spends a third of the width on a header that says
+                      // "Setting" and gives every field a whole row of its own,
+                      // which turns eight settings into eight screens of
+                      // scrolling for a form that fits in one.
+                      <div className="cf-group-form">
+                        {sec.members.map((m) => {
+                          const p = m.row.param;
+                          const rules = rulesFor(p);
+                          const col = sec.cols[0];
+                          const key = `${p.id}|${col.key}`;
+                          const { value, mixed } = committedFor(m.row, col);
+                          const cell = cellFor(m.row, col);
+                          const shown = key in edits ? edits[key] : mixed ? undefined : value;
+                          return (
+                            <div
+                              key={p.id}
+                              // A list of entries and a paragraph of text have
+                              // nowhere to go in a third of the dialog, so they
+                              // take the whole row. Everything else is a
+                              // one-line value and sits happily beside its
+                              // neighbours.
+                              className={"cf-group-field" + (isWide(p, shown) ? " is-wide" : "")}
+                            >
+                              <label className="cf-group-label">
+                                <Tooltip title={p.name} placement="topLeft">
+                                  <span className="mono">{m.label}</span>
+                                </Tooltip>
+                                <span className="cf-group-type">{typeLabel(p.type, p.itemType)}</span>
+                                {p.validation?.required && <span className="cf-group-req">required</span>}
+                              </label>
+                              <GroupField
+                                param={p}
+                                rules={rules}
+                                value={shown}
+                                committed={value}
+                                placeholder={mixed ? `${col.instances.length} different values` : undefined}
+                                locked={lockedReason(p, cell, canEdit)}
+                                status={refused[key] ? "error" : ""}
+                                onChange={(v) => setValue(key, v)}
+                              />
+                              {refused[key] ? (
+                                <Typography.Text type="danger" className="cf-group-hint">
+                                  {refused[key]}
+                                </Typography.Text>
+                              ) : p.description ? (
+                                <span className="cf-group-hint">{p.description}</span>
+                              ) : null}
+                            </div>
+                          );
+                        })}
+                      </div>
                     ) : (
+                      // More than one thing being edited side by side. That is a
+                      // comparison, and a comparison is a table: the settings
+                      // run down, what they are being set on runs across, and
+                      // the odd one out is visible without reading a label on
+                      // every field.
                       <table className="cf-group-table">
                         <thead>
                           <tr>

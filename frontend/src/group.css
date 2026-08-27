@@ -57,6 +57,72 @@
   margin-bottom: 6px;
 }
 
+/* The form proper: as many COLUMNS as the dialog is wide, as many ROWS as the
+   branch has settings. auto-fill rather than auto-fit, so a group of two
+   settings sits in two columns at the left instead of stretching each field
+   across half the dialog - a form whose column count changes with its contents
+   never looks like the same form twice. */
+.cf-group-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px 20px;
+  align-items: start;
+}
+.cf-group-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+/* A list of entries or a paragraph of text has nowhere to go in a third of the
+   dialog, so it takes the whole row. */
+.cf-group-field.is-wide {
+  grid-column: 1 / -1;
+}
+.cf-group-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 0;
+}
+.cf-group-label > .mono {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The type is part of the label but never competes with it: it answers "what
+   may I type here", which matters only once. */
+.cf-group-type {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+/* "required" is a fact about the field, not a warning about it. It sits beside
+   the type in the same quiet size - three fields of eight shouting in capitals
+   made the labels the second thing on the row. */
+.cf-group-req {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--c-review, var(--text-3));
+  white-space: nowrap;
+}
+/* A switch is half the height of an input, so on a row that mixes the two it
+   would float at the top of its cell. Nudge it onto the same line the text
+   fields start on. */
+.cf-group-field .ant-switch {
+  align-self: flex-start;
+  margin-top: 3px;
+}
+.cf-group-hint {
+  font-size: 11px;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+
 .cf-group-table {
   width: 100%;
   border-collapse: separate;
@@ -109,6 +175,11 @@
 /* On a phone the columns have nowhere to go, so the table scrolls sideways
    inside the dialog rather than pushing the dialog off the screen. */
 @media (max-width: 720px) {
+  /* One column on a phone: two 240px columns do not fit, and a form that
+     squeezes them anyway is a form nobody can read. */
+  .cf-group-form {
+    grid-template-columns: 1fr;
+  }
   .cf-group-body {
     overflow-x: auto;
   }

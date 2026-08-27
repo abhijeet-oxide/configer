@@ -27,7 +27,7 @@ import { effectiveScope, groupField, SCOPE_META, type ScopeFacet } from "../scop
 import { groupLeaf, groupTrail, trailLabel } from "../paramtree";
 import { useIdentity } from "../identity";
 import { useUI } from "../store";
-import { ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined } from "../icons";
+import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined } from "../icons";
 import EnvTag from "./EnvTag";
 import { EmptyState, InlineNotice } from "./ui";
 import GroupField, { fieldError, lockedReason } from "./group/GroupField";
@@ -99,6 +99,59 @@ function committedFor(row: Row, col: Col): { value: unknown; mixed: boolean } {
   const first = fmtValue(values[0]);
   const mixed = values.some((v) => fmtValue(v) !== first);
   return { value: mixed ? undefined : values[0], mixed };
+}
+
+/** What a field IS, behind one glyph: its full name, what may be typed into it,
+ *  and what it does. Spelled out beside every field it was a paragraph per row
+ *  and the labels stopped being findable among them.
+ *
+ *  The glyph is wrapped in a span of its own because the shared icon components
+ *  (icons.tsx `make`) render a fixed set of props and drop the rest - and a
+ *  tooltip works by cloning its child with mouse handlers, which those icons
+ *  would throw away. The span keeps them. */
+function FieldInfo({ param }: { param: Parameter }) {
+  return (
+    <Tooltip
+      placement="topLeft"
+      title={
+        <span>
+          <span className="mono">{param.name}</span>
+          <br />
+          {typeLabel(param.type, param.itemType)}
+          {param.description ? ` - ${param.description}` : ""}
+        </span>
+      }
+    >
+      <span className="cf-group-info" tabIndex={0} role="note" aria-label={`About ${param.name}`}>
+        <InfoCircleOutlined />
+      </span>
+    </Tooltip>
+  );
+}
+
+/** The form's fieldsets: the members grouped by the route ABOVE their own leaf,
+ *  in the order they arrived.
+ *
+ *  A branch several levels deep otherwise repeats its route in every label -
+ *  "capacity-profile-config[1].amr-wb", "capacity-profile-config[1].g711" - each
+ *  truncated to make room for the one word that differs, which is the word that
+ *  got cut. Said once as a heading, the fields underneath can be called what
+ *  they are. A group whose members are all direct children has ONE fieldset with
+ *  no heading, because there is no route to say. */
+function fieldsets(members: Member[]): { key: string; members: Member[] }[] {
+  const out: { key: string; members: Member[] }[] = [];
+  const at = new Map<string, number>();
+  for (const m of members) {
+    const key = m.trail.slice(0, -1).join(".");
+    const idx = at.get(key);
+    if (idx === undefined) {
+      at.set(key, out.length);
+      out.push({ key, members: [m] });
+    } else {
+      out[idx].members.push(m);
+    }
+  }
+  return out;
 }
 
 /** Whether a field needs the whole row rather than a column of the form: a list
@@ -488,12 +541,23 @@ export default function GroupEditorModal({
                   size="small"
                   showSearch
                   allowClear
-                  maxTagCount={4}
-                  style={{ flex: "1 1 320px", minWidth: 220 }}
+                  maxTagCount="responsive"
+                  style={{ flex: "1 1 260px", minWidth: 0 }}
                   placeholder="Pick the instances to edit"
                   value={targets}
                   onChange={(v) => setTargets(v)}
                   filterOption={(q, o) => (o?.searchText ?? "").includes(q.toLowerCase())}
+                  // A SELECTED instance is a chip in a one-line box, so it wears
+                  // its name and nothing else. The environment and the region
+                  // belong in the menu, where there is room to read them and
+                  // where they are what the choice is made on; rendering them
+                  // inside the chip made a long site name run out of the box and
+                  // took the "All 6" beside it off the edge of the dialog.
+                  tagRender={({ value, onClose }) => (
+                    <Tag closable onClose={onClose} className="mono cf-group-target" style={{ marginInlineEnd: 4 }}>
+                      {String(value)}
+                    </Tag>
+                  )}
                   options={instances.map((i) => ({
                     value: i.name,
                     searchText: `${i.name} ${i.environment ?? ""} ${i.region ?? ""} ${i.site ?? ""}`.toLowerCase(),
@@ -603,53 +667,69 @@ export default function GroupEditorModal({
                       // "Setting" and gives every field a whole row of its own,
                       // which turns eight settings into eight screens of
                       // scrolling for a form that fits in one.
-                      <div className="cf-group-form">
-                        {sec.members.map((m) => {
-                          const p = m.row.param;
-                          const rules = rulesFor(p);
-                          const col = sec.cols[0];
-                          const key = `${p.id}|${col.key}`;
-                          const { value, mixed } = committedFor(m.row, col);
-                          const cell = cellFor(m.row, col);
-                          const shown = key in edits ? edits[key] : mixed ? undefined : value;
-                          return (
-                            <div
-                              key={p.id}
-                              // A list of entries and a paragraph of text have
-                              // nowhere to go in a third of the dialog, so they
-                              // take the whole row. Everything else is a
-                              // one-line value and sits happily beside its
-                              // neighbours.
-                              className={"cf-group-field" + (isWide(p, shown) ? " is-wide" : "")}
-                            >
-                              <label className="cf-group-label">
-                                <Tooltip title={p.name} placement="topLeft">
-                                  <span className="mono">{m.label}</span>
-                                </Tooltip>
-                                <span className="cf-group-type">{typeLabel(p.type, p.itemType)}</span>
-                                {p.validation?.required && <span className="cf-group-req">required</span>}
-                              </label>
-                              <GroupField
-                                param={p}
-                                rules={rules}
-                                value={shown}
-                                committed={value}
-                                placeholder={mixed ? `${col.instances.length} different values` : undefined}
-                                locked={lockedReason(p, cell, canEdit)}
-                                status={refused[key] ? "error" : ""}
-                                onChange={(v) => setValue(key, v)}
-                              />
-                              {refused[key] ? (
-                                <Typography.Text type="danger" className="cf-group-hint">
-                                  {refused[key]}
-                                </Typography.Text>
-                              ) : p.description ? (
-                                <span className="cf-group-hint">{p.description}</span>
-                              ) : null}
+                      <>
+                        {fieldsets(sec.members).map((fs) => (
+                          <div key={fs.key} className="cf-group-set">
+                            {/* A branch several levels deep repeats its route in
+                                every single label - "capacity-profile-config[1]"
+                                eight times over, each one truncated to make room
+                                for the one word that differs. Said ONCE as a
+                                heading, the fields underneath get to be called
+                                what they are. */}
+                            {fs.key && <div className="cf-group-set-head mono">{fs.key}</div>}
+                            <div className="cf-group-form">
+                              {fs.members.map((m) => {
+                                const p = m.row.param;
+                                const rules = rulesFor(p);
+                                const col = sec.cols[0];
+                                const key = `${p.id}|${col.key}`;
+                                const { value, mixed } = committedFor(m.row, col);
+                                const cell = cellFor(m.row, col);
+                                const shown = key in edits ? edits[key] : mixed ? undefined : value;
+                                return (
+                                  <div
+                                    key={p.id}
+                                    // A list of entries and a paragraph of text
+                                    // have nowhere to go in a third of the
+                                    // dialog, so they take the whole row.
+                                    className={"cf-group-field" + (isWide(p, shown) ? " is-wide" : "")}
+                                  >
+                                    <label className="cf-group-label">
+                                      <span className="mono">{m.trail[m.trail.length - 1]}</span>
+                                      {/* A red star, the way every form has
+                                          said "required" for thirty years. The
+                                          word spelled out beside a third of the
+                                          labels was three times the reading for
+                                          the same fact. */}
+                                      {p.validation?.required && (
+                                        <Tooltip title="Required">
+                                          <span className="cf-group-req" aria-label="required">*</span>
+                                        </Tooltip>
+                                      )}
+                                      <FieldInfo param={p} />
+                                    </label>
+                                    <GroupField
+                                      param={p}
+                                      rules={rules}
+                                      value={shown}
+                                      committed={value}
+                                      placeholder={mixed ? `${col.instances.length} different values` : undefined}
+                                      locked={lockedReason(p, cell, canEdit)}
+                                      status={refused[key] ? "error" : ""}
+                                      onChange={(v) => setValue(key, v)}
+                                    />
+                                    {refused[key] && (
+                                      <Typography.Text type="danger" className="cf-group-hint">
+                                        {refused[key]}
+                                      </Typography.Text>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
-                          );
-                        })}
-                      </div>
+                          </div>
+                        ))}
+                      </>
                     ) : (
                       // More than one thing being edited side by side. That is a
                       // comparison, and a comparison is a table: the settings
@@ -675,12 +755,17 @@ export default function GroupEditorModal({
                             return (
                               <tr key={p.id}>
                                 <th className="cf-group-name" scope="row">
-                                  <Tooltip title={p.name} placement="right">
+                                  {/* Same label vocabulary as the form: the
+                                      name, a star when it is required, and one
+                                      glyph carrying the rest. */}
+                                  <span className="cf-group-label">
                                     <span className="mono">{m.label}</span>
-                                  </Tooltip>
-                                  <span className="cf-group-sub">
-                                    {typeLabel(p.type, p.itemType)}
-                                    {p.description ? ` · ${p.description}` : ""}
+                                    {p.validation?.required && (
+                                      <Tooltip title="Required">
+                                        <span className="cf-group-req" aria-label="required">*</span>
+                                      </Tooltip>
+                                    )}
+                                    <FieldInfo param={p} />
                                   </span>
                                 </th>
                                 {sec.cols.map((col) => {
@@ -718,13 +803,17 @@ export default function GroupEditorModal({
               })}
             </div>
           )}
-          <div className="cf-group-foot">
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              {pending.length === 0
-                ? "Nothing changed yet. Saving stages the whole form as one entry in your draft."
-                : `${pending.length} field${pending.length === 1 ? "" : "s"} changed${invalid.length ? `, ${invalid.length} not valid yet` : ""}.`}
-            </Typography.Text>
-          </div>
+          {/* Silent until something has actually changed. "Nothing changed
+              yet" is a line of text that says only that the reader has not
+              done anything, which they know. */}
+          {pending.length > 0 && (
+            <div className="cf-group-foot">
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                {pending.length} field{pending.length === 1 ? "" : "s"} changed
+                {invalid.length ? `, ${invalid.length} not valid yet` : ""}.
+              </Typography.Text>
+            </div>
+          )}
         </>
       )}
     </Modal>

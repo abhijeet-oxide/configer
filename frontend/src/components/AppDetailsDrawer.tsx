@@ -60,7 +60,7 @@ export default function AppDetailsDrawer({
   const enabled = open && !!repo && !repo.error && !repo.needsSetup;
   const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, enabled });
   const appQ = useQuery({ queryKey: ["application", repo?.id], queryFn: api.application, enabled });
-  const gridQ = useQuery({ queryKey: ["grid"], queryFn: api.grid, enabled });
+  const gridQ = useQuery({ queryKey: ["grid"], queryFn: () => api.grid(), enabled });
 
   const remove = useMutation({
     mutationFn: () => api.removeRepo(repo!.id),

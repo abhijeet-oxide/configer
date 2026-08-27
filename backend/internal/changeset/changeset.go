@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/abhijeet-oxide/configer/backend/internal/change"
 	"github.com/abhijeet-oxide/configer/backend/internal/crstore"
@@ -858,7 +859,16 @@ func (s *Service) Approve(ctx context.Context, id int, approver string) (*change
 
 // Reject closes an under-review CR (closing the PR when one exists) or
 // discards a draft entirely. The rejecter and their reason (when given) are
-// recorded as a review comment so "why was this turned down" survives.
+// recorded as a review comment AND as fields on the change, so "why was this
+// turned down" survives in a form a view can draw rather than only prose.
+//
+// It deliberately LEAVES THE BRANCH STANDING, which is the one thing publish
+// does differently. A published change's branch holds nothing the trunk does
+// not; a rejected one holds the only copy of work somebody was asked to fix.
+// Deleting it turned "needs another look" into "start again from memory", and
+// the author came back to a parameter grid showing the original value with no
+// trace that the attempt had ever been made. The branch is cheap; the work is
+// not.
 func (s *Service) Reject(ctx context.Context, id int, rejecter, reason string) (*change.ChangeRequest, error) {
 	cr, err := s.Store.Get(id)
 	if err != nil {
@@ -879,7 +889,7 @@ func (s *Service) Reject(ctx context.Context, id int, rejecter, reason string) (
 			return nil, upstream("close the pull request", err)
 		}
 	}
-	s.Backend.DeleteBranch(ctx, cr.Branch)
+	now := time.Now().UTC()
 	return s.Store.Update(id, func(c *change.ChangeRequest) error {
 		if rejecter != "" {
 			body := "Rejected this change."
@@ -888,6 +898,7 @@ func (s *Service) Reject(ctx context.Context, id int, rejecter, reason string) (
 			}
 			c.AddComment(rejecter, body)
 		}
+		c.RejectedBy, c.RejectedAt, c.RejectReason = rejecter, &now, reason
 		c.State = change.StateRejected
 		return nil
 	})

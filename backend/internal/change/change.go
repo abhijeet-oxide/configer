@@ -195,9 +195,25 @@ type ChangeRequest struct {
 	// objections. It is a FIELD rather than a sentence in the description
 	// because an approver must not have to read prose to find out that the data
 	// model refused this change and somebody sent it anyway.
-	Override  *Override `json:"override,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Override *Override `json:"override,omitempty"`
+	// RejectedBy / RejectedAt / RejectReason record the refusal ITSELF, not
+	// only a sentence in the discussion. "Why was this turned down" is the
+	// first question the author asks when they come back to fix it, and
+	// reading it out of the comment thread meant every reader - and every
+	// view that wanted to draw the refusal - had to guess which comment was
+	// the decision. A rejected change is the one somebody is most likely to
+	// pick up again, so its ending is a field.
+	RejectedBy   string     `json:"rejectedBy,omitempty"`
+	RejectedAt   *time.Time `json:"rejectedAt,omitempty"`
+	RejectReason string     `json:"rejectReason,omitempty"`
+	// ResumedFrom is the change request whose work this one carries: set when
+	// a rejected change is reopened into a fresh draft. It is what keeps a
+	// second attempt attached to the first, so a parameter's story reads
+	// "proposed, rejected, proposed again, published" rather than as two
+	// unrelated edits that happen to touch the same value.
+	ResumedFrom int       `json:"resumedFrom,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 // Override is what the gate objected to, kept with the change.

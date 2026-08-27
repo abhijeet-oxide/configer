@@ -205,6 +205,7 @@ export default function App() {
     editorFocus,
     setEditorFocus,
     mode,
+    viewChangeId,
   } = useUI();
   const { toggleMode } = useTheme();
   const { token } = antdTheme.useToken();
@@ -261,9 +262,14 @@ export default function App() {
     staleTime: 30_000,
   });
   const uninitialized = projectQ.data?.initialized === false;
+  // The grid can be read THROUGH a change request rather than as the workspace
+  // (see ChangeViewPicker), so the change's id is part of the cache key: a
+  // cached grid from main must never be handed back as CR-7's values, nor the
+  // other way round. With nothing picked this is exactly the read it always
+  // was, which is what keeps every other reader of ["grid"] correct.
   const gridQ = useQuery({
-    queryKey: ["grid"],
-    queryFn: api.grid,
+    queryKey: viewChangeId ? ["grid", "change", viewChangeId] : ["grid"],
+    queryFn: () => api.grid(viewChangeId ?? undefined),
     // Only load the grid once we positively know the repository carries a
     // Configer application. Before projectInfo resolves, `uninitialized` is
     // still false, so gating on `!uninitialized` would fire a grid load against

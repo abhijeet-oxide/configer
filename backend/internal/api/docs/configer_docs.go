@@ -806,6 +806,67 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/changes/{id}/reopen": {
+            "post": {
+                "security": [
+                    {
+                        "CookieSession": []
+                    }
+                ],
+                "description": "Copies a REJECTED change request's edits into the caller's draft so they can be corrected and submitted again. Items the repository has since settled (the value is already what the change asked for) are dropped and reported as ` + "`" + `settled` + "`" + `; the rest are re-baselined against the current files. When the caller has no draft yet, the change's title, description, category and reference are carried over too, and the new draft records ` + "`" + `resumedFrom` + "`" + `.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Editing \u0026 change requests"
+                ],
+                "summary": "Resume a rejected change",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Change request id",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid id",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "404": {
+                        "description": "No such change request",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "409": {
+                        "description": "Only a rejected change can be resumed",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    },
+                    "422": {
+                        "description": "Nothing left to resume",
+                        "schema": {
+                            "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/api/changes/{id}/revert": {
             "post": {
                 "security": [
@@ -2393,7 +2454,7 @@ const docTemplateconfiger = `{
         },
         "/api/parameters/{id}/history": {
             "get": {
-                "description": "Resolves one parameter's effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus .configer), so the inspector can show how it changed over time and who last changed it (` + "`" + `lastChange` + "`" + `). ` + "`" + `?instance=` + "`" + ` resolves for that instance; otherwise the catalog default is used.",
+                "description": "One parameter's whole life. ` + "`" + `entries` + "`" + ` resolves its effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus ` + "`" + `.configer` + "`" + `), each naming the change request it came out of; ` + "`" + `lastChange` + "`" + ` is the commit that set the value it has now. ` + "`" + `changes` + "`" + ` is every change request that touched this parameter IN ANY STATE - including drafts and rejected ones, which never reach the trunk and so appear in no commit log - with the commit it forked from, where it landed, and why it was refused. ` + "`" + `?instance=` + "`" + ` resolves for that instance; otherwise the catalog default is used.",
                 "produces": [
                     "application/json"
                 ],
@@ -4572,6 +4633,10 @@ const docTemplateconfiger = `{
                 "id": {
                     "type": "string"
                 },
+                "preExisting": {
+                    "description": "PreExisting counts the objections the committed files already carried.\nThey are shown and they do not block: this change did not cause them.",
+                    "type": "integer"
+                },
                 "problems": {
                     "type": "array",
                     "items": {
@@ -4831,6 +4896,14 @@ const docTemplateconfiger = `{
                     "description": "Number is the CR number people say out loud - \"CR-7\" - and it is handed\nout at SUBMIT, not at creation. A draft is not a change request yet: it\nis one person's uncommitted work, and half of them are discarded. Numbering\nthem burned a number per abandoned draft, so the numbers a team actually\nreviewed arrived full of holes and \"CR-3\" was the first change anybody\nhad ever seen. Zero means \"not submitted yet\".",
                     "type": "integer"
                 },
+                "override": {
+                    "description": "Override is set when this change was submitted over the validation gate's\nobjections. It is a FIELD rather than a sentence in the description\nbecause an approver must not have to read prose to find out that the data\nmodel refused this change and somebody sent it anyway.",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/change.Override"
+                        }
+                    ]
+                },
                 "prNumber": {
                     "type": "integer"
                 },
@@ -4840,6 +4913,20 @@ const docTemplateconfiger = `{
                 "reference": {
                     "description": "Reference links this CR to an external ticket/CR id (e.g. JIRA-123).",
                     "type": "string"
+                },
+                "rejectReason": {
+                    "type": "string"
+                },
+                "rejectedAt": {
+                    "type": "string"
+                },
+                "rejectedBy": {
+                    "description": "RejectedBy / RejectedAt / RejectReason record the refusal ITSELF, not\nonly a sentence in the discussion. \"Why was this turned down\" is the\nfirst question the author asks when they come back to fix it, and\nreading it out of the comment thread meant every reader - and every\nview that wanted to draw the refusal - had to guess which comment was\nthe decision. A rejected change is the one somebody is most likely to\npick up again, so its ending is a field.",
+                    "type": "string"
+                },
+                "resumedFrom": {
+                    "description": "ResumedFrom is the change request whose work this one carries: set when\na rejected change is reopened into a fresh draft. It is what keeps a\nsecond attempt attached to the first, so a parameter's story reads\n\"proposed, rejected, proposed again, published\" rather than as two\nunrelated edits that happen to touch the same value.",
+                    "type": "integer"
                 },
                 "reviewers": {
                     "description": "Reviewers are the logins asked to look at this CR. Display and routing\nonly: approval rights stay role-based (approver merges).",
@@ -4907,6 +4994,72 @@ const docTemplateconfiger = `{
                     "type": "string"
                 },
                 "updatedAt": {
+                    "type": "string"
+                }
+            }
+        },
+        "change.Objection": {
+            "type": "object",
+            "properties": {
+                "because": {
+                    "type": "string"
+                },
+                "detail": {
+                    "type": "string"
+                },
+                "file": {
+                    "type": "string"
+                },
+                "instance": {
+                    "type": "string"
+                },
+                "message": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                },
+                "rule": {
+                    "type": "string"
+                },
+                "schema": {
+                    "type": "string"
+                }
+            }
+        },
+        "change.Override": {
+            "type": "object",
+            "properties": {
+                "at": {
+                    "type": "string"
+                },
+                "by": {
+                    "type": "string"
+                },
+                "engine": {
+                    "type": "string"
+                },
+                "errors": {
+                    "type": "integer"
+                },
+                "objections": {
+                    "description": "Objections are the findings themselves, so the review shows what was\nwaved through rather than only how many.",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/change.Objection"
+                    }
+                },
+                "problems": {
+                    "type": "integer"
+                },
+                "reason": {
+                    "type": "string"
+                },
+                "summary": {
+                    "description": "Summary is the refusal in one sentence, in the reader's terms.",
                     "type": "string"
                 }
             }
@@ -5431,6 +5584,13 @@ const docTemplateconfiger = `{
         "yangvalidate.Finding": {
             "type": "object",
             "properties": {
+                "because": {
+                    "description": "Because states the RULE that was applied, in plain words - what the model\nrequires here and where it says so. Fix says what to do about it. Both\nare written for somebody who has never heard of YANG, a schema or a\nleafref, because that is who is holding the change.",
+                    "type": "string"
+                },
+                "causedBy": {
+                    "type": "string"
+                },
                 "detail": {
                     "type": "string"
                 },
@@ -5440,6 +5600,9 @@ const docTemplateconfiger = `{
                 },
                 "file": {
                     "description": "File is repo-relative; Path is the route inside it, in the same spelling\nthe editor uses to open a value.",
+                    "type": "string"
+                },
+                "fix": {
                     "type": "string"
                 },
                 "instance": {
@@ -5457,12 +5620,20 @@ const docTemplateconfiger = `{
                     "description": "Name is the human name of the setting, for a message a non-engineer can\nread.",
                     "type": "string"
                 },
+                "origin": {
+                    "description": "Origin says whether this landed on something the change edited or\nsomewhere else; CausedBy names the edit responsible when it is the latter.",
+                    "type": "string"
+                },
                 "paramId": {
                     "description": "ParamID is the catalog parameter this lands on, when one can be\nidentified. It is what lets the UI offer \"open this setting\" rather than\n\"here is a path in a file\".",
                     "type": "string"
                 },
                 "path": {
                     "type": "string"
+                },
+                "preExisting": {
+                    "description": "PreExisting marks a finding the COMMITTED file already had. It is\nreported and does not block: a repository whose current state already\nbreaks a rule is not this change's fault, and a gate that refuses a\ncorrect edit because of somebody else's backlog is a gate people learn to\noverride.",
+                    "type": "boolean"
                 },
                 "rule": {
                     "type": "string"
@@ -5472,6 +5643,10 @@ const docTemplateconfiger = `{
                     "type": "string"
                 },
                 "severity": {
+                    "type": "string"
+                },
+                "value": {
+                    "description": "Value is the value that was refused, kept as data so a caller can work out\nwhich edit produced it.",
                     "type": "string"
                 }
             }

@@ -490,6 +490,15 @@ export interface ChangeRequest {
   override?: ChangeOverride;
   /** blast radius, present on change detail and list responses */
   impact?: ChangeImpact;
+  /** the refusal itself, recorded as fields rather than left to be found in
+   *  the discussion. "Why was this turned down" is the first thing the author
+   *  needs when they come back to fix it. */
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectReason?: string;
+  /** the rejected change whose work this one carries, set when somebody
+   *  resumed it. What keeps a second attempt attached to the first. */
+  resumedFrom?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -543,6 +552,26 @@ export interface Grid {
   instances: Instance[];
   rows: Row[];
   categories: CategoryNode[];
+  /** set when this grid was read THROUGH a change request rather than as the
+   *  workspace: the values are that change's proposal laid over the published
+   *  files. It is how a rejected change's values can be looked at at all -
+   *  they reach no branch the trunk knows about and no commit. */
+  viewing?: ViewingChange;
+}
+
+/** The change a grid read is being shown through: enough to name it in the bar
+ *  above the grid without a second request. */
+export interface ViewingChange {
+  id: number;
+  number?: number;
+  title: string;
+  state: ChangeState;
+  author: string;
+  branch?: string;
+  category?: string;
+  items: number;
+  /** anything that is not the reader's own draft: looking, not editing */
+  readOnly: boolean;
 }
 
 export interface DiffChange {
@@ -585,6 +614,59 @@ export interface ParamHistoryEntry extends Commit {
   value: string;
   present: boolean;
   changed: boolean;
+  /** the reviewed decision this commit came out of. A sha says WHEN; the
+   *  change request says which change and who signed it off, which is the
+   *  question somebody reading a surprising value actually has. */
+  changeId?: number;
+  changeNumber?: number;
+  changeTitle?: string;
+}
+
+/** What one change request proposed to do to this parameter, in the grid's own
+ *  terms: a cell moving from one value to another. */
+export interface ParamEdit {
+  instance?: string;
+  scope?: string;
+  action: string;
+  old: string;
+  new: string;
+}
+
+/** One change request's episode in a parameter's life: what it proposed, where
+ *  it forked from, how it ended, and who decided.
+ *
+ *  A rejected change never reaches the trunk, so it appears in no commit log.
+ *  This is the only place its proposal survives - which is why the parameter's
+ *  history is drawn from these and not from `entries` alone. */
+export interface ParamChange {
+  id: number;
+  number?: number;
+  title: string;
+  state: ChangeState;
+  description?: string;
+  category?: string;
+  reference?: string;
+  author: string;
+  branch?: string;
+  targetBranch?: string;
+  baseSha?: string;
+  commitSha?: string;
+  mergeSha?: string;
+  prNumber?: number;
+  prUrl?: string;
+  reviewers?: string[];
+  approvals?: number;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectReason?: string;
+  /** the rejected change this one carries the work of, and the change that
+   *  later picked THIS one's work up. Together they turn a rejection from a
+   *  dead end into a step the reader can follow. */
+  resumedFrom?: number;
+  resumedInto?: number;
+  createdAt: string;
+  updatedAt: string;
+  edits: ParamEdit[];
 }
 
 // --- Configuration timeline: how the configuration evolved, as snapshots ---
@@ -1784,7 +1866,16 @@ export const api = {
     ignoreFiles?: string[];
     author?: string;
   }) => send<{ ok: boolean; parameters: number; instances: number; skipped?: string[] }>("POST", rp("/init"), p),
-  grid: () => snapGet<Grid>(rp("/grid"), snapKey("grid")),
+  // The grid, by default the published values with the reader's own draft laid
+  // over them. `change` reads it THROUGH another change request instead - the
+  // only way to see what a rejected proposal asked for, since nothing it
+  // proposed ever reached the trunk. A change-scoped read is deliberately not
+  // snapshotted for offline: it is a look at somebody's proposal, not the
+  // workspace this device is meant to come back to.
+  grid: (change?: number) =>
+    change
+      ? get<Grid>(rp(`/grid?change=${change}`))
+      : snapGet<Grid>(rp("/grid"), snapKey("grid")),
   // locate returns the 1-based line where a value lives in a real file, so the
   // Details pane can open the file and jump straight to it (0 when unknown).
   locate: (file: string, path: string, format?: string) => {
@@ -1810,6 +1901,9 @@ export const api = {
       parameter: string;
       instance: string;
       entries: ParamHistoryEntry[] | null;
+      /** every change request that touched this parameter, in ANY state.
+       *  Drafts and rejections live only here: they reach no commit. */
+      changes: ParamChange[] | null;
       lastChange: ParamHistoryEntry | null;
       supported: boolean;
     }>(rp(`/parameters/${encodeURIComponent(id)}/history${suffix}`));
@@ -2053,7 +2147,20 @@ export const api = {
     get<ValidationRun>(rp(`/changes/${id}/validation${runId ? `?run=${encodeURIComponent(runId)}` : ""}`)),
   approveChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/approve`), { author: "Local user" }),
   mergeChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/merge`)),
-  rejectChange: (id: number) => send<ChangeRequest>("POST", rp(`/changes/${id}/reject`)),
+  // The reason travels with the rejection. It is recorded as a FIELD on the
+  // change, not only as a comment, because it is the first thing the author
+  // asks for when they come back to fix the work.
+  rejectChange: (id: number, reason?: string) =>
+    send<ChangeRequest>("POST", rp(`/changes/${id}/reject`), reason ? { reason } : undefined),
+  // Resume a rejected change: its edits come back into the caller's draft,
+  // re-baselined against the repository as it stands now, so it can be
+  // corrected and sent again. Edits the repository has since settled are
+  // reported rather than carried, so a resumed change is never all no-ops.
+  reopenChange: (id: number) =>
+    send<{ ok: boolean; changeId: number; draft: ChangeRequest; carried: number; settled: number; from: string }>(
+      "POST",
+      rp(`/changes/${id}/reopen`),
+    ),
   revertChange: (id: number) =>
     send<{ draftId: number; applied: number; skipped: string[]; source: number }>(
       "POST",

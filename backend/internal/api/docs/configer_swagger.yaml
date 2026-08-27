@@ -406,6 +406,11 @@ definitions:
         type: string
       id:
         type: string
+      preExisting:
+        description: |-
+          PreExisting counts the objections the committed files already carried.
+          They are shown and they do not block: this change did not cause them.
+        type: integer
       problems:
         items:
           $ref: '#/definitions/changeset.ItemProblem'
@@ -625,6 +630,14 @@ definitions:
           reviewed arrived full of holes and "CR-3" was the first change anybody
           had ever seen. Zero means "not submitted yet".
         type: integer
+      override:
+        allOf:
+        - $ref: '#/definitions/change.Override'
+        description: |-
+          Override is set when this change was submitted over the validation gate's
+          objections. It is a FIELD rather than a sentence in the description
+          because an approver must not have to read prose to find out that the data
+          model refused this change and somebody sent it anyway.
       prNumber:
         type: integer
       prUrl:
@@ -632,6 +645,28 @@ definitions:
       reference:
         description: Reference links this CR to an external ticket/CR id (e.g. JIRA-123).
         type: string
+      rejectReason:
+        type: string
+      rejectedAt:
+        type: string
+      rejectedBy:
+        description: |-
+          RejectedBy / RejectedAt / RejectReason record the refusal ITSELF, not
+          only a sentence in the discussion. "Why was this turned down" is the
+          first question the author asks when they come back to fix it, and
+          reading it out of the comment thread meant every reader - and every
+          view that wanted to draw the refusal - had to guess which comment was
+          the decision. A rejected change is the one somebody is most likely to
+          pick up again, so its ending is a field.
+        type: string
+      resumedFrom:
+        description: |-
+          ResumedFrom is the change request whose work this one carries: set when
+          a rejected change is reopened into a fresh draft. It is what keeps a
+          second attempt attached to the first, so a parameter's story reads
+          "proposed, rejected, proposed again, published" rather than as two
+          unrelated edits that happen to touch the same value.
+        type: integer
       reviewers:
         description: |-
           Reviewers are the logins asked to look at this CR. Display and routing
@@ -680,6 +715,52 @@ definitions:
           every instance that does not override it at a more specific level.
         type: string
       updatedAt:
+        type: string
+    type: object
+  change.Objection:
+    properties:
+      because:
+        type: string
+      detail:
+        type: string
+      file:
+        type: string
+      instance:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+      path:
+        type: string
+      rule:
+        type: string
+      schema:
+        type: string
+    type: object
+  change.Override:
+    properties:
+      at:
+        type: string
+      by:
+        type: string
+      engine:
+        type: string
+      errors:
+        type: integer
+      objections:
+        description: |-
+          Objections are the findings themselves, so the review shows what was
+          waved through rather than only how many.
+        items:
+          $ref: '#/definitions/change.Objection'
+        type: array
+      problems:
+        type: integer
+      reason:
+        type: string
+      summary:
+        description: Summary is the refusal in one sentence, in the reader's terms.
         type: string
     type: object
   change.State:
@@ -1151,6 +1232,15 @@ definitions:
     type: object
   yangvalidate.Finding:
     properties:
+      because:
+        description: |-
+          Because states the RULE that was applied, in plain words - what the model
+          requires here and where it says so. Fix says what to do about it. Both
+          are written for somebody who has never heard of YANG, a schema or a
+          leafref, because that is who is holding the change.
+        type: string
+      causedBy:
+        type: string
       detail:
         type: string
       engine:
@@ -1162,6 +1252,8 @@ definitions:
         description: |-
           File is repo-relative; Path is the route inside it, in the same spelling
           the editor uses to open a value.
+        type: string
+      fix:
         type: string
       instance:
         description: |-
@@ -1181,6 +1273,11 @@ definitions:
           Name is the human name of the setting, for a message a non-engineer can
           read.
         type: string
+      origin:
+        description: |-
+          Origin says whether this landed on something the change edited or
+          somewhere else; CausedBy names the edit responsible when it is the latter.
+        type: string
       paramId:
         description: |-
           ParamID is the catalog parameter this lands on, when one can be
@@ -1189,6 +1286,14 @@ definitions:
         type: string
       path:
         type: string
+      preExisting:
+        description: |-
+          PreExisting marks a finding the COMMITTED file already had. It is
+          reported and does not block: a repository whose current state already
+          breaks a rule is not this change's fault, and a gate that refuses a
+          correct edit because of somebody else's backlog is a gate people learn to
+          override.
+        type: boolean
       rule:
         type: string
       schema:
@@ -1197,6 +1302,11 @@ definitions:
           is never presented as the product's opinion.
         type: string
       severity:
+        type: string
+      value:
+        description: |-
+          Value is the value that was refused, kept as data so a caller can work out
+          which edit produced it.
         type: string
     type: object
 info:
@@ -1705,6 +1815,50 @@ paths:
       security:
       - CookieSession: []
       summary: Reject a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reopen:
+    post:
+      consumes:
+      - application/json
+      description: Copies a REJECTED change request's edits into the caller's draft
+        so they can be corrected and submitted again. Items the repository has since
+        settled (the value is already what the change asked for) are dropped and reported
+        as `settled`; the rest are re-baselined against the current files. When the
+        caller has no draft yet, the change's title, description, category and reference
+        are carried over too, and the new draft records `resumedFrom`.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No such change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Only a rejected change can be resumed
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Nothing left to resume
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - CookieSession: []
+      summary: Resume a rejected change
       tags:
       - Editing & change requests
   /api/changes/{id}/revert:
@@ -2832,11 +2986,15 @@ paths:
       - Grid & parameters
   /api/parameters/{id}/history:
     get:
-      description: Resolves one parameter's effective value at each recent commit
-        that touched the cell's backing files (the parameter's bindings plus .configer),
-        so the inspector can show how it changed over time and who last changed it
-        (`lastChange`). `?instance=` resolves for that instance; otherwise the catalog
-        default is used.
+      description: One parameter's whole life. `entries` resolves its effective value
+        at each recent commit that touched the cell's backing files (the parameter's
+        bindings plus `.configer`), each naming the change request it came out of;
+        `lastChange` is the commit that set the value it has now. `changes` is every
+        change request that touched this parameter IN ANY STATE - including drafts
+        and rejected ones, which never reach the trunk and so appear in no commit
+        log - with the commit it forked from, where it landed, and why it was refused.
+        `?instance=` resolves for that instance; otherwise the catalog default is
+        used.
       parameters:
       - description: Parameter id (slug)
         in: path

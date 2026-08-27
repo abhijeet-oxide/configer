@@ -1169,7 +1169,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // Add parameter, no Find & Replace. The service enforces the same rule, but
   // being refused after typing a value is not a permission model - it is a
   // trap, so the UI never offers what it knows will be refused.
-  const { canEdit } = useIdentity();
+  //
+  // The same rule covers reading the grid THROUGH somebody else's change (see
+  // ChangeViewPicker): those values are a proposal, not the workspace, and an
+  // edit made on top of them would silently land in the reader's OWN draft
+  // while the screen showed a different change's numbers - the worst possible
+  // combination of "it looked like it worked" and "it went somewhere else".
+  const { canEdit: mayEdit } = useIdentity();
+  const canEdit = mayEdit && !grid.viewing?.readOnly;
   const qc = useQueryClient();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });

@@ -109,7 +109,7 @@ export default function FilesView() {
   const setCompare = useUI((s) => s.setCompare);
   const fileFocus = useUI((s) => s.fileFocus);
   const projectQ = useRepoQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
-  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid() });
   // Default to "All instances": every instance's files at once, so a linked
   // parameter always resolves to its file (a single-instance filter would hide
   // files that instance does not own and leave the link highlighting nothing).

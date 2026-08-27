@@ -3352,6 +3352,32 @@ mark.vd-ins {
    the path it travelled. Colour is spent only on branch identity and status,
    and red is spent only on rejection - so a type never has to be decoded from a
    hue, and nothing on screen competes with the cards. */
+/* Status: where a change is in its life. Four hues, no more - a fifth would
+   start colliding with the lanes, and every state already carries a line style
+   and a mark of its own so colour is never doing the job alone. Approved shares
+   "published" green deliberately: it has the same destiny, and its long dash is
+   what says it has not got there yet. Red is only ever "this did not happen".
+
+   These live on :root rather than on .cf because they stopped being one
+   picture's private palette the moment a second surface had to say the same
+   states: the strip above the parameters page, the fork marks in a parameter's
+   own history, the picker's rows. A token scoped to .cf resolves to NOTHING
+   outside it, and a path stroked with nothing is simply not drawn - so a
+   rejected change would have quietly lost its red on every screen but one. The
+   LANE colours stay with .cf: a lane is a fact about that picture. */
+:root {
+  --cf-draft: #64748b;
+  --cf-review: #d97706;
+  --cf-merged: #15803d;
+  --cf-reject: #dc2626;
+}
+:root[data-theme="dark"],
+.dark {
+  --cf-draft: #94a3b8;
+  --cf-review: #fbbf24;
+  --cf-merged: #4ade80;
+  --cf-reject: #f87171;
+}
 .cf {
   border: 1px solid var(--border);
   border-radius: var(--r-lg);
@@ -3364,16 +3390,6 @@ mark.vd-ins {
   --cf-lane-2: #7c3aed;
   --cf-lane-3: #0891b2;
   --cf-lane-4: #c2410c;
-  /* Status: where a change is in its life. Four hues, no more - a fifth would
-     start colliding with the lanes, and every state already carries a line
-     style and a mark of its own so colour is never doing the job alone.
-     Approved shares "published" green deliberately: it has the same destiny,
-     and its long dash is what says it has not got there yet. Red is only ever
-     "this did not happen". */
-  --cf-draft: #64748b;
-  --cf-review: #d97706;
-  --cf-merged: #15803d;
-  --cf-reject: #dc2626;
   --cf-node: #334155;
   --cf-axis: var(--border);
 }
@@ -3384,10 +3400,6 @@ mark.vd-ins {
   --cf-lane-2: #c084fc;
   --cf-lane-3: #22d3ee;
   --cf-lane-4: #fb923c;
-  --cf-draft: #94a3b8;
-  --cf-review: #fbbf24;
-  --cf-merged: #4ade80;
-  --cf-reject: #f87171;
   --cf-node: #cbd5e1;
 }
 
@@ -4775,4 +4787,310 @@ mark.vd-ins {
 @media (max-width: 480px) {
   .cf-finding { grid-template-columns: auto 1fr; }
   .cf-finding > .ant-btn { grid-column: 2; justify-self: start; padding-left: 0; }
+}
+
+/* ---------------------------------------------------------------------------
+   Reading the parameters page through a change (ChangeViewPicker).
+
+   A strip above the grid, the height of a control, saying whose values are on
+   screen. It has to be quiet when it says "Main" - which is almost always - and
+   unmistakable the moment it does not, because everything below it is then a
+   proposal rather than the repository. Hence the accent rail on the left in the
+   change's own status colour and the tinted ground: the same two signals the
+   Change Flow's cards use, so a rejected thing looks the same wherever it is
+   drawn. Colour is never alone here either - the state is also spelled out in
+   a pill, in words. */
+.cf-viewbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  row-gap: 6px;
+  flex-wrap: wrap;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.cf-viewbar.is-viewing {
+  border-left: 3px solid var(--st, var(--border));
+  background: color-mix(in srgb, var(--st, var(--border)) 5%, var(--surface));
+}
+.cf-viewbar-spacer {
+  flex: 1;
+  min-width: 0;
+}
+.cf-viewbar-note,
+.cf-viewbar-reason {
+  font-size: 11.5px;
+  color: var(--text-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The reviewer's own words outrank the standing explanation beside them: it is
+   the sentence the author came back for. */
+.cf-viewbar-reason {
+  color: var(--text-1);
+  font-style: italic;
+  max-width: 44ch;
+}
+.cf-viewbar-by {
+  font-style: normal;
+  color: var(--text-2);
+}
+.cf-viewbtn-label {
+  display: inline-block;
+  max-width: 210px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+/* One row of the picker: what it is called, then what state it is in and whose
+   it is, then the branch where there is one. Three lines, in the order the
+   question is asked. */
+.cf-viewpick-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-width: 340px;
+  padding: 2px 0;
+}
+.cf-viewpick-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-viewpick-ref {
+  font-weight: 600;
+  color: var(--st, var(--text-1));
+  flex-shrink: 0;
+}
+.cf-viewpick-sub {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-viewpick-branch {
+  font-size: 10.5px;
+  color: var(--text-3, var(--text-2));
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  /* On a phone the strip keeps the control and the state; the standing
+     explanation is the first thing to go, because the pill already says it. */
+  .cf-viewbar-note { display: none; }
+  .cf-viewbar-reason { max-width: 100%; }
+}
+
+/* ---------------------------------------------------------------------------
+   A parameter's own history (ParameterFlow): the trunk running down the left,
+   and every proposal that is not on it hanging off to the right.
+
+   It is the Change Flow's vocabulary at a tenth of the size, so the rules are
+   the same and are not restated: colour means status only, and a state is said
+   in a colour AND a line style AND a node shape. The line styles below are the
+   same four the big picture uses; they are repeated here rather than shared
+   with `.cf-flow` because these are strokes on a 30px rail and the sweeping
+   dashes of a full-width path read as almost solid at this length. */
+.pf-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.pf {
+  display: flex;
+  flex-direction: column;
+}
+.pf-row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+.pf-rail {
+  flex: 0 0 auto;
+  height: auto;
+  align-self: stretch;
+  overflow: visible;
+}
+.pf-trunk {
+  stroke: var(--cf-node, var(--text-2));
+  stroke-width: 1.6;
+  opacity: 0.35;
+}
+.pf-fork {
+  stroke-width: 1.8;
+  stroke-linecap: round;
+}
+/* The second signal. Solid never appears here: everything on a fork is, by
+   definition, something that has not landed. */
+.pf-rail.is-draft .pf-fork { stroke-dasharray: 2 3; }
+.pf-rail.is-review .pf-fork { stroke-dasharray: 0.5 3; }
+.pf-rail.is-approved .pf-fork { stroke-dasharray: 6 3; }
+.pf-rail.is-rejected .pf-fork { stroke-dasharray: 4 2.5; }
+
+.pf-body {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+/* A commit that did not move this value is still worth having on screen - it
+   is what makes "changed" mean something - but it must not compete. */
+.pf-quiet {
+  opacity: 0.55;
+}
+.pf-values {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.pf-new {
+  font-size: 12.5px;
+}
+.pf-new.is-set {
+  font-weight: 600;
+}
+.pf-old {
+  font-size: 12px;
+  color: var(--text-2);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  opacity: 0.75;
+}
+.pf-arrow {
+  color: var(--text-2);
+  font-size: 11px;
+}
+/* The arrow points at the new value, so it wraps WITH it. On its own it ended
+   a line, leaving a row that read "was telco-prod-use1 arrow" and then, on the
+   next line, an unexplained value. */
+.pf-to {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pf-scope,
+.pf-tag {
+  font-size: 10px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  line-height: 15px;
+}
+.pf-tag.is-ok {
+  color: var(--cf-merged);
+  border-color: color-mix(in srgb, var(--cf-merged) 40%, transparent);
+}
+.pf-crline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 2px;
+}
+/* The CR number is the handle everybody uses to talk about a change, so it is
+   the thing you can click. It is a button rather than a link because it moves
+   you inside the app; it is styled as neither, because a row of blue
+   underlines down the side of a panel is louder than the values. */
+.pf-crlink {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--brand);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.pf-crlink:hover {
+  text-decoration: underline;
+}
+.pf-crtitle {
+  font-size: 11.5px;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* A change's TYPE is a shape and a word, never a colour - so it is drawn as a
+   monochrome mark with its name on hover, exactly as the big picture does it. */
+.pf-type {
+  color: var(--text-2);
+  font-size: 11px;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.pf-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-2);
+  margin-top: 2px;
+}
+.pf-state {
+  color: var(--st, var(--text-2));
+  font-weight: 600;
+}
+.pf-branch {
+  opacity: 0.75;
+}
+.pf-fork-body.is-draft { --st: var(--cf-draft); }
+.pf-fork-body.is-review { --st: var(--cf-review); }
+.pf-fork-body.is-approved { --st: var(--cf-merged); }
+.pf-fork-body.is-merged { --st: var(--cf-merged); }
+.pf-fork-body.is-rejected { --st: var(--cf-reject); }
+/* A proposal off the trunk sits on a faint wash of its own status colour, with
+   a rail down its left edge - the same two signals the Change Flow's cards
+   carry, so a rejected thing looks like a rejected thing wherever it is drawn.
+   Never a solid block: the title stays the loudest thing on it. */
+.pf-fork-body {
+  border-left: 2px solid var(--st, var(--border));
+  background: color-mix(in srgb, var(--st, var(--border)) 5%, transparent);
+  border-radius: 0 var(--r-md, 6px) var(--r-md, 6px) 0;
+  padding: 4px 8px 6px;
+}
+/* The reviewer's own words. This is the line the reader opened the tab for, so
+   it is set in the body colour rather than the muted one. */
+.pf-reason {
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-1);
+}
+.pf-by {
+  font-style: normal;
+  color: var(--text-2);
+}
+.pf-lineage {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.pf-resume {
+  margin-top: 6px;
 }

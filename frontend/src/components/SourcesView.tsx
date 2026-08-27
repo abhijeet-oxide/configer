@@ -43,7 +43,7 @@ export default function SourcesView() {
 
   const sourcesQ = useRepoQuery({ queryKey: ["sources"], queryFn: api.sources });
   const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, retry: false });
-  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid(), staleTime: 10_000 });
 
   const params = useMemo(() => (gridQ.data?.rows ?? []).map((r) => ({ id: r.param.id, name: r.param.name })), [gridQ.data]);
   const instances = useMemo(() => (gridQ.data?.instances ?? []).map((i) => ({ name: i.name })), [gridQ.data]);

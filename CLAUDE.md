@@ -170,6 +170,24 @@ never gate on the score, which exists only for the trend line.
   draft has no number and no branch until it is sent for review - the UI says
   "Your draft" and "branch created when you submit" rather than inventing
   either. Undoing a draft's last item deletes the draft (`dropEmptyDraft`).
+- **A REJECTION is not a deletion.** Publishing deletes the change's branch
+  (the trunk carries its work now); rejecting deliberately does NOT, because a
+  rejected change holds the only copy of work somebody was asked to fix. The
+  refusal is recorded as FIELDS on the change (`rejectedBy`/`rejectedAt`/
+  `rejectReason`), not only as a review comment, so "why was this turned down"
+  is something a view can draw rather than prose somebody has to find.
+  `POST /api/changes/{id}/reopen` is the way back in: it copies a rejected
+  change's items into the caller's draft, RE-BASELINED against the repository as
+  it stands now (a change can sit rejected for a week while the trunk moves),
+  drops the items the world has since settled rather than resubmitting no-ops,
+  and records `resumedFrom` so the second attempt stays attached to the first.
+- **The grid can be read THROUGH a change** (`GET /api/grid?change=<id>`,
+  `ChangeViewPicker`, `?change=` in the URL). It applies that change's ITEMS to
+  the CURRENT files - not its branch's tree - which answers "what would this do
+  if it landed now" and keeps working when the branch is gone. Anything that is
+  not the caller's own draft comes back `viewing.readOnly`, and the grid drops
+  every edit affordance: an edit staged on top of somebody else's proposal would
+  land in the reader's OWN draft while the screen showed different numbers.
 - `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
   file beside the repo (no dependencies, right for one person); `SQLStore`
   keeps a row per change request in the platform database (a write touches one
@@ -192,6 +210,16 @@ never gate on the score, which exists only for the trend line.
 - `grid` - builds the matrix (+ `ApplyDraft` previews pending items,
   including draft instance columns).
 - `validate` - types, preset rules, regex/min-max; gates every write (422).
+- **A parameter's history is a LIFECYCLE, not a log**
+  (`GET /api/parameters/{id}/history`, `api/paramgraph.go`, `ParameterFlow`).
+  The commit log answers "when did this change" and can never answer "why":
+  a rejected change reaches no commit, so no log will ever mention it however
+  far back it reads. So the response carries BOTH - `entries` (the trunk, each
+  commit naming the change request it came out of) and `changes` (every CR that
+  touched this parameter in any state, with the commit it forked from, where it
+  landed, why it was refused, and its `resumedFrom`/`resumedInto` lineage). The
+  UI draws them as one picture: the trunk down the left, every proposal that is
+  not on it hanging off to the right. This is the product's git blame.
 
 **External sources (plugin-based):**
 - `plugin` - THE extension registry. `IngestParser` (file -> candidates),
@@ -351,6 +379,17 @@ the per-application `colLayout` is the only state that answers "which
 instances", however the user chose it. The gear beside it holds the editor's
 SETTINGS (columns, density, row filters); a "⋮" said "more actions", which
 those are not.
+
+**The status vocabulary lives in `changestatus.tsx`**, not inside any one
+picture. Where a change is in its life (draft / review / approved / merged /
+rejected), the colour it is said in, and the monochrome type marks are ONE
+module, because two surfaces now draw those states - the application-level
+Change Flow and a parameter's own history at a tenth of the size - and two
+hand-made copies of "rejected is red, broken-dashed and crossed" is how one of
+them ends up saying amber next year. The `--cf-draft/review/merged/reject`
+tokens sit on `:root` for the same reason: a token scoped to `.cf` resolves to
+NOTHING outside it, and a path stroked with nothing is simply not drawn. Lane
+colours stay with `.cf` - a lane is a fact about that one picture.
 
 **The history picture (`ChangeGraph`)** draws the LIFECYCLE OF A CHANGE, not
 git internals - the reader is an approver, not a platform engineer. Time runs

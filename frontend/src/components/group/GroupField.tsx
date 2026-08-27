@@ -1,4 +1,5 @@
 import { Input, InputNumber, Select, Switch, Tooltip, Typography } from "antd";
+import { memo } from "react";
 import { LockOutlined } from "../../icons";
 import type { Parameter } from "../../api";
 import {
@@ -72,7 +73,7 @@ export function fieldError(
  *  grid's own threshold. */
 const BIG = 60;
 
-export default function GroupField({
+function GroupField({
   param,
   rules,
   value,
@@ -80,7 +81,8 @@ export default function GroupField({
   placeholder,
   locked,
   status,
-  onChange,
+  fieldKey,
+  onChange: onChangeRaw,
 }: {
   param: Parameter;
   rules: Rules;
@@ -94,8 +96,14 @@ export default function GroupField({
   locked: string | null;
   /** "error" paints the field when the server refused this exact edit */
   status?: "" | "error";
-  onChange: (v: unknown) => void;
+  /** which field this is, handed back on change. It travels in the callback so
+   *  the parent can keep ONE stable handler for every field - an arrow created
+   *  per field per render defeats the memo below, and on a form of hundreds
+   *  that is every field re-rendering on every keystroke. */
+  fieldKey: string;
+  onChange: (key: string, v: unknown) => void;
 }) {
+  const onChange = (v: unknown) => onChangeRaw(fieldKey, v);
   const err = fieldError(param, rules, value, committed);
   const common = {
     size: "small" as const,
@@ -200,3 +208,8 @@ export default function GroupField({
     </div>
   );
 }
+
+// Only the field whose value moved re-renders. Every prop above is either a
+// primitive or an object the parent memoizes, so the comparison is honest -
+// which is what lets a form of seven hundred fields stay typeable.
+export default memo(GroupField);

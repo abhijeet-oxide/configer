@@ -1,5 +1,9 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
-import { DeleteOutlined, EditOutlined, LinkOutlined, CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined, UndoOutlined } from "../icons";
+import {
+  DeleteOutlined, EditOutlined, HistoryOutlined, InfoCircleOutlined, LinkOutlined,
+  CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined,
+  ShieldOutlined, UndoOutlined,
+} from "../icons";
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -9,6 +13,7 @@ import { effectiveScope, SCOPE_META } from "../scope";
 import { useUI } from "../store";
 import ValueDiff from "./ui/ValueDiff";
 import RuleEditor from "./RuleEditor";
+import { ParamHistorySkeleton } from "./Skeletons";
 import PathPicker from "./PathPicker";
 import { relTime } from "./DashboardView";
 import { useIdentity } from "../identity";
@@ -491,7 +496,26 @@ function CellValue({ cell }: { cell?: Cell }) {
 
 // OVERVIEW tab: the value story for this parameter across every instance, plus
 // the set/invalid summary that used to sit in the panel footer.
-function OverviewTab({ row, grid }: { row: GridRow; grid: Grid }) {
+// OVERVIEW: what this parameter IS and what it is set to, in that order.
+//
+// These were two tabs, "Overview" and "Details", and nobody could say in
+// advance which drawer an answer had been filed in - they are the same
+// question asked twice. Editing opens the metadata form in place of the
+// read-only half; the values stay on screen underneath, because "what am I
+// changing this from" is the first thing anyone wants while they type.
+function OverviewTab({
+  row,
+  grid,
+  categories,
+  editing,
+  setEditing,
+}: {
+  row: GridRow;
+  grid: Grid;
+  categories: string[];
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+}) {
   const values = grid.instances.map((i) => ({ inst: i, cell: row.cells[i.name] }));
   const set = values.filter((v) => v.cell?.set).length;
   const invalid = values.filter((v) => v.cell && !v.cell.valid).length;
@@ -511,6 +535,14 @@ function OverviewTab({ row, grid }: { row: GridRow; grid: Grid }) {
           </div>
         ))}
       </div>
+      <Divider style={{ margin: "16px 0 12px" }} />
+      <DetailsTab
+        p={row.param}
+        categories={categories}
+        grid={grid}
+        editing={editing}
+        setEditing={setEditing}
+      />
     </div>
   );
 }
@@ -631,7 +663,10 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
   const lastChange = q.data?.lastChange ?? null;
   const supported = q.data?.supported ?? true;
 
-  if (q.isLoading) return <Typography.Text type="secondary" style={{ fontSize: 12 }}>Loading history…</Typography.Text>;
+  // A git log over a repository's whole life is not instant, and a line of text
+  // saying so is the least a panel can do while it waits. The skeleton is
+  // shaped like the timeline that arrives, so nothing jumps when it does.
+  if (q.isLoading) return <ParamHistorySkeleton />;
   if (!supported)
     return (
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
@@ -720,11 +755,29 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   // panel has to open on the answer rather than on its front page.
   const { selectedParamId, selectParam, inspectorTab, setInspectorTab } = useUI();
   const row = grid.rows.find((r) => r.param.id === selectedParamId);
-  const tab = inspectorTab;
+  // Where the six old tabs went. Anything that deep-links into the inspector -
+  // the grid's row menu, a saved link - names the answer it wants, and the
+  // answer moved rather than vanished.
+  const MOVED: Record<string, string> = {
+    details: "overview",
+    validation: "rules",
+    depends: "rules",
+    versions: "history",
+  };
+  const tab = MOVED[inspectorTab] ?? inspectorTab;
   const setTab = setInspectorTab;
   const [editing, setEditing] = useState(false);
   // A newly selected parameter always opens read-only.
   useEffect(() => setEditing(false), [selectedParamId]);
+
+  // The one way into the metadata form, wherever it is asked for. The rules
+  // editor shows the default but does not own it: a field edited from two forms
+  // is a field two forms can disagree about, so the second one sends the reader
+  // to the first rather than leaving them at a value they cannot change.
+  const editDefault = () => {
+    setTab("overview");
+    setEditing(true);
+  };
 
   const retire = useMutation({
     mutationFn: (id: string) => api.deleteParameter(id, "Local user"),
@@ -759,10 +812,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
             size="small"
             type={editing ? "primary" : "text"}
             icon={<EditOutlined />}
-            onClick={() => {
-              setTab("details");
-              setEditing(true);
-            }}
+            onClick={editDefault}
             style={{ flexShrink: 0 }}
           >
             Edit
@@ -770,17 +820,73 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
         )}
       </div>
       <Divider style={{ margin: "10px 0" }} />
+      {/* Three tabs, and each one is a QUESTION rather than a filing cabinet
+          drawer. Six tabs meant the reader had to know which drawer an answer
+          had been filed in before they could ask - and "Overview" against
+          "Details" is not a distinction anybody could make in advance.
+
+            Overview - what is this, and what is it set to right now
+            Rules    - what may it be, and what else does it touch
+            History  - when did it arrive, when does it go, what happened to it
+
+          The old keys still resolve (the grid's row menu links straight to an
+          answer), so a link to "details" or "validation" lands where that
+          content moved rather than on a tab that no longer exists. */}
       <Tabs
         size="small"
         activeKey={tab}
         onChange={setTab}
         items={[
-          { key: "overview", label: "Overview", children: <OverviewTab row={row} grid={grid} /> },
-          { key: "details", label: "Details", children: <DetailsTab p={p} categories={categories} grid={grid} editing={editing} setEditing={setEditing} /> },
-          { key: "validation", label: "Validation", children: <RuleEditor param={p} /> },
-          { key: "depends", label: "Dependencies", children: <DependenciesTab p={p} grid={grid} onSelect={selectParam} /> },
-          { key: "versions", label: "Versions", children: <VersionsTab row={row} grid={grid} /> },
-          { key: "history", label: "History", children: <ParamHistoryTab paramId={p.id} /> },
+          {
+            key: "overview",
+            label: (
+              <span>
+                <InfoCircleOutlined style={{ marginInlineEnd: 6 }} />
+                Overview
+              </span>
+            ),
+            children: (
+              <OverviewTab
+                row={row}
+                grid={grid}
+                categories={categories}
+                editing={editing}
+                setEditing={setEditing}
+              />
+            ),
+          },
+          {
+            key: "rules",
+            label: (
+              <span>
+                <ShieldOutlined style={{ marginInlineEnd: 6 }} />
+                Rules
+              </span>
+            ),
+            children: (
+              <>
+                <RuleEditor param={p} onEditDefault={editDefault} />
+                <Divider style={{ margin: "16px 0 12px" }} />
+                <DependenciesTab p={p} grid={grid} onSelect={selectParam} />
+              </>
+            ),
+          },
+          {
+            key: "history",
+            label: (
+              <span>
+                <HistoryOutlined style={{ marginInlineEnd: 6 }} />
+                History
+              </span>
+            ),
+            children: (
+              <>
+                <VersionsTab row={row} grid={grid} />
+                <Divider style={{ margin: "16px 0 12px" }} />
+                <ParamHistoryTab paramId={p.id} />
+              </>
+            ),
+          },
         ]}
       />
       <Divider style={{ margin: "10px 0" }} />

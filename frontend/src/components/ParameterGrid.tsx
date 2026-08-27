@@ -946,6 +946,21 @@ const clampCol = (w: number) => Math.min(Math.max(Math.round(w), COL_MIN), COL_M
 // The metadata columns, their default widths, and their default order. Only
 // these three move: the parameter name is the row's identity and stays first
 // (it is the fixed-left column the rest scrolls under).
+// Whether a row has been retired, and so belongs after the live ones: 1 for a
+// setting on its way out, 0 for everything still in service. A number rather
+// than a boolean because it is the first key of a sort, and one day there may
+// be a middle.
+//
+// Retired is asked two ways, because it is said two ways. The catalog can
+// declare it (versionDeprecated), or a draft can stage it to stop being managed
+// - and failing both, the CELLS can say it: a setting every instance's software
+// version has left behind is retired whatever the catalog was told.
+function retiredRank(r: Row): number {
+  if (r.pendingUnmanage || r.param.versionDeprecated) return 1;
+  const cells = Object.values(r.cells);
+  return cells.length > 0 && cells.every((c) => c.state === "deprecated") ? 1 : 0;
+}
+
 // Widest reach to narrowest: the only order in which a scope column tells the
 // reader anything.
 const SCOPE_ORDER: Record<ScopeFacet, number> = { global: 0, site: 1, instance: 2 };
@@ -1469,8 +1484,16 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       if (filters.hideNA && cells.every((c) => c.state === "na")) return false;
       return true;
     });
+    // Retired settings sink. A parameter the product has deprecated, or one a
+    // draft has staged to stop managing, is still real - it is still in files,
+    // it can still be read, and hiding it would be a lie about the repository.
+    // But it is not what anybody is working on, and interleaved with the live
+    // ones it puts dead rows between two settings somebody is comparing. So it
+    // keeps its place in the tree order, at the end.
     filtered.sort(
-      (a, b) => (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
+      (a, b) =>
+        retiredRank(a) - retiredRank(b) ||
+        (treeOrder.get(a.param.id) ?? 0) - (treeOrder.get(b.param.id) ?? 0),
     );
     return filtered;
   }, [grid.rows, categoryKey, q, lq, filters, fileFilter, searchScope, treeOrder, scopeFilter, facet]);
@@ -1840,8 +1863,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             pinned={pinnedSet.has(r.param.id)}
             pinnedCount={prefs.pinned.length}
             fileLabel={fileFor(r.param)?.split("/").pop()}
-            onDetails={() => inspectParam(r.param.id, "details")}
-            onValidation={() => inspectParam(r.param.id, "validation")}
+            onDetails={() => inspectParam(r.param.id, "overview")}
+            onValidation={() => inspectParam(r.param.id, "rules")}
             onHistory={() => inspectParam(r.param.id, "history")}
             onOpenFile={fileFor(r.param) ? () => void openInFiles(r.param) : undefined}
             onTogglePin={() => togglePin(r.param.id)}

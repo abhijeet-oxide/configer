@@ -400,6 +400,46 @@ export function PluginsSkeleton() {
   );
 }
 
+/** The parameter history timeline, standing in for itself: the "last changed"
+ *  banner, the section label, then the rail of dots with a value and a byline
+ *  beside each. It is shaped like what arrives so nothing jumps when it does -
+ *  which a line of text reading "Loading history…" cannot be, and which is why
+ *  a panel that takes a git log to answer looked broken while it worked. */
+export function ParamHistorySkeleton({ rows = 5 }: { rows?: number }) {
+  return (
+    <div style={{ marginTop: 2 }}>
+      <div
+        style={{
+          marginBottom: 12,
+          padding: "8px 10px",
+          borderRadius: 8,
+          background: "var(--surface-2)",
+          border: "1px solid var(--border)",
+        }}
+      >
+        <Sk w="72%" h={12} />
+      </div>
+      <Sk w="38%" h={10} />
+      <div style={{ marginTop: 12, display: "flex", flexDirection: "column" }}>
+        {[...Array(rows)].map((_, i) => (
+          <div key={i} style={{ display: "flex", gap: 10, opacity: 1 - i * 0.15 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14 }}>
+              <Sk w={11} h={11} r={99} style={{ marginTop: 4, flexShrink: 0 }} />
+              {i < rows - 1 && (
+                <span style={{ flex: 1, width: 2, background: "var(--border)", marginTop: 2 }} />
+              )}
+            </div>
+            <div style={{ flex: 1, minWidth: 0, paddingBottom: 14, display: "flex", flexDirection: "column", gap: 5 }}>
+              <Sk w={`${64 - (i % 3) * 12}%`} h={13} />
+              <Sk w="52%" h={10} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /** A short two-line-per-item list, for inline "recent activity" areas. */
 export function InlineListSkeleton({ rows = 4 }: { rows?: number }) {
   return (

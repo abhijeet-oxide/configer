@@ -9,28 +9,42 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { lazy, Suspense, useCallback, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   nameSegments,
   type BatchEdit,
-  type Cell,
   type Grid,
   type Instance,
   type Parameter,
-  type Row,
 } from "../api";
 import { useRepoQuery } from "../repoQuery";
-import { effectiveRules, fmtValue, typeLabel } from "../rules";
+import { effectiveRules, fmtValue } from "../rules";
 import { effectiveScope, groupField, SCOPE_META, type ScopeFacet } from "../scope";
 import { groupLeaf, groupTrail, trailLabel } from "../paramtree";
 import { useIdentity } from "../identity";
 import { useUI } from "../store";
-import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined, FormOutlined, CodeOutlined } from "../icons";
+import {
+  CodeOutlined,
+  FormOutlined,
+  ScopeGlobalOutlined,
+  ScopeInstanceOutlined,
+  ScopeSiteOutlined,
+} from "../icons";
 import EnvTag from "./EnvTag";
 import { EmptyState, InlineNotice } from "./ui";
-import GroupField, { fieldError, lockedReason } from "./group/GroupField";
+import { fieldError } from "./group/GroupField";
+import GroupBody from "./group/GroupBody";
+import {
+  committedIndex,
+  fieldIndex,
+  rulesIndex,
+  type Col,
+  type Member,
+  type Section,
+} from "./group/model";
+import { clearBusy } from "../busy";
 
 const JsonPane = lazy(() => import("./group/JsonPane"));
 
@@ -57,133 +71,14 @@ const JsonPane = lazy(() => import("./group/JsonPane"));
 //    knows the shape would rather type them, and how a block gets pasted in
 //    from somewhere else.
 
-/** One editing target: a column of the form, and the instances a value typed
- *  into it will really be written to. */
-interface Col {
-  key: string;
-  label: string;
-  sub?: string;
-  /** the instances this column writes to - the whole point of the column */
-  instances: string[];
-}
-
-interface Member {
-  row: Row;
-  trail: string[];
-  label: string;
-  facet: ScopeFacet;
-}
-
-/** A section of the form: the settings at one scope, and the columns they are
- *  edited in. */
-interface Section {
-  facet: ScopeFacet;
-  members: Member[];
-  cols: Col[];
-  /** the sentence above the fields, saying what a change here reaches */
-  reach: string;
-}
-
+/** The glyph for a scope, for the one place the dialog still names one itself:
+ *  the header, when there is only one section to name. The body has its own
+ *  copy for its section rows (GroupBody). */
 const FACET_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
   global: ScopeGlobalOutlined,
   site: ScopeSiteOutlined,
   instance: ScopeInstanceOutlined,
 };
-
-/** The value a column currently shows: the one its instances agree on, or a
- *  marker that they do not. A field that silently showed the first instance's
- *  value would make "apply to all" quietly overwrite the others with it. */
-function committedFor(row: Row, col: Col): { value: unknown; mixed: boolean } {
-  const values = col.instances.map((n) => row.cells[n]?.value);
-  if (values.length === 0) return { value: undefined, mixed: false };
-  const first = fmtValue(values[0]);
-  const mixed = values.some((v) => fmtValue(v) !== first);
-  return { value: mixed ? undefined : values[0], mixed };
-}
-
-/** What a field IS, behind one glyph: its full name, what may be typed into it,
- *  and what it does. Spelled out beside every field it was a paragraph per row
- *  and the labels stopped being findable among them.
- *
- *  The glyph is wrapped in a span of its own because the shared icon components
- *  (icons.tsx `make`) render a fixed set of props and drop the rest - and a
- *  tooltip works by cloning its child with mouse handlers, which those icons
- *  would throw away. The span keeps them. */
-function FieldInfo({ param }: { param: Parameter }) {
-  return (
-    <Tooltip
-      placement="topLeft"
-      title={
-        <span>
-          <span className="mono">{param.name}</span>
-          <br />
-          {typeLabel(param.type, param.itemType)}
-          {param.description ? ` - ${param.description}` : ""}
-        </span>
-      }
-    >
-      <span className="cf-group-info" tabIndex={0} role="note" aria-label={`About ${param.name}`}>
-        <InfoCircleOutlined />
-      </span>
-    </Tooltip>
-  );
-}
-
-/** The form's fieldsets: the members grouped by the route ABOVE their own leaf,
- *  in the order they arrived.
- *
- *  A branch several levels deep otherwise repeats its route in every label -
- *  "capacity-profile-config[1].amr-wb", "capacity-profile-config[1].g711" - each
- *  truncated to make room for the one word that differs, which is the word that
- *  got cut. Said once as a heading, the fields underneath can be called what
- *  they are. A group whose members are all direct children has ONE fieldset with
- *  no heading, because there is no route to say. */
-function fieldsets(members: Member[]): { key: string; members: Member[] }[] {
-  const out: { key: string; members: Member[] }[] = [];
-  const at = new Map<string, number>();
-  for (const m of members) {
-    const key = m.trail.slice(0, -1).join(".");
-    const idx = at.get(key);
-    if (idx === undefined) {
-      at.set(key, out.length);
-      out.push({ key, members: [m] });
-    } else {
-      out[idx].members.push(m);
-    }
-  }
-  return out;
-}
-
-/** How wide a column needs to be for this fieldset's longest label to read in
- *  full. A fixed column width is why four long names got jammed into four
- *  narrow columns and every one of them was cut - the grid never knew the
- *  labels needed more room than a short boolean's did. Sized to the longest
- *  member, a small fieldset of long names naturally settles into fewer, wider
- *  columns (four settings as 2x2 rather than 4x1) while a fieldset of short
- *  ones still fills the row. */
-function fieldColWidth(members: Member[]): number {
-  const longest = members.reduce((n, m) => Math.max(n, m.trail[m.trail.length - 1].length), 0);
-  return Math.min(460, Math.max(220, longest * 8 + 70));
-}
-
-/** Whether a field needs the whole row rather than a column of the form: a list
- *  of entries and a paragraph of text are unreadable in a third of a dialog. */
-function isWide(param: Parameter, value: unknown): boolean {
-  if (param.type === "list") return true;
-  const s = value === null || value === undefined ? "" : String(value);
-  return s.length > 60;
-}
-
-/** The cell a column's lock state is read from: the first instance it writes
- *  to. A setting that is read-only or templated is that way in the files, so
- *  any of the column's instances answers the question. */
-function cellFor(row: Row, col: Col): Cell | undefined {
-  for (const n of col.instances) {
-    const c = row.cells[n];
-    if (c) return c;
-  }
-  return undefined;
-}
 
 export default function GroupEditorModal({
   groupKey,
@@ -222,6 +117,11 @@ export default function GroupEditorModal({
   const [refused, setRefused] = useState<Record<string, string>>({});
   const [jsonText, setJsonText] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // The pointer said "working" from the moment of the double click (see
+  // busy.ts). It has arrived - and the effect runs after the first paint, so
+  // the cursor changes back exactly when there is something to look at.
+  useEffect(() => clearBusy(), []);
 
   // grid.rows is already in the catalog's own document order - the same order
   // CategoryTree walks for the name tree - so a member here lands exactly
@@ -321,10 +221,16 @@ export default function GroupEditorModal({
     return out;
   }, [members, instances, selected, perInstance]);
 
-  const rulesFor = useCallback(
-    (p: Parameter) => effectiveRules(p, presetsQ.data),
-    [presetsQ.data],
+  // Everything the body asks per field, worked out ONCE. Each of these used to
+  // be a function called inside the render of every field - and again by the
+  // save, and again by the validity check - which on a branch of seven hundred
+  // settings is thousands of scans per keystroke.
+  const rules = useMemo(
+    () => rulesIndex(members, (p) => effectiveRules(p, presetsQ.data)),
+    [members, presetsQ.data],
   );
+  const committed = useMemo(() => committedIndex(sections), [sections]);
+  const fields = useMemo(() => fieldIndex(sections), [sections]);
 
   // ------------------------------------------------------------------ JSON
   // The same settings, in the shape the model has: what is shared, what belongs
@@ -338,8 +244,8 @@ export default function GroupEditorModal({
         const values: Record<string, unknown> = {};
         for (const m of sec.members) {
           const key = `${m.row.param.id}|${col.key}`;
-          const { value, mixed } = committedFor(m.row, col);
-          const v = key in edits ? edits[key] : mixed ? null : value;
+          const c = committed.get(key);
+          const v = key in edits ? edits[key] : c?.mixed ? null : c?.value;
           values[m.label] = v === undefined ? null : v;
         }
         if (sec.facet === "global") Object.assign(block, values);
@@ -348,9 +254,12 @@ export default function GroupEditorModal({
       doc[sec.facet === "global" ? "shared" : sec.facet === "site" ? "groups" : "instances"] = block;
     }
     return JSON.stringify(doc, null, 2);
-  }, [sections, edits]);
+  }, [sections, edits, committed]);
 
-  const jsonValue = jsonText ?? asJson();
+  // Only when it is being looked at. Built on every render it walked every
+  // section, every column and every member and stringified the lot - on each
+  // keystroke into a form that was not even showing it.
+  const jsonValue = view === "json" ? jsonText ?? asJson() : "";
 
   /** Read the JSON back into the same edits the form produces. Anything the
    *  form would not have offered is REFUSED by name rather than dropped: a
@@ -423,27 +332,27 @@ export default function GroupEditorModal({
   /** Every field that was touched AND really differs from what is committed. */
   const pending = useMemo(() => {
     const out: { key: string; member: Member; col: Col; value: unknown }[] = [];
-    for (const sec of sections) {
-      for (const col of sec.cols) {
-        for (const m of sec.members) {
-          const key = `${m.row.param.id}|${col.key}`;
-          if (!(key in edits)) continue;
-          const { value, mixed } = committedFor(m.row, col);
-          if (!mixed && fmtValue(edits[key]) === fmtValue(value)) continue;
-          out.push({ key, member: m, col, value: edits[key] });
-        }
-      }
+    // The edits are the short list - typically a handful - and every one of
+    // them names the field it belongs to. Walking every field looking for the
+    // few that moved is the same answer at a thousand times the cost.
+    for (const [key, value] of Object.entries(edits)) {
+      const at = fields.get(key);
+      if (!at) continue;
+      const c = committed.get(key);
+      if (c && !c.mixed && fmtValue(value) === fmtValue(c.value)) continue;
+      out.push({ key, member: at.member, col: at.col, value });
     }
     return out;
-  }, [sections, edits]);
+  }, [edits, fields, committed]);
 
   const invalid = useMemo(
     () =>
       pending.filter((p) => {
-        const { value } = committedFor(p.member.row, p.col);
-        return fieldError(p.member.row.param, rulesFor(p.member.row.param), p.value, value) !== null;
+        const c = committed.get(p.key);
+        const r = rules.get(p.member.row.param.id) ?? {};
+        return fieldError(p.member.row.param, r, p.value, c?.value) !== null;
       }),
-    [pending, rulesFor],
+    [pending, rules, committed],
   );
 
   const save = useMutation({
@@ -499,13 +408,17 @@ export default function GroupEditorModal({
   const route = nameSegments({ name: groupKey } as Parameter).slice(0, -1);
   const hasInstanceTargets = sections.some((s) => s.facet !== "global");
 
-  const setValue = (key: string, v: unknown) => {
+  // ONE handler for every field, whatever the form's size. An arrow created per
+  // field per render is a new prop on every field on every keystroke, which
+  // defeats the memo on GroupField and re-renders the whole form to change one
+  // character.
+  const setValue = useCallback((key: string, v: unknown) => {
     setEdits((prev) => ({ ...prev, [key]: v }));
     setRefused((prev) => (key in prev ? { ...prev, [key]: "" } : prev));
     // The JSON view is a rendering of the edits; once the form moves it has to
     // be re-rendered rather than left showing the state before the keystroke.
     setJsonText(null);
-  };
+  }, []);
 
   return (
     <Modal
@@ -676,179 +589,20 @@ export default function GroupEditorModal({
               </div>
             </>
           ) : (
-            <div className="cf-group-body">
-              {sections.map((sec) => {
-                const Icon = FACET_ICON[sec.facet];
-                return (
-                  <section key={sec.facet} className="cf-group-sec">
-                    {/* Shown up in the header already when this is the only
-                        section - see cf-group-head above. */}
-                    {sections.length > 1 && (
-                      <div className="cf-group-sec-head">
-                        <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sec.reach}</Typography.Text>
-                        <Tooltip title={SCOPE_META[sec.facet].explain}>
-                          <Tag color={SCOPE_META[sec.facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
-                            <Icon style={{ marginInlineEnd: 4 }} />
-                            {SCOPE_META[sec.facet].label}
-                          </Tag>
-                        </Tooltip>
-                      </div>
-                    )}
-                    {sec.cols.length === 0 ? (
-                      <InlineNotice tone="neutral">Nothing selected to edit these on.</InlineNotice>
-                    ) : sec.cols.length === 1 ? (
-                      // ONE thing being edited, so this is a form and it is laid
-                      // out like one: label over field, flowing into as many
-                      // columns as the dialog is wide and as many rows as the
-                      // branch has settings. A table with a single value column
-                      // spends a third of the width on a header that says
-                      // "Setting" and gives every field a whole row of its own,
-                      // which turns eight settings into eight screens of
-                      // scrolling for a form that fits in one.
-                      <>
-                        {fieldsets(sec.members).map((fs) => (
-                          <div key={fs.key} className="cf-group-set">
-                            {/* A branch several levels deep repeats its route in
-                                every single label - "capacity-profile-config[1]"
-                                eight times over, each one truncated to make room
-                                for the one word that differs. Said ONCE as a
-                                heading, the fields underneath get to be called
-                                what they are. */}
-                            {fs.key && <div className="cf-group-set-head mono">{fs.key}</div>}
-                            <div
-                              className="cf-group-form"
-                              style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${fieldColWidth(fs.members)}px, 1fr))` }}
-                            >
-                              {fs.members.map((m) => {
-                                const p = m.row.param;
-                                const rules = rulesFor(p);
-                                const col = sec.cols[0];
-                                const key = `${p.id}|${col.key}`;
-                                const { value, mixed } = committedFor(m.row, col);
-                                const cell = cellFor(m.row, col);
-                                const shown = key in edits ? edits[key] : mixed ? undefined : value;
-                                return (
-                                  <div
-                                    key={p.id}
-                                    // A list of entries and a paragraph of text
-                                    // have nowhere to go in a third of the
-                                    // dialog, so they take the whole row.
-                                    className={"cf-group-field" + (isWide(p, shown) ? " is-wide" : "")}
-                                  >
-                                    <label className="cf-group-label">
-                                      {/* Sized to fit its column, not its name - a
-                                          route several levels deep still gets cut,
-                                          and the tooltip is the one place the whole
-                                          thing is guaranteed to be readable. */}
-                                      <Tooltip title={m.trail[m.trail.length - 1]}>
-                                        <span className="mono">{m.trail[m.trail.length - 1]}</span>
-                                      </Tooltip>
-                                      {/* A red star, the way every form has
-                                          said "required" for thirty years. The
-                                          word spelled out beside a third of the
-                                          labels was three times the reading for
-                                          the same fact. */}
-                                      {p.validation?.required && (
-                                        <Tooltip title="Required">
-                                          <span className="cf-group-req" aria-label="required">*</span>
-                                        </Tooltip>
-                                      )}
-                                      <FieldInfo param={p} />
-                                    </label>
-                                    <GroupField
-                                      param={p}
-                                      rules={rules}
-                                      value={shown}
-                                      committed={value}
-                                      placeholder={mixed ? `${col.instances.length} different values` : undefined}
-                                      locked={lockedReason(p, cell, canEdit)}
-                                      status={refused[key] ? "error" : ""}
-                                      onChange={(v) => setValue(key, v)}
-                                    />
-                                    {refused[key] && (
-                                      <Typography.Text type="danger" className="cf-group-hint">
-                                        {refused[key]}
-                                      </Typography.Text>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                      </>
-                    ) : (
-                      // More than one thing being edited side by side. That is a
-                      // comparison, and a comparison is a table: the settings
-                      // run down, what they are being set on runs across, and
-                      // the odd one out is visible without reading a label on
-                      // every field.
-                      <table className="cf-group-table">
-                        <thead>
-                          <tr>
-                            <th className="cf-group-name">Setting</th>
-                            {sec.cols.map((col) => (
-                              <th key={col.key}>
-                                <span className="mono">{col.label}</span>
-                                {col.sub && <span className="cf-group-sub">{col.sub}</span>}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {sec.members.map((m) => {
-                            const p = m.row.param;
-                            const rules = rulesFor(p);
-                            return (
-                              <tr key={p.id}>
-                                <th className="cf-group-name" scope="row">
-                                  {/* Same label vocabulary as the form: the
-                                      name, a star when it is required, and one
-                                      glyph carrying the rest. */}
-                                  <span className="cf-group-label">
-                                    <span className="mono">{m.label}</span>
-                                    {p.validation?.required && (
-                                      <Tooltip title="Required">
-                                        <span className="cf-group-req" aria-label="required">*</span>
-                                      </Tooltip>
-                                    )}
-                                    <FieldInfo param={p} />
-                                  </span>
-                                </th>
-                                {sec.cols.map((col) => {
-                                  const key = `${p.id}|${col.key}`;
-                                  const { value, mixed } = committedFor(m.row, col);
-                                  const cell = cellFor(m.row, col);
-                                  return (
-                                    <td key={col.key}>
-                                      <GroupField
-                                        param={p}
-                                        rules={rules}
-                                        value={key in edits ? edits[key] : mixed ? undefined : value}
-                                        committed={value}
-                                        placeholder={mixed ? `${col.instances.length} different values` : undefined}
-                                        locked={lockedReason(p, cell, canEdit)}
-                                        status={refused[key] ? "error" : ""}
-                                        onChange={(v) => setValue(key, v)}
-                                      />
-                                      {refused[key] && (
-                                        <Typography.Text type="danger" style={{ fontSize: 11 }}>
-                                          {refused[key]}
-                                        </Typography.Text>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
+            <GroupBody
+              sections={sections}
+              committed={committed}
+              rules={rules}
+              edits={edits}
+              refused={refused}
+              canEdit={canEdit}
+              onChange={setValue}
+              // A lone section names its scope in the header instead, where it
+              // reads on the same line as the view toggle - two facts about the
+              // same edit on one row. Two sections still name themselves, where
+              // there is something to tell apart.
+              showSectionHeads={sections.length > 1}
+            />
           )}
           {/* Silent until something has actually changed. "Nothing changed
               yet" is a line of text that says only that the reader has not

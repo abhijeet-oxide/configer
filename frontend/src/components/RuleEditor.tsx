@@ -9,7 +9,7 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { RegexOutlined, SaveOutlined } from "../icons";
+import { EditOutlined, RegexOutlined, SaveOutlined } from "../icons";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -149,12 +149,21 @@ function FromSchema({ v }: { v: Validation }) {
   );
 }
 
-export default function RuleEditor({ param }: { param: Parameter }) {
+export default function RuleEditor({
+  param,
+  onEditDefault,
+}: {
+  param: Parameter;
+  /** open the one form that owns the default. Without it the field here is a
+   *  dead end: a value the reader can see, cannot change, and is given no way
+   *  to find the place that can. */
+  onEditDefault?: () => void;
+}) {
   // key remount resets local state when the selected parameter changes
-  return <Editor key={param.id} param={param} />;
+  return <Editor key={param.id} param={param} onEditDefault={onEditDefault} />;
 }
 
-function Editor({ param }: { param: Parameter }) {
+function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: () => void }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
@@ -199,17 +208,32 @@ function Editor({ param }: { param: Parameter }) {
       </Field>
 
       {/* What the value is when no file carries it - part of the answer to
-          "what may this be", so it is read here rather than only on the
-          Details tab. It stays read-only because one field edited from two
-          forms is one field two forms can disagree about. */}
+          "what may this be", so it is read here rather than only on Overview.
+          It is not EDITED here: one field edited from two forms is one field
+          two forms can disagree about. But a value you can see and cannot
+          change, with nothing on screen saying where you could, is worse than
+          either - so the field carries the way to the form that owns it. */}
       <Field label="Default value">
-        <Typography.Text
-          className="mono"
-          type={param.default == null ? "secondary" : undefined}
-          style={{ fontSize: 12 }}
-        >
-          {formatDefault(param.default)}
-        </Typography.Text>
+        <Space size={6}>
+          <Typography.Text
+            className="mono"
+            type={param.default == null ? "secondary" : undefined}
+            style={{ fontSize: 12 }}
+          >
+            {formatDefault(param.default)}
+          </Typography.Text>
+          {onEditDefault && (
+            <Tooltip title="Change it on the Overview tab, where the parameter's other metadata is edited">
+              <Button
+                size="small"
+                type="link"
+                icon={<EditOutlined />}
+                style={{ padding: 0, height: "auto" }}
+                onClick={onEditDefault}
+              />
+            </Tooltip>
+          )}
+        </Space>
       </Field>
 
       <Field label="Predefined rule">

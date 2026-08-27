@@ -2082,6 +2082,18 @@ body {
   box-shadow: inset 3px 0 0 var(--brand);
 }
 
+/* The pointer says the click landed.
+
+   Some things a click opens cannot be on screen in the same frame. For the
+   moment in between, the ONLY honest feedback is the cursor - without it the
+   click reads as ignored, and the second click somebody gives it lands on
+   whatever has appeared by then. It covers everything, including the element
+   the pointer is still sitting on, which by then belongs to what is opening. */
+body.cf-busy,
+body.cf-busy * {
+  cursor: progress !important;
+}
+
 /* The parameter tree's state line: how many the search found, and the group
    the grid has been narrowed to. It sits under the search box because that is
    where the narrowing was asked for - and the chip is the way out of it, which

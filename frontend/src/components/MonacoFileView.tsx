@@ -84,6 +84,7 @@ export default function MonacoFileView({
   original,
   diff = false,
   diffLayout = "split",
+  onlyChanges = false,
   dark,
   revealLine,
   revealColumn,
@@ -103,6 +104,11 @@ export default function MonacoFileView({
   diff?: boolean;
   /** two panes beside each other, or one with the changes interleaved */
   diffLayout?: "split" | "inline";
+  /** collapse everything that did not change, so the pane holds only the
+   *  edits. On a file of two thousand lines with three changed values, the
+   *  diff otherwise IS the file, and finding the three is the same scroll it
+   *  was before the diff was opened. */
+  onlyChanges?: boolean;
   dark: boolean;
   revealLine?: number;
   /** column to land the cursor on within revealLine (the value's own start) */
@@ -302,6 +308,17 @@ export default function MonacoFileView({
           originalEditable: false,
           renderSideBySide: diffLayout === "split",
           ignoreTrimWhitespace: false,
+          // Monaco folds the untouched stretches into a band that says how
+          // many lines it swallowed and opens on a click, so nothing is
+          // hidden - it is out of the way with a way back. A few lines of
+          // context stay around each change, because a value with no
+          // surrounding keys is a value you cannot place in the file.
+          hideUnchangedRegions: {
+            enabled: onlyChanges,
+            contextLineCount: 3,
+            minimumLineCount: 4,
+            revealLineCount: 20,
+          },
         }}
         onMount={(diff) => {
           const modified = diff.getModifiedEditor() as unknown as Revealable;

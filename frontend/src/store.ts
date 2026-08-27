@@ -159,7 +159,7 @@ const defaultPrefs: ViewPrefs = {
   showScopeCol: true,
   showDescCol: true,
   showCompare: true,
-  groupBy: "none",
+  groupBy: "path",
   showBeforeAfter: false,
   pinned: [],
 };

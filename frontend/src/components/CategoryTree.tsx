@@ -1,5 +1,5 @@
 import {
-  Checkbox, Dropdown, Modal, Select, Tag, Tooltip, Tree, Typography, Input,
+  Dropdown, Modal, Select, Tag, Tooltip, Tree, Typography, Input,
   App as AntApp, type GetRef,
 } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CopyOutlined, EditOutlined, FilterFilled } from "../icons";
 import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
-import { groupLeaf } from "../paramtree";
+import { buildNameTree, groupLeaf, nameEntries, type NameNode } from "../paramtree";
 import { markBusy } from "../busy";
 import { useUI } from "../store";
 
@@ -37,19 +37,6 @@ interface TreeItem {
   searchText: string;
   isLeaf?: boolean;
   children?: TreeItem[];
-}
-
-// A node in the parameter-name trie.
-interface NameNode {
-  seg: string;
-  prefix: string; // full dotted prefix, e.g. "admin.rebuildslave"
-  depth: number; // how many steps deep, which is also how many path steps it spans
-  count: number; // parameters in this subtree
-  params: { id: string; name: string; leaf: string }[];
-  children: Map<string, NameNode>;
-  // A parameter from anywhere under this node, so the node can answer "which
-  // file, and where in it" without the tree carrying bindings of its own.
-  sample?: Parameter;
 }
 
 // An indexed step - net-info[3] - is one ENTRY of a repeated structure. That is
@@ -206,36 +193,13 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   const { categoryKey, setCategory, groupKey, setGroup, openGroupEditor, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
   const [query, setQuery] = useState("");
   const filter = query.trim().toLowerCase();
-  const [showFull, setShowFull] = useState(false);
   const { ref, height } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
 
   // Build the name trie from each parameter's own name STEPS (see
-  // api.nameSegments) rather than from splitting its name on every dot.
-  const nameRoot = useMemo(() => {
-    const root: NameNode = { seg: "", prefix: "", depth: 0, count: 0, params: [], children: new Map() };
-    for (const r of grid.rows) {
-      const name = r.param.name;
-      const parts = nameSegments(r.param);
-      const leaf = parts[parts.length - 1];
-      let level = root;
-      let prefix = "";
-      for (let i = 0; i < parts.length - 1; i++) {
-        const seg = parts[i];
-        prefix = prefix ? `${prefix}.${seg}` : seg;
-        let node = level.children.get(seg);
-        if (!node) {
-          node = { seg, prefix, depth: i + 1, count: 0, params: [], children: new Map() };
-          level.children.set(seg, node);
-        }
-        node.count++;
-        if (!node.sample) node.sample = r.param;
-        level = node;
-      }
-      level.params.push({ id: r.param.id, name, leaf });
-    }
-    return root;
-  }, [grid.rows]);
+  // api.nameSegments) rather than from splitting its name on every dot. The
+  // grid walks this same tree for its row order, so the two cannot disagree.
+  const nameRoot = useMemo(() => buildNameTree(grid.rows.map((r) => r.param)), [grid.rows]);
 
   // The entries a reader can ask for another of: a node that IS one entry of a
   // repeated structure, with a file behind it that says where to copy from.
@@ -292,12 +256,26 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   useEffect(() => setExpandedKeys((prev) => Array.from(new Set([...prev, ...allNameKeys]))), [allNameKeys]);
 
   const treeData = useMemo(() => {
-    // A node's children (sub-groups AND its own leaf params) are ordered by
-    // segment together, so the tree reads in the same order as the grid table
-    // (which sorts by full name).
-    const toItems = (node: NameNode): TreeItem[] => {
-      const entries: { seg: string; item: TreeItem }[] = [];
-      for (const c of node.children.values()) {
+    // Drawn in the order nameEntries gives - the same call the grid walks for
+    // its rows, which is why the last leaf here is the last row there.
+    const toItems = (node: NameNode): TreeItem[] =>
+      nameEntries(node).map((e) => {
+        if (e.kind === "param") {
+          const p = e.param;
+          return {
+            key: `p:${p.id}`,
+            isLeaf: true,
+            searchText: p.name.toLowerCase(),
+            title: (
+              <Tooltip title={p.name} placement="right">
+                <Typography.Text style={{ fontSize: 12 }} className="mono" ellipsis>
+                  {p.leaf}
+                </Typography.Text>
+              </Tooltip>
+            ),
+          };
+        }
+        const c = e.node;
         const entry = dupEntries.get(c.prefix);
         const label = (
           <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
@@ -306,78 +284,55 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           </span>
         );
         const filtered = categoryKey === c.prefix;
-        entries.push({
-          seg: c.seg,
-          item: {
-            key: c.prefix,
-            searchText: c.prefix.toLowerCase(),
-            // Right-click is where the instructions live, so that clicking a
-            // folder can stay the harmless thing it looks like. Duplicating is
-            // here too: an entry of a repeated structure answers "give me
-            // another one of these", and doing it by hand meant selecting the
-            // block in the editor, pasting it, fixing the indentation, and
-            // hoping the paste did not land somewhere that renumbered its
-            // neighbours.
-            title: (
-              <Dropdown
-                trigger={["contextMenu"]}
-                menu={{
-                  items: [
-                    { key: "edit", icon: <EditOutlined />, label: `Edit ${c.count} setting${c.count === 1 ? "" : "s"} here…` },
-                    ...(filtered
-                      ? []
-                      : [{ key: "filter", icon: <FilterFilled />, label: "Show only this group" }]),
-                    ...(entry
-                      ? [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }]
-                      : []),
-                  ],
-                  onClick: ({ key, domEvent }) => {
-                    domEvent.stopPropagation();
-                    if (key === "dup" && entry) setDuplicating(entry);
-                    else if (key === "edit") {
-                      markBusy();
-                      openGroupEditor(c.prefix);
-                    }
-                    else if (key === "filter") {
-                      setCategory(c.prefix);
-                      setGroup(c.prefix);
-                      selectParam(null);
-                    }
-                  },
-                }}
-              >
-                {label}
-              </Dropdown>
-            ),
-            children: toItems(c),
-          },
-        });
-      }
-      for (const p of node.params) {
-        entries.push({
-          seg: p.leaf,
-          item: {
-            key: `p:${p.id}`,
-            isLeaf: true,
-            searchText: p.name.toLowerCase(),
-            title: (
-              <Tooltip title={p.name} placement="right">
-                <Typography.Text style={{ fontSize: 12 }} className="mono" ellipsis>
-                  {showFull ? p.name : p.leaf}
-                </Typography.Text>
-              </Tooltip>
-            ),
-          },
-        });
-      }
-      entries.sort((a, b) => a.seg.localeCompare(b.seg));
-      return entries.map((e) => e.item);
-    };
+        return {
+          key: c.prefix,
+          searchText: c.prefix.toLowerCase(),
+          // Right-click is where the instructions live, so that clicking a
+          // folder can stay the harmless thing it looks like. Duplicating is
+          // here too: an entry of a repeated structure answers "give me
+          // another one of these", and doing it by hand meant selecting the
+          // block in the editor, pasting it, fixing the indentation, and
+          // hoping the paste did not land somewhere that renumbered its
+          // neighbours.
+          title: (
+            <Dropdown
+              trigger={["contextMenu"]}
+              menu={{
+                items: [
+                  { key: "edit", icon: <EditOutlined />, label: `Edit ${c.count} setting${c.count === 1 ? "" : "s"} here…` },
+                  ...(filtered
+                    ? []
+                    : [{ key: "filter", icon: <FilterFilled />, label: "Show only this group" }]),
+                  ...(entry
+                    ? [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }]
+                    : []),
+                ],
+                onClick: ({ key, domEvent }) => {
+                  domEvent.stopPropagation();
+                  if (key === "dup" && entry) setDuplicating(entry);
+                  else if (key === "edit") {
+                    markBusy();
+                    openGroupEditor(c.prefix);
+                  }
+                  else if (key === "filter") {
+                    setCategory(c.prefix);
+                    setGroup(c.prefix);
+                    selectParam(null);
+                  }
+                },
+              }}
+            >
+              {label}
+            </Dropdown>
+          ),
+          children: toItems(c),
+        };
+      });
     return [
       { key: "__all__", searchText: "all parameters", title: <b>All Parameters ({grid.rows.length})</b> },
       ...toItems(nameRoot),
     ];
-  }, [nameRoot, dupEntries, grid.rows.length, showFull, categoryKey, openGroupEditor, setCategory, setGroup, selectParam]);
+  }, [nameRoot, dupEntries, grid.rows.length, categoryKey, openGroupEditor, setCategory, setGroup, selectParam]);
 
 
   // What the tree actually draws. With nothing typed it is the whole catalog;
@@ -424,11 +379,6 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
       <div style={{ padding: "8px 8px 0", height: "100%", display: "flex", flexDirection: "column" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 4px" }}>
           <Typography.Text strong>Parameters</Typography.Text>
-          <Tooltip title="Show each parameter's full dotted name instead of just the last segment">
-            <Checkbox checked={showFull} onChange={(e) => setShowFull(e.target.checked)} style={{ fontSize: 11 }}>
-              <span style={{ fontSize: 11 }}>Full names</span>
-            </Checkbox>
-          </Tooltip>
         </div>
         <Input.Search
           placeholder="Filter groups and parameters"

@@ -65,15 +65,29 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 6px;
+  flex-wrap: nowrap;
+}
+/* The scope tag and what it applies to are one fact, read left to right; a
+   long instance list is truncated rather than pushed onto its own line. */
+.cf-group-reach {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+/* The Form/JSON toggle carries an icon per option, the way "which view" is
+   read faster as a glyph than as the word alone. */
+.cf-group-viewopt {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 /* The form proper: as many COLUMNS as the dialog is wide, as many ROWS as the
-   branch has settings. auto-fill rather than auto-fit, so a group of two
-   settings sits in two columns at the left instead of stretching each field
-   across half the dialog - a form whose column count changes with its contents
-   never looks like the same form twice. */
+   branch has settings. The count itself comes from JS (GroupBody), sized to
+   each fieldset's longest label - the row model has to know how many fields a
+   row holds before it can say how tall the list is, and two answers to that
+   question is a scrollbar that lies. */
 /* The column count comes from JS now, not from auto-fill: the row model has to
    know how many fields a row holds before it can say how tall the list is, and
    two answers to that question is a scrollbar that lies. Same measurement,
@@ -187,6 +201,17 @@
    grid rather than a <table> because a table's rows cannot be windowed - the
    browser lays the whole thing out whatever is rendered. The ROLES are still
    the table's, so it reads as one to a screen reader. */
+/* Every windowed row is given an exact height, so its padding has to sit
+   INSIDE that height. Tailwind's preflight already says border-box; saying it
+   here too means a row's height cannot start lying because something upstream
+   changed its mind. */
+.cf-group-form,
+.cf-group-grid,
+.cf-group-sec-head,
+.cf-group-set-head {
+  box-sizing: border-box;
+}
+
 .cf-group-grid {
   display: grid;
   column-gap: 12px;
@@ -210,7 +235,11 @@
   flex-direction: column;
   min-width: 0;
 }
+/* The setting's own name is a row header, not a cell: it names the row for a
+   screen reader the same way the column head names the column. */
 .cf-group-grid .cf-group-name {
+  display: flex;
+  align-items: center;
   font-weight: 500;
   color: var(--text);
   min-width: 0;
@@ -228,9 +257,17 @@
 .cf-group-grid [role="cell"] > .cf-group-field {
   width: 100%;
 }
-.cf-group-grid .cf-group-name {
-  display: flex;
-  align-items: center;
+/* What a column is being compared ON, under its name: an instance count, or
+   the sites a shared file reaches. Second line, quieter, and cut rather than
+   allowed to widen the column. */
+.cf-group-sub {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .cf-group-foot {
@@ -241,12 +278,11 @@
 
 /* On a phone the columns have nowhere to go, so the table scrolls sideways
    inside the dialog rather than pushing the dialog off the screen. */
+/* One column on a phone is not decided here: the row model works out how many
+   fit and writes it on the row, because it has to know the count before it can
+   say how tall the list is. All that is left for the phone is the room the
+   scroller gets. */
 @media (max-width: 720px) {
-  /* One column on a phone: two 240px columns do not fit, and a form that
-     squeezes them anyway is a form nobody can read. */
-  .cf-group-form {
-    grid-template-columns: 1fr;
-  }
   .cf-group-body {
     max-height: min(50vh, 420px);
   }

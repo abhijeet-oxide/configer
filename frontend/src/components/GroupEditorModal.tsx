@@ -6,6 +6,7 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -20,11 +21,17 @@ import {
 } from "../api";
 import { useRepoQuery } from "../repoQuery";
 import { effectiveRules, fmtValue } from "../rules";
-import { effectiveScope, groupField, type ScopeFacet } from "../scope";
+import { effectiveScope, groupField, SCOPE_META, type ScopeFacet } from "../scope";
 import { groupLeaf, groupTrail, trailLabel } from "../paramtree";
 import { useIdentity } from "../identity";
 import { useUI } from "../store";
-import { ScopeInstanceOutlined } from "../icons";
+import {
+  CodeOutlined,
+  FormOutlined,
+  ScopeGlobalOutlined,
+  ScopeInstanceOutlined,
+  ScopeSiteOutlined,
+} from "../icons";
 import EnvTag from "./EnvTag";
 import { EmptyState, InlineNotice } from "./ui";
 import { fieldError } from "./group/GroupField";
@@ -63,6 +70,15 @@ const JsonPane = lazy(() => import("./group/JsonPane"));
 //  - The same settings can be read as JSON, which is how somebody who already
 //    knows the shape would rather type them, and how a block gets pasted in
 //    from somewhere else.
+
+/** The glyph for a scope, for the one place the dialog still names one itself:
+ *  the header, when there is only one section to name. The body has its own
+ *  copy for its section rows (GroupBody). */
+const FACET_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
+  global: ScopeGlobalOutlined,
+  site: ScopeSiteOutlined,
+  instance: ScopeInstanceOutlined,
+};
 
 export default function GroupEditorModal({
   groupKey,
@@ -107,6 +123,11 @@ export default function GroupEditorModal({
   // the cursor changes back exactly when there is something to look at.
   useEffect(() => clearBusy(), []);
 
+  // grid.rows is already in the catalog's own document order - the same order
+  // CategoryTree walks for the name tree - so a member here lands exactly
+  // where its leaf sits there. Sorting alphabetically once put "add" ahead of
+  // "warning" in the dialog while the tree beside it still read the file's
+  // own order, so the same branch told two different stories.
   const members = useMemo<Member[]>(() => {
     const out: Member[] = [];
     for (const row of grid.rows) {
@@ -114,7 +135,6 @@ export default function GroupEditorModal({
       if (!trail) continue;
       out.push({ row, trail, label: trailLabel(trail), facet: effectiveScope(row.param) });
     }
-    out.sort((a, b) => a.label.localeCompare(b.label));
     return out;
   }, [grid.rows, groupKey]);
 
@@ -495,35 +515,53 @@ export default function GroupEditorModal({
                 </Space>
               )}
             </div>
-            <Space size={8} wrap>
-              {hasInstanceTargets && selected.length > 1 && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              {/* A lone section's scope reads on the same line as the view
+                  toggle - two facts about the same edit belong on one row.
+                  A second section (a different scope reached at once) still
+                  gets its own line below, where there is room to tell them
+                  apart. */}
+              {sections.length === 1 ? (
+                <div className="cf-group-sec-head" style={{ marginBottom: 0 }}>
+                  <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sections[0].reach}</Typography.Text>
+                  <Tooltip title={SCOPE_META[sections[0].facet].explain}>
+                    <Tag color={SCOPE_META[sections[0].facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
+                      {(() => { const Icon = FACET_ICON[sections[0].facet]; return <Icon style={{ marginInlineEnd: 4 }} />; })()}
+                      {SCOPE_META[sections[0].facet].label}
+                    </Tag>
+                  </Tooltip>
+                </div>
+              ) : <span />}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                {hasInstanceTargets && selected.length > 1 && (
+                  <Segmented
+                    size="small"
+                    value={perInstance ? "each" : "same"}
+                    onChange={(v) => setPerInstance(v === "each")}
+                    options={[
+                      { value: "same", label: "One value for all" },
+                      { value: "each", label: "A value per instance" },
+                    ]}
+                  />
+                )}
                 <Segmented
                   size="small"
-                  value={perInstance ? "each" : "same"}
-                  onChange={(v) => setPerInstance(v === "each")}
+                  value={view}
+                  onChange={(v) => {
+                    const next = v as "form" | "json";
+                    // Leaving JSON carries what was typed there into the form,
+                    // so the two views are one document rather than two drafts.
+                    if (view === "json" && jsonText !== null && !applyJson(jsonText)) return;
+                    if (next === "json") setJsonText(null);
+                    setView(next);
+                  }}
                   options={[
-                    { value: "same", label: "One value for all" },
-                    { value: "each", label: "A value per instance" },
+                    { value: "form", label: (<span className="cf-group-viewopt"><FormOutlined />Form</span>) },
+                    { value: "json", label: (<span className="cf-group-viewopt"><CodeOutlined />JSON</span>) },
                   ]}
                 />
-              )}
-              <Segmented
-                size="small"
-                value={view}
-                onChange={(v) => {
-                  const next = v as "form" | "json";
-                  // Leaving JSON carries what was typed there into the form,
-                  // so the two views are one document rather than two drafts.
-                  if (view === "json" && jsonText !== null && !applyJson(jsonText)) return;
-                  if (next === "json") setJsonText(null);
-                  setView(next);
-                }}
-                options={[
-                  { value: "form", label: "Form" },
-                  { value: "json", label: "JSON" },
-                ]}
-              />
-            </Space>
+              </div>
+            </div>
           </div>
 
           {view === "json" ? (
@@ -559,6 +597,11 @@ export default function GroupEditorModal({
               refused={refused}
               canEdit={canEdit}
               onChange={setValue}
+              // A lone section names its scope in the header instead, where it
+              // reads on the same line as the view toggle - two facts about the
+              // same edit on one row. Two sections still name themselves, where
+              // there is something to tell apart.
+              showSectionHeads={sections.length > 1}
             />
           )}
           {/* Silent until something has actually changed. "Nothing changed

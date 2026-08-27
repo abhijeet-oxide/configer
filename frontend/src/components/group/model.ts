@@ -118,6 +118,18 @@ export function fieldsets(members: Member[]): { key: string; members: Member[] }
   return out;
 }
 
+/** How wide a column needs to be for this fieldset's longest label to read in
+ *  full. A fixed column width is why four long names got jammed into four
+ *  narrow columns and every one of them was cut - the grid never knew the
+ *  labels needed more room than a short boolean's did. Sized to the longest
+ *  member, a small fieldset of long names naturally settles into fewer, wider
+ *  columns (four settings as 2x2 rather than 4x1) while a fieldset of short
+ *  ones still fills the row. */
+export function fieldColWidth(members: Member[]): number {
+  const longest = members.reduce((n, m) => Math.max(n, m.trail[m.trail.length - 1].length), 0);
+  return Math.min(460, Math.max(220, longest * 8 + 70));
+}
+
 /** Whether a field needs the whole row rather than a column of the form: a list
  *  of entries and a paragraph of text are unreadable in a third of a dialog. */
 export function isWide(type: string, value: unknown): boolean {

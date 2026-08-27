@@ -6,7 +6,7 @@ import { SCOPE_META, type ScopeFacet } from "../../scope";
 import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, ScopeSiteOutlined } from "../../icons";
 import { InlineNotice } from "../ui";
 import GroupField, { lockedReason } from "./GroupField";
-import { fieldsets, isWide, type Col, type Committed, type Member, type Section } from "./model";
+import { fieldColWidth, fieldsets, isWide, type Col, type Committed, type Member, type Section } from "./model";
 import { useWindow } from "./useWindow";
 
 // The group editor's body: every setting under one branch, as one WINDOWED list.
@@ -47,7 +47,7 @@ type BodyRow =
   | { kind: "section"; h: number; sec: Section }
   | { kind: "notice"; h: number; sec: Section }
   | { kind: "setHead"; h: number; label: string }
-  | { kind: "fields"; h: number; sec: Section; members: Member[] }
+  | { kind: "fields"; h: number; sec: Section; members: Member[]; cols: number }
   | { kind: "tableHead"; h: number; sec: Section }
   | { kind: "tableRow"; h: number; sec: Section; member: Member };
 
@@ -57,14 +57,18 @@ const FACET_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
   instance: ScopeInstanceOutlined,
 };
 
-/** How many columns of fields fit. Mirrors the CSS the form used to do on its
- *  own - it has to be known in JS now, because the row model needs to know how
- *  many fields a row holds before it can say how tall the list is. */
-const MIN_COL = 240;
+/** How many columns of fields fit, given how wide each needs to be. The width
+ *  comes from the FIELDSET (fieldColWidth): a set of long names settles into
+ *  fewer, wider columns rather than jamming four of them into four narrow ones
+ *  and cutting every label.
+ *
+ *  It has to be known in JS rather than left to CSS auto-fill, because the row
+ *  model needs to know how many fields a row holds before it can say how tall
+ *  the list is - and two answers to that question is a scrollbar that lies. */
 const GAP = 20;
-function columnsIn(width: number): number {
+function columnsIn(width: number, colWidth: number): number {
   if (!width) return 1;
-  return Math.max(1, Math.floor((width + GAP) / (MIN_COL + GAP)));
+  return Math.max(1, Math.floor((width + GAP) / (colWidth + GAP)));
 }
 
 export default function GroupBody({
@@ -75,6 +79,7 @@ export default function GroupBody({
   refused,
   canEdit,
   onChange,
+  showSectionHeads = true,
 }: {
   sections: Section[];
   committed: Map<string, Committed>;
@@ -83,18 +88,21 @@ export default function GroupBody({
   refused: Record<string, string>;
   canEdit: boolean;
   onChange: (key: string, value: unknown) => void;
+  /** whether a section names its own scope. A lone section says it in the
+   *  dialog's header instead, on the same line as the view toggle. */
+  showSectionHeads?: boolean;
 }) {
   const scroller = useRef<HTMLDivElement>(null);
   // One measurement drives both the row model and the window, so the two can
   // never disagree about how many columns a row holds.
   const probe = useWindow(scroller, [], 0);
-  const cols = columnsIn(probe.width);
+  const width = probe.width;
 
   const rows = useMemo<BodyRow[]>(() => {
     const out: BodyRow[] = [];
     const shown = (key: string, c: Committed) => (key in edits ? edits[key] : c.mixed ? undefined : c.value);
     for (const sec of sections) {
-      out.push({ kind: "section", h: H.section, sec });
+      if (showSectionHeads) out.push({ kind: "section", h: H.section, sec });
       if (sec.cols.length === 0) {
         out.push({ kind: "notice", h: H.notice, sec });
         continue;
@@ -103,11 +111,12 @@ export default function GroupBody({
         const col = sec.cols[0];
         for (const fs of fieldsets(sec.members)) {
           if (fs.key) out.push({ kind: "setHead", h: H.setHead, label: fs.key });
+          const cols = columnsIn(width, fieldColWidth(fs.members));
           // Fields flow across the row until it is full; a wide one takes the
           // row it starts, alone.
           let run: Member[] = [];
           const flush = () => {
-            if (run.length) out.push({ kind: "fields", h: H.field, sec, members: run });
+            if (run.length) out.push({ kind: "fields", h: H.field, sec, members: run, cols });
             run = [];
           };
           for (const m of fs.members) {
@@ -115,7 +124,7 @@ export default function GroupBody({
             const c = committed.get(key);
             if (isWide(m.row.param.type, c ? shown(key, c) : undefined)) {
               flush();
-              out.push({ kind: "fields", h: H.wide, sec, members: [m] });
+              out.push({ kind: "fields", h: H.wide, sec, members: [m], cols: 1 });
               continue;
             }
             run.push(m);
@@ -131,7 +140,7 @@ export default function GroupBody({
     return out;
     // `edits` is in here because a value growing past a line turns its field
     // wide, which changes the row model. It is the only reason.
-  }, [sections, cols, committed, edits]);
+  }, [sections, width, committed, edits, showSectionHeads]);
 
   const heights = useMemo(() => rows.map((r) => r.h), [rows]);
   const win = useWindow(scroller, heights);
@@ -149,7 +158,12 @@ export default function GroupBody({
       <div key={p.id} className={"cf-group-field" + (wide ? " is-wide" : "")}>
         {labelled && (
           <label className="cf-group-label">
-            <span className="mono">{m.trail[m.trail.length - 1]}</span>
+            {/* Sized to fit its column, not its name - a route several levels
+                deep still gets cut, and the tooltip is the one place the whole
+                thing is guaranteed to be readable. */}
+            <Tooltip title={m.trail[m.trail.length - 1]}>
+              <span className="mono">{m.trail[m.trail.length - 1]}</span>
+            </Tooltip>
             {p.validation?.required && (
               <Tooltip title="Required">
                 <span className="cf-group-req" aria-label="required">*</span>
@@ -213,7 +227,7 @@ export default function GroupBody({
           <div
             key={i}
             className="cf-group-form"
-            style={{ height: r.h, gridTemplateColumns: wide ? "1fr" : `repeat(${cols}, minmax(0, 1fr))` }}
+            style={{ height: r.h, gridTemplateColumns: wide ? "1fr" : `repeat(${r.cols}, minmax(0, 1fr))` }}
           >
             {r.members.map((m) => field(m, col, wide))}
           </div>

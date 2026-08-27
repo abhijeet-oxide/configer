@@ -420,22 +420,52 @@ func instKeyOf(p model.Parameter) string {
 // mergeIdentical collapses parameters with the same merge key into one
 // parameter carrying all bindings, preserving order. The shortest name wins
 // the display (e.g. "namespace" over "net.namespace" for the same setting).
+//
+// TWO SETTINGS IN THE SAME FILE ARE TWO SETTINGS, whatever they are called and
+// whatever they happen to say today. The merge key is deliberately loose (leaf
+// name + value) because the same setting written into two different files is a
+// real shape; inside ONE document that same looseness is a disaster. A file
+// with seven <net-info> entries has seven binding-types, four of which read
+// "normal", and merging them made one row that wrote all four - and a net-label
+// merged with an unrelated ipv4-subnet-config net-label that carried the same
+// text, taking the shorter name with it, so the setting vanished from under the
+// entry it belongs to and edits landed in two places at once.
 func mergeIdentical(params []model.Parameter, keyFn func(model.Parameter) string) []model.Parameter {
-	index := map[string]int{}
+	index := map[string][]int{}
 	var out []model.Parameter
 	for _, p := range params {
 		k := keyFn(p)
-		if i, ok := index[k]; ok {
+		merged := false
+		for _, i := range index[k] {
+			if sharesFile(out[i], p) {
+				continue
+			}
 			out[i].Bindings = append(out[i].Bindings, p.Bindings...)
 			if len(p.Name) < len(out[i].Name) {
 				out[i].Name = p.Name
 			}
+			merged = true
+			break
+		}
+		if merged {
 			continue
 		}
-		index[k] = len(out)
+		index[k] = append(index[k], len(out))
 		out = append(out, p)
 	}
 	return out
+}
+
+// sharesFile reports whether the two parameters both bind into the same file.
+func sharesFile(a, b model.Parameter) bool {
+	for _, ab := range a.Bindings {
+		for _, bb := range b.Bindings {
+			if ab.File == bb.File {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // subchartOf reports the alias of the Helm subchart a file belongs to, when the

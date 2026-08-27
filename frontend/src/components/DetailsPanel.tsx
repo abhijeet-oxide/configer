@@ -18,6 +18,7 @@ import PathPicker from "./PathPicker";
 import { relTime } from "./DashboardView";
 import { useIdentity } from "../identity";
 import { c } from "../uikit";
+import ParameterFlow from "./ParameterFlow";
 
 // Right-hand Parameter Details panel: metadata, schema/validation, and a small
 // value summary across instances. One overall Edit button turns every major
@@ -648,40 +649,75 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
   );
 }
 
-// HISTORY tab: how this parameter's value changed over time, drawn as a small
-// git-graph timeline (VS-Code / GitHub style). Commits where the value actually
-// changed are emphasized; unchanged commits are dimmed. When an instance is
-// selected the timeline resolves that instance's effective value, otherwise the
-// catalog default (base value).
+// HISTORY tab: how this parameter's value came to say what it says.
+//
+// It used to be the commit log, flattened: a list of values with a hash and an
+// author beside each. That answers "when did this change" and cannot answer the
+// question people actually open this tab with, which is "why". Why is in the
+// change requests - who proposed it, who signed it off, what was turned down
+// and on what grounds - and half of that is in no log at all, because a
+// rejected change never reaches a commit.
+//
+// So the tab draws both (see ParameterFlow): the trunk, each commit naming the
+// review it came out of, and every proposal that is not on the trunk hanging
+// off the point it forked from, with its status in a colour, a line and a
+// shape. When an instance is selected the whole picture is that instance's
+// cell; otherwise it is the catalog default.
 function ParamHistoryTab({ paramId }: { paramId: string }) {
-  const { selectedInstance } = useUI();
+  const { selectedInstance, setSection } = useUI();
+  const { canEdit } = useIdentity();
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
   const q = useRepoQuery({
     queryKey: ["paramHistory", paramId, selectedInstance],
     queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
   });
   const entries = q.data?.entries ?? [];
+  const changes = q.data?.changes ?? [];
   const lastChange = q.data?.lastChange ?? null;
   const supported = q.data?.supported ?? true;
+
+  const resume = useMutation({
+    mutationFn: (id: number) => api.reopenChange(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["paramHistory"] });
+      message.success(`${res.carried} ${res.carried === 1 ? "edit" : "edits"} from ${res.from} are back in your draft.`);
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   // A git log over a repository's whole life is not instant, and a line of text
   // saying so is the least a panel can do while it waits. The skeleton is
   // shaped like the timeline that arrives, so nothing jumps when it does.
   if (q.isLoading) return <ParamHistorySkeleton />;
-  if (!supported)
+  // A backend that cannot serve a log can still serve the change requests: they
+  // are workflow state, not git. So an unsupported history is only missing its
+  // trunk, and saying "no history here" while holding four proposals would be
+  // simply untrue.
+  if (!supported && changes.length === 0)
     return (
       <Typography.Text type="secondary" style={{ fontSize: 12 }}>
         History is available for repositories cloned or opened on the server.
       </Typography.Text>
     );
-  if (entries.length === 0)
+  if (entries.length === 0 && changes.length === 0)
     return <Typography.Text type="secondary" style={{ fontSize: 12 }}>No recorded changes for this parameter.</Typography.Text>;
+
+  // Proposals that are not on the trunk. Counted here rather than left to be
+  // noticed, because "two changes to this value were turned down" is a fact
+  // about a parameter that ought to reach somebody who is about to edit it.
+  const open = changes.filter((cr) => cr.state === "under_review" || cr.state === "approved").length;
+  const refused = changes.filter((cr) => cr.state === "rejected").length;
 
   return (
     <div>
       {lastChange && (
         <div
           style={{
-            marginBottom: 12,
+            marginBottom: 10,
             padding: "6px 10px",
             borderRadius: 8,
             fontSize: 12,
@@ -696,50 +732,29 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
           <span style={{ color: "var(--text-2)" }}>
             {" "}by {lastChange.author} · {relTime(lastChange.date)}
           </span>
+          {lastChange.changeNumber ? (
+            <span style={{ color: "var(--text-2)" }}> · CR-{lastChange.changeNumber}</span>
+          ) : null}
         </div>
       )}
-      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-        VALUE OVER TIME{selectedInstance ? ` · ${selectedInstance}` : " · default"}
-      </Typography.Text>
-      <div style={{ marginTop: 10 }}>
-        {entries.map((e, i) => {
-          const last = i === entries.length - 1;
-          const dim = !e.changed;
-          return (
-            <div key={e.sha} style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14 }}>
-                <span
-                  style={{
-                    width: e.changed ? 11 : 8,
-                    height: e.changed ? 11 : 8,
-                    borderRadius: "50%",
-                    background: e.changed ? c.brand : "rgba(127,137,160,0.6)",
-                    marginTop: 4,
-                    flexShrink: 0,
-                  }}
-                />
-                {!last && <span style={{ flex: 1, width: 2, background: "rgba(127,137,160,0.3)", marginTop: 2 }} />}
-              </div>
-              <div style={{ paddingBottom: 14, minWidth: 0, flex: 1, opacity: dim ? 0.6 : 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-                  <span className="mono" style={{ fontSize: 12.5, fontWeight: e.changed ? 600 : 400 }}>
-                    {e.present ? (e.value === "" ? "(empty)" : e.value) : "(not defined)"}
-                  </span>
-                  {e.changed && i !== entries.length - 1 && (
-                    <Tag color="blue" style={{ fontSize: 10, margin: 0 }}>changed</Tag>
-                  )}
-                </div>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-                  {e.short} · {e.author} · {relTime(e.date)}
-                </Typography.Text>
-                <div style={{ fontSize: 11, opacity: 0.7, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {e.message}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+      <div className="pf-head">
+        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+          HOW THIS VALUE GOT HERE{selectedInstance ? ` · ${selectedInstance}` : " · default"}
+        </Typography.Text>
+        {(open > 0 || refused > 0) && (
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {[open ? `${open} waiting` : "", refused ? `${refused} rejected` : ""].filter(Boolean).join(" · ")}
+          </Typography.Text>
+        )}
       </div>
+      <ParameterFlow
+        entries={entries}
+        changes={changes}
+        canResume={canEdit}
+        resuming={resume.isPending ? resume.variables : null}
+        onResume={(id) => resume.mutate(id)}
+        onOpenChange={() => setSection("changes")}
+      />
     </div>
   );
 }

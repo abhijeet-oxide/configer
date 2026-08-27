@@ -245,6 +245,8 @@ func humanizeAction(method, path string) string {
 			return "Published change request #" + arg
 		case "reject":
 			return "Rejected change request #" + arg
+		case "reopen":
+			return "Resumed the work of change request #" + arg
 		case "comments":
 			return "Commented on change request #" + arg
 		case "reviewers":

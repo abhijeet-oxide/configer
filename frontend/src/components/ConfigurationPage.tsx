@@ -6,6 +6,7 @@ import { api, bindingsOf, expandBinding, reviewItems} from "../api";
 import { useUI } from "../store";
 import { useElementSize } from "../hooks";
 import { useIdentity } from "../identity";
+import ChangeViewPicker from "./ChangeViewPicker";
 
 // ConfigurationPage is the single home of everything about ONE application: a
 // quiet underline tab row over the active view. Every tab is a peer and shows
@@ -87,7 +88,9 @@ export default function ConfigurationPage({
   const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
   const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
-  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: api.grid, staleTime: 10_000 });
+  // Deliberately the plain grid, never the one read through a picked change:
+  // its only job here is counting the files the reader's OWN draft touches.
+  const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid(), staleTime: 10_000 });
   const awaiting = changesQ.data?.filter((c) => c.state === "under_review").length ?? 0;
   // The Changes tab lists everything still in play, so its badge counts that -
   // including your own draft. Counting only what was under review meant the tab
@@ -95,6 +98,12 @@ export default function ConfigurationPage({
   const openChanges =
     changesQ.data?.filter((c) => c.state === "draft" || c.state === "under_review" || c.state === "approved")
       .length ?? 0;
+  // What the change picker would have to offer beyond main: open work and
+  // refused work. Published changes are not offered - their values ARE main.
+  const offerableChanges =
+    changesQ.data?.filter(
+      (c) => c.state === "draft" || c.state === "under_review" || c.state === "approved" || c.state === "rejected",
+    ).length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const incoming = incomingQ.data?.changes?.length ?? 0;
   // Counted the way the review counts (see api.reviewItems): a file row that
@@ -232,6 +241,17 @@ export default function ConfigurationPage({
           </Dropdown>
         )}
       </div>
+      {/* Whose values the parameters page is showing. It sits ABOVE the grid
+          rather than inside its toolbar because it is a fact about the whole
+          page - the details panel and the tree are reading the same change -
+          and because it has to be able to say, in words, that what is on screen
+          was never published. It is absent unless there is something to choose:
+          with only main to look at, a control offering only main is noise.
+
+          The other tabs are the workspace's own (your draft's files, the
+          changes list, the audit trail) and are not read through a change, so
+          the strip belongs to this tab alone. */}
+      {active === "config" && offerableChanges > 0 && <ChangeViewPicker changes={changesQ.data} />}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
     </div>
   );

@@ -108,9 +108,10 @@ func (s *Server) projectInfo(w http.ResponseWriter, r *http.Request) {
 // grid returns the full parameter x instance matrix.
 //
 // @Summary     Parameter x instance grid
-// @Description The full matrix: every parameter row x every instance column, each cell resolved from the real repository files with its provenance (default / base / instance), type, validation state and version state. The current draft's pending edits are previewed on top.
+// @Description The full matrix: every parameter row x every instance column, each cell resolved from the real repository files with its provenance (default / base / instance), type, validation state and version state. The caller's own draft is previewed on top. `?change=<id>` previews a NAMED change request's edits instead - including a rejected one, whose values reach no branch and no commit - and marks the response `viewing` (read-only unless it is the caller's own draft).
 // @Tags        Grid & parameters
 // @Produce     json
+// @Param       change query int false "Preview this change request's edits instead of the caller's draft"
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
 // @Router      /api/grid [get]
@@ -129,20 +130,57 @@ type gridResponse struct {
 	Head      string `json:"head,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 	TotalRows int    `json:"totalRows,omitempty"`
+	// Viewing names the change request whose edits are laid over the published
+	// values, when the caller asked for one that is not their own draft. The
+	// grid is then somebody else's proposal, so it is READ-ONLY, and the client
+	// needs to know that from the response rather than from having remembered
+	// what it asked for.
+	Viewing *viewingChange `json:"viewing,omitempty"`
 }
 
+// viewingChange is the change a grid read is being shown through: enough to
+// name it in the bar above the grid without a second request.
+type viewingChange struct {
+	ID       int          `json:"id"`
+	Number   int          `json:"number,omitempty"`
+	Title    string       `json:"title"`
+	State    change.State `json:"state"`
+	Author   string       `json:"author"`
+	Branch   string       `json:"branch,omitempty"`
+	Category string       `json:"category,omitempty"`
+	Items    int          `json:"items"`
+	ReadOnly bool         `json:"readOnly"`
+}
+
+// grid builds the parameter x instance matrix.
+//
+// By default it is the repository's published values with the caller's OWN
+// draft laid over them - what the trunk says, plus what this person has
+// changed and not yet sent. `?change=<id>` swaps that overlay for a named
+// change request's, which is how a value that was proposed and refused can be
+// looked at again: a rejected change never reached the trunk, so reading the
+// grid is otherwise the one thing that can never show what it asked for.
+//
+// The overlay is the change's ITEMS applied to the CURRENT files, not its
+// branch's tree, and deliberately so: it answers "what would this change do if
+// it landed now", which is the question somebody deciding whether to resume it
+// is asking. It also keeps working for a change whose branch is gone.
 func (s *Server) grid(w http.ResponseWriter, r *http.Request) {
 	p, draft, err := s.loadWithDraft(draftOwner(r))
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
+	overlay, viewing, ok := s.gridOverlay(w, r, draft)
+	if !ok {
+		return
+	}
 	g := s.buildGrid(p)
-	if draft != nil {
-		grid.ApplyDraftWith(&g, draft.Items, s.resolve(p))
+	if len(overlay) > 0 {
+		grid.ApplyDraftWith(&g, overlay, s.resolve(p))
 	}
 	rev := s.catalogRev()
-	resp := gridResponse{Grid: g, Head: rev}
+	resp := gridResponse{Grid: g, Head: rev, Viewing: viewing}
 	if len(g.Rows) > maxGridRows {
 		resp.TotalRows = len(g.Rows)
 		resp.Truncated = true
@@ -150,6 +188,39 @@ func (s *Server) grid(w http.ResponseWriter, r *http.Request) {
 	}
 	setRev(w, rev) // catalog revision for optimistic-concurrency writes
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// gridOverlay decides which pending edits a grid read is laid over with: the
+// caller's own draft by default, or the change request named by `?change=`.
+//
+// A change that is not the caller's open draft is READ-ONLY, and says so. The
+// grid is then a picture of somebody's proposal rather than of the workspace,
+// and letting an edit land on it would silently reopen a change the reader was
+// only looking at.
+func (s *Server) gridOverlay(w http.ResponseWriter, r *http.Request, draft *change.ChangeRequest) ([]change.Item, *viewingChange, bool) {
+	raw := strings.TrimSpace(r.URL.Query().Get("change"))
+	if raw == "" {
+		if draft == nil {
+			return nil, nil, true
+		}
+		return draft.Items, nil, true
+	}
+	id, err := strconv.Atoi(raw)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "change must be a change request id")
+		return nil, nil, false
+	}
+	cr, err := s.Store.Get(id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "no such change request")
+		return nil, nil, false
+	}
+	own := draft != nil && draft.ID == cr.ID
+	return cr.Items, &viewingChange{
+		ID: cr.ID, Number: cr.Number, Title: cr.Title, State: cr.State,
+		Author: cr.Author, Branch: cr.Branch, Category: cr.Category,
+		Items: len(cr.Items), ReadOnly: !own,
+	}, true
 }
 
 // instances returns the instance registry.
@@ -302,6 +373,13 @@ type paramHistoryEntry struct {
 	Value   string `json:"value"`   // effective value at this commit
 	Present bool   `json:"present"` // whether the parameter existed then
 	Changed bool   `json:"changed"` // value differs from the next-older commit
+	// The reviewed decision this commit came out of, when it came out of one.
+	// A sha alone answers "when"; the change request answers "which change,
+	// and who signed it off", which is the question a reader of a surprising
+	// value actually has.
+	ChangeID     int    `json:"changeId,omitempty"`
+	ChangeNumber int    `json:"changeNumber,omitempty"`
+	ChangeTitle  string `json:"changeTitle,omitempty"`
 }
 
 // valueString renders a resolved value for the history timeline: strings as-is,
@@ -448,7 +526,7 @@ func orderCommits(all []repobackend.Commit, rank map[string]int) {
 // parameterHistory returns one parameter's value over recent commits.
 //
 // @Summary     Parameter value timeline
-// @Description Resolves one parameter's effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus .configer), so the inspector can show how it changed over time and who last changed it (`lastChange`). `?instance=` resolves for that instance; otherwise the catalog default is used.
+// @Description One parameter's whole life. `entries` resolves its effective value at each recent commit that touched the cell's backing files (the parameter's bindings plus `.configer`), each naming the change request it came out of; `lastChange` is the commit that set the value it has now. `changes` is every change request that touched this parameter IN ANY STATE - including drafts and rejected ones, which never reach the trunk and so appear in no commit log - with the commit it forked from, where it landed, and why it was refused. `?instance=` resolves for that instance; otherwise the catalog default is used.
 // @Tags        Grid & parameters
 // @Produce     json
 // @Param       id       path  string true  "Parameter id (slug)"
@@ -528,10 +606,18 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+	// The change requests that touched this parameter, and the link from each
+	// trunk commit back to the review it came out of. Rejected and draft work
+	// is HERE and nowhere else: it never reached the trunk, so no log will
+	// ever carry it, and without it the history of a value that was proposed
+	// and refused reads as though nothing was ever proposed at all.
+	changes := s.paramChanges(id, instance)
+	attachChanges(entries, changes)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"parameter":  id,
 		"instance":   instance,
 		"entries":    entries,
+		"changes":    changes,
 		"lastChange": lastChange,
 		"supported":  s.Backend.Kind() == "local",
 	})

@@ -129,6 +129,19 @@ export function newAppReturnTo(source: NewAppSource | null): string {
 
 const initialNewApp = parseNewApp(window.location.search);
 
+// Which change request the parameters page is being read THROUGH (?change=7),
+// or null for the workspace itself: the published values with your own draft on
+// top. It is a query parameter and not a path segment for the same reason
+// ?param= and ?inst= are - it REFINES the view you are on rather than being a
+// different place - and it rides in the URL so "here is what CR-7 actually
+// asked for" is a link somebody can send.
+export function parseViewChange(search: string): number | null {
+  const n = Number(new URLSearchParams(search).get("change"));
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+const initialViewChange = parseViewChange(window.location.search);
+
 // View preferences persisted across sessions (the "customizable view").
 export type GroupBy = "none" | "value" | "path";
 
@@ -254,6 +267,11 @@ interface UIState {
   inspectorTab: string;
   /** instance whose column is highlighted in the grid */
   selectedInstance: string | null;
+  /** the change request the parameters page is being read through, or null for
+   *  the workspace itself. Reading through a change is how a proposal that was
+   *  REFUSED can be looked at at all: it reached no branch the trunk knows
+   *  about and no commit, so the grid is the only place its values exist. */
+  viewChangeId: number | null;
   compareLeft: string | null;
   compareRight: string | null;
   search: string;
@@ -329,6 +347,9 @@ interface UIState {
   /** clear every pin at once */
   unpinAll: () => void;
   selectInstance: (name: string | null) => void;
+  /** read the parameters page through this change request, or null for the
+   *  workspace. Clearing it is what "back to Main" does. */
+  viewChange: (id: number | null) => void;
   setCompare: (left: string | null, right: string | null) => void;
   setSearch: (q: string) => void;
   setFilters: (f: Partial<RowFilters>) => void;
@@ -393,6 +414,7 @@ export const useUI = create<UIState>((set) => ({
   selectedParamId: initialParam,
   inspectorTab: "overview",
   selectedInstance: initialInstance,
+  viewChangeId: initialViewChange,
   compareLeft: null,
   compareRight: null,
   search: "",
@@ -461,6 +483,10 @@ export const useUI = create<UIState>((set) => ({
       groupEdit: null,
       selectedParamId: null,
       selectedInstance: null,
+      // A change request's id means something only inside its own
+      // application; carried across, ?change=7 would silently point the new
+      // application's grid at a change that is somebody else's or nobody's.
+      viewChangeId: null,
       compareLeft: null,
       compareRight: null,
       jump: null,
@@ -498,6 +524,7 @@ export const useUI = create<UIState>((set) => ({
       return { prefs };
     }),
   selectInstance: (selectedInstance) => set({ selectedInstance }),
+  viewChange: (viewChangeId) => set({ viewChangeId }),
   setCompare: (compareLeft, compareRight) => set({ compareLeft, compareRight }),
   setSearch: (search) => set({ search }),
   setFilters: (f) => set((s) => ({ filters: { ...s.filters, ...f } })),
@@ -543,6 +570,7 @@ function pathFor(s: UIState): string {
   const q = new URLSearchParams();
   if (s.selectedParamId) q.set("param", s.selectedParamId);
   if (s.selectedInstance) q.set("inst", s.selectedInstance);
+  if (s.viewChangeId) q.set("change", String(s.viewChangeId));
   // The New Application dialog rides in the URL so it is shareable and reopens
   // on reload; it is a refinement of the current view, not a history stop.
   if (s.newAppOpen) q.set("new", s.newAppSource ?? "1");
@@ -608,6 +636,7 @@ window.addEventListener("popstate", () => {
   const newApp = parseNewApp(window.location.search);
   useUI.setState({
     repoId, section: loc.section, selectedParamId: loc.param, selectedInstance: loc.inst,
+    viewChangeId: parseViewChange(window.location.search),
     newAppOpen: newApp.open, newAppSource: newApp.source,
   });
 });

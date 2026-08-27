@@ -9,6 +9,7 @@ import {
   SearchOutlined,
   MoreOutlined,
   DiffOutlined,
+  FilterFilled,
   SplitCellsOutlined,
   MergeCellsOutlined,
   BranchesOutlined,
@@ -91,6 +92,7 @@ function detectIndent(content: string): number {
 
 const TREE_KEY = "configer.filesTreeOpen";
 const DIFF_LAYOUT_KEY = "configer.diffLayout";
+const DIFF_ONLY_KEY = "configer.diffOnlyChanges";
 
 /** Side by side, or one pane with removals and additions interleaved. */
 type DiffLayout = "split" | "inline";
@@ -141,6 +143,13 @@ export default function FilesView() {
     () => (localStorage.getItem(DIFF_LAYOUT_KEY) === "inline" ? "inline" : "split"),
   );
   useEffect(() => localStorage.setItem(DIFF_LAYOUT_KEY, diffLayout), [diffLayout]);
+  // Whether the diff shows the whole file or only what changed in it. A
+  // standing preference like the layout is: somebody who reads a diff one way
+  // sets it once, and on a two-thousand-line file they will want it every time.
+  const [onlyChanges, setOnlyChanges] = useState(
+    () => localStorage.getItem(DIFF_ONLY_KEY) === "1",
+  );
+  useEffect(() => localStorage.setItem(DIFF_ONLY_KEY, onlyChanges ? "1" : "0"), [onlyChanges]);
   // What the last save did to the catalog, said quietly in the status strip
   // and then let go of. It is worth knowing and not worth interrupting for.
   const [savedNote, setSavedNote] = useState("");
@@ -757,6 +766,30 @@ export default function FilesView() {
                   ]}
                 />
               )}
+              {/* How MUCH of it to read. A diff of a two-thousand-line file
+                  with three changed values is still two thousand lines, and
+                  finding the three is the same scroll it was before the diff
+                  was opened. This collapses everything untouched into a band
+                  that says how many lines it swallowed and opens on a click -
+                  out of the way, with a way back. */}
+              {diffOpen && (
+                <Tooltip
+                  title={
+                    onlyChanges
+                      ? "Show the whole file again, with the changes marked in it"
+                      : "Collapse everything that did not change and show only the edits"
+                  }
+                >
+                  <Button
+                    size="small"
+                    type={onlyChanges ? "primary" : "default"}
+                    icon={<FilterFilled />}
+                    onClick={() => setOnlyChanges((v) => !v)}
+                  >
+                    Only differences
+                  </Button>
+                </Tooltip>
+              )}
               {canEdit && <SubmitChangesButton instances={gridQ.data?.instances} />}
               <Dropdown
                 trigger={["click"]}
@@ -895,6 +928,7 @@ export default function FilesView() {
                       original={createdFiles.has(current.path) ? undefined : committed}
                       diff={diffOpen}
                       diffLayout={diffLayout}
+                      onlyChanges={onlyChanges}
                       dark={mode === "dark"}
                       editable={canEdit}
                       revealLine={problem?.line || focusMark?.line || reveal}

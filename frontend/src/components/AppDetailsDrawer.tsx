@@ -58,7 +58,7 @@ export default function AppDetailsDrawer({
   // switches first), so the repo-scoped queries below hit the right one. A
   // not-yet-initialized repository has no grid/changes/application to load.
   const enabled = open && !!repo && !repo.error && !repo.needsSetup;
-  const changesQ = useQuery({ queryKey: ["changes"], queryFn: api.changes, enabled });
+  const changesQ = useQuery({ queryKey: ["changes"], queryFn: () => api.changes(), enabled });
   const appQ = useQuery({ queryKey: ["application", repo?.id], queryFn: api.application, enabled });
   const gridQ = useQuery({ queryKey: ["grid"], queryFn: () => api.grid(), enabled });
 

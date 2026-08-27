@@ -148,7 +148,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
   const { setSection, setFilters, selectParam, selectInstance, setJump, repoId, setRepo } = useUI();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: () => api.changes() });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
   const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, retry: false });

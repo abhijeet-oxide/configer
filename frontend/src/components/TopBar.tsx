@@ -81,7 +81,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   const switchRepo = useSwitchRepo();
   const openSearch = useSearchOpen((s) => s.openSearch);
 
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: () => api.changes() });
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
   const repos = wsQ.data?.repos ?? [];
   const activeRepo = repos.find((r) => r.id === repoId);

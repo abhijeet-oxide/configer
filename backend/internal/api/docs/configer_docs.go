@@ -348,7 +348,7 @@ const docTemplateconfiger = `{
         },
         "/api/changes": {
             "get": {
-                "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `.",
+                "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `. Narrow with ` + "`" + `state` + "`" + ` (a comma-separated list, or ` + "`" + `open` + "`" + ` = draft+under_review+approved, or ` + "`" + `closed` + "`" + ` = published+rejected) and ` + "`" + `q` + "`" + ` (matches the CR number, title, author, reference, branch or category). Both apply BEFORE paging, so ` + "`" + `hasMore` + "`" + ` describes the filtered list.",
                 "produces": [
                     "application/json"
                 ],
@@ -357,6 +357,18 @@ const docTemplateconfiger = `{
                 ],
                 "summary": "List change requests",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Narrow by state: a comma-separated list, or ` + "`" + `open` + "`" + ` / ` + "`" + `closed` + "`" + `",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search the CR number, title, author, reference, branch or category",
+                        "name": "q",
+                        "in": "query"
+                    },
                     {
                         "type": "integer",
                         "description": "Page size (default 50, max 200)",

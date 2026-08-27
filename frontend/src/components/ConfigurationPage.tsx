@@ -89,7 +89,15 @@ export default function ConfigurationPage({
   // here would be the duplicated-refresh problem this exists to remove.
   const pulse = usePulseStatus();
   const { canEdit } = useIdentity();
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes });
+  // What is IN FLIGHT, asked for as such. The tab badges and the picker both
+  // want the same thing - the changes somebody could still act on - and that
+  // set stays small however old the application is, so it arrives complete
+  // rather than as whichever open ones made the newest page. Anything that has
+  // ended is reached by searching (see ChangeViewPicker).
+  const changesQ = useRepoQuery({
+    queryKey: ["changes", "open"],
+    queryFn: () => api.changes({ state: "open", limit: 200 }),
+  });
   const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, retry: false });
   const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
@@ -253,6 +261,7 @@ export default function ConfigurationPage({
       {active === "config" && (
         <ChangeViewPicker
           changes={changesQ.data}
+          draftItems={draftItems}
           checkedAt={pulse.checkedAt}
           checking={pulse.checking}
           failed={pulse.failed}

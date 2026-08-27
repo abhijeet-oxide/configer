@@ -194,6 +194,14 @@ never gate on the score, which exists only for the trend line.
   polls is listed in `pulse.ts` with the reason (cross-application reads, the
   health watchdog, external systems), and adding a `refetchInterval` to anything
   else is going backwards.
+- **A change list is NARROWED before it is paged** (`api/changefilter.go`):
+  `?state=` (a list, or `open` = draft+under_review+approved, or `closed`) and
+  `?q=` (CR number - matched exactly so 41 does not bury CR-41 - title, author,
+  reference, branch, category). Change requests are never deleted, so a
+  year-old application has thousands and paging alone does nothing for somebody
+  looking for CR-412: the first page is just the newest fifty. `state=open` is
+  what a picker shows COMPLETE (being in flight is transient, so that set stays
+  small forever); everything else is reached by searching, never by scrolling.
 - **The grid can be read THROUGH a change** (`GET /api/grid?change=<id>`,
   `ChangeViewPicker`, `?change=` in the URL). It applies that change's ITEMS to
   the CURRENT files - not its branch's tree - which answers "what would this do
@@ -206,7 +214,13 @@ never gate on the score, which exists only for the trend line.
   filter (`shownItems` in ParameterGrid), and the draft's submit button steps
   aside. All of that used to come off the reader's own draft unconditionally,
   which was invisible until the grid could be pointed elsewhere and then showed
-  one change's values under another change's highlights.
+  one change's values under another change's highlights. The picker lists what
+  is in flight (capped, with a count of the rest) and searches the whole history
+  server-side; the change it is SHOWING is fetched by id rather than looked up
+  in that list, because a change reached by search usually is not in it. Your
+  own draft is not an entry - it is what Main already shows - so the Main row
+  and the trigger say "N unsent" instead, which is how starting to edit changes
+  the control without inventing a branch name a draft does not have yet.
 - `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
   file beside the repo (no dependencies, right for one person); `SQLStore`
   keeps a row per change request in the platform database (a write touches one

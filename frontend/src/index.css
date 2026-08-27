@@ -5146,3 +5146,51 @@ mark.vd-ins {
      more on a phone than a label saying nothing has changed. */
   .cf-viewbar-fresh:not(.is-stale) { display: none; }
 }
+
+/* The change picker's popup: a search field pinned above a short list.
+   The list is deliberately short - a dropdown is where you RECOGNISE a change,
+   not where you read a thousand of them - so past the cap it stops and says how
+   many more there are and how to reach them. */
+.cf-viewpick-pop {
+  padding: 6px;
+  min-width: 340px;
+  max-width: 420px;
+}
+.cf-viewpick-pop .ant-input-affix-wrapper {
+  margin-bottom: 6px;
+}
+/* The menu inside scrolls; the search box above it does not, so typing never
+   moves out from under the cursor. */
+.cf-viewpick-pop .ant-dropdown-menu {
+  box-shadow: none;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+/* The row that says what is NOT on screen. Not an item - there is nothing to
+   pick - so it reads as a note and does not take the hover. */
+.cf-viewpick-note {
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 3px 2px;
+  cursor: default;
+  white-space: normal;
+}
+/* Unsent edits on the trigger. It is the draft's own colour, which is the
+   quietest in the status vocabulary by design: this is a statement of fact
+   about what is on screen, not a warning. */
+.cf-viewbtn-unsent {
+  margin-inline-start: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  color: var(--cf-draft);
+  border: 1px solid color-mix(in srgb, var(--cf-draft) 40%, transparent);
+  background: color-mix(in srgb, var(--cf-draft) 8%, transparent);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .cf-viewpick-pop { min-width: 0; max-width: calc(100vw - 24px); }
+}

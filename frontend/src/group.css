@@ -32,11 +32,23 @@
 
 /* The fields scroll; the header above and the count below do not. A dialog
    whose "apply to" line scrolled off the top is a dialog you have to scroll
-   back up to trust. */
+   back up to trust.
+
+   It is also the WINDOW: only the rows this box can show are rendered (see
+   GroupBody), so every row inside declares its own height and none of them may
+   grow past it. That is why the field error below is positioned rather than
+   flowed - a message that pushed its row taller would put every row beneath it
+   out of step with the scrollbar. */
 .cf-group-body {
   max-height: min(56vh, 560px);
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding-right: 4px;
+  /* Layout and paint, NOT size: a form of nine fields still shrinks the dialog
+     to fit, and only a form that outgrows the cap starts scrolling. Size
+     containment would fix the box at the cap and leave a small form floating
+     above a screenful of nothing. */
+  contain: layout paint;
 }
 
 .cf-group-json {
@@ -62,22 +74,41 @@
    settings sits in two columns at the left instead of stretching each field
    across half the dialog - a form whose column count changes with its contents
    never looks like the same form twice. */
+/* The column count comes from JS now, not from auto-fill: the row model has to
+   know how many fields a row holds before it can say how tall the list is, and
+   two answers to that question is a scrollbar that lies. Same measurement,
+   stated once. */
 .cf-group-form {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 14px 20px;
+  column-gap: 20px;
   align-items: start;
 }
 .cf-group-field {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
 }
-/* A list of entries or a paragraph of text has nowhere to go in a third of the
-   dialog, so it takes the whole row. */
 .cf-group-field.is-wide {
   grid-column: 1 / -1;
+}
+/* Anything a field says about a refused or invalid value hangs BELOW it without
+   taking space: the row's height is fixed, and a message that pushed it taller
+   would desynchronise every row under it from the scrollbar. */
+.cf-group-err,
+.cf-group-field .ant-typography-danger {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  margin-top: 1px;
+  font-size: 11px;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .cf-group-label {
   display: flex;
@@ -117,16 +148,15 @@
 .cf-group-info:focus-visible {
   color: var(--text-2);
 }
-/* A fieldset: one heading for a route the fields under it all share. */
-.cf-group-set + .cf-group-set {
-  margin-top: 14px;
-}
+/* A fieldset heading: one row of the list, naming the route the fields under it
+   all share. */
 .cf-group-set-head {
+  display: flex;
+  align-items: flex-end;
   font-size: 11px;
   font-weight: 600;
   color: var(--text-2);
   padding-bottom: 4px;
-  margin-bottom: 8px;
   border-bottom: 1px solid var(--border);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -153,20 +183,18 @@
   line-height: 1.35;
 }
 
-.cf-group-table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  table-layout: fixed;
-}
-.cf-group-table th,
-.cf-group-table td {
-  padding: 6px 8px;
-  vertical-align: top;
-  text-align: left;
+/* The comparison: settings down, what they are being set on across. It is a
+   grid rather than a <table> because a table's rows cannot be windowed - the
+   browser lays the whole thing out whatever is rendered. The ROLES are still
+   the table's, so it reads as one to a screen reader. */
+.cf-group-grid {
+  display: grid;
+  column-gap: 12px;
+  align-items: start;
+  padding: 6px 0;
   border-bottom: 1px solid var(--border);
 }
-.cf-group-table thead th {
+.cf-group-grid-head {
   position: sticky;
   top: 0;
   z-index: 1;
@@ -174,26 +202,35 @@
   font-size: 11px;
   font-weight: 650;
   color: var(--text-2);
+  align-items: flex-end;
   border-bottom: 1px solid var(--border-strong, var(--border));
 }
-/* The setting's own name is a row header, not a cell: it names the row for a
-   screen reader the same way the column head names the column. */
-.cf-group-table .cf-group-name {
-  width: 34%;
+.cf-group-grid-head > span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cf-group-grid .cf-group-name {
   font-weight: 500;
   color: var(--text);
-}
-.cf-group-table tbody tr:hover > * {
-  background: var(--surface-2);
-}
-.cf-group-sub {
-  display: block;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--text-3);
-  white-space: nowrap;
+  min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+.cf-group-grid > span {
+  min-width: 0;
+}
+/* A comparison cell holds the control alone, so it centres on the row rather
+   than hanging from a label that is not there. */
+.cf-group-grid [role="cell"] {
+  display: flex;
+  align-items: center;
+}
+.cf-group-grid [role="cell"] > .cf-group-field {
+  width: 100%;
+}
+.cf-group-grid .cf-group-name {
+  display: flex;
+  align-items: center;
 }
 
 .cf-group-foot {
@@ -211,10 +248,7 @@
     grid-template-columns: 1fr;
   }
   .cf-group-body {
-    overflow-x: auto;
-  }
-  .cf-group-table {
-    min-width: 560px;
+    max-height: min(50vh, 420px);
   }
 }
 

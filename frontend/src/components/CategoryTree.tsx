@@ -8,6 +8,7 @@ import { CopyOutlined, EditOutlined, FilterFilled } from "../icons";
 import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
 import { groupLeaf } from "../paramtree";
+import { markBusy } from "../busy";
 import { useUI } from "../store";
 
 // Left panel: the single Parameters tree, so it alone flanks the matrix (the
@@ -333,7 +334,10 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                   onClick: ({ key, domEvent }) => {
                     domEvent.stopPropagation();
                     if (key === "dup" && entry) setDuplicating(entry);
-                    else if (key === "edit") openGroupEditor(c.prefix);
+                    else if (key === "edit") {
+                      markBusy();
+                      openGroupEditor(c.prefix);
+                    }
                     else if (key === "filter") {
                       setCategory(c.prefix);
                       setGroup(c.prefix);
@@ -512,6 +516,11 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             onDoubleClick={(_e, node) => {
               const k = String((node as unknown as { key: React.Key }).key);
               if (k === "__all__" || k.startsWith("p:")) return;
+              // The pointer says so before anything else can: a branch of
+              // hundreds has work to do before its dialog can paint, and a
+              // double click that produces nothing reads as a double click
+              // that missed. Cleared by the dialog itself once it is up.
+              markBusy();
               openGroupEditor(k);
             }}
           />

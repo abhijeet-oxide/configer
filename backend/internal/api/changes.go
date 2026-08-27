@@ -41,15 +41,20 @@ func writeChangeError(w http.ResponseWriter, r *http.Request, err error) {
 // listChanges lists change requests, newest first, cursor-paginated.
 //
 // @Summary     List change requests
-// @Description Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass `limit` (default 50, max 200) and the previous response's `nextCursor`. Returns `{items, nextCursor, hasMore}`.
+// @Description Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass `limit` (default 50, max 200) and the previous response's `nextCursor`. Returns `{items, nextCursor, hasMore}`. Narrow with `state` (a comma-separated list, or `open` = draft+under_review+approved, or `closed` = published+rejected) and `q` (matches the CR number, title, author, reference, branch or category). Both apply BEFORE paging, so `hasMore` describes the filtered list.
 // @Tags        Editing & change requests
 // @Produce     json
+// @Param       state  query string false "Narrow by state: a comma-separated list, or `open` / `closed`"
+// @Param       q      query string false "Search the CR number, title, author, reference, branch or category"
 // @Param       limit  query int    false "Page size (default 50, max 200)"
 // @Param       cursor query string false "Opaque cursor from the previous page"
 // @Success     200 {object} Page[change.ChangeRequest]
 // @Router      /api/changes [get]
 func (s *Server) listChanges(w http.ResponseWriter, r *http.Request) {
-	all := s.Store.List() // already newest-first by id
+	// Narrow BEFORE paging (see changefilter.go): a picker asking for what is
+	// in flight must get that set complete, not the newest fifty changes of any
+	// kind filtered down to whichever few happen to be open.
+	all := filterChanges(s.Store.List(), parseChangeFilter(r)) // store order: newest-first by id
 	limit, afterID := pageParams(r)
 	// Reuse one resolver (and its document cache) across every change on the
 	// page, so computing each one's blast radius stays cheap.

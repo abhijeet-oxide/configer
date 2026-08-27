@@ -4923,10 +4923,19 @@ mark.vd-ins {
   gap: 8px;
   align-items: stretch;
 }
-.pf-rail {
+/* The rail's box is this DIV, which stretches with the row like any block. The
+   svg inside it is taken out of flow, because a replaced element with no height
+   falls back to its intrinsic 150px and every row inherited that floor. */
+.pf-railwrap {
+  position: relative;
   flex: 0 0 auto;
-  height: auto;
   align-self: stretch;
+}
+.pf-rail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: visible;
 }
 .pf-trunk {
@@ -4948,7 +4957,7 @@ mark.vd-ins {
 .pf-body {
   flex: 1;
   min-width: 0;
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 /* A commit that did not move this value is still worth having on screen - it
    is what makes "changed" mean something - but it must not compete. */
@@ -5056,8 +5065,20 @@ mark.vd-ins {
   color: var(--st, var(--text-2));
   font-weight: 600;
 }
+/* One line, always. A branch name is a DERIVED fact - the number and the title
+   are what anybody remembers - so in a panel this narrow it gets the room left
+   over and the full name on hover, rather than wrapping and buying itself a
+   second line at the expense of the picture. */
 .pf-branch {
   opacity: 0.75;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.pf-meta {
+  row-gap: 1px;
 }
 .pf-fork-body.is-draft { --st: var(--cf-draft); }
 .pf-fork-body.is-review { --st: var(--cf-review); }
@@ -5072,7 +5093,7 @@ mark.vd-ins {
   border-left: 2px solid var(--st, var(--border));
   background: color-mix(in srgb, var(--st, var(--border)) 5%, transparent);
   border-radius: 0 var(--r-md, 6px) var(--r-md, 6px) 0;
-  padding: 4px 8px 6px;
+  padding: 3px 8px 5px;
 }
 /* The reviewer's own words. This is the line the reader opened the tab for, so
    it is set in the body colour rather than the muted one. */
@@ -5093,4 +5114,83 @@ mark.vd-ins {
 }
 .pf-resume {
   margin-top: 6px;
+}
+
+/* Freshness and the refresh control, at the right of the view strip.
+   Quiet by default: the page keeps itself current on its own, so this is
+   reassurance rather than an instruction. It only raises its voice when the
+   heartbeat cannot reach the service - the one case where what is on screen
+   may quietly be wrong. */
+.cf-viewbar-fresh {
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  margin-inline-start: auto;
+}
+.cf-viewbar.is-viewing .cf-viewbar-fresh {
+  margin-inline-start: 0;
+}
+.cf-viewbar-fresh.is-stale {
+  color: var(--c-danger);
+  font-weight: 600;
+}
+.cf-viewbar-refresh {
+  color: var(--text-2);
+  flex-shrink: 0;
+}
+.cf-viewbar-refresh:hover {
+  color: var(--brand);
+}
+@media (max-width: 640px) {
+  /* The button survives; the words go. An icon somebody can press is worth
+     more on a phone than a label saying nothing has changed. */
+  .cf-viewbar-fresh:not(.is-stale) { display: none; }
+}
+
+/* The change picker's popup: a search field pinned above a short list.
+   The list is deliberately short - a dropdown is where you RECOGNISE a change,
+   not where you read a thousand of them - so past the cap it stops and says how
+   many more there are and how to reach them. */
+.cf-viewpick-pop {
+  padding: 6px;
+  min-width: 340px;
+  max-width: 420px;
+}
+.cf-viewpick-pop .ant-input-affix-wrapper {
+  margin-bottom: 6px;
+}
+/* The menu inside scrolls; the search box above it does not, so typing never
+   moves out from under the cursor. */
+.cf-viewpick-pop .ant-dropdown-menu {
+  box-shadow: none;
+  padding: 0;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+/* The row that says what is NOT on screen. Not an item - there is nothing to
+   pick - so it reads as a note and does not take the hover. */
+.cf-viewpick-note {
+  font-size: 11px;
+  color: var(--text-2);
+  padding: 3px 2px;
+  cursor: default;
+  white-space: normal;
+}
+/* Unsent edits on the trigger. It is the draft's own colour, which is the
+   quietest in the status vocabulary by design: this is a statement of fact
+   about what is on screen, not a warning. */
+.cf-viewbtn-unsent {
+  margin-inline-start: 6px;
+  padding: 0 5px;
+  border-radius: var(--r-pill);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  color: var(--cf-draft);
+  border: 1px solid color-mix(in srgb, var(--cf-draft) 40%, transparent);
+  background: color-mix(in srgb, var(--cf-draft) 8%, transparent);
+  flex-shrink: 0;
+}
+@media (max-width: 640px) {
+  .cf-viewpick-pop { min-width: 0; max-width: calc(100vw - 24px); }
 }

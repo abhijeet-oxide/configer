@@ -316,7 +316,7 @@ export default function ApprovalsView() {  const { message } = AntApp.useApp();
   const { canEdit, canApprove } = useIdentity();
   const qc = useQueryClient();
   const { reviewCrId, setReviewCr, repoId, setSection } = useUI();
-  const q = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 15_000 });
+  const q = useRepoQuery({ queryKey: ["changes"], queryFn: () => api.changes() });
   const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const [filter, setFilter] = useState<StateFilter>("waiting");
   const [selId, setSelId] = useState<number | null>(null);

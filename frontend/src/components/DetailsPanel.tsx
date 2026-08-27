@@ -7,7 +7,7 @@ import {
 import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, expandBinding, type Grid, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { api, bindingsOf, expandBinding, type Grid, type Instance, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
 import { effectiveScope, SCOPE_META } from "../scope";
 import { useUI } from "../store";
@@ -663,15 +663,28 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
 // off the point it forked from, with its status in a colour, a line and a
 // shape. When an instance is selected the whole picture is that instance's
 // cell; otherwise it is the catalog default.
-function ParamHistoryTab({ paramId }: { paramId: string }) {
+function ParamHistoryTab({ paramId, instances }: { paramId: string; instances: Instance[] }) {
   const { selectedInstance, setSection } = useUI();
+  // WHICH cell this history is about.
+  //
+  // With no instance selected the service resolves the catalog DEFAULT, and on
+  // a real repository that is usually nothing at all - so the picture read
+  // "(empty)" down the trunk while the changes hanging off it plainly said
+  // telco-dev -> telco-in-review. Two answers about two different things, in
+  // one column, with nothing saying so.
+  //
+  // A history is about a cell, so one is always chosen: the selected instance,
+  // or - failing that - the only one there is, or the first. The header names
+  // it, because a picture that quietly picked an instance for you is worse than
+  // one that picked the wrong one and said which.
+  const readFor = selectedInstance ?? instances[0]?.name ?? "";
+  const q = useRepoQuery({
+    queryKey: ["paramHistory", paramId, readFor],
+    queryFn: () => api.parameterHistory(paramId, readFor ? { instance: readFor } : undefined),
+  });
   const { canEdit } = useIdentity();
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
-  const q = useRepoQuery({
-    queryKey: ["paramHistory", paramId, selectedInstance],
-    queryFn: () => api.parameterHistory(paramId, selectedInstance ? { instance: selectedInstance } : undefined),
-  });
   const entries = q.data?.entries ?? [];
   const changes = q.data?.changes ?? [];
   const lastChange = q.data?.lastChange ?? null;
@@ -739,7 +752,7 @@ function ParamHistoryTab({ paramId }: { paramId: string }) {
       )}
       <div className="pf-head">
         <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
-          HOW THIS VALUE GOT HERE{selectedInstance ? ` · ${selectedInstance}` : " · default"}
+          HOW THIS VALUE GOT HERE{readFor ? ` · ${readFor}` : " · default"}
         </Typography.Text>
         {(open > 0 || refused > 0) && (
           <Typography.Text type="secondary" style={{ fontSize: 11 }}>
@@ -898,7 +911,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
               <>
                 <VersionsTab row={row} grid={grid} />
                 <Divider style={{ margin: "16px 0 12px" }} />
-                <ParamHistoryTab paramId={p.id} />
+                <ParamHistoryTab paramId={p.id} instances={grid.instances} />
               </>
             ),
           },

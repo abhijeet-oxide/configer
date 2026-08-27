@@ -36,8 +36,8 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
   const { filters, setFilters } = useUI();
   const [scmOpen, setScmOpen] = useState(false);
 
-  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus, refetchInterval: 20_000 });
-  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const statusQ = useRepoQuery({ queryKey: ["repo-status"], queryFn: api.repoStatus });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const st = statusQ.data;
   const draft = draftQ.data?.draft;
   const changes = reviewItems(draft?.items ?? []).length;

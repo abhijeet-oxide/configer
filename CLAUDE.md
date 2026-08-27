@@ -181,13 +181,46 @@ never gate on the score, which exists only for the trend line.
   it stands now (a change can sit rejected for a week while the trunk moves),
   drops the items the world has since settled rather than resubmitting no-ops,
   and records `resumedFrom` so the second attempt stays attached to the first.
+- **Nothing repo-scoped polls on a timer** (`GET /api/revision`, `pulse.ts`).
+  One heartbeat asks what revision the repository (`head`) and the change store
+  (`changes`) are at, and the expensive reads are invalidated only when one of
+  them MOVES. Before it, the draft, the change list, the status and the findings
+  each had their own interval and re-fetched in full whether or not anything had
+  happened - while the grid, the thing the parameters page is made of and the
+  most expensive read the service serves, was on no timer at all: the app paid
+  for constant polling and still could not see a colleague's edit. `useRepoPulse`
+  OWNS the poll and is mounted once in `App.tsx`; everywhere else uses
+  `usePulseStatus`, which observes without starting a second one. What still
+  polls is listed in `pulse.ts` with the reason (cross-application reads, the
+  health watchdog, external systems), and adding a `refetchInterval` to anything
+  else is going backwards.
+- **A change list is NARROWED before it is paged** (`api/changefilter.go`):
+  `?state=` (a list, or `open` = draft+under_review+approved, or `closed`) and
+  `?q=` (CR number - matched exactly so 41 does not bury CR-41 - title, author,
+  reference, branch, category). Change requests are never deleted, so a
+  year-old application has thousands and paging alone does nothing for somebody
+  looking for CR-412: the first page is just the newest fifty. `state=open` is
+  what a picker shows COMPLETE (being in flight is transient, so that set stays
+  small forever); everything else is reached by searching, never by scrolling.
 - **The grid can be read THROUGH a change** (`GET /api/grid?change=<id>`,
   `ChangeViewPicker`, `?change=` in the URL). It applies that change's ITEMS to
   the CURRENT files - not its branch's tree - which answers "what would this do
   if it landed now" and keeps working when the branch is gone. Anything that is
   not the caller's own draft comes back `viewing.readOnly`, and the grid drops
   every edit affordance: an edit staged on top of somebody else's proposal would
-  land in the reader's OWN draft while the screen showed different numbers.
+  land in the reader's OWN draft while the screen showed different numbers. The
+  change being viewed is also what the GRID ITSELF is built from - the changed-
+  cell marks, the before -> after, the row pills, the Changed/Added/Removed
+  filter (`shownItems` in ParameterGrid), and the draft's submit button steps
+  aside. All of that used to come off the reader's own draft unconditionally,
+  which was invisible until the grid could be pointed elsewhere and then showed
+  one change's values under another change's highlights. The picker lists what
+  is in flight (capped, with a count of the rest) and searches the whole history
+  server-side; the change it is SHOWING is fetched by id rather than looked up
+  in that list, because a change reached by search usually is not in it. Your
+  own draft is not an entry - it is what Main already shows - so the Main row
+  and the trigger say "N unsent" instead, which is how starting to edit changes
+  the control without inventing a branch name a draft does not have yet.
 - `crstore` is an INTERFACE with two implementations. `FileStore` keeps a JSON
   file beside the repo (no dependencies, right for one person); `SQLStore`
   keeps a row per change request in the platform database (a write touches one
@@ -219,7 +252,13 @@ never gate on the score, which exists only for the trend line.
   touched this parameter in any state, with the commit it forked from, where it
   landed, why it was refused, and its `resumedFrom`/`resumedInto` lineage). The
   UI draws them as one picture: the trunk down the left, every proposal that is
-  not on it hanging off to the right. This is the product's git blame.
+  not on it hanging off to the right. This is the product's git blame. A history
+  is always about a CELL: with no instance named the response covers every
+  change that touched the parameter (each edit says which instance it was for),
+  and the UI picks an instance to resolve the trunk against and names it - it
+  used to filter instance-scoped changes out and resolve the catalog default, so
+  a parameter opened from its row, which is how people open it, showed an empty
+  history and a trunk of "(not defined)" moments after somebody had edited it.
 
 **External sources (plugin-based):**
 - `plugin` - THE extension registry. `IngestParser` (file -> candidates),

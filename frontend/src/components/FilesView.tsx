@@ -207,7 +207,6 @@ export default function FilesView() {
     queryKey: ["files-draft", instance],
     queryFn: () => api.render(instance!),
     enabled: !!instance,
-    refetchInterval: 15_000,
   });
   const committedQ = useRepoQuery({
     queryKey: ["files-committed", instance],
@@ -215,7 +214,6 @@ export default function FilesView() {
     // A pending instance has no committed files yet; skip the fetch (it would
     // fail) so every file reads as newly added.
     enabled: !!instance && !instancePending,
-    refetchInterval: 15_000,
   });
   const allFiles = useMemo(() => draftQ.data?.files ?? [], [draftQ.data]);
   const committedOf = useMemo(
@@ -550,7 +548,7 @@ export default function FilesView() {
   // The same draft the editor's status bar shows: staging any change makes
   // the review branch appear here immediately, so both workspaces tell one
   // consistent Git story.
-  const crDraftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const crDraftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   const crDraft = crDraftQ.data?.draft;
   const draftItems = crDraft?.items?.length ?? 0;
 

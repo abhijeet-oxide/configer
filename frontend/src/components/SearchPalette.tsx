@@ -98,7 +98,7 @@ export default function SearchPalette() {
   // opening the palette does not trigger fetches when a view already loaded it.
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, enabled: open, staleTime: 30_000 });
   const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid(), enabled: open && mode === "app" && !!repoId });
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, enabled: open && mode === "app" && !!repoId });
+  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: () => api.changes(), enabled: open && mode === "app" && !!repoId });
 
   const nav: Nav = useMemo(
     () => ({

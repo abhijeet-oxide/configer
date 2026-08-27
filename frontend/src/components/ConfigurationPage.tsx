@@ -7,6 +7,7 @@ import { useUI } from "../store";
 import { useElementSize } from "../hooks";
 import { useIdentity } from "../identity";
 import ChangeViewPicker from "./ChangeViewPicker";
+import { usePulseStatus } from "../pulse";
 
 // ConfigurationPage is the single home of everything about ONE application: a
 // quiet underline tab row over the active view. Every tab is a peer and shows
@@ -83,11 +84,23 @@ export default function ConfigurationPage({
   children: React.ReactNode;
 }) {
   const { setSection } = useUI();
+  // The heartbeat's state, OBSERVED and not driven: the strip shows when the
+  // page last confirmed it was current. App owns the one poll; a second driver
+  // here would be the duplicated-refresh problem this exists to remove.
+  const pulse = usePulseStatus();
   const { canEdit } = useIdentity();
-  const changesQ = useRepoQuery({ queryKey: ["changes"], queryFn: api.changes, refetchInterval: 20_000 });
-  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, refetchInterval: 30_000, retry: false });
+  // What is IN FLIGHT, asked for as such. The tab badges and the picker both
+  // want the same thing - the changes somebody could still act on - and that
+  // set stays small however old the application is, so it arrives complete
+  // rather than as whichever open ones made the newest page. Anything that has
+  // ended is reached by searching (see ChangeViewPicker).
+  const changesQ = useRepoQuery({
+    queryKey: ["changes", "open"],
+    queryFn: () => api.changes({ state: "open", limit: 200 }),
+  });
+  const findingsQ = useRepoQuery({ queryKey: ["findings"], queryFn: api.findings, retry: false });
   const incomingQ = useRepoQuery({ queryKey: ["sources", "incoming"], queryFn: api.incomingChanges, refetchInterval: 60_000, retry: false });
-  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft, refetchInterval: 15_000 });
+  const draftQ = useRepoQuery({ queryKey: ["draft"], queryFn: api.draft });
   // Deliberately the plain grid, never the one read through a picked change:
   // its only job here is counting the files the reader's OWN draft touches.
   const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid(), staleTime: 10_000 });
@@ -98,12 +111,6 @@ export default function ConfigurationPage({
   const openChanges =
     changesQ.data?.filter((c) => c.state === "draft" || c.state === "under_review" || c.state === "approved")
       .length ?? 0;
-  // What the change picker would have to offer beyond main: open work and
-  // refused work. Published changes are not offered - their values ARE main.
-  const offerableChanges =
-    changesQ.data?.filter(
-      (c) => c.state === "draft" || c.state === "under_review" || c.state === "approved" || c.state === "rejected",
-    ).length ?? 0;
   const findings = findingsQ.data?.findings?.length ?? 0;
   const incoming = incomingQ.data?.changes?.length ?? 0;
   // Counted the way the review counts (see api.reviewItems): a file row that
@@ -251,7 +258,15 @@ export default function ConfigurationPage({
           The other tabs are the workspace's own (your draft's files, the
           changes list, the audit trail) and are not read through a change, so
           the strip belongs to this tab alone. */}
-      {active === "config" && offerableChanges > 0 && <ChangeViewPicker changes={changesQ.data} />}
+      {active === "config" && (
+        <ChangeViewPicker
+          changes={changesQ.data}
+          draftItems={draftItems}
+          checkedAt={pulse.checkedAt}
+          checking={pulse.checking}
+          failed={pulse.failed}
+        />
+      )}
       <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}>{children}</div>
     </div>
   );

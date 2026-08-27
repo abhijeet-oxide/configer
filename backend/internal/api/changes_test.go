@@ -142,3 +142,97 @@ func TestApproveTransition(t *testing.T) {
 		t.Fatalf("re-approve = %d, want 409", rec.Code)
 	}
 }
+
+// TestChangeListNarrowing covers the two ways a change list is narrowed before
+// it is paged. Without them a picker on a year-old application shows the newest
+// fifty changes - which on a busy repository is fifty published ones - and the
+// change somebody is looking for is behind a cursor they have no reason to
+// follow.
+func TestChangeListNarrowing(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+
+	// One rejected change, and one still under review.
+	rejected := stageAndSubmit(t, h, 9090, "Media namespace cutover")
+	doJSON(t, h, http.MethodPost, "/api/changes/"+itoa(rejected)+"/reject",
+		map[string]any{"author": "bob"}, nil)
+	open := stageAndSubmit(t, h, 9443, "Raise the admin port")
+
+	list := func(query string) []struct {
+		ID     int    `json:"id"`
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		State  string `json:"state"`
+	} {
+		t.Helper()
+		var page struct {
+			Items []struct {
+				ID     int    `json:"id"`
+				Number int    `json:"number"`
+				Title  string `json:"title"`
+				State  string `json:"state"`
+			} `json:"items"`
+			HasMore bool `json:"hasMore"`
+		}
+		doJSON(t, h, http.MethodGet, "/api/changes"+query, nil, &page)
+		return page.Items
+	}
+
+	if got := list(""); len(got) != 2 {
+		t.Fatalf("unfiltered list = %d changes, want 2", len(got))
+	}
+	// "open" is the set a picker shows complete: what is being worked on now.
+	openOnly := list("?state=open")
+	if len(openOnly) != 1 || openOnly[0].ID != open {
+		t.Fatalf("state=open = %+v, want just the under-review change", openOnly)
+	}
+	closed := list("?state=closed")
+	if len(closed) != 1 || closed[0].ID != rejected {
+		t.Fatalf("state=closed = %+v, want just the rejected change", closed)
+	}
+	if got := list("?state=rejected"); len(got) != 1 || got[0].ID != rejected {
+		t.Fatalf("state=rejected = %+v", got)
+	}
+
+	// Search reaches past the state filter into the whole history.
+	if got := list("?q=media"); len(got) != 1 || got[0].ID != rejected {
+		t.Fatalf("q=media = %+v, want the rejected change by title", got)
+	}
+	if got := list("?q=MEDIA"); len(got) != 1 {
+		t.Fatalf("search must be case-insensitive: %+v", got)
+	}
+	if got := list("?q=alice"); len(got) != 2 {
+		t.Fatalf("q=alice = %d, want both (author)", len(got))
+	}
+	// A number is matched EXACTLY against the CR number, so typing the number
+	// you were given does not bury it under every number containing it.
+	if got := list("?q=1"); len(got) != 1 || got[0].Number != 1 {
+		t.Fatalf("q=1 = %+v, want only CR-1", got)
+	}
+	if got := list("?q=CR-2"); len(got) != 1 || got[0].Number != 2 {
+		t.Fatalf("q=CR-2 = %+v, want only CR-2", got)
+	}
+	if got := list("?q=nothing-matches-this"); len(got) != 0 {
+		t.Fatalf("a search with no hits must be empty, got %+v", got)
+	}
+	// An unspellable state is ignored rather than refused: it leaves the caller
+	// with more results, never fewer than they asked for.
+	if got := list("?state=banana"); len(got) != 2 {
+		t.Fatalf("an unknown state must not narrow anything: %+v", got)
+	}
+
+	// hasMore describes the FILTERED list, not the store.
+	var page struct {
+		Items   []struct{ ID int } `json:"items"`
+		HasMore bool               `json:"hasMore"`
+	}
+	doJSON(t, h, http.MethodGet, "/api/changes?state=open&limit=1", nil, &page)
+	if len(page.Items) != 1 || page.HasMore {
+		t.Fatalf("one open change with limit=1 must be a complete page: %d items, hasMore=%v",
+			len(page.Items), page.HasMore)
+	}
+}

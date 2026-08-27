@@ -348,7 +348,7 @@ const docTemplateconfiger = `{
         },
         "/api/changes": {
             "get": {
-                "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `.",
+                "description": "Change requests in all states (Draft, UnderReview, Approved, Published, Rejected), newest first. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous response's ` + "`" + `nextCursor` + "`" + `. Returns ` + "`" + `{items, nextCursor, hasMore}` + "`" + `. Narrow with ` + "`" + `state` + "`" + ` (a comma-separated list, or ` + "`" + `open` + "`" + ` = draft+under_review+approved, or ` + "`" + `closed` + "`" + ` = published+rejected) and ` + "`" + `q` + "`" + ` (matches the CR number, title, author, reference, branch or category). Both apply BEFORE paging, so ` + "`" + `hasMore` + "`" + ` describes the filtered list.",
                 "produces": [
                     "application/json"
                 ],
@@ -357,6 +357,18 @@ const docTemplateconfiger = `{
                 ],
                 "summary": "List change requests",
                 "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Narrow by state: a comma-separated list, or ` + "`" + `open` + "`" + ` / ` + "`" + `closed` + "`" + `",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search the CR number, title, author, reference, branch or category",
+                        "name": "q",
+                        "in": "query"
+                    },
                     {
                         "type": "integer",
                         "description": "Page size (default 50, max 200)",
@@ -3304,6 +3316,29 @@ const docTemplateconfiger = `{
                         "description": "Unknown ref, instance or parameter",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/revision": {
+            "get": {
+                "description": "A tiny answer to \"has anything moved?\": the repository's ` + "`" + `head` + "`" + ` (files, catalog, publishes) and an opaque ` + "`" + `changes` + "`" + ` token for the change-request store (drafts, submissions, approvals, rejections). Clients poll THIS instead of re-reading the grid, the draft and the change list on their own timers, and refresh those only when one of these two values differs from the last answer. Cheap enough to poll often; carries no data of its own on purpose.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Reads"
+                ],
+                "summary": "Current revision",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }

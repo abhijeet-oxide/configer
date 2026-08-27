@@ -1889,6 +1889,10 @@ export const api = {
     if (opts?.rightRef) qs.set("rightRef", opts.rightRef);
     return get<DiffResult>(rp(`/compare?${qs.toString()}`));
   },
+  // The heartbeat (see pulse.ts). Deliberately tiny and deliberately carrying
+  // no data of its own: its whole job is to say whether anything moved, so the
+  // expensive reads can stay off timers entirely.
+  revision: () => get<{ head: string; changes: string; branch: string }>(rp("/revision")),
   refs: () => get<{ current: string; branches: string[] | null; tags: string[] | null }>(rp("/repo/refs")),
   history: (limit?: number) =>
     get<{ commits: Commit[] | null; supported: boolean }>(rp(`/history${limit ? `?limit=${limit}` : ""}`)),
@@ -2100,10 +2104,26 @@ export const api = {
   // The change list is cursor-paginated server-side ({items, nextCursor,
   // hasMore}); the views want the newest page as an array, so unwrap `items`
   // (and cache the array so the offline snapshot keeps its shape).
-  changes: async () => {
-    const page = await get<Page<ChangeRequest>>(rp("/changes"));
+  // The application's change requests, newest first.
+  //
+  // Unfiltered it is the newest page, which is the right default for the lists
+  // that show recent activity. `state` and `q` narrow it SERVER-side (see the
+  // backend's changefilter.go), which is what lets a picker show everything in
+  // flight complete however old the application is, and reach a change from
+  // last year by name instead of paging through the year in front of it.
+  //
+  // Only the unfiltered read is snapshotted for offline: a snapshot of "changes
+  // matching media" restored later, unlabelled, would be a lie about what the
+  // application contains.
+  changes: async (opts?: { state?: string; q?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (opts?.state) qs.set("state", opts.state);
+    if (opts?.q) qs.set("q", opts.q);
+    if (opts?.limit) qs.set("limit", String(opts.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    const page = await get<Page<ChangeRequest>>(rp(`/changes${suffix}`));
     const items = page.items ?? [];
-    saveSnapshot(snapKey("changes"), items);
+    if (!suffix) saveSnapshot(snapKey("changes"), items);
     return items;
   },
   // Explicit-repo reads for the global (cross-application) views: the inbox

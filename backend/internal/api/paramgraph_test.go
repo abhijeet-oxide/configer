@@ -152,3 +152,34 @@ func TestParameterLifeIgnoresOtherCells(t *testing.T) {
 		t.Fatalf("an unrelated parameter has episodes: %+v", life.Changes)
 	}
 }
+
+// TestParameterLifeWithoutAnInstanceCoversThemAll: a parameter opened from its
+// ROW rather than a cell names no instance, and that is how people open it.
+// Filtering instance-scoped edits out there meant a value somebody had just
+// changed showed a history with no change requests in it at all - the screen
+// saying nothing had happened, moments after something had.
+func TestParameterLifeWithoutAnInstanceCoversThemAll(t *testing.T) {
+	root := minimalRepo(t)
+	s, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := s.Routes()
+	id := stageAndSubmit(t, h, 9090, "raise the port")
+
+	var life paramLife
+	doJSON(t, h, http.MethodGet, "/api/parameters/p1/history", nil, &life)
+	i := life.change(t, id)
+	if got := life.Changes[i].Edits[0].Instance; got != "staging" {
+		t.Fatalf("edit instance = %q, want the cell it applies to named", got)
+	}
+
+	// Naming the instance still narrows: another instance's story is not this
+	// one's, and that is the whole reason the filter exists.
+	doJSON(t, h, http.MethodGet, "/api/parameters/p1/history?instance=elsewhere", nil, &life)
+	for _, c := range life.Changes {
+		if c.ID == id {
+			t.Fatalf("a staging edit leaked into another instance's history: %+v", c)
+		}
+	}
+}

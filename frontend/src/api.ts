@@ -486,10 +486,37 @@ export interface ChangeRequest {
   comments?: ChangeComment[];
   /** recorded sign-offs (separation of duties + minimum-approval policy) */
   approvals?: ChangeApproval[];
+  /** set when this change was submitted OVER the data model's objections */
+  override?: ChangeOverride;
   /** blast radius, present on change detail and list responses */
   impact?: ChangeImpact;
   createdAt: string;
   updatedAt: string;
+}
+
+/** What the validation gate refused, kept with the change so an approver reads
+ *  it as a state rather than as prose in a description. */
+export interface ChangeOverride {
+  summary: string;
+  reason?: string;
+  by?: string;
+  at: string;
+  errors: number;
+  problems: number;
+  engine?: string;
+  objections?: ChangeObjection[];
+}
+
+export interface ChangeObjection {
+  rule?: string;
+  name?: string;
+  instance?: string;
+  file?: string;
+  path?: string;
+  message: string;
+  because?: string;
+  detail?: string;
+  schema?: string;
 }
 
 export interface Row {
@@ -1258,9 +1285,25 @@ export interface ValidationFinding {
   message: string;
   /** the schema's own expression, for the reader who wants it */
   detail?: string;
+  /** what the rule IS, in plain words - written for somebody who has never
+   *  heard of a schema */
+  because?: string;
+  /** what to do about it */
+  fix?: string;
+  /** the value that was refused */
+  value?: string;
+  /** "edited" when this landed on a value the change set, "elsewhere" when the
+   *  change knocked it over somewhere it did not touch. The two are different
+   *  problems with different fixes and must never look alike. */
+  origin?: "edited" | "elsewhere";
+  /** names the edit responsible, when this landed elsewhere */
+  causedBy?: string;
   /** the model file the rule came from, so a vendor's constraint is never
    *  shown as the product's opinion */
   schema?: string;
+  /** true when the COMMITTED file already had this objection. Reported, never
+   *  blocking: this change did not cause it. */
+  preExisting?: boolean;
   engine?: string;
 }
 
@@ -1291,6 +1334,8 @@ export interface ValidationRun {
   reason?: string;
   errors: number;
   warnings: number;
+  /** objections the files already carried before this change touched them */
+  preExisting: number;
   documents: number;
   values: number;
   unmatched: number;

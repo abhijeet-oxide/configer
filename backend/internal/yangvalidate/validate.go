@@ -50,6 +50,18 @@ const (
 	RuleSchema    = "schema"
 )
 
+// Origins of a finding, relative to the change being validated.
+const (
+	// OriginEdited is a finding on a value the change itself set. Fixing it
+	// means correcting what you just typed.
+	OriginEdited = "edited"
+	// OriginElsewhere is a finding somewhere the change did not touch, which the
+	// change nonetheless broke. Without this distinction a rename reads as
+	// "rename it again": the message names the OLD value, and the reader is
+	// looking at a row where they already typed the new one.
+	OriginElsewhere = "elsewhere"
+)
+
 // Finding is one problem in a candidate document, named the way the person who
 // made the change would recognize it.
 type Finding struct {
@@ -75,12 +87,60 @@ type Finding struct {
 	// wants it.
 	Message string `json:"message"`
 	Detail  string `json:"detail,omitempty"`
+	// Because states the RULE that was applied, in plain words - what the model
+	// requires here and where it says so. Fix says what to do about it. Both
+	// are written for somebody who has never heard of YANG, a schema or a
+	// leafref, because that is who is holding the change.
+	Because string `json:"because,omitempty"`
+	Fix     string `json:"fix,omitempty"`
+	// Value is the value that was refused, kept as data so a caller can work out
+	// which edit produced it.
+	Value string `json:"value,omitempty"`
+	// Origin says whether this landed on something the change edited or
+	// somewhere else; CausedBy names the edit responsible when it is the latter.
+	Origin   string `json:"origin,omitempty"`
+	CausedBy string `json:"causedBy,omitempty"`
 	// Schema names the model file the rule came from, so a vendor's constraint
 	// is never presented as the product's opinion.
 	Schema string `json:"schema,omitempty"`
+	// PreExisting marks a finding the COMMITTED file already had. It is
+	// reported and does not block: a repository whose current state already
+	// breaks a rule is not this change's fault, and a gate that refuses a
+	// correct edit because of somebody else's backlog is a gate people learn to
+	// override.
+	PreExisting bool `json:"preExisting,omitempty"`
 	// Engine names what produced the finding, because "yanglint says so" and
 	// "our own reading says so" are different weights of evidence.
 	Engine string `json:"engine,omitempty"`
+}
+
+// Blocking reports whether this finding should stop a submit.
+func (f Finding) Blocking() bool { return f.Severity == SeverityError && !f.PreExisting }
+
+// MarkPreExisting flags every finding in rep that the baseline report already
+// had, so what a change is answerable for is only what it INTRODUCED.
+//
+// Matched on file, rule and message rather than on path: inserting one entry in
+// a repeated structure renumbers every path below it, and a finding that moved
+// is the same finding. Occurrences are consumed one for one, so a change that
+// adds a second violation of a rule that was already broken once still reports
+// the new one.
+func MarkPreExisting(rep *Report, baseline Report) {
+	if rep == nil || len(rep.Findings) == 0 || len(baseline.Findings) == 0 {
+		return
+	}
+	key := func(f Finding) string { return f.File + "\x00" + f.Rule + "\x00" + f.Message }
+	left := map[string]int{}
+	for _, f := range baseline.Findings {
+		left[key(f)]++
+	}
+	for i := range rep.Findings {
+		k := key(rep.Findings[i])
+		if left[k] > 0 {
+			left[k]--
+			rep.Findings[i].PreExisting = true
+		}
+	}
 }
 
 // Document is one candidate configuration file: the content a change WOULD
@@ -146,7 +206,18 @@ type Report struct {
 func (r Report) Errors() []Finding {
 	var out []Finding
 	for _, f := range r.Findings {
-		if f.Severity == SeverityError {
+		if f.Blocking() {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
+// Inherited returns the findings the committed files already had.
+func (r Report) Inherited() []Finding {
+	var out []Finding
+	for _, f := range r.Findings {
+		if f.PreExisting {
 			out = append(out, f)
 		}
 	}

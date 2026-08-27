@@ -306,6 +306,10 @@ export default function MonacoFileView({
           ...baseOptions,
           readOnly: !editable,
           originalEditable: false,
+          // Nothing is revealed into the centre of a diff, so the empty run
+          // past the last line buys nothing and reads as a broken pane once
+          // the unchanged stretches are folded away.
+          scrollBeyondLastLine: false,
           renderSideBySide: diffLayout === "split",
           ignoreTrimWhitespace: false,
           // Monaco folds the untouched stretches into a band that says how

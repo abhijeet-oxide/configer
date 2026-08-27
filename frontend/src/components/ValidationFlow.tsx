@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, Input, Tooltip, Typography } from "antd";
+import { Button, Input, Tooltip, Typography, App as AntApp } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   CheckCircleFilled,
   CloseCircleFilled,
+  CopyOutlined,
   ExclamationCircleFilled,
   MinusCircleOutlined,
   ReloadOutlined,
@@ -50,6 +51,7 @@ export default function ValidationFlow({
   onDone,
   onCancel,
   onOpenParam,
+  onOpenFile,
 }: {
   changeId: number;
   /** Runs the actual submit once validation has passed (or been overridden). */
@@ -58,7 +60,11 @@ export default function ValidationFlow({
   /** Go back to the list of changes so something can be fixed. */
   onCancel: () => void;
   onOpenParam?: (paramId: string) => void;
+  /** Opens a file at the line a finding names. A finding that cannot be
+   *  reached is a fact with nowhere to go. */
+  onOpenFile?: (file: string, line?: number, instance?: string) => void;
 }) {
+  const { message } = AntApp.useApp();
   const qc = useQueryClient();
   const [run, setRun] = useState<ValidationRun | null>(null);
   const [phase, setPhase] = useState<Phase>("validating");
@@ -175,10 +181,32 @@ export default function ValidationFlow({
     return [...base, submitStage];
   }, [run, phase, outcome]);
 
-  const errors = (run?.findings ?? []).filter((f) => f.severity === "error");
-  const warnings = (run?.findings ?? []).filter((f) => f.severity === "warning");
+  // Three buckets, and the split is the whole point. What this change caused
+  // blocks it; what the committed files already carried is reported and does
+  // not, because a one-character edit that comes back with thirty objections it
+  // did not cause is how somebody learns to click past the gate without
+  // reading.
+  const all = run?.findings ?? [];
+  const errors = all.filter((f) => f.severity === "error" && !f.preExisting);
+  const warnings = all.filter((f) => f.severity === "warning" && !f.preExisting);
+  const inherited = all.filter((f) => f.preExisting);
+  // Within the blocking errors, "the value you typed is wrong" and "the value
+  // you typed broke something else" are different problems with different
+  // fixes. Listed together, a rename reads as being told to rename it again.
+  const mine = errors.filter((f) => f.origin !== "elsewhere");
+  const knockOn = errors.filter((f) => f.origin === "elsewhere");
   const problems = run?.problems ?? [];
   const done = phase === "submitted" || phase === "failed" || phase === "broken";
+
+  const copyAll = async () => {
+    const text = reportText(run, problems, errors, warnings, inherited);
+    try {
+      await navigator.clipboard.writeText(text);
+      message.success("Copied every problem to the clipboard");
+    } catch {
+      message.error("The browser would not give access to the clipboard");
+    }
+  };
 
   return (
     <div className="cf-vflow">
@@ -226,14 +254,30 @@ export default function ValidationFlow({
             file: p.file,
           }))}
           onOpenParam={onOpenParam}
+          onOpenFile={onOpenFile}
+          onCopyAll={copyAll}
         />
       )}
-      {errors.length > 0 && (
+      {mine.length > 0 && (
         <FindingGroup
-          title={`${errors.length} problem${errors.length === 1 ? "" : "s"} the data model will not allow`}
+          title={`${mine.length} problem${mine.length === 1 ? "" : "s"} with what you changed`}
+          subtitle="The data model will not allow these."
           tone="error"
-          findings={errors}
+          findings={mine}
           onOpenParam={onOpenParam}
+          onOpenFile={onOpenFile}
+          onCopyAll={copyAll}
+        />
+      )}
+      {knockOn.length > 0 && (
+        <FindingGroup
+          title={`${knockOn.length} place${knockOn.length === 1 ? "" : "s"} your change breaks elsewhere`}
+          subtitle={`You did not edit ${knockOn.length === 1 ? "this" : "these"} - your change made ${knockOn.length === 1 ? "it" : "them"} wrong.`}
+          tone="error"
+          findings={knockOn}
+          onOpenParam={onOpenParam}
+          onOpenFile={onOpenFile}
+          onCopyAll={copyAll}
         />
       )}
       {warnings.length > 0 && (
@@ -243,15 +287,38 @@ export default function ValidationFlow({
           tone="warn"
           findings={warnings}
           onOpenParam={onOpenParam}
+          onOpenFile={onOpenFile}
+          onCopyAll={copyAll}
           collapsedByDefault={phase === "submitted"}
+        />
+      )}
+      {inherited.length > 0 && (
+        <FindingGroup
+          title={`${inherited.length} objection${inherited.length === 1 ? "" : "s"} ${
+            inherited.length === 1 ? "was" : "were"
+          } already in these files`}
+          subtitle="Not caused by your change, and not blocking it."
+          tone="muted"
+          findings={inherited}
+          onOpenParam={onOpenParam}
+          onOpenFile={onOpenFile}
+          onCopyAll={copyAll}
+          collapsedByDefault
         />
       )}
 
       {run?.skipped?.length ? (
         <details className="cf-vflow-skipped">
           <summary>
-            {run.skipped.length} check{run.skipped.length === 1 ? "" : "s"} could not be made here
+            {run.skipped.length} rule{run.skipped.length === 1 ? "" : "s"} could not be checked here
           </summary>
+          {/* Not a pass and not a failure. Nothing was assumed about these
+              either way, and saying so is what keeps a partial check from
+              reading as a complete one. */}
+          <p className="cf-vflow-skipped-why">
+            This validator does not read {run.skipped.length === 1 ? "it" : "them"}, so nothing was
+            assumed about {run.skipped.length === 1 ? "it" : "them"} either way.
+          </p>
           <ul>
             {run.skipped.slice(0, 40).map((s, i) => (
               <li key={i}>{s}</li>
@@ -259,35 +326,6 @@ export default function ValidationFlow({
           </ul>
         </details>
       ) : null}
-
-      <div className="cf-vflow-actions">
-        {phase === "submitted" ? (
-          <Button type="primary" onClick={() => outcome && onDone(outcome)}>
-            View the change
-          </Button>
-        ) : (
-          <>
-            <Button onClick={onCancel} disabled={phase === "validating" || phase === "submitting"}>
-              Back to my changes
-            </Button>
-            {(phase === "failed" || phase === "broken") && (
-              <Button icon={<ReloadOutlined />} onClick={() => setAttempt((n) => n + 1)}>
-                Check again
-              </Button>
-            )}
-            {phase === "failed" && !showOverride && (
-              // An override exists because the alternative is not "no
-              // overrides": it is somebody switching the validator off in an
-              // environment variable, where no reviewer will ever see it.
-              <Tooltip title="The reason you give is written into the change, where the approver reads it">
-                <Button danger type="text" onClick={() => setShowOverride(true)}>
-                  Submit anyway
-                </Button>
-              </Tooltip>
-            )}
-          </>
-        )}
-      </div>
 
       {showOverride && phase === "failed" && (
         <div className="cf-vflow-override">
@@ -316,6 +354,38 @@ export default function ValidationFlow({
           </div>
         </div>
       )}
+
+      {/* The way out stays put. This list can be thirty rows long, and a dialog
+          whose only way forward sits below thirty rows of what is wrong with
+          your change is one people close with the X. */}
+      <div className="cf-vflow-actions cf-vflow-foot">
+        {phase === "submitted" ? (
+          <Button type="primary" onClick={() => outcome && onDone(outcome)}>
+            View the change
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onCancel} disabled={phase === "validating" || phase === "submitting"}>
+              Back to my changes
+            </Button>
+            {(phase === "failed" || phase === "broken") && (
+              <Button icon={<ReloadOutlined />} onClick={() => setAttempt((n) => n + 1)}>
+                Check again
+              </Button>
+            )}
+            {phase === "failed" && !showOverride && (
+              // An override exists because the alternative is not "no
+              // overrides": it is somebody switching the validator off in an
+              // environment variable, where no reviewer will ever see it.
+              <Tooltip title="The reason you give is written into the change, where the approver reads it">
+                <Button danger type="text" onClick={() => setShowOverride(true)}>
+                  Submit anyway
+                </Button>
+              </Tooltip>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -462,29 +532,58 @@ const RULE_LABEL: Record<string, string> = {
   apply: "Could not apply",
 };
 
+/** What the schema's own expression IS, so the mono line under a finding is
+ *  introduced rather than dropped on the reader as an unexplained fragment. */
+const DETAIL_LABEL: Record<string, string> = {
+  leafref: "The model's rule",
+  must: "The model requires",
+  when: "It only applies when",
+  type: "The model says",
+  choice: "Set here",
+};
+
 function FindingGroup({
   title,
   subtitle,
   tone,
   findings,
   onOpenParam,
+  onOpenFile,
+  onCopyAll,
   collapsedByDefault,
 }: {
   title: string;
   subtitle?: string;
-  tone: "error" | "warn";
+  tone: "error" | "warn" | "muted";
   findings: ValidationFinding[];
   onOpenParam?: (paramId: string) => void;
+  onOpenFile?: (file: string, line?: number, instance?: string) => void;
+  onCopyAll?: () => void;
   collapsedByDefault?: boolean;
 }) {
   const [open, setOpen] = useState(!collapsedByDefault);
   return (
     <section className={`cf-findings is-${tone}`}>
-      <button className="cf-findings-head" onClick={() => setOpen((o) => !o)} type="button">
-        <RightOutlined className={`cf-findings-caret${open ? " is-open" : ""}`} />
-        <span className="cf-findings-title">{title}</span>
-        {subtitle && <span className="cf-findings-sub">{subtitle}</span>}
-      </button>
+      <div className="cf-findings-head">
+        <button className="cf-findings-title-btn" onClick={() => setOpen((o) => !o)} type="button">
+          <RightOutlined className={`cf-findings-caret${open ? " is-open" : ""}`} />
+          <span className="cf-findings-title">{title}</span>
+          {subtitle && <span className="cf-findings-sub">{subtitle}</span>}
+        </button>
+        {onCopyAll && (
+          <Tooltip title="Copy every problem, warning and skipped check as text">
+            <Button
+              size="small"
+              type="text"
+              icon={<CopyOutlined />}
+              onClick={onCopyAll}
+              className="cf-findings-copy"
+            >
+              Copy all
+            </Button>
+          </Tooltip>
+        )}
+      </div>
       {open && (
         <ul className="cf-findings-list">
           {findings.map((f, i) => (
@@ -495,27 +594,127 @@ function FindingGroup({
                 <div className="cf-finding-where">
                   {f.name && <span className="cf-finding-name">{f.name}</span>}
                   {f.instance && <span className="cf-finding-chip">{f.instance}</span>}
-                  {f.file && (
-                    <span className="cf-finding-file">
-                      {f.file}
-                      {f.line ? `:${f.line}` : ""}
-                    </span>
-                  )}
+                  {/* The place itself is the link. "Open" beside a path the
+                      reader cannot click is a label pretending to be a way in. */}
+                  {f.file &&
+                    (onOpenFile ? (
+                      <button
+                        type="button"
+                        className="cf-finding-file is-link"
+                        onClick={() => onOpenFile(f.file!, f.line, f.instance)}
+                        title="Open this file at this line"
+                      >
+                        {f.file}
+                        {f.line ? `:${f.line}` : ""}
+                      </button>
+                    ) : (
+                      <span className="cf-finding-file">
+                        {f.file}
+                        {f.line ? `:${f.line}` : ""}
+                      </span>
+                    ))}
                 </div>
+                {/* Which edit did this, when it was not this row's own value.
+                    Without it the reader is looking at a message about a value
+                    they have already changed, on a row they never touched. */}
+                {f.causedBy && <div className="cf-finding-cause">{f.causedBy}</div>}
+                {/* The rule in words, then what to do about it. The reader was
+                    editing one box; neither the rule nor the way out is
+                    guessable from the message alone. */}
+                {f.because && <div className="cf-finding-why">{f.because}</div>}
+                {f.fix && (
+                  <div className="cf-finding-fix">
+                    <span className="cf-finding-fix-tag">To fix</span> {f.fix}
+                  </div>
+                )}
+                {/* The route inside the file, which is what the message is
+                    actually about when no catalog parameter claims it. */}
+                {f.path && <div className="cf-finding-detail">at {f.path}</div>}
                 {/* The schema's own expression, for the reader who wants to
                     check the constraint rather than take it on trust. */}
-                {f.detail && <div className="cf-finding-detail">{f.detail}</div>}
-                {f.schema && <div className="cf-finding-src">stated by {f.schema}</div>}
+                {f.detail && (
+                  <div className="cf-finding-detail">
+                    <span className="cf-finding-detail-label">
+                      {DETAIL_LABEL[f.rule] ?? "The model says"}:
+                    </span>{" "}
+                    {f.detail}
+                  </div>
+                )}
+                {f.schema && (
+                  // Not a link: a YANG model is not one of the files the
+                  // explorer shows, and a link that lands nowhere is worse than
+                  // a name the reader can search for.
+                  <div className="cf-finding-src">stated by {f.schema}</div>
+                )}
               </div>
-              {f.paramId && onOpenParam && (
-                <Button size="small" type="link" onClick={() => onOpenParam(f.paramId!)}>
-                  Open
-                </Button>
-              )}
+              <span className="cf-finding-go">
+                {f.paramId && onOpenParam && (
+                  <Button size="small" type="link" onClick={() => onOpenParam(f.paramId!)}>
+                    Open setting
+                  </Button>
+                )}
+              </span>
             </li>
           ))}
         </ul>
       )}
     </section>
   );
+}
+
+/** The whole outcome as plain text, for a ticket, a mail to the vendor, or a
+ *  colleague who is not looking at this screen. */
+function reportText(
+  run: ValidationRun | null,
+  problems: { message: string; file?: string; instance?: string; paramId?: string }[],
+  errors: ValidationFinding[],
+  warnings: ValidationFinding[],
+  inherited: ValidationFinding[],
+): string {
+  const lines: string[] = [];
+  lines.push(`Configer validation - change ${run?.changeId ?? ""}`.trim());
+  if (run?.engine) lines.push(`Checked by: ${run.engine}`);
+  lines.push(
+    `${errors.length + problems.length} blocking, ${warnings.length} warning${
+      warnings.length === 1 ? "" : "s"
+    }, ${inherited.length} already in the files`,
+  );
+
+  const block = (heading: string, items: ValidationFinding[]) => {
+    if (!items.length) return;
+    lines.push("", heading);
+    items.forEach((f, i) => {
+      lines.push(`${i + 1}. [${RULE_LABEL[f.rule] ?? f.rule}] ${f.message}`);
+      if (f.causedBy) lines.push(`   caused:  ${f.causedBy}`);
+      if (f.because) lines.push(`   why:     ${f.because}`);
+      if (f.fix) lines.push(`   to fix:  ${f.fix}`);
+      if (f.name) lines.push(`   setting: ${f.name}${f.instance ? ` (${f.instance})` : ""}`);
+      if (f.file) lines.push(`   file:    ${f.file}${f.line ? `:${f.line}` : ""}`);
+      if (f.path) lines.push(`   at:      ${f.path}`);
+      if (f.detail) lines.push(`   rule:    ${f.detail}`);
+      if (f.schema) lines.push(`   model:   ${f.schema}`);
+    });
+  };
+
+  block(
+    "Edits that could not be applied:",
+    problems.map((p) => ({
+      severity: "error" as const,
+      rule: "apply",
+      message: p.message,
+      file: p.file,
+      instance: p.instance,
+      paramId: p.paramId,
+    })),
+  );
+  block("Problems with what you changed:", errors.filter((f) => f.origin !== "elsewhere"));
+  block("Places this change breaks elsewhere:", errors.filter((f) => f.origin === "elsewhere"));
+  block("Worth knowing:", warnings);
+  block("Already in these files before this change:", inherited);
+
+  if (run?.skipped?.length) {
+    lines.push("", `Checks that could not be made (${run.skipped.length}):`);
+    run.skipped.forEach((s) => lines.push(`   - ${s}`));
+  }
+  return lines.join("\n");
 }

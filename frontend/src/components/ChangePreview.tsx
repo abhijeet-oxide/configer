@@ -4,7 +4,7 @@
 // the Files view uses. It answers "what will this actually change on disk?"
 // with the real bytes, not a value-level summary.
 import { Suspense, lazy, useMemo, useState } from "react";
-import { Alert, Empty, Select, Spin, Tag, Typography } from "antd";
+import { Alert, Empty, Segmented, Select, Spin, Switch, Tag, Tooltip, Typography } from "antd";
 import { useRepoQuery } from "../repoQuery";
 import { api, type FilePreview } from "../api";
 import { useUI } from "../store";
@@ -32,6 +32,10 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
   const structural = previewQ.data?.structural ?? [];
   const problems = previewQ.data?.problems ?? [];
   const [active, setActive] = useState(0);
+  // A configuration file is two thousand lines with three of them changed. The
+  // whole file is available on a click; what the reviewer came for is not.
+  const [onlyChanges, setOnlyChanges] = useState(true);
+  const [layout, setLayout] = useState<"split" | "inline">("split");
 
   if (previewQ.isLoading) {
     return (
@@ -139,6 +143,23 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
               {files.length === 1 ? "1 file" : `file ${active + 1} of ${files.length}`}
             </Typography.Text>
           </div>
+          <div className="cf-preview-opts">
+            <Tooltip title="Collapse everything this change did not touch">
+              <label className="cf-preview-opt">
+                <Switch size="small" checked={onlyChanges} onChange={setOnlyChanges} />
+                Only changed lines
+              </label>
+            </Tooltip>
+            <Segmented
+              size="small"
+              value={layout}
+              onChange={(v) => setLayout(v as "split" | "inline")}
+              options={[
+                { label: "Side by side", value: "split" },
+                { label: "Inline", value: "inline" },
+              ]}
+            />
+          </div>
           {current && (
             <div className="cf-preview-diff">
               <Suspense fallback={<div style={{ padding: 16 }}><Spin /></div>}>
@@ -146,6 +167,9 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
                   path={current.file}
                   original={current.before}
                   content={current.after}
+                  diff
+                  diffLayout={layout}
+                  onlyChanges={onlyChanges}
                   dark={mode === "dark"}
                 />
               </Suspense>

@@ -59,7 +59,15 @@ type value struct {
 	isNum  bool
 	b      bool
 	isBool bool
+	// approx marks a value derived from a path whose predicate was stripped
+	// rather than evaluated, so the node set is a SUPERSET of the real one.
+	// Widening is safe under existential equality - it can only turn a refusal
+	// into a pass - and unsafe everywhere else, which is why it travels with the
+	// value instead of being assumed harmless.
+	approx bool
 }
+
+func (v value) with(approx bool) value { v.approx = approx; return v }
 
 func nodeVal(n []*Node) value { return value{nodes: n, isNode: true} }
 func strVal(s string) value   { return value{str: s, isStr: true} }
@@ -170,7 +178,7 @@ func (p *xparser) orExpr() (value, bool) {
 		if !lok || !rok {
 			return value{}, false
 		}
-		left = boolVal(lb || rb)
+		left = boolVal(lb || rb).with(left.approx || right.approx)
 	}
 	return left, true
 }
@@ -191,7 +199,7 @@ func (p *xparser) andExpr() (value, bool) {
 		if !lok || !rok {
 			return value{}, false
 		}
-		left = boolVal(lb && rb)
+		left = boolVal(lb && rb).with(left.approx || right.approx)
 	}
 	return left, true
 }
@@ -216,6 +224,7 @@ func (p *xparser) compare() (value, bool) {
 }
 
 func compareValues(op string, left, right value) (value, bool) {
+	approx := left.approx || right.approx
 	switch op {
 	case "=", "!=":
 		// Equality over node sets is EXISTENTIAL: true when some pair matches.
@@ -245,7 +254,7 @@ func compareValues(op string, left, right value) (value, bool) {
 			// two agree.
 			ls, rs := left.strings(), right.strings()
 			if len(ls) <= 1 && len(rs) <= 1 {
-				return boolVal(!match), true
+				return boolVal(!match).with(approx), true
 			}
 			differs := false
 			for _, l := range ls {
@@ -255,10 +264,16 @@ func compareValues(op string, left, right value) (value, bool) {
 					}
 				}
 			}
-			return boolVal(differs), true
+			return boolVal(differs).with(approx), true
 		}
-		return boolVal(match), true
+		return boolVal(match).with(approx), true
 	default:
+		if approx {
+			// A relational comparison reads ONE member of a node set, and a set
+			// widened by a stripped predicate may not be holding the member the
+			// expression meant.
+			return value{}, false
+		}
 		lf, lok := left.number()
 		rf, rok := right.number()
 		if !lok || !rok {
@@ -348,13 +363,19 @@ func (p *xparser) function() (value, bool) {
 	case "false":
 		return boolVal(false), len(args) == 0
 	case "not":
-		if len(args) != 1 {
+		if len(args) != 1 || args[0].approx {
+			// not() inverts the safe direction: a widened set makes the inner
+			// test likelier to hold, so negating it refuses a change that is
+			// probably fine.
 			return value{}, false
 		}
 		b, ok := args[0].boolean()
 		return boolVal(!b), ok
 	case "count":
-		if len(args) != 1 || !args[0].isNode {
+		if len(args) != 1 || !args[0].isNode || args[0].approx {
+			// Counting a set widened by a stripped predicate counts the wrong
+			// things, and "count(...) = 1" then refuses a document that
+			// satisfies it.
 			return value{}, false
 		}
 		return numVal(float64(len(args[0].nodes))), true
@@ -363,9 +384,9 @@ func (p *xparser) function() (value, bool) {
 			return value{}, false
 		}
 		b, ok := args[0].boolean()
-		return boolVal(b), ok
+		return boolVal(b).with(args[0].approx), ok
 	case "string-length":
-		if len(args) != 1 {
+		if len(args) != 1 || args[0].approx {
 			return value{}, false
 		}
 		s := args[0].strings()
@@ -374,7 +395,7 @@ func (p *xparser) function() (value, bool) {
 		}
 		return numVal(float64(len([]rune(s[0])))), true
 	case "number":
-		if len(args) != 1 {
+		if len(args) != 1 || args[0].approx {
 			return value{}, false
 		}
 		f, ok := args[0].number()
@@ -385,12 +406,13 @@ func (p *xparser) function() (value, bool) {
 		}
 		a, b := args[0].strings(), args[1].strings()
 		if len(a) == 0 || len(b) == 0 {
-			return boolVal(false), true
+			return boolVal(false).with(args[0].approx || args[1].approx), true
 		}
+		approx := args[0].approx || args[1].approx
 		if name == "starts-with" {
-			return boolVal(strings.HasPrefix(a[0], b[0])), true
+			return boolVal(strings.HasPrefix(a[0], b[0])).with(approx), true
 		}
-		return boolVal(strings.Contains(a[0], b[0])), true
+		return boolVal(strings.Contains(a[0], b[0])).with(approx), true
 	case "current":
 		if len(args) != 0 {
 			return value{}, false
@@ -404,78 +426,78 @@ func (p *xparser) function() (value, bool) {
 func (p *xparser) path() (value, bool) {
 	tok := p.toks[p.i]
 	p.i++
-	nodes, ok := resolvePath(p.ctx, tok)
+	nodes, approx, ok := resolvePath(p.ctx, tok)
 	if !ok {
 		return value{}, false
 	}
-	return nodeVal(nodes), true
+	return nodeVal(nodes).with(approx), true
 }
 
 // ---- path resolution ----------------------------------------------------
 
-// resolvePath walks a location path from the evaluation context.
+// resolvePath walks a location path from the evaluation context and gives
+// THREE answers, not two: the nodes it names, whether that answer is
+// approximate, and whether the path could be read at all.
 //
-// Predicates are STRIPPED rather than evaluated: "interface[name='eth0']/mtu"
-// resolves to every interface's mtu. That widens a node set, which for the
-// comparisons this subset supports can only turn a refusal into a pass -
-// never a pass into a refusal. Widening in that direction is the safe error to
-// make; the other one refuses correct changes.
-func resolvePath(ctx evalContext, path string) ([]*Node, bool) {
+// Predicates are STRIPPED rather than evaluated, which widens the node set;
+// the widening is reported back as "approximate" so the operators that cannot
+// survive it (count, relational comparison, negation) decline instead of
+// refusing a correct change on a set they know is too big.
+//
+// A step this subset cannot ADDRESS - a wildcard, an axis, a node test - makes
+// the whole path unreadable. It used to resolve to nothing instead, which is
+// how "count(../*[current() = .]) = 1" became a refusal on every document.
+func resolvePath(ctx evalContext, path string) ([]*Node, bool, bool) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return nil, false
+		return nil, false, false
 	}
 	var cur []*Node
+	var rest string
+	approx := false
+
 	if strings.HasPrefix(path, "/") {
-		cur = []*Node{ctx.root}
-		path = strings.TrimPrefix(path, "/")
+		steps := strings.Split(strings.TrimPrefix(path, "/"), "/")
+		name, pred, ok := stepName(steps[0])
+		if !ok {
+			return nil, false, false
+		}
+		approx = pred
+		// An absolute path is written against the DATASTORE root, and a
+		// repository file holds a FRAGMENT of one - routinely under a wrapper
+		// element ("config", a Kubernetes envelope) the model never named. So
+		// the first step is anchored wherever it actually appears, and a first
+		// step that appears nowhere means this file does not hold that subtree:
+		// a question it cannot answer, never a violation.
+		cur = anchor(ctx.root, name)
+		if len(cur) == 0 {
+			return nil, false, false
+		}
+		rest = strings.Join(steps[1:], "/")
 	} else {
-		cur = []*Node{ctx.node}
-		ancestors := append([]*Node{}, ctx.ancestry...)
-		for {
-			switch {
-			case strings.HasPrefix(path, "../"):
-				path = strings.TrimPrefix(path, "../")
-			case path == "..":
-				path = ""
-			case strings.HasPrefix(path, "./"):
-				path = strings.TrimPrefix(path, "./")
-				continue
-			case path == ".":
-				return cur, true
-			default:
-				goto walk
-			}
-			if len(ancestors) == 0 {
-				// Walked out of the tree this file holds. A datastore has one
-				// tree; a repository has files, and this is not an error - it
-				// is a question this file cannot answer.
-				return nil, false
-			}
-			cur = []*Node{ancestors[len(ancestors)-1]}
-			ancestors = ancestors[:len(ancestors)-1]
-			if path == "" {
-				return cur, true
-			}
+		var ok bool
+		cur, rest, ok = climb(ctx, path)
+		if !ok {
+			return nil, false, false
 		}
 	}
-walk:
-	for _, step := range strings.Split(path, "/") {
-		step = strings.TrimSpace(step)
-		if i := strings.IndexByte(step, '['); i >= 0 {
-			step = step[:i]
+
+	if strings.TrimSpace(rest) == "" {
+		return cur, approx, true
+	}
+	for _, step := range strings.Split(rest, "/") {
+		name, pred, ok := stepName(step)
+		if !ok {
+			return nil, false, false
 		}
-		step = bare(strings.TrimPrefix(step, "@"))
-		if step == "" || step == "." {
+		approx = approx || pred
+		if name == "" {
 			continue
-		}
-		if step == ".." {
-			return nil, false // a ".." mid-path needs parent links this tree has not got
 		}
 		var next []*Node
 		for _, n := range cur {
 			for _, c := range children(n) {
-				if strings.EqualFold(c.Name, step) {
+				if strings.EqualFold(c.Name, name) {
 					// A matched repeated node contributes its ENTRIES, which is
 					// how a datastore addresses a list: "count(./neighbour)"
 					// counts neighbours, not the one node holding them.
@@ -485,7 +507,89 @@ walk:
 		}
 		cur = next
 	}
-	return cur, true
+	return cur, approx, true
+}
+
+// climb walks the leading "." and ".." of a relative path and returns where the
+// remaining steps start from. Walking out of the top of the tree is not an
+// error: a datastore has one tree, a repository has files, and this is a
+// question the file cannot answer.
+func climb(ctx evalContext, path string) ([]*Node, string, bool) {
+	cur := []*Node{ctx.node}
+	ancestors := append([]*Node{}, ctx.ancestry...)
+	for {
+		switch {
+		case strings.HasPrefix(path, "./"):
+			path = strings.TrimPrefix(path, "./")
+			continue
+		case path == ".":
+			return cur, "", true
+		case strings.HasPrefix(path, "../"):
+			path = strings.TrimPrefix(path, "../")
+		case path == "..":
+			path = ""
+		default:
+			return cur, path, true
+		}
+		if len(ancestors) == 0 {
+			return nil, "", false
+		}
+		cur = []*Node{ancestors[len(ancestors)-1]}
+		ancestors = ancestors[:len(ancestors)-1]
+		if path == "" {
+			return cur, "", true
+		}
+	}
+}
+
+// stepName reads one location step: the name it addresses with any module
+// prefix and predicate removed, and whether it carried a predicate. The third
+// result is false for a step this subset cannot address at all.
+func stepName(step string) (name string, predicate bool, ok bool) {
+	step = strings.TrimSpace(step)
+	if i := strings.IndexByte(step, '['); i >= 0 {
+		predicate = true
+		step = strings.TrimSpace(step[:i])
+	}
+	switch step {
+	case "", ".":
+		return "", predicate, true
+	case "*", "..":
+		// A wildcard names siblings this tree can enumerate but the expression
+		// around it usually cannot survive; ".." mid-path needs parent links
+		// this tree has not got.
+		return "", predicate, false
+	}
+	if strings.Contains(step, "::") || strings.Contains(step, "(") {
+		// An axis ("child::x") or a node test ("text()") is not a name. A
+		// module prefix ("dp:net-info") is, and bare() strips it below.
+		return "", predicate, false
+	}
+	return bare(strings.TrimPrefix(step, "@")), predicate, true
+}
+
+// anchor finds where an absolute path's first step actually sits in this file,
+// which is not necessarily at its root.
+func anchor(root *Node, name string) []*Node {
+	if name == "" {
+		return []*Node{root}
+	}
+	var out []*Node
+	var walk func(n *Node, depth int)
+	walk = func(n *Node, depth int) {
+		if n == nil || depth > maxDepth {
+			return
+		}
+		for _, c := range children(n) {
+			if strings.EqualFold(c.Name, name) {
+				out = append(out, expand(c)...)
+				continue
+			}
+			walk(c, depth+1)
+		}
+	}
+	walk(root, 0)
+	return out
 }
 
 // expand flattens a repeated node to its entries, so a path step lands on the
@@ -541,8 +645,11 @@ func resolveWithin(n *Node, route string) *Node {
 // leafrefValues collects the values a leafref path points at. The second result
 // is false when the route leaves the part of the tree this file holds, which is
 // the caller's cue to say nothing at all.
+//
+// A widened set is fine here: an extra candidate can only make a reference
+// resolve, never fail.
 func leafrefValues(root *Node, ancestry []*Node, node *Node, path string) ([]any, bool) {
-	nodes, ok := resolvePath(evalContext{root: root, node: node, ancestry: ancestry}, path)
+	nodes, _, ok := resolvePath(evalContext{root: root, node: node, ancestry: ancestry}, path)
 	if !ok {
 		return nil, false
 	}

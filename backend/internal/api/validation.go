@@ -253,6 +253,7 @@ func (s *Server) runValidation(ctx context.Context, runID string, cr *change.Cha
 	// 4) The whole document against the models.
 	set(StageModel, StageRunning, "")
 	report := s.validateDocuments(ctx, preview)
+	s.attribute(cr, report.Findings)
 	s.addFindings(runID, report.Findings)
 	s.validations.update(runID, func(run *ValidationRun) {
 		run.Engine, run.Available, run.Reason = report.Engine, report.Available, report.Reason
@@ -278,6 +279,73 @@ func (s *Server) runValidation(ctx context.Context, runID string, cr *change.Cha
 	})
 }
 
+// attribute works out, for each finding, whether it landed on something this
+// change EDITED or somewhere else the change knocked over.
+//
+// Without it a rename reads as nonsense. Rename a value from A to B and the
+// objection lands on a different row that still says A, phrased as "this says A
+// and the file now says B" - which the person who just typed B reads as being
+// told to type it again, on the row they are already looking at. The two cases
+// are different problems with different fixes and they must not look alike.
+//
+// The link is made on the VALUE: a finding refusing a value that one of this
+// change's edits replaced is that edit's doing. Nothing is asserted when the
+// values do not line up; a wrong attribution is worse than none.
+func (s *Server) attribute(cr *change.ChangeRequest, findings []yangvalidate.Finding) {
+	if cr == nil || len(findings) == 0 {
+		return
+	}
+	names := map[string]string{}
+	if p, err := s.load(); err == nil {
+		for _, param := range p.Catalog.Parameters {
+			display := param.DisplayName
+			if display == "" {
+				display = param.Name
+			}
+			names[param.ID] = display
+		}
+	}
+	edited := map[string]bool{}
+	replaced := map[string][]change.Item{}
+	for _, it := range cr.Items {
+		if it.Act() != change.ActionSet || it.ParamID == "" {
+			continue
+		}
+		edited[it.ParamID+"\x00"+it.Instance] = true
+		edited[it.ParamID] = true
+		if old := valueText(it.Old); old != "" && old != valueText(it.New) {
+			replaced[old] = append(replaced[old], it)
+		}
+	}
+
+	for i := range findings {
+		f := &findings[i]
+		if f.ParamID != "" && (edited[f.ParamID+"\x00"+f.Instance] || edited[f.ParamID]) {
+			f.Origin = yangvalidate.OriginEdited
+			continue
+		}
+		f.Origin = yangvalidate.OriginElsewhere
+		culprits := replaced[f.Value]
+		if len(culprits) != 1 {
+			continue
+		}
+		it := culprits[0]
+		who := names[it.ParamID]
+		if who == "" {
+			who = it.ParamID
+		}
+		f.CausedBy = fmt.Sprintf("Your change set %q from %q to %q. This is a different setting, and it still points at the old value.",
+			who, valueText(it.Old), valueText(it.New))
+	}
+}
+
+func valueText(v any) string {
+	if v == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprintf("%v", v))
+}
+
 // addFindings records findings and keeps the error/warning tallies in step, so
 // no caller can update one without the other.
 func (s *Server) addFindings(runID string, found []yangvalidate.Finding) {
@@ -286,13 +354,16 @@ func (s *Server) addFindings(runID string, found []yangvalidate.Finding) {
 	}
 	s.validations.update(runID, func(run *ValidationRun) {
 		run.Findings = append(run.Findings, found...)
-		run.Errors, run.Warnings = 0, 0
+		run.Errors, run.Warnings, run.PreExisting = 0, 0, 0
 		for _, f := range run.Findings {
-			if f.Severity == yangvalidate.SeverityError {
+			switch {
+			case f.PreExisting:
+				run.PreExisting++
+			case f.Severity == yangvalidate.SeverityError:
 				run.Errors++
-				continue
+			default:
+				run.Warnings++
 			}
-			run.Warnings++
 		}
 	})
 }
@@ -356,11 +427,15 @@ func (s *Server) checkStagedValues(cr *change.ChangeRequest) ([]yangvalidate.Fin
 // validateDocuments holds every file the change would rewrite against the
 // models.
 //
-// Only the changed files are validated, and that is a deliberate limit worth
-// stating: a repository whose committed state already breaks a rule is not this
-// change's fault, and reporting it here would make every submit carry somebody
-// else's backlog. What a change is answerable for is the state it leaves the
-// files it touched in - which is exactly the candidate content Preview built.
+// Only the changed files are validated, and each one is validated TWICE: once
+// as the change would leave it, and once as it is committed today. Whatever the
+// committed file already said is marked pre-existing and does not block.
+//
+// That second pass is the difference between a gate and a wall. A repository
+// whose current state already breaks a vendor rule is not this change's fault,
+// and a one-character edit that came back with thirty-three objections it did
+// not cause is how somebody learns to click "submit anyway" without reading.
+// What a change is answerable for is what it INTRODUCED.
 func (s *Server) validateDocuments(ctx context.Context, preview *changeset.PreviewResult) yangvalidate.Report {
 	set, dirs, _ := s.models()
 	if set == nil {
@@ -371,7 +446,7 @@ func (s *Server) validateDocuments(ctx context.Context, preview *changeset.Previ
 	if p, err := s.load(); err == nil {
 		instances = p.Registry.Instances
 	}
-	var docs []yangvalidate.Document
+	var docs, base []yangvalidate.Document
 	for _, f := range preview.Files {
 		// A removed file has nothing left to validate, and a format nothing can
 		// parse (a README, a certificate) was never a document in the first
@@ -380,20 +455,34 @@ func (s *Server) validateDocuments(ctx context.Context, preview *changeset.Previ
 		if f.After == "" || format == "" {
 			continue
 		}
+		inst := instanceOf(instances, f.File)
 		docs = append(docs, yangvalidate.Document{
-			File: f.File, Format: format, Instance: instanceOf(instances, f.File),
+			File: f.File, Format: format, Instance: inst,
 			Content: []byte(f.After),
 		})
+		if f.Before != "" {
+			base = append(base, yangvalidate.Document{
+				File: f.File, Format: format, Instance: inst,
+				Content: []byte(f.Before),
+			})
+		}
 	}
 	if len(docs) == 0 {
 		return yangvalidate.Report{Available: false, Findings: []yangvalidate.Finding{},
 			Reason: "this change rewrites no configuration document a model could describe"}
 	}
-	return yangvalidate.Run(ctx, yangvalidate.Request{
-		Set: set, Documents: docs,
-		SchemaRoot: s.RepoPath, SchemaDirs: dirs,
-		Locate: s.locator(),
-	})
+	request := func(d []yangvalidate.Document) yangvalidate.Request {
+		return yangvalidate.Request{
+			Set: set, Documents: d,
+			SchemaRoot: s.RepoPath, SchemaDirs: dirs,
+			Locate: s.locator(),
+		}
+	}
+	rep := yangvalidate.Run(ctx, request(docs))
+	if len(rep.Findings) > 0 && len(base) > 0 {
+		yangvalidate.MarkPreExisting(&rep, yangvalidate.Run(ctx, request(base)))
+	}
+	return rep
 }
 
 // formatOf names the parseable format of a file, empty when it is not one.
@@ -413,7 +502,7 @@ func formatOf(file string) string {
 
 func hasErrors(f []yangvalidate.Finding) bool {
 	for _, x := range f {
-		if x.Severity == yangvalidate.SeverityError {
+		if x.Blocking() {
 			return true
 		}
 	}
@@ -423,18 +512,30 @@ func hasErrors(f []yangvalidate.Finding) bool {
 func problemPhrase(f []yangvalidate.Finding) string {
 	n := 0
 	for _, x := range f {
-		if x.Severity == yangvalidate.SeverityError {
+		if x.Blocking() {
 			n++
 		}
 	}
 	return countPhrase(n, "problem", "problems") + " found"
 }
 
+// modelPhrase says what the model stage actually did. "Passed over" was the
+// wording here and it reads as "passed", which is the opposite of what it
+// means: those rules were NOT checked, and a partial check must never present
+// itself as a complete one.
 func modelPhrase(rep yangvalidate.Report) string {
-	out := countPhrase(rep.Values, "value", "values") + " checked against the model in " +
+	out := countPhrase(rep.Values, "value", "values") + " validated against the model in " +
 		countPhrase(rep.Documents, "file", "files")
-	if len(rep.Skipped) > 0 {
-		out += ", " + countPhrase(len(rep.Skipped), "check", "checks") + " passed over"
+	if n := len(rep.Inherited()); n > 0 {
+		out += "; " + countPhrase(n, "objection", "objections") + " these files already had"
+	}
+	if n := len(rep.Skipped); n > 0 {
+		out += "; " + countPhrase(n, "rule", "rules") + " not checked - this validator cannot read "
+		if n == 1 {
+			out += "it"
+		} else {
+			out += "them"
+		}
 	}
 	return out
 }
@@ -497,6 +598,39 @@ func overrideNote(description string, run *ValidationRun, reason string) string 
 		return note
 	}
 	return description + "\n\n" + note
+}
+
+// overrideRecord is the same fact as overrideNote, structured. The note travels
+// into the commit message and the pull request; this travels into the review
+// screen, where "submitted over the data model" has to be a state with a colour
+// and not a sentence somebody has to notice at the bottom of a description.
+func overrideRecord(run *ValidationRun, reason, by string) *change.Override {
+	rec := &change.Override{
+		Summary: refusalMessage(run),
+		Reason:  strings.TrimSpace(reason),
+		By:      by,
+		At:      time.Now().UTC(),
+	}
+	if run == nil {
+		return rec
+	}
+	rec.Errors, rec.Problems, rec.Engine = run.Errors, len(run.Problems), run.Engine
+	for _, p := range run.Problems {
+		rec.Objections = append(rec.Objections, change.Objection{
+			Rule: "apply", Instance: p.Instance, File: p.File, Message: p.Message,
+		})
+	}
+	for _, f := range run.Findings {
+		if !f.Blocking() {
+			continue
+		}
+		rec.Objections = append(rec.Objections, change.Objection{
+			Rule: f.Rule, Name: f.Name, Instance: f.Instance, File: f.File,
+			Path: f.Path, Message: f.Message, Because: f.Because,
+			Detail: f.Detail, Schema: f.Schema,
+		})
+	}
+	return rec
 }
 
 // refusalMessage says what is wrong in one sentence, in the reader's terms.

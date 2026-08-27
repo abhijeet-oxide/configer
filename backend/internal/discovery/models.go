@@ -128,14 +128,21 @@ func attachModel(set *yangschema.Set, p *model.Parameter) (*yangschema.Node, boo
 // a reference becomes a DependsOn edge only when both ends resolve to discovered
 // parameters. Ambiguous or structural references stay in validation constraints
 // as readable facts instead of becoming wrong graph edges.
+//
+// One schema node routinely answers for MANY parameters: a model describes a
+// list once, and a repository spells out its entries, so seven `net-info`
+// entries all match the one `net-info/net-label` node. Keeping a node -> ONE id
+// map silently discarded six of every seven, which is why a rename that
+// orphaned a reference showed "depends on nothing" on both ends of the edge it
+// actually broke.
 func linkModelDependencies(set *yangschema.Set, params []model.Parameter, nodes map[string]*yangschema.Node) {
 	if set == nil || len(nodes) == 0 {
 		return
 	}
-	paramByNode := map[*yangschema.Node]string{}
+	paramsByNode := map[*yangschema.Node][]string{}
 	for _, p := range params {
 		if n := nodes[p.ID]; n != nil {
-			paramByNode[n] = p.ID
+			paramsByNode[n] = append(paramsByNode[n], p.ID)
 		}
 	}
 	for i := range params {
@@ -152,12 +159,23 @@ func linkModelDependencies(set *yangschema.Set, params []model.Parameter, nodes 
 			if !ok {
 				continue
 			}
-			id := paramByNode[target]
-			if id == "" || id == params[i].ID || seen[id] {
-				continue
+			for _, id := range paramsByNode[target] {
+				if id == "" || id == params[i].ID || seen[id] {
+					continue
+				}
+				if len(params[i].DependsOn) >= maxDependencyEdges {
+					break
+				}
+				params[i].DependsOn = append(params[i].DependsOn, id)
+				seen[id] = true
 			}
-			params[i].DependsOn = append(params[i].DependsOn, id)
-			seen[id] = true
 		}
 	}
 }
+
+// maxDependencyEdges bounds one parameter's fan-out. A leafref into a list is a
+// VALUE-level link - this entry points at whichever entry carries the matching
+// name - and the schema only says which list, so every entry of it is a
+// candidate. Naming a handful is useful; naming four hundred is a wall that
+// tells the reader nothing and costs a catalog write per row.
+const maxDependencyEdges = 12

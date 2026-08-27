@@ -13,6 +13,7 @@ import {
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
+  CloseCircleFilled,
   LinkOutlined,
   BranchesOutlined,
   SendOutlined,
@@ -24,7 +25,7 @@ import UserAvatar from "./UserAvatar";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, type ChangeImpact, type ChangeRequest, type ChangeState } from "../api";
+import { api, type ChangeImpact, type ChangeOverride, type ChangeRequest, type ChangeState } from "../api";
 import { useUI } from "../store";
 import CrSteps, { StatePill } from "./CrSteps";
 import { ItemsTable } from "./ChangeRequestsView";
@@ -253,8 +254,62 @@ function ImpactBanner({ impact }: { impact?: ChangeImpact }) {
   );
 }
 
-export default function ApprovalsView() {
-  const { message } = AntApp.useApp();
+// OverrideBanner says that the data model refused this change and somebody sent
+// it anyway. It is deliberately the one red thing on a review screen: every
+// other signal here is about what the change DOES, and this one is about
+// whether it should exist at all.
+function OverrideBanner({ override }: { override: ChangeOverride }) {
+  const [open, setOpen] = useState(false);
+  const objections = override.objections ?? [];
+  return (
+    <div className="cf-override">
+      <div className="cf-override-head">
+        <CloseCircleFilled style={{ color: "var(--c-danger)", fontSize: 15, flexShrink: 0 }} />
+        <div className="min-w-0">
+          <div className="cf-override-title">
+            Submitted over the data model - {override.summary}
+          </div>
+          <div className="cf-override-sub">
+            {override.by ? `${override.by} ` : ""}chose to submit this anyway
+            {override.at ? ` ${relTime(override.at)}` : ""}. Nothing here has been checked against
+            the model; publishing it puts it on a device as it is.
+          </div>
+          {override.reason && (
+            <div className="cf-override-reason">Reason given: “{override.reason}”</div>
+          )}
+        </div>
+        {objections.length > 0 && (
+          <Button size="small" danger type="text" onClick={() => setOpen((o) => !o)}>
+            {open ? "Hide" : `Show ${objections.length}`}
+          </Button>
+        )}
+      </div>
+      {open && (
+        <ul className="cf-override-list">
+          {objections.map((o, i) => (
+            <li key={i}>
+              <div className="cf-override-msg">{o.message}</div>
+              {o.because && <div className="cf-override-why">{o.because}</div>}
+              <div className="cf-override-where">
+                {o.name && <b>{o.name}</b>}
+                {o.instance && <span className="mono">{o.instance}</span>}
+                {o.file && (
+                  <span className="mono">
+                    {o.file}
+                    {o.path ? ` · ${o.path}` : ""}
+                  </span>
+                )}
+              </div>
+              {o.schema && <div className="cf-override-src">stated by {o.schema}</div>}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export default function ApprovalsView() {  const { message } = AntApp.useApp();
   // Reviewing is a read for everyone; deciding is not. Rejecting and asking for
   // changes need editor, signing off and publishing need approver - the same
   // split the service enforces (api.requiredRole).
@@ -423,7 +478,14 @@ export default function ApprovalsView() {
                   title: "Status",
                   dataIndex: "state",
                   width: 150,
-                  render: (s: ChangeState) => <StatePill state={s} size="sm" />,
+                  render: (s: ChangeState, cr) => (
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      <StatePill state={s} size="sm" />
+                      {/* A change the data model refused cannot look like every
+                          other change in the queue. */}
+                      {cr.override && <span className="cf-override-tag">Overridden</span>}
+                    </span>
+                  ),
                 },
                 { title: "Created", width: 100, render: (_v, cr) => relTime(cr.createdAt) },
               ]}
@@ -438,6 +500,7 @@ export default function ApprovalsView() {
                 <span className="mono text-sm font-semibold text-brand">CR-{selected.number ?? selected.id}</span>
                 <span className="text-sm font-semibold text-ink">{selected.title}</span>
                 <StatePill state={selected.state} size="sm" />
+                {selected.override && <span className="cf-override-tag">Overridden</span>}
                 <span className="text-xs text-ink-3">
                   Created by {selected.author} · {relTime(selected.createdAt)} · Target:{" "}
                   <span className="mono">{selected.targetBranch}</span>
@@ -453,6 +516,12 @@ export default function ApprovalsView() {
                   )}
                 </div>
               </div>
+
+              {/* The data model refused this change and it was sent anyway.
+                  That has to be the loudest thing on the panel, above the blast
+                  radius and above the diff: everything below it is a normal
+                  review, and this is the one fact that is not. */}
+              {selected.override && <OverrideBanner override={selected.override} />}
 
               {/* Blast radius, up front: what this change actually reaches. */}
               <ImpactBanner impact={selected.impact} />

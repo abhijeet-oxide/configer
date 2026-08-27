@@ -93,11 +93,14 @@ type ValidationRun struct {
 	Available bool   `json:"available"`
 	Reason    string `json:"reason,omitempty"`
 	// Counts the UI states plainly rather than making the reader total a list.
-	Errors    int `json:"errors"`
-	Warnings  int `json:"warnings"`
-	Documents int `json:"documents"`
-	Values    int `json:"values"`
-	Unmatched int `json:"unmatched"`
+	Errors   int `json:"errors"`
+	Warnings int `json:"warnings"`
+	// PreExisting counts the objections the committed files already carried.
+	// They are shown and they do not block: this change did not cause them.
+	PreExisting int `json:"preExisting"`
+	Documents   int `json:"documents"`
+	Values      int `json:"values"`
+	Unmatched   int `json:"unmatched"`
 	// Skipped are the checks that were passed over with an explanation - an
 	// unparseable file, a condition outside what the built-in evaluator reads.
 	// Silence about them would present a partial check as a complete one.

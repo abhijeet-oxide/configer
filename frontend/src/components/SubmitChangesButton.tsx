@@ -47,7 +47,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   // action is absent rather than present-and-disabled.
   const { canEdit } = useIdentity();
   const qc = useQueryClient();
-  const { setSection, selectParam, openSubmit, setOpenSubmit } = useUI();
+  const { setSection, selectParam, openSubmit, setOpenSubmit, setFileFocus } = useUI();
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm<{ title: string; description?: string; reference?: string; category?: string }>();
   const titleRef = useRef<InputRef>(null);
@@ -298,6 +298,15 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             onOpenParam={(paramId) => {
               selectParam(paramId);
               setSection("config");
+              closeDialog();
+            }}
+            onOpenFile={(file, line, instance) => {
+              // A finding names a place. Landing on the file at the line is the
+              // difference between being told what is wrong and being taken to
+              // it - a schema file included, since "stated by" is only evidence
+              // if the reader can go and read it.
+              setFileFocus({ path: file, line, instance, allInstances: !instance });
+              setSection("files");
               closeDialog();
             }}
           />

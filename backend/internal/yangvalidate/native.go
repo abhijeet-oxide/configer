@@ -130,13 +130,10 @@ func (w *walker) walk(docNode *Node, schemaNodes []*yangschema.Node, ancestry []
 // check validates one matched (document node, schema node) pair.
 func (w *walker) check(doc *Node, s *yangschema.Node, ancestry []*Node) {
 	if s.FeatureOff {
-		w.add(doc, s, SeverityWarning, RuleFeature,
-			"this setting needs a feature this release was not built with",
-			strings.Join(s.IfFeatures, ", "))
+		w.add(doc, s, featureNote(s))
 	}
 	if s.Status == "obsolete" {
-		w.add(doc, s, SeverityWarning, RuleStatus,
-			"this setting is marked obsolete by the model and should not be set", "")
+		w.add(doc, s, statusNote(s))
 	}
 
 	switch {
@@ -155,13 +152,8 @@ func (w *walker) check(doc *Node, s *yangschema.Node, ancestry []*Node) {
 // and then each entry in its own right.
 func (w *walker) checkRepeated(doc *Node, s *yangschema.Node, ancestry []*Node) {
 	n := len(doc.Entries)
-	if s.MinElements != nil && n < *s.MinElements {
-		w.add(doc, s, SeverityError, RuleCount,
-			fmt.Sprintf("needs at least %d entries, but has %d", *s.MinElements, n), "")
-	}
-	if s.MaxElements != nil && n > *s.MaxElements {
-		w.add(doc, s, SeverityError, RuleCount,
-			fmt.Sprintf("holds at most %d entries, but has %d", *s.MaxElements, n), "")
+	if (s.MinElements != nil && n < *s.MinElements) || (s.MaxElements != nil && n > *s.MaxElements) {
+		w.add(doc, s, countNote(s, n, s.MinElements, s.MaxElements))
 	}
 
 	// A list KEY identifies an entry. Missing, an entry cannot be addressed;
@@ -175,8 +167,7 @@ func (w *walker) checkRepeated(doc *Node, s *yangschema.Node, ancestry []*Node) 
 			for _, k := range s.Keys {
 				kv := entry.Child(k)
 				if kv == nil || !kv.Leaf() || isEmpty(kv.Scalar) {
-					w.add(entry, s, SeverityError, RuleKey,
-						fmt.Sprintf("entry %d has no %q, which is what identifies it", i+1, k), "")
+					w.add(entry, s, keyMissingNote(s, i+1, k))
 					missing = true
 					break
 				}
@@ -187,9 +178,7 @@ func (w *walker) checkRepeated(doc *Node, s *yangschema.Node, ancestry []*Node) 
 			}
 			id := strings.Join(parts, "\x00")
 			if first, clash := seen[id]; clash {
-				w.add(entry, s, SeverityError, RuleKey,
-					fmt.Sprintf("entry %d repeats the identity of entry %d (%s)",
-						i+1, first+1, strings.Join(parts, ", ")), "")
+				w.add(entry, s, keyClashNote(s, first+1, i+1, s.Keys, parts))
 				continue
 			}
 			seen[id] = i
@@ -231,9 +220,7 @@ func (w *walker) checkUnique(doc *Node, s *yangschema.Node, leaves []string) {
 		}
 		id := strings.Join(parts, "\x00")
 		if first, clash := seen[id]; clash {
-			w.add(entry, s, SeverityError, RuleUnique,
-				fmt.Sprintf("entry %d and entry %d both have %s = %s, which has to be unique",
-					first+1, i+1, strings.Join(leaves, " + "), strings.Join(parts, ", ")), "")
+			w.add(entry, s, uniqueNote(s, first+1, i+1, leaves, parts))
 			continue
 		}
 		seen[id] = i
@@ -252,15 +239,15 @@ func (w *walker) checkLeaf(doc *Node, s *yangschema.Node, ancestry []*Node) {
 	var p model.Parameter
 	yangschema.Apply(&p, s)
 	if p.Validation.ReadOnly {
-		w.add(doc, s, SeverityWarning, RuleType,
-			"this is reported by the device, not configured; setting it here has no effect", "")
+		w.add(doc, s, readOnlyNote(s))
 	}
 	if !isEmpty(doc.Scalar) {
+		written := fmt.Sprintf("%v", doc.Scalar)
 		coerced, err := validate.CoerceValue(p, doc.Scalar)
 		if err != nil {
-			w.add(doc, s, SeverityError, RuleType, err.Error(), typeDetail(s))
+			w.add(doc, s, typeNote(s, err.Error(), written))
 		} else if r := validate.Value(p, coerced); !r.Valid {
-			w.add(doc, s, SeverityError, RuleType, r.Message, typeDetail(s))
+			w.add(doc, s, typeNote(s, r.Message, written))
 		}
 	}
 
@@ -280,11 +267,12 @@ func (w *walker) checkLeafref(doc *Node, s *yangschema.Node, ancestry []*Node) {
 		return
 	}
 	targets, resolvable := leafrefValues(w.root, ancestry, doc, s.Type.LeafrefPath)
-	if !resolvable {
-		// The route left the part of the tree this file holds. A datastore has
-		// one tree; a repository has files, and the target may simply live in
-		// another one. Guessing would produce a false refusal on a correct
-		// change, so nothing is said.
+	if !resolvable || len(targets) == 0 {
+		// Either the route left the part of the tree this file holds, or it
+		// resolved to nothing at all. A datastore has one tree; a repository has
+		// files, and a target list that is empty HERE lives in another one far
+		// more often than it is missing. Guessing would produce a false refusal
+		// on a correct change, so nothing is said.
 		return
 	}
 	want := fmt.Sprintf("%v", doc.Scalar)
@@ -293,12 +281,7 @@ func (w *walker) checkLeafref(doc *Node, s *yangschema.Node, ancestry []*Node) {
 			return
 		}
 	}
-	detail := "expected one of: " + summarize(targets)
-	if len(targets) == 0 {
-		detail = "nothing in this file matches " + s.Type.LeafrefPath
-	}
-	w.add(doc, s, SeverityError, RuleLeafref,
-		fmt.Sprintf("%q does not name anything that exists", want), detail)
+	w.add(doc, s, leafrefNote(s, want, targets))
 }
 
 // evalConditions evaluates the "must" and "when" expressions attached to a
@@ -313,11 +296,7 @@ func (w *walker) evalConditions(doc *Node, s *yangschema.Node, ancestry []*Node)
 			continue
 		}
 		if !result {
-			msg := c.ErrorMessage
-			if msg == "" {
-				msg = "a condition the model attaches to this setting is not satisfied"
-			}
-			w.add(doc, s, SeverityError, RuleMust, msg, c.Expr)
+			w.add(doc, s, mustNote(s, c))
 		}
 	}
 	// A "when" that is false means the node should not be here AT ALL. That is
@@ -329,8 +308,7 @@ func (w *walker) evalConditions(doc *Node, s *yangschema.Node, ancestry []*Node)
 		if !known || result {
 			continue
 		}
-		w.add(doc, s, SeverityWarning, RuleWhen,
-			"this setting only applies under a condition that does not currently hold", c.Expr)
+		w.add(doc, s, whenNote(s, c))
 	}
 }
 
@@ -368,8 +346,7 @@ func (w *walker) checkMissing(docNode *Node, schemaNodes []*yangschema.Node, pre
 				continue
 			}
 		}
-		w.addAt(docNode, s, SeverityError, RuleMandatory,
-			fmt.Sprintf("%q has to be set here and is missing", displayName(s)), "")
+		w.addAt(docNode, s, mandatoryNote(s, docNode.Name))
 	}
 }
 
@@ -405,28 +382,25 @@ func (w *walker) checkChoices(docNode *Node, schemaNodes []*yangschema.Node, pre
 		switch {
 		case len(st.cases) > 1:
 			var picked []string
-			for c := range st.cases {
-				picked = append(picked, c)
+			for _, names := range st.cases {
+				picked = append(picked, names...)
 			}
 			sort.Strings(picked)
-			w.addAt(docNode, st.node, SeverityError, RuleChoice,
-				fmt.Sprintf("%q allows one of these at a time, but both %s are set",
-					name, strings.Join(picked, " and ")),
-				strings.Join(picked, ", "))
+			w.addAt(docNode, st.node, choiceBothNote(name, picked))
 		case len(st.cases) == 0 && st.mandatory:
-			w.addAt(docNode, st.node, SeverityError, RuleChoice,
-				fmt.Sprintf("one of the %q alternatives has to be chosen and none is", name), "")
+			w.addAt(docNode, st.node, choiceNoneNote(name))
 		}
 	}
 }
 
-func (w *walker) add(doc *Node, s *yangschema.Node, severity, rule, message, detail string) {
-	w.addAt(doc, s, severity, rule, message, detail)
+func (w *walker) add(doc *Node, s *yangschema.Node, n note) {
+	w.addAt(doc, s, n)
 }
 
-func (w *walker) addAt(doc *Node, s *yangschema.Node, severity, rule, message, detail string) {
+func (w *walker) addAt(doc *Node, s *yangschema.Node, n note) {
 	f := Finding{
-		Severity: severity, Rule: rule, Message: message, Detail: detail,
+		Severity: n.severity, Rule: n.rule, Message: n.message,
+		Because: n.because, Fix: n.fix, Detail: n.detail, Value: n.value,
 		File: w.doc.File, Instance: w.doc.Instance, Engine: "native",
 	}
 	if doc != nil {

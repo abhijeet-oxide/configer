@@ -191,8 +191,41 @@ type ChangeRequest struct {
 	// Approvals are the recorded sign-offs, oldest first. Distinct by approver;
 	// the review gate (separation of duties, minimum approvals) reads from here.
 	Approvals []Approval `json:"approvals,omitempty"`
-	CreatedAt time.Time  `json:"createdAt"`
-	UpdatedAt time.Time  `json:"updatedAt"`
+	// Override is set when this change was submitted over the validation gate's
+	// objections. It is a FIELD rather than a sentence in the description
+	// because an approver must not have to read prose to find out that the data
+	// model refused this change and somebody sent it anyway.
+	Override  *Override `json:"override,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// Override is what the gate objected to, kept with the change.
+type Override struct {
+	// Summary is the refusal in one sentence, in the reader's terms.
+	Summary  string    `json:"summary"`
+	Reason   string    `json:"reason,omitempty"`
+	By       string    `json:"by,omitempty"`
+	At       time.Time `json:"at"`
+	Errors   int       `json:"errors"`
+	Problems int       `json:"problems"`
+	Engine   string    `json:"engine,omitempty"`
+	// Objections are the findings themselves, so the review shows what was
+	// waved through rather than only how many.
+	Objections []Objection `json:"objections,omitempty"`
+}
+
+// Objection is one thing the data model refused, as the approver reads it.
+type Objection struct {
+	Rule     string `json:"rule,omitempty"`
+	Name     string `json:"name,omitempty"`
+	Instance string `json:"instance,omitempty"`
+	File     string `json:"file,omitempty"`
+	Path     string `json:"path,omitempty"`
+	Message  string `json:"message"`
+	Because  string `json:"because,omitempty"`
+	Detail   string `json:"detail,omitempty"`
+	Schema   string `json:"schema,omitempty"`
 }
 
 // Label is how this change request is referred to in words: its CR number once

@@ -1890,12 +1890,92 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.cf-preview-opts {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.cf-preview-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+/* An explicit height, not flex alone. This panel is a tab in an ordinary page
+   as well as a pane in a sized dialog, and in the page "fill what is left" left
+   it the 160px minimum - a diff you cannot read is the same as no diff.
+
+   Capped from above for the same reason it has a floor: the decision buttons
+   sit under this panel, and a diff that runs past the fold hides the only
+   controls the reviewer is here to press. */
 .cf-preview-diff {
-  flex: 1 1 auto;
-  min-height: 160px;
+  flex: 0 1 auto;
+  height: min(40vh, 420px);
+  min-height: 220px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* A change submitted OVER the data model's objections. The one red thing on a
+   review screen: every other signal there is about what a change does, and this
+   one is about whether it should exist at all. Said in three channels - colour,
+   a mark, and the word "Overridden" - so it survives greyscale and a reader who
+   cannot separate the hues. */
+.cf-override {
+  margin-top: 8px;
+  border: 1px solid var(--c-danger-bd);
+  border-left-width: 3px;
+  border-radius: var(--r-lg);
+  background: var(--c-danger-bg);
+}
+.cf-override-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+}
+.cf-override-title { font-size: 13px; font-weight: 650; color: var(--text); }
+.cf-override-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+.cf-override-reason { font-size: 12px; color: var(--text); margin-top: 4px; font-style: italic; }
+.cf-override-head > .ant-btn { margin-left: auto; flex-shrink: 0; }
+.cf-override-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 12px 10px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.cf-override-list li { padding: 8px 0; border-top: 1px solid var(--c-danger-bd); }
+.cf-override-msg { font-size: 12.5px; color: var(--text); line-height: 1.4; }
+.cf-override-why { font-size: 12px; color: var(--text-2); line-height: 1.45; margin-top: 2px; }
+.cf-override-where {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.cf-override-src { margin-top: 2px; font-size: 11px; color: var(--text-3); font-style: italic; }
+.cf-override-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 7px;
+  height: 20px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--c-danger);
+  background: var(--c-danger-bg);
+  border: 1px solid var(--c-danger-bd);
+  white-space: nowrap;
 }
 
 /* Success pulse after an edit is staged: a brief green wash that fades, so a
@@ -4500,20 +4580,34 @@ mark.vd-ins {
 }
 .cf-findings.is-error { border-color: var(--c-danger-bd); }
 .cf-findings.is-warn { border-color: var(--c-pending-bd); }
+/* Objections the files already carried. Quietest thing on the screen on
+   purpose: they are context, not a verdict on this change. */
+.cf-findings.is-muted { border-color: var(--border); }
 
 .cf-findings-head {
   display: flex;
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 8px 12px;
-  border: 0;
+  padding: 4px 8px 4px 12px;
   background: var(--surface-2);
+  color: var(--text);
+}
+.cf-findings-title-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 0;
+  border: 0;
+  background: none;
   cursor: pointer;
   text-align: left;
   font: inherit;
-  color: var(--text);
+  color: inherit;
 }
+.cf-findings-copy { flex-shrink: 0; }
 .cf-findings-title { font-size: 13px; font-weight: 600; }
 .cf-findings-sub { font-size: 12px; color: var(--text-3); }
 .cf-findings-caret { transition: transform 140ms ease; color: var(--text-3); }
@@ -4548,6 +4642,9 @@ mark.vd-ins {
 }
 .cf-findings.is-error .cf-finding-rule { background: var(--c-danger-bg); color: var(--c-danger); border-color: var(--c-danger-bd); }
 .cf-findings.is-warn .cf-finding-rule { background: var(--c-pending-bg); color: var(--c-pending); border-color: var(--c-pending-bd); }
+.cf-findings.is-muted .cf-finding-msg { color: var(--text-2); }
+
+.cf-finding-go { display: inline-flex; align-items: center; white-space: nowrap; }
 
 .cf-finding-body { min-width: 0; }
 .cf-finding-msg { font-size: 13px; color: var(--text); line-height: 1.4; }
@@ -4561,6 +4658,41 @@ mark.vd-ins {
   color: var(--text-3);
 }
 .cf-finding-name { font-weight: 600; color: var(--text-2); }
+/* Which edit did this. It leads the explanation, because a reader looking at a
+   row they never touched needs to know that before anything else. */
+.cf-finding-cause {
+  margin-top: 4px;
+  padding: 5px 8px;
+  border-left: 2px solid var(--c-pending);
+  background: var(--c-pending-bg);
+  border-radius: 0 4px 4px 0;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.45;
+}
+/* The rule in words, and the way out. These are the two lines somebody who has
+   never heard of a schema actually reads; the mono evidence below them is for
+   the reader who wants to check it. */
+.cf-finding-why {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.45;
+}
+.cf-finding-fix {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.45;
+}
+.cf-finding-fix-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-ok);
+  margin-right: 4px;
+}
 .cf-finding-chip {
   padding: 1px 6px;
   border-radius: 4px;
@@ -4568,6 +4700,22 @@ mark.vd-ins {
   border: 1px solid var(--border);
 }
 .cf-finding-file { font-family: var(--font-mono); word-break: break-all; }
+/* The place itself is the way in. A path the reader cannot click, with an
+   "Open" button beside it that goes somewhere else, is two half-answers. */
+.cf-finding-file.is-link {
+  border: 0;
+  padding: 0;
+  background: none;
+  font: inherit;
+  font-family: var(--font-mono);
+  color: var(--brand);
+  cursor: pointer;
+  text-align: left;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--brand) 35%, transparent);
+  text-underline-offset: 2px;
+}
+.cf-finding-file.is-link:hover { text-decoration-color: currentColor; }
 /* The schema's own expression, for the reader who wants to check the
    constraint rather than take it on trust. */
 .cf-finding-detail {
@@ -4577,10 +4725,12 @@ mark.vd-ins {
   color: var(--text-3);
   word-break: break-word;
 }
+.cf-finding-detail-label { font-family: var(--font-ui); font-style: italic; }
 .cf-finding-src { margin-top: 2px; font-size: 11px; color: var(--text-3); font-style: italic; }
 
 .cf-vflow-skipped { font-size: 12px; color: var(--text-3); }
 .cf-vflow-skipped summary { cursor: pointer; }
+.cf-vflow-skipped-why { margin: 6px 0 0; }
 .cf-vflow-skipped ul { margin: 6px 0 0; padding-left: 18px; max-height: 140px; overflow-y: auto; }
 
 .cf-vflow-actions {
@@ -4588,6 +4738,18 @@ mark.vd-ins {
   gap: 8px;
   justify-content: flex-end;
   flex-wrap: wrap;
+}
+/* The way out stays put. This list runs to thirty rows on a real estate, and a
+   dialog whose only way forward sits below all of them is one people close with
+   the X - which is the same click as "cancel" and reads as neither. */
+.cf-vflow-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin-top: auto;
+  padding: 10px 0 2px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
 }
 .cf-vflow-override {
   display: flex;

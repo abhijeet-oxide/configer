@@ -238,6 +238,7 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
 		return
 	}
+	var overridden *change.Override
 	s.treeMu.Lock()
 	defer s.treeMu.Unlock()
 	// The author's draft must hold still for the whole submit: Submit reads
@@ -263,6 +264,7 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			req.Description = overrideNote(req.Description, run, req.OverrideReason)
+			overridden = overrideRecord(run, req.OverrideReason, author(r, req.Author))
 		}
 	}
 
@@ -279,6 +281,14 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeChangeError(w, r, err)
 		return
+	}
+	if overridden != nil {
+		if updated, uerr := s.Store.Update(cr.ID, func(c *change.ChangeRequest) error {
+			c.Override = overridden
+			return nil
+		}); uerr == nil {
+			cr = updated
+		}
 	}
 	// Accepted: the work continues on the host (branch/commit/PR). The client
 	// polls GET /api/changes/{id} and reads `state`.

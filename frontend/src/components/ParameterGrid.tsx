@@ -67,7 +67,7 @@ import {
 } from "../api";
 import { effectiveRules, fmtValue, typeLabel } from "../rules";
 import { effectiveScope, SCOPE_META, type ScopeFacet, type ScopeFilter } from "../scope";
-import { groupLeaf, inGroup } from "../paramtree";
+import { inGroup } from "../paramtree";
 import GroupEditorModal from "./GroupEditorModal";
 import {
   CellView,
@@ -947,7 +947,11 @@ const SCOPE_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
   instance: ScopeInstanceOutlined,
 };
 
-const META_DEFAULTS: Record<string, number> = { param: 240, type: 104, scope: 96, desc: 140 };
+// Scope is wide enough for its longest label ("Instance-specific") plus its
+// glyph. At 96 the tag ran out of its own column and into the description
+// beside it, which is how a column of hundreds of rows turned into two columns
+// of overlapping text.
+const META_DEFAULTS: Record<string, number> = { param: 240, type: 104, scope: 150, desc: 140 };
 const META_MOVABLE = ["type", "scope", "desc"];
 
 // metaHeader wraps a plain column title with the same resize strip the instance
@@ -1929,7 +1933,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             // and which grouping is meant is exactly what the reader wants
             // before they change the value.
             <Tooltip title={`${SCOPE_META[f].explain}${r.param.scope && r.param.scope !== f ? ` (declared "${r.param.scope}")` : ""}`}>
-              <Tag color={SCOPE_META[f].color} style={{ marginInlineEnd: 0 }}>
+              <Tag
+                color={SCOPE_META[f].color}
+                style={{ marginInlineEnd: 0, maxWidth: "100%", overflow: "hidden", textOverflow: "ellipsis" }}
+              >
                 <Icon style={{ marginInlineEnd: 4 }} />
                 {SCOPE_META[f].label}
               </Tag>
@@ -2617,41 +2624,6 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               Clear filters
             </Button>
           </Tooltip>
-        )}
-        {/* The branch that is marked in the grid, and what else can be done
-            with it. Without this the marks are the only sign a group was ever
-            clicked, and "how do I get back to a plain list" has no answer on
-            screen. */}
-        {groupKey && groupHits.size > 0 && (
-          <Tag
-            closable
-            closeIcon={<CloseCircleFilled />}
-            onClose={() => setGroup(null)}
-            style={{ flexShrink: 0, marginInlineEnd: 0, display: "inline-flex", alignItems: "center", gap: 6 }}
-          >
-            <span className="mono">{groupLeaf(groupKey)}</span>
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{groupHits.size}</Typography.Text>
-            <Tooltip title="Edit every setting under this group as one form">
-              <Button
-                size="small"
-                type="link"
-                style={{ padding: 0, height: "auto" }}
-                onClick={() => openGroupEditor(groupKey)}
-              >
-                Edit
-              </Button>
-            </Tooltip>
-            <Tooltip title={categoryKey === groupKey ? "Show the rest of the estate again" : "Hide everything that is not in this group"}>
-              <Button
-                size="small"
-                type="link"
-                style={{ padding: 0, height: "auto" }}
-                onClick={() => setCategory(categoryKey === groupKey ? null : groupKey)}
-              >
-                {categoryKey === groupKey ? "Show all" : "Only this"}
-              </Button>
-            </Tooltip>
-          </Tag>
         )}
         {q && (
           <Tag

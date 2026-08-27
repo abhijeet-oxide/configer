@@ -1,5 +1,5 @@
 import {
-  Checkbox, Dropdown, Modal, Select, Tooltip, Tree, Typography, Input,
+  Checkbox, Dropdown, Modal, Select, Tag, Tooltip, Tree, Typography, Input,
   App as AntApp, type GetRef,
 } from "antd";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CopyOutlined, EditOutlined, FilterFilled } from "../icons";
 import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
 import { useElementSize } from "../hooks";
+import { groupLeaf } from "../paramtree";
 import { useUI } from "../store";
 
 // Left panel: the single Parameters tree, so it alone flanks the matrix (the
@@ -148,6 +149,44 @@ function DuplicateEntryModal({
   );
 }
 
+// prune keeps only what the search box asked for: a node that matches, and
+// every ancestor it hangs from so the match can be reached.
+//
+// antd's own filterTreeNode does not do this - it marks matching nodes and
+// leaves the whole tree on screen, which on a catalog of seven hundred
+// parameters looks exactly like a search box that does nothing. A branch that
+// matches keeps ALL of its children, because somebody who typed the name of a
+// folder wants what is in it, not the one child whose name repeats the folder's.
+function prune(items: TreeItem[], q: string): TreeItem[] {
+  const out: TreeItem[] = [];
+  for (const it of items) {
+    const self = it.searchText.includes(q);
+    if (self) {
+      out.push(it);
+      continue;
+    }
+    const kids = it.children ? prune(it.children, q) : [];
+    if (kids.length) out.push({ ...it, children: kids });
+  }
+  return out;
+}
+
+// Every group key in a tree, so a search can open exactly the branches it found
+// something in.
+function keysOf(items: TreeItem[]): string[] {
+  const out: string[] = [];
+  const walk = (list: TreeItem[]) => {
+    for (const it of list) {
+      if (it.children?.length) {
+        out.push(it.key);
+        walk(it.children);
+      }
+    }
+  };
+  walk(items);
+  return out;
+}
+
 // All intermediate dotted prefixes of a name, so revealing a leaf can expand
 // exactly the branches that contain it (admin.rebuildslave.x -> [admin,
 // admin.rebuildslave]).
@@ -164,7 +203,8 @@ function ancestorPrefixes(parts: string[]): string[] {
 
 export default function CategoryTree({ grid }: { grid: Grid }) {
   const { categoryKey, setCategory, groupKey, setGroup, openGroupEditor, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
-  const [filter, setFilter] = useState("");
+  const [query, setQuery] = useState("");
+  const filter = query.trim().toLowerCase();
   const [showFull, setShowFull] = useState(false);
   const { ref, height } = useElementSize<HTMLDivElement>();
   const treeRef = useRef<GetRef<typeof Tree>>(null);
@@ -283,11 +323,9 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                 menu={{
                   items: [
                     { key: "edit", icon: <EditOutlined />, label: `Edit ${c.count} setting${c.count === 1 ? "" : "s"} here…` },
-                    {
-                      key: "filter",
-                      icon: <FilterFilled />,
-                      label: filtered ? "Stop showing only this group" : "Show only this group",
-                    },
+                    ...(filtered
+                      ? []
+                      : [{ key: "filter", icon: <FilterFilled />, label: "Show only this group" }]),
                     ...(entry
                       ? [{ key: "dup", icon: <CopyOutlined />, label: `Duplicate ${entry.label}` }]
                       : []),
@@ -297,7 +335,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
                     if (key === "dup" && entry) setDuplicating(entry);
                     else if (key === "edit") openGroupEditor(c.prefix);
                     else if (key === "filter") {
-                      setCategory(filtered ? null : c.prefix);
+                      setCategory(c.prefix);
                       setGroup(c.prefix);
                       selectParam(null);
                     }
@@ -338,6 +376,33 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
   }, [nameRoot, dupEntries, grid.rows.length, showFull, categoryKey, openGroupEditor, setCategory, setGroup, selectParam]);
 
 
+  // What the tree actually draws. With nothing typed it is the whole catalog;
+  // with a query it is the matches and the branches they hang from, opened so
+  // they can be seen. "All Parameters" stays at the top either way - it is the
+  // way back, and a way back that disappears when you need it is not one.
+  const shown = useMemo(() => {
+    if (!filter) return treeData;
+    const [all, ...rest] = treeData;
+    return [all, ...prune(rest, filter)];
+  }, [treeData, filter]);
+
+  // While a search is on, the branches it found something in are open. The
+  // reader's own expand/collapse state is untouched and comes back the moment
+  // the box is cleared.
+  const searchExpanded = useMemo(() => (filter ? keysOf(shown) : []), [filter, shown]);
+  const matchCount = useMemo(() => {
+    if (!filter) return 0;
+    let n = 0;
+    const walk = (list: TreeItem[]) => {
+      for (const it of list) {
+        if (it.isLeaf) n++;
+        if (it.children) walk(it.children);
+      }
+    };
+    walk(shown.slice(1));
+    return n;
+  }, [filter, shown]);
+
   // Reverse sync: when a parameter becomes selected (typically by clicking a
   // grid row), reveal and scroll to its leaf here.
   const leafKey = selectedParamId ? `p:${selectedParamId}` : null;
@@ -365,19 +430,43 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
           placeholder="Filter groups and parameters"
           size="small"
           allowClear
-          style={{ margin: "8px 0" }}
-          onChange={(e) => setFilter(e.target.value.toLowerCase())}
+          style={{ marginTop: 8 }}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
+        {/* The narrowing, said where the narrowing happened. A grid showing 5
+            of 721 rows with nothing on screen to explain it is the worst thing
+            this panel can do, and the chip is also the way out - which is why
+            the toolbar no longer carries a button for it and the right-click
+            menu no longer carries its opposite. */}
+        <div className="cat-tree-state">
+          {filter && (
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              {matchCount} match{matchCount === 1 ? "" : "es"}
+            </Typography.Text>
+          )}
+          {categoryKey && (
+            <Tag
+              color="processing"
+              closable
+              onClose={() => setCategory(null)}
+              style={{ marginInlineEnd: 0, maxWidth: "100%" }}
+            >
+              <FilterFilled style={{ marginInlineEnd: 4 }} />
+              Only <span className="mono">{groupLeaf(categoryKey)}</span>
+            </Tag>
+          )}
+        </div>
         <div ref={ref} style={{ flex: 1, minHeight: 0 }}>
           <Tree<TreeItem>
             ref={treeRef}
-            treeData={treeData}
+            treeData={shown}
             blockNode
             showLine={{ showLeafIcon: false }}
             height={Math.max(height, 100)}
             virtual
-            expandedKeys={expandedKeys}
-            onExpand={(keys) => setExpandedKeys(keys)}
+            expandedKeys={filter ? searchExpanded : expandedKeys}
+            onExpand={(keys) => !filter && setExpandedKeys(keys)}
             selectedKeys={leafKey ? [leafKey] : groupKey ? [groupKey] : categoryKey ? [categoryKey] : ["__all__"]}
             onSelect={(keys) => {
               const k = keys[0] as string | undefined;
@@ -425,7 +514,6 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
               if (k === "__all__" || k.startsWith("p:")) return;
               openGroupEditor(k);
             }}
-            filterTreeNode={filter ? (node) => node.searchText.includes(filter) : undefined}
           />
         </div>
       </div>

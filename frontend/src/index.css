@@ -2082,6 +2082,22 @@ body {
   box-shadow: inset 3px 0 0 var(--brand);
 }
 
+/* The parameter tree's state line: how many the search found, and the group
+   the grid has been narrowed to. It sits under the search box because that is
+   where the narrowing was asked for - and the chip is the way out of it, which
+   is why neither the toolbar nor the right-click menu carries one. */
+.cat-tree-state {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-height: 8px;
+  margin: 6px 0 8px;
+}
+.cat-tree-state:empty {
+  margin: 8px 0;
+}
+
 /* ------------------------------------------------------ the instance picker
 
    ONE panel answering "which instances, in what order, and am I reading one on

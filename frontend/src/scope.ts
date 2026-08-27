@@ -69,6 +69,10 @@ interface FacetMeta {
   explain: string;
 }
 
+// Three scopes, three hues, and they are far enough apart to be told apart at a
+// glance down a column of hundreds of rows. Nothing here borrows red, orange or
+// gold: those mean "wrong" or "waiting" everywhere else in the product, and a
+// setting is not wrong for being shared.
 export const SCOPE_META: Record<ScopeFacet, FacetMeta> = {
   global: {
     label: "Global",
@@ -77,12 +81,12 @@ export const SCOPE_META: Record<ScopeFacet, FacetMeta> = {
   },
   site: {
     label: "Site-specific",
-    color: "green",
+    color: "cyan",
     explain: "Shared by the instances of one group: editing it changes that group",
   },
   instance: {
     label: "Instance-specific",
-    color: "default",
+    color: "blue",
     explain: "Each instance holds its own value: editing it changes that one system",
   },
 };

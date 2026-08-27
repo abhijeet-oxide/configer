@@ -93,21 +93,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* The type is part of the label but never competes with it: it answers "what
-   may I type here", which matters only once. */
-.cf-group-type {
-  font-size: 11px;
-  font-weight: 400;
+/* A red star, the way every form has said "required" for thirty years. It costs
+   one character where the word cost four and a colour that competed with the
+   label beside it. */
+.cf-group-req {
+  color: var(--c-danger);
+  font-size: 13px;
+  line-height: 1;
+  cursor: help;
+}
+/* Everything else a field could say - its full name, its type, what it does -
+   lives behind this one glyph. Spelled out beside every field it was a
+   paragraph per row, and the labels stopped being findable among them. */
+.cf-group-info {
+  display: inline-flex;
+  align-items: center;
   color: var(--text-3);
+  font-size: 12px;
+  cursor: help;
+  flex-shrink: 0;
+}
+.cf-group-info:hover,
+.cf-group-info:focus-visible {
+  color: var(--text-2);
+}
+/* A fieldset: one heading for a route the fields under it all share. */
+.cf-group-set + .cf-group-set {
+  margin-top: 14px;
+}
+.cf-group-set-head {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-2);
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* "required" is a fact about the field, not a warning about it. It sits beside
-   the type in the same quiet size - three fields of eight shouting in capitals
-   made the labels the second thing on the row. */
-.cf-group-req {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--c-review, var(--text-3));
+/* A chosen instance is a chip on one line: its name, and nothing that could
+   push the controls beside it off the edge of the dialog. */
+.cf-group-target {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 /* A switch is half the height of an input, so on a row that mixes the two it

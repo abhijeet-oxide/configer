@@ -1,4 +1,7 @@
-import { Select, Table } from "antd";
+import { Select } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { api, type ChangeRequest, type ChangeState, readyRepos } from "../api";
@@ -127,7 +130,8 @@ export default function InboxView() {
         </SectionCard>
       ) : (
         <SectionCard padded={false}>
-          <Table<InboxRow>
+          <DataTable<InboxRow>
+            tableEnhancedKey="inbox"
             className="cr-table"
             rowKey="key"
             size="small"

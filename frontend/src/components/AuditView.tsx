@@ -1,4 +1,7 @@
-import { Select, Table } from "antd";
+import { Select } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api, type AuditEvent, ApiError } from "../api";
@@ -118,7 +121,9 @@ export default function AuditView() {
         </SectionCard>
       ) : (
         <SectionCard padded={false}>
-          <Table<AuditEvent>
+          <DataTable<AuditEvent>
+            tableEnhancedKey="audit"
+            allow_export
             className="cr-table"
             rowKey="id"
             size="small"

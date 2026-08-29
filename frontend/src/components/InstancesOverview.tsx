@@ -1,4 +1,7 @@
-import { Button, Input, Modal, Select, Table } from "antd";
+import { Button, Input, Modal, Select } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import { useState } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import { SearchOutlined, TableOutlined, ClusterOutlined } from "../icons";
@@ -191,7 +194,10 @@ export default function InstancesOverview() {
         </SectionCard>
       ) : (
         <SectionCard padded={false}>
-          <Table<EstateRow>
+          <DataTable<EstateRow>
+            tableEnhancedKey="instances-estate"
+            allow_export
+            show_column_visibility
             className="cr-table"
             rowKey="key"
             size="small"

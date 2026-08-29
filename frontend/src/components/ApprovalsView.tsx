@@ -1,15 +1,7 @@
-import {
-  Button,
-  Input,
-  List,
-  Modal,
-  Popconfirm,
-  Select,
-  Table,
-  Tabs,
-  Tooltip,
-  App as AntApp,
-} from "antd";
+import { Button, Input, List, Modal, Popconfirm, Select, Tabs, Tooltip, App as AntApp } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import {
   CheckCircleOutlined,
   CloseCircleOutlined,
@@ -447,7 +439,8 @@ export default function ApprovalsView() {  const { message } = AntApp.useApp();
       ) : (
         <>
           <SectionCard padded={false}>
-            <Table<ChangeRequest>
+            <DataTable<ChangeRequest>
+              tableEnhancedKey="approvals"
               className="cr-table"
               rowKey="id"
               size="small"

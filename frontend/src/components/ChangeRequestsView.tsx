@@ -1,13 +1,7 @@
-import {
-  Table,
-  Tag,
-  Typography,
-  Button,
-  Space,
-  Popconfirm,
-  Tooltip,
-  App as AntApp,
-} from "antd";
+import { Tag, Typography, Button, Space, Popconfirm, Tooltip, App as AntApp } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import {
   PullRequestOutlined,
   CloseCircleOutlined,
@@ -82,7 +76,9 @@ export default function ChangeRequestsView() {
           Refresh
         </Button>
       </Space>
-      <Table<ChangeRequest>
+      <DataTable<ChangeRequest>
+        tableEnhancedKey="change-requests"
+        allow_export
         rowKey="id"
         size="middle"
         className="cr-history"

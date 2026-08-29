@@ -60,7 +60,7 @@ import MobileParamList from "./components/MobileParamList";
 import { loginHref } from "./components/SignInView";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { EmptyState } from "./components/ui";
-import { AppShell } from "./uikit";
+import { AppShell, PageTransition } from "./uikit";
 import { NotFoundArt, OfflineArt, ServiceDownArt, StatePanel } from "./components/illustrations";
 import {
   GridSkeleton,
@@ -822,7 +822,16 @@ export default function App() {
         </>
       }
     >
-      {body()}
+      {/*
+        The one movement between screens, from the shared kit so both tools
+        change screens the same way. Keyed on the SECTION rather than on
+        anything finer: switching application or instance inside a section is
+        not a change of screen, and animating it would be movement without a
+        reason. `fill` because this shell is flush - its page owns the height.
+      */}
+      <PageTransition routeKey={section} fill>
+        {body()}
+      </PageTransition>
       <SearchPalette />
       <GlobalNewApplication />
       <WelcomeTour />

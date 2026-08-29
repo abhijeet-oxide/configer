@@ -29,7 +29,7 @@ const brand: BrandIdentity = {
   },
   favicon:
     "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
-    "<rect width='32' height='32' rx='8' fill='#0057b8'/>" +
+    "<rect width='32' height='32' rx='8' fill='#0071e3'/>" +
     "<g fill='none' stroke='white' stroke-linejoin='round' stroke-linecap='round'>" +
     "<path d='M8 20.4 L16 24.6 L24 20.4' stroke-width='2.4' stroke-opacity='0.32'/>" +
     "<path d='M8 16.9 L16 21.1 L24 16.9' stroke-width='2.4' stroke-opacity='0.58'/>" +

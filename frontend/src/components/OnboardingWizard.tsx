@@ -14,6 +14,9 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import {
   ApartmentOutlined,
   ArrowLeftOutlined,
@@ -873,7 +876,9 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                 {chosenParams.length} of {fileIncludedParams.length} selected
               </Typography.Text>
             </Space>
-            <Table<Parameter>
+            <DataTable<Parameter>
+              tableEnhancedKey="onboarding-parameters"
+              show_column_visibility
             size="small"
             rowKey="id"
             dataSource={shownParams}

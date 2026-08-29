@@ -389,6 +389,38 @@ rules that matter:
   means the tools are still on one design system. Fix a drift by copying, never
   by patching one side, and never by adding a prop that makes the kit behave
   differently per tool. Two looks that must genuinely differ are a PRESET.
+- **The look is the platform's.** The system palette, San Francisco, the
+  radius ramp, three-ingredient elevation, and a navigation that is a
+  translucent MATERIAL rather than a slab of navy. `uikit/README.md` states
+  each of those and why; the one that is not negotiable by a preset is the
+  material, because it is a fact about the design system rather than a colour
+  choice. The presets are `default`, `graphite` (the accent taken out of the
+  chrome) and `gateway` (the cyan corporate mark).
+
+**`frontend/src/tablekit/` is the SECOND shared folder**, beside `uikit/` and
+under the same rules: byte-identical in every tool, `react` and `antd` only,
+every colour a token, verified with
+`diff -r frontend/src/tablekit ../softwareGateway/web/src/tablekit`. It is the
+`antd-table-enhanced` component vendored rather than installed - a drop-in
+replacement for Ant Design's `Table` that adds resizable, reorderable, pinnable,
+hideable columns, autofit, CSV/Excel/JSON export and a layout each person keeps
+in their own browser. It draws its own eleven glyphs inline, because the two
+tools do not share an icon package.
+
+Not every table gets it, and the line is worth holding: it is for a WORKING
+SURFACE - five or more columns, or a table that is the point of its page. A
+three-column summary in a card, a key/value list, or a table nested in an
+expanded row has nothing to rearrange, and giving it a toolbar spends chrome on
+a reader who cannot use it. Import it as `DataTable` so a file can hold both
+kinds:
+
+```ts
+import { Table as DataTable } from "../tablekit";
+// ... <DataTable tableEnhancedKey="audit" allow_export ... />
+```
+
+`tableEnhancedKey` is required: it is what the persisted layout is stored
+under, so two tables sharing a key share a layout.
 
 `components/ui/` is the local layer above it: mostly re-exports from the kit
 (so the existing import sites did not have to change), plus what is Configer's

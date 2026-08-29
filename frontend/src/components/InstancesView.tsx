@@ -1,7 +1,7 @@
-import {
-  Button, Table, Tag, Typography, Space, Modal, Form, Input, Select, AutoComplete, Popconfirm,
-  Segmented, Tooltip, App as AntApp,
-} from "antd";
+import { Button, Tag, Typography, Space, Modal, Form, Input, Select, AutoComplete, Popconfirm, Segmented, Tooltip, App as AntApp } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import {
   PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined, DownloadOutlined,
 } from "../icons";
@@ -297,7 +297,10 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       ) : view === "geography" ? (
         <InstancesGeography grid={grid} instances={shown} />
       ) : (
-      <Table<Instance>
+      <DataTable<Instance>
+        tableEnhancedKey="instances"
+        allow_export
+        show_column_visibility
         rowKey="name"
         size="middle"
         dataSource={shown}

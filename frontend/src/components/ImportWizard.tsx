@@ -15,6 +15,9 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
+// The working-surface table: resizable, reorderable, pinnable columns whose
+// layout each person keeps. See `tablekit/README.md` for which tables get it.
+import { Table as DataTable } from "../tablekit";
 import {
   FileSearchOutlined,
   CheckSquareOutlined,
@@ -824,7 +827,9 @@ function ChooseStep({
           </Button>
         </Space>
       )}
-      <Table<Draft>
+      <DataTable<Draft>
+        tableEnhancedKey="import-candidates"
+        show_column_visibility
         size="small"
         rowKey="key"
         dataSource={visible}

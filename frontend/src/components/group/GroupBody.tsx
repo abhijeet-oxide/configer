@@ -2,8 +2,8 @@ import { Tooltip, Typography, Tag } from "antd";
 import { useMemo, useRef } from "react";
 import type { Rules } from "../../rules";
 import { typeLabel } from "../../rules";
-import { SCOPE_META, type ScopeFacet } from "../../scope";
-import { InfoCircleOutlined, ScopeGlobalOutlined, ScopeInstanceOutlined, ScopeSiteOutlined } from "../../icons";
+import { SCOPE_ICON, SCOPE_META } from "../../scope";
+import { InfoCircleOutlined } from "../../icons";
 import { InlineNotice } from "../ui";
 import GroupField, { lockedReason } from "./GroupField";
 import { fieldColWidth, fieldsets, isWide, type Col, type Committed, type Member, type Section } from "./model";
@@ -50,12 +50,6 @@ type BodyRow =
   | { kind: "fields"; h: number; sec: Section; members: Member[]; cols: number }
   | { kind: "tableHead"; h: number; sec: Section }
   | { kind: "tableRow"; h: number; sec: Section; member: Member };
-
-const FACET_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
-  global: ScopeGlobalOutlined,
-  site: ScopeSiteOutlined,
-  instance: ScopeInstanceOutlined,
-};
 
 /** How many columns of fields fit, given how wide each needs to be. The width
  *  comes from the FIELDSET (fieldColWidth): a set of long names settles into
@@ -195,7 +189,7 @@ export default function GroupBody({
   const draw = (r: BodyRow, i: number) => {
     switch (r.kind) {
       case "section": {
-        const Icon = FACET_ICON[r.sec.facet];
+        const Icon = SCOPE_ICON[r.sec.facet];
         return (
           <div key={i} className="cf-group-sec-head" style={{ height: r.h }}>
             <Tooltip title={SCOPE_META[r.sec.facet].explain}>

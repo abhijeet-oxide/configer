@@ -1,15 +1,15 @@
 import { Tabs, Descriptions, Tag, Typography, Divider, Button, Statistic, Row as ARow, Col, Popconfirm, Select, Switch, Form, Input, AutoComplete, Space, Tooltip, App as AntApp } from "antd";
 import {
-  DeleteOutlined, EditOutlined, HistoryOutlined, InfoCircleOutlined, LinkOutlined,
-  CheckOutlined, CloseOutlined, ScopeGlobalOutlined, ScopeSiteOutlined, ScopeInstanceOutlined,
+  DeleteOutlined, HistoryOutlined, InfoCircleOutlined, LinkOutlined,
+  CheckOutlined, CloseOutlined,
   ShieldOutlined, UndoOutlined,
 } from "../icons";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, bindingsOf, expandBinding, type Grid, type Instance, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
+import { api, bindingsOf, expandBinding, revertRef, type ChangeItem, type Grid, type Instance, type Parameter, type Scope, type Row as GridRow, type Cell } from "../api";
 import { fmtValue } from "../rules";
-import { effectiveScope, SCOPE_META } from "../scope";
+import { effectiveScope, groupsOf, reachLabel, SCOPE_ICON, SCOPE_META, ungrouped, type ScopeFacet, type ScopeGroup } from "../scope";
 import { useUI } from "../store";
 import ValueDiff from "./ui/ValueDiff";
 import RuleEditor from "./RuleEditor";
@@ -20,12 +20,28 @@ import { useIdentity } from "../identity";
 import { c } from "../uikit";
 import ParameterFlow from "./ParameterFlow";
 
-// Right-hand Parameter Details panel: metadata, schema/validation, and a small
-// value summary across instances. One overall Edit button turns every major
-// field into a form (saved as a single attributed catalog commit); the source
-// file/path change only through the interactive attach picker, never as free
-// text. A parameter without a source is in the design phase: fully editable
-// and valued, rendered nowhere until attached.
+// Right-hand Parameter Details panel: what this setting IS, what it is set to,
+// what it may be, and how it got here.
+//
+// THERE IS NO EDIT BUTTON. There was one, and it was a mode: the panel opened
+// read-only, every field was a label until the button was pressed, and pressing
+// it swapped the whole thing for a form - so the fastest way to fix a typo in a
+// description was click, wait for the form, find the field again, type, save.
+// A mode that exists only to enable typing is a mode nobody asked for.
+//
+// Now the fields ARE the form. Nothing is staged while somebody thinks: the
+// Save/Cancel bar appears the moment a field really differs from what the
+// catalog says, and disappears again if it is put back - so the panel is never
+// quietly holding an edit, and never asks to save one that says nothing.
+//
+// The source file/path still change only through the interactive attach picker,
+// never as free text. A parameter without a source is in the design phase:
+// fully editable and valued, rendered nowhere until attached.
+//
+// And a metadata edit is a CHANGE. It stages into the draft and travels the
+// ordinary road - draft, review, publish - because a validation rule decides
+// what everybody else may type into a cell, and because writing straight to the
+// working branch is simply impossible anywhere the repository protects it.
 
 // Widest reach to narrowest, and every scope the catalog understands is
 // offered: the editor can filter by "site-specific", so there has to be
@@ -71,56 +87,92 @@ function coerceDefault(raw: string | undefined, type: string): unknown {
   }
 }
 
+// The one form. Every field is live; a Save/Cancel bar appears underneath the
+// moment one of them really differs from the catalog.
 function DetailsTab({
   p,
   categories,
   grid,
-  editing,
-  setEditing,
+  onDirtyChange,
 }: {
   p: Parameter;
   categories: string[];
   grid: Grid;
-  editing: boolean;
-  setEditing: (v: boolean) => void;
+  /** so the panel can warn before a different parameter is selected out from
+   *  under an unsaved edit */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { canEdit } = useIdentity();
   const { selectedInstance, setFileFocus, setSection } = useUI();
   const [pickerOpen, setPickerOpen] = useState(false);
   const [form] = Form.useForm<EditValues>();
+  // What the form says right now, so "is anything different" can be answered on
+  // every keystroke without reading the DOM. Ant Design's own isFieldsTouched
+  // answers a different question - whether a field was TYPED IN - and a field
+  // typed in and put back is not a change anybody wants to be asked to save.
+  const [live, setLive] = useState<EditValues | null>(null);
   // A parameter can map to several locations (its bindings). It is in the
   // design phase only when it maps to none.
   const allSources = bindingsOf(p).filter((b) => b.file);
   const design = allSources.length === 0;
 
-  const patch = useMutation({
-    mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
-      api.updateParameter(p.id, { ...v, author: "Local user" }),
-    onSuccess: () => {
-      message.success("Saved to the catalog (committed to Git with attribution)");
-      setEditing(false);
-      qc.invalidateQueries();
-    },
-    onError: (e: Error) => message.error(e.message),
-  });
-
-  // The Edit action now lives in the panel header (see DetailsPanel); when it
-  // flips `editing` on, populate the form from the current parameter.
-  useEffect(() => {
-    if (!editing) return;
-    form.setFieldsValue({
-      displayName: p.displayName,
-      description: p.description,
+  const initial = useMemo<EditValues>(
+    () => ({
+      displayName: p.displayName ?? "",
+      description: p.description ?? "",
       category: p.category,
       type: p.type,
       itemType: p.itemType ?? "string",
       scope: p.scope,
-      secret: p.secret,
-      default: p.default === undefined || p.default === null ? "" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default),
+      secret: !!p.secret,
+      default:
+        p.default === undefined || p.default === null
+          ? ""
+          : Array.isArray(p.default)
+            ? (p.default as unknown[]).join(", ")
+            : String(p.default),
       derived: p.derived ?? "",
+    }),
+    [p],
+  );
+
+  // The form follows the parameter. It is reset when a different one is
+  // selected, and when the one on screen changes underneath - which it does the
+  // moment a save lands, because the grid comes back carrying the staged
+  // metadata (see grid.applyStructuralPreview) and the form must then agree
+  // with it rather than keep offering to save what it already said.
+  useEffect(() => {
+    form.setFieldsValue(initial);
+    setLive(null);
+  }, [initial, form]);
+
+  const dirtyFields = useMemo(() => {
+    if (!live) return [] as (keyof EditValues)[];
+    const keys: (keyof EditValues)[] = [
+      "displayName", "description", "category", "type", "itemType", "scope", "secret", "default", "derived",
+    ];
+    return keys.filter((k) => {
+      // An entry type is only meaningful for a list, so a stale one left over
+      // from a parameter that stopped being one is not a difference.
+      if (k === "itemType" && live.type !== "list") return false;
+      return String(live[k] ?? "") !== String(initial[k] ?? "");
     });
-  }, [editing, p, form]);
+  }, [live, initial]);
+  const dirty = dirtyFields.length > 0;
+  useEffect(() => onDirtyChange?.(dirty), [dirty, onDirtyChange]);
+
+  const patch = useMutation({
+    mutationFn: (v: Parameters<typeof api.updateParameter>[1]) =>
+      api.updateParameter(p.id, { ...v, author: "Local user" }),
+    onSuccess: () => {
+      message.success("Staged in your draft: submit it for review to apply these settings");
+      setLive(null);
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => message.error(e.message),
+  });
 
   const save = (v: EditValues) => {
     const d = coerceDefault(v.default, v.type);
@@ -134,7 +186,7 @@ function DetailsTab({
       itemType: v.type === "list" ? v.itemType || "string" : "",
       scope: v.scope,
       secret: v.secret,
-      ...(d !== undefined ? { default: d } : {}),
+      default: d === undefined ? "" : d,
       derived: (v.derived ?? "").trim(),
     });
   };
@@ -145,9 +197,11 @@ function DetailsTab({
       <Typography.Text type="secondary" style={{ fontSize: 11 }}>
         Values can be set and reviewed now; they render into files once attached.
       </Typography.Text>
-      <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
-        Attach to a file…
-      </Button>
+      {canEdit && (
+        <Button size="small" type="primary" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
+          Attach to a file…
+        </Button>
+      )}
     </Space>
   ) : (
     <Space direction="vertical" size={6} style={{ width: "100%" }}>
@@ -156,14 +210,14 @@ function DetailsTab({
           Mapped to {allSources.length} locations · one edit updates all
         </Typography.Text>
       )}
-      {allSources.map((s, i) => (
-        <div key={`${s.file}|${s.path}`} style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
+      {allSources.map((sb, i) => (
+        <div key={`${sb.file}|${sb.path}`} style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <span className="mono" style={{ fontSize: 12 }}>{s.file}</span>
+            <span className="mono" style={{ fontSize: 12 }}>{sb.file}</span>
             {i === 0 && allSources.length > 1 && (
               <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
             )}
-            <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{s.path}</div>
+            <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{sb.path}</div>
           </div>
           <Tooltip title="Open the file and jump to this line">
             <Button
@@ -173,12 +227,12 @@ function DetailsTab({
               onClick={async () => {
                 const inst =
                   grid.instances.find((x) => x.name === selectedInstance) ?? grid.instances[0];
-                const file = expandBinding(s, inst);
+                const file = expandBinding(sb, inst);
                 // Resolve the exact line first (best effort; YAML/JSON/XML), then
                 // open the file focused on it. A miss just opens at the top.
                 let line: number | undefined;
                 try {
-                  line = (await api.locate(file, s.path, s.format)).line || undefined;
+                  line = (await api.locate(file, sb.path, sb.format)).line || undefined;
                 } catch {
                   // ignore: fall back to opening the file without a line
                 }
@@ -200,17 +254,30 @@ function DetailsTab({
           </Tooltip>
         </div>
       ))}
-      <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
-        Re-map…
-      </Button>
+      {canEdit && (
+        <Button size="small" icon={<LinkOutlined />} onClick={() => setPickerOpen(true)}>
+          Re-map…
+        </Button>
+      )}
     </Space>
   );
 
-  if (editing) {
-    return (
-      <Form form={form} layout="vertical" size="small" onFinish={save}>
+  // A viewer reads the same fields; they are simply not typeable. Rendering a
+  // second, read-only copy of the same nine rows is how two descriptions of one
+  // parameter drift apart, so there is one form and it is disabled.
+  return (
+    <>
+      <Form
+        form={form}
+        layout="vertical"
+        size="small"
+        initialValues={initial}
+        disabled={!canEdit || patch.isPending}
+        onValuesChange={(_c, all) => setLive(all)}
+        onFinish={save}
+      >
         <Form.Item name="displayName" label="Display name" style={{ marginBottom: 8 }}>
-          <Input placeholder="Human-friendly name" autoFocus />
+          <Input placeholder="Human-friendly name" />
         </Form.Item>
         <Form.Item name="description" label="Description" style={{ marginBottom: 8 }}>
           <Input.TextArea rows={3} placeholder="What does this parameter control?" />
@@ -218,7 +285,7 @@ function DetailsTab({
         <div style={{ display: "flex", gap: 8 }}>
           <Form.Item name="category" label="Category" style={{ flex: 1, marginBottom: 8 }} rules={[{ required: true }]}>
             <AutoComplete
-              options={categories.map((c) => ({ value: c }))}
+              options={categories.map((cat) => ({ value: cat }))}
               filterOption={(input, opt) => (opt?.value ?? "").toLowerCase().includes(input.toLowerCase())}
             />
           </Form.Item>
@@ -236,8 +303,26 @@ function DetailsTab({
           </Form.Item>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
-          <Form.Item name="scope" label="Scope" style={{ flex: 1, marginBottom: 8 }}>
-            <Select options={scopeOptions.map((s) => ({ value: s, label: s }))} />
+          <Form.Item
+            name="scope"
+            label="Scope"
+            tooltip="How widely an edit lands. A group scope names WHICH grouping is meant, and the instances sharing that site, zone or environment are what an edit reaches."
+            style={{ flex: 1, marginBottom: 8 }}
+          >
+            <Select
+              options={scopeOptions.map((sc) => {
+                const Icon = SCOPE_ICON[sc as ScopeFacet];
+                return {
+                  value: sc,
+                  label: (
+                    <span>
+                      <Icon style={{ marginInlineEnd: 6 }} />
+                      {sc}
+                    </span>
+                  ),
+                };
+              })}
+            />
           </Form.Item>
           <Form.Item name="secret" label="Secret" valuePropName="checked" style={{ marginBottom: 8 }}>
             <Switch size="small" />
@@ -246,6 +331,7 @@ function DetailsTab({
         <Form.Item
           name="default"
           label="Default value (lists comma-separated)"
+          tooltip="What the value is when no file carries one. It is not the value: see the field above, which writes into the repository's own files."
           style={{ marginBottom: 10 }}
         >
           <Input className="mono" placeholder="Inherited default" />
@@ -258,69 +344,62 @@ function DetailsTab({
         >
           <Input className="mono" placeholder="e.g. {admin-port}+1" />
         </Form.Item>
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-          <Button size="small" icon={<CloseOutlined />} onClick={() => setEditing(false)} disabled={patch.isPending}>
-            Cancel
-          </Button>
-          <Button type="primary" size="small" icon={<CheckOutlined />} htmlType="submit" loading={patch.isPending}>
-            Save all
-          </Button>
-        </div>
-        <Typography.Paragraph type="secondary" style={{ fontSize: 11, marginTop: 8 }}>
-          Saving makes one commit to the catalog with your attribution. The file and path are
-          changed separately via {design ? "Attach" : "Re-map"}, so they stay validated.
-        </Typography.Paragraph>
+        <Descriptions column={1} size="small" bordered items={[
+          ...(p.source ? [{ key: "srcmap", label: "Linked source", children: (
+            <span><Tag color="geekblue">{p.source.sourceId}</Tag><span className="mono">{p.source.key}</span>{p.source.instance ? <Tag style={{ marginInlineStart: 4 }}>{p.source.instance}</Tag> : null}</span>
+          ) }] : []),
+          { key: "intro", label: "Version introduced", children: p.versionIntroduced || "-" },
+          { key: "dep", label: "Version deprecated", children: p.versionDeprecated || "-" },
+          { key: "source", label: "Defined in", children: sourceRow },
+        ]} />
+        {/* The bar is the whole announcement, and it is only here when there is
+            something to announce. It names the fields that moved, because
+            "unsaved changes" is exactly the sentence that makes somebody press
+            Cancel to find out what they were. */}
+        {dirty && canEdit && (
+          <div className="cf-savebar">
+            <div className="cf-savebar-what">
+              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                {dirtyFields.length} unsaved: {dirtyFields.map(fieldLabel).join(", ")}
+              </Typography.Text>
+            </div>
+            <Space size={6}>
+              <Button
+                size="small"
+                icon={<CloseOutlined />}
+                onClick={() => {
+                  form.setFieldsValue(initial);
+                  setLive(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="primary" size="small" icon={<CheckOutlined />} htmlType="submit" loading={patch.isPending}>
+                Save all
+              </Button>
+            </Space>
+          </div>
+        )}
       </Form>
-    );
-  }
-
-  return (
-    <>
-      <Descriptions column={1} size="small" bordered items={[
-        { key: "display", label: "Display Name", children: p.displayName || <span style={{ opacity: 0.45 }}>-</span> },
-        {
-          key: "desc",
-          label: "Description",
-          children: p.description
-            ? <Typography.Paragraph style={{ margin: 0, fontSize: 12 }}>{p.description}</Typography.Paragraph>
-            : <span style={{ opacity: 0.45 }}>-</span>,
-        },
-        { key: "type", label: "Data Type", children: <Tag>{p.type}{p.type === "list" && p.itemType ? ` of ${p.itemType}` : ""}</Tag> },
-        { key: "category", label: "Category", children: p.category },
-        {
-          key: "scope",
-          label: "Scope",
-          children: (() => {
-            // The facet says what an edit DOES; the declared word is kept
-            // beside it when it says more (which grouping a site scope means),
-            // and dropped when it would only repeat the tag.
-            const f = effectiveScope(p);
-            const Icon = f === "global" ? ScopeGlobalOutlined : f === "site" ? ScopeSiteOutlined : ScopeInstanceOutlined;
-            return (
-              <Tooltip title={SCOPE_META[f].explain}>
-                <Tag color={SCOPE_META[f].color}>
-                  <Icon style={{ marginInlineEnd: 4 }} />
-                  {SCOPE_META[f].label}
-                  {p.scope && p.scope !== f ? ` · ${p.scope}` : ""}
-                </Tag>
-              </Tooltip>
-            );
-          })(),
-        },
-        { key: "secret", label: "Secret", children: p.secret ? <Tag color="gold">yes</Tag> : "no" },
-        { key: "default", label: "Default Value", children: <span className="mono">{p.default === undefined || p.default === null ? "-" : Array.isArray(p.default) ? (p.default as unknown[]).join(", ") : String(p.default)}</span> },
-        ...(p.derived ? [{ key: "derived", label: "Derived from", children: <span className="mono">{p.derived}</span> }] : []),
-        ...(p.source ? [{ key: "srcmap", label: "Linked source", children: (
-          <span><Tag color="geekblue">{p.source.sourceId}</Tag><span className="mono">{p.source.key}</span>{p.source.instance ? <Tag style={{ marginInlineStart: 4 }}>{p.source.instance}</Tag> : null}</span>
-        ) }] : []),
-        { key: "required", label: "Required", children: p.validation?.required ? "Yes" : "No" },
-        { key: "intro", label: "Version Introduced", children: p.versionIntroduced || "-" },
-        { key: "dep", label: "Version Deprecated", children: p.versionDeprecated || "-" },
-        { key: "source", label: "Defined In", children: sourceRow },
-      ]} />
       <PathPicker open={pickerOpen} onClose={() => setPickerOpen(false)} param={p} grid={grid} />
     </>
   );
+}
+
+/** The words the save bar uses for each field, so the bar names what the form
+ *  labels named rather than the keys the code uses. */
+function fieldLabel(k: keyof EditValues): string {
+  switch (k) {
+    case "displayName": return "display name";
+    case "description": return "description";
+    case "category": return "category";
+    case "type": return "data type";
+    case "itemType": return "entry type";
+    case "scope": return "scope";
+    case "secret": return "secret";
+    case "default": return "default value";
+    case "derived": return "derived from";
+  }
 }
 
 // IdlePanel is the details panel's default state: selection-oriented, not a
@@ -341,17 +420,15 @@ function IdlePanel({ grid }: { grid: Grid }) {
     qc.invalidateQueries({ queryKey: ["render"] });
   };
   const revert = useMutation({
-    mutationFn: (it: { paramId: string; instance: string; scope?: string }) =>
-      api.revertValue(it.paramId, it.scope === "global" ? "" : it.instance),
+    mutationFn: (it: ChangeItem) => {
+      const ref = revertRef(it);
+      return api.revertValue(ref.paramId, ref.instance, ref.action);
+    },
     onSuccess: refetchAll,
   });
   const discardAll = useMutation({
     mutationFn: async () => {
-      for (const it of allDraftItems)
-        await api.revertValue(
-          it.action === "edit-file" ? `file:${it.file}` : it.paramId,
-          it.scope === "global" ? "" : it.instance,
-        );
+      await api.revertValues(allDraftItems.map(revertRef));
     },
     onSuccess: refetchAll,
   });
@@ -495,31 +572,223 @@ function CellValue({ cell }: { cell?: Cell }) {
   );
 }
 
-// OVERVIEW tab: the value story for this parameter across every instance, plus
-// the set/invalid summary that used to sit in the panel footer.
+// THE VALUE EDITOR - one field per thing the value is actually held BY.
+//
+// The Overview tab said what this parameter is, and then listed what each
+// instance holds, and there was nowhere at all to change it: the only way in
+// was to find the row in the grid and type into a cell. That is right for a
+// setting each system holds its own copy of, and wrong for every other kind.
+// A global setting had twelve cells and one value behind them, and the panel
+// showed the twelve. A site-scoped one had four cells that were supposed to
+// agree and no way to say so - somebody typed the same number four times and
+// hoped.
+//
+// So the editor is shaped like the SCOPE. Global gets one field, and changing
+// it changes everybody. A group scope gets a small table - a value, and what it
+// applies to - one row per site, zone or environment the estate actually has.
+// Instance scope gets nothing here: those really are edited per cell, and the
+// list below already shows them.
+function ScopeValueEditor({ row, grid }: { row: GridRow; grid: Grid }) {
+  const { message } = AntApp.useApp();
+  const qc = useQueryClient();
+  const { canEdit } = useIdentity();
+  const param = row.param;
+  const facet = effectiveScope(param);
+  const field = SCOPE_META[facet].field;
+
+  // The rows of the editor: one per group, or the single "everyone" row.
+  const groups = useMemo<ScopeGroup[]>(() => {
+    if (facet === "global") return [{ key: "", instances: grid.instances }];
+    if (field) return groupsOf(param, grid.instances);
+    return [];
+  }, [facet, field, param, grid.instances]);
+  const orphans = useMemo(
+    () => (field ? ungrouped(field, grid.instances) : []),
+    [field, grid.instances],
+  );
+
+  // What each row currently holds, and whether the systems in it agree. Held as
+  // TEXT while it is being edited: a field the reader is halfway through typing
+  // into must not be swapped out from under them by a refetch.
+  const committed = useMemo(() => {
+    const m = new Map<string, { text: string; mixed: boolean; set: boolean }>();
+    for (const g of groups) {
+      const cells = g.instances.map((i) => row.cells[i.name]).filter(Boolean) as Cell[];
+      const rendered = new Set(cells.map((cl) => (cl.set ? fmtValue(cl.value) : "\u0000absent")));
+      m.set(g.key, {
+        text: cells[0]?.set ? fmtValue(cells[0].value) : "",
+        mixed: rendered.size > 1,
+        set: cells.some((cl) => cl.set),
+      });
+    }
+    return m;
+  }, [groups, row.cells]);
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  // A save lands as a new grid, so what the fields were offering to change is
+  // no longer a change. Clearing them here is what makes the bar go away by
+  // itself rather than by being pressed twice.
+  useEffect(() => setDrafts({}), [committed]);
+
+  const save = useMutation({
+    mutationFn: (v: { group: string; value: string }) =>
+      api.setValue({
+        instance: "",
+        paramId: param.id,
+        scope: facet as "global" | "site" | "zone" | "environment",
+        group: v.group || undefined,
+        value: coerceForType(v.value, param.type),
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
+      const failed = (res.results ?? []).filter((r) => !r.ok);
+      const where = res.reach ? ` for ${res.reach}` : "";
+      if (failed.length) message.warning(`Staged ${res.staged ?? 0}${where}; ${failed.length} refused (${failed[0].error})`, 6);
+      else if ((res.staged ?? 1) === 0) message.info(`Already that value${where} - nothing to stage.`);
+      else message.success(`Staged${where}`);
+    },
+    onError: (e: Error) => message.error(`Rejected: ${e.message}`),
+  });
+
+  if (facet === "instance") return null;
+
+  const Icon = SCOPE_ICON[facet];
+  const dirtyKeys = groups
+    .map((g) => g.key)
+    .filter((k) => drafts[k] !== undefined && drafts[k] !== (committed.get(k)?.text ?? ""));
+
+  return (
+    <div className="cf-scopeval">
+      <div className="cf-scopeval-head">
+        <Icon />
+        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+          {facet === "global" ? "VALUE (ALL INSTANCES)" : `VALUE PER ${field?.toUpperCase()}`}
+        </Typography.Text>
+      </div>
+      {groups.length === 0 ? (
+        // A group scope over an estate that has never filled the field in. Said
+        // plainly, because the fix is on the instances rather than here.
+        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          No instance has a {field} set, so there is no group to give a value to. Set one on the
+          Instances tab and this becomes editable.
+        </Typography.Text>
+      ) : (
+        <div className="cf-scopeval-rows">
+          {groups.map((g) => {
+            const cur = committed.get(g.key);
+            const text = drafts[g.key] ?? cur?.text ?? "";
+            const changed = drafts[g.key] !== undefined && drafts[g.key] !== (cur?.text ?? "");
+            return (
+              <div key={g.key || "__all__"} className="cf-scopeval-row">
+                <div className="cf-scopeval-field">
+                  <Input
+                    size="small"
+                    className="mono"
+                    value={text}
+                    disabled={!canEdit}
+                    placeholder={cur?.mixed ? "these systems disagree" : cur?.set ? "" : "not set"}
+                    status={cur?.mixed && !changed ? "warning" : undefined}
+                    onChange={(e) => setDrafts((d) => ({ ...d, [g.key]: e.target.value }))}
+                    onPressEnter={() => changed && save.mutate({ group: g.key, value: text })}
+                  />
+                </div>
+                {/* APPLIES TO. The whole point of this shape: a value is not
+                    worth reading without the systems it lands on beside it. */}
+                <div className="cf-scopeval-to">
+                  <Tooltip title={g.instances.map((i) => i.name).join(", ")}>
+                    <span className="cf-scopeval-key">{g.key || "Every instance"}</span>
+                  </Tooltip>
+                  <span className="cf-scopeval-n">
+                    {g.instances.length} instance{g.instances.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {orphans.length > 0 && (
+        <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginTop: 8 }}>
+          {orphans.length === 1 ? "One instance has" : `${orphans.length} instances have`} no {field}
+          {" "}({orphans.map((i) => i.name).join(", ")}), so nothing here reaches{" "}
+          {orphans.length === 1 ? "it" : "them"}.
+        </Typography.Text>
+      )}
+      {dirtyKeys.length > 0 && canEdit && (
+        <div className="cf-savebar">
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {dirtyKeys.length === 1
+              ? `Applies to ${reachLabel(facet, dirtyKeys[0] || null, groups.find((g) => g.key === dirtyKeys[0])?.instances.length ?? 0)}`
+              : `${dirtyKeys.length} groups changed`}
+          </Typography.Text>
+          <Space size={6}>
+            <Button size="small" icon={<CloseOutlined />} onClick={() => setDrafts({})}>
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<CheckOutlined />}
+              loading={save.isPending}
+              onClick={() => {
+                for (const k of dirtyKeys) save.mutate({ group: k, value: drafts[k] });
+              }}
+            >
+              Save all
+            </Button>
+          </Space>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Turn what was typed into the parameter's declared type. The service coerces
+ *  and validates again - it is the authority - but sending a number as a number
+ *  keeps the YAML a number rather than a quoted string. */
+function coerceForType(raw: string, type: string): unknown {
+  const t = raw.trim();
+  if (t === "") return "";
+  switch (type) {
+    case "integer":
+    case "number": {
+      const n = Number(t);
+      return Number.isNaN(n) ? t : n;
+    }
+    case "boolean":
+      return t === "true";
+    case "list":
+      return t.split(",").map((x) => x.trim()).filter(Boolean);
+    default:
+      return raw;
+  }
+}
+
 // OVERVIEW: what this parameter IS and what it is set to, in that order.
 //
 // These were two tabs, "Overview" and "Details", and nobody could say in
 // advance which drawer an answer had been filed in - they are the same
-// question asked twice. Editing opens the metadata form in place of the
-// read-only half; the values stay on screen underneath, because "what am I
-// changing this from" is the first thing anyone wants while they type.
+// question asked twice. The metadata form sits underneath the values, because
+// "what am I changing this from" is the first thing anyone wants while they
+// type.
 function OverviewTab({
   row,
   grid,
   categories,
-  editing,
-  setEditing,
+  onDirtyChange,
 }: {
   row: GridRow;
   grid: Grid;
   categories: string[];
-  editing: boolean;
-  setEditing: (v: boolean) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const values = grid.instances.map((i) => ({ inst: i, cell: row.cells[i.name] }));
   const set = values.filter((v) => v.cell?.set).length;
   const invalid = values.filter((v) => v.cell && !v.cell.valid).length;
+  const perInstance = effectiveScope(row.param) === "instance";
   return (
     <div>
       <ARow gutter={8} style={{ marginBottom: 12 }}>
@@ -527,7 +796,17 @@ function OverviewTab({
         <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
         <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? c.danger : undefined }} /></Col>
       </ARow>
-      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>VALUE PER INSTANCE</Typography.Text>
+      <ScopeValueEditor row={row} grid={grid} />
+      {/* The per-instance list stays whatever the scope is. For a shared value
+          it is the RECEIPT - proof that the twelve systems really do read the
+          one line above - and a screen that hid it would be asking to be
+          trusted about the thing somebody came here to check. */}
+      <Typography.Text
+        type="secondary"
+        style={{ fontSize: 11, letterSpacing: 0.4, display: "block", marginTop: perInstance ? 0 : 14 }}
+      >
+        {perInstance ? "VALUE PER INSTANCE" : "WHAT EACH INSTANCE READS"}
+      </Typography.Text>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
         {values.map(({ inst, cell }) => (
           <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
@@ -537,13 +816,7 @@ function OverviewTab({
         ))}
       </div>
       <Divider style={{ margin: "16px 0 12px" }} />
-      <DetailsTab
-        p={row.param}
-        categories={categories}
-        grid={grid}
-        editing={editing}
-        setEditing={setEditing}
-      />
+      <DetailsTab p={row.param} categories={categories} grid={grid} onDirtyChange={onDirtyChange} />
     </div>
   );
 }
@@ -794,18 +1067,19 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
   };
   const tab = MOVED[inspectorTab] ?? inspectorTab;
   const setTab = setInspectorTab;
-  const [editing, setEditing] = useState(false);
-  // A newly selected parameter always opens read-only.
-  useEffect(() => setEditing(false), [selectedParamId]);
+  // Whether the metadata form is holding something unsaved. The panel does not
+  // block on it - selecting another parameter is a normal thing to do - but it
+  // is worth SAYING, because the alternative is an edit that quietly went
+  // nowhere and a person who thinks it was saved.
+  const [metaDirty, setMetaDirty] = useState(false);
+  useEffect(() => setMetaDirty(false), [selectedParamId]);
 
-  // The one way into the metadata form, wherever it is asked for. The rules
-  // editor shows the default but does not own it: a field edited from two forms
-  // is a field two forms can disagree about, so the second one sends the reader
-  // to the first rather than leaving them at a value they cannot change.
-  const editDefault = () => {
-    setTab("overview");
-    setEditing(true);
-  };
+  // The rules editor shows the default but does not own it: a field edited from
+  // two forms is a field two forms can disagree about, so the second one sends
+  // the reader to the first rather than leaving them at a value they cannot
+  // change. It is a jump to a tab now, not a mode: the field is already
+  // typeable when they get there.
+  const editDefault = () => setTab("overview");
 
   const retire = useMutation({
     mutationFn: (id: string) => api.deleteParameter(id, "Local user"),
@@ -835,16 +1109,20 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
             {bindingsOf(p).length === 0 && <Tag color="purple">design</Tag>}
           </div>
         </div>
-        {canEdit && (
-          <Button
-            size="small"
-            type={editing ? "primary" : "text"}
-            icon={<EditOutlined />}
-            onClick={editDefault}
-            style={{ flexShrink: 0 }}
-          >
-            Edit
-          </Button>
+        {/* No Edit button. The fields below ARE the form; a Save/Cancel bar
+            appears under them the moment something really differs. What is
+            worth saying up here is that one is waiting. */}
+        {metaDirty && (
+          <Tag color="warning" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
+            unsaved
+          </Tag>
+        )}
+        {row.pendingMeta && (
+          <Tooltip title="A change in your draft rewrites this parameter's settings. What you see here is what it will say once that change is published.">
+            <Tag color="processing" style={{ flexShrink: 0, marginInlineEnd: 0 }}>
+              in review
+            </Tag>
+          </Tooltip>
         )}
       </div>
       <Divider style={{ margin: "10px 0" }} />
@@ -878,8 +1156,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
                 row={row}
                 grid={grid}
                 categories={categories}
-                editing={editing}
-                setEditing={setEditing}
+                onDirtyChange={setMetaDirty}
               />
             ),
           },
@@ -918,6 +1195,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
         ]}
       />
       <Divider style={{ margin: "10px 0" }} />
+      {canEdit && (
       <Popconfirm
         title={`Retire ${p.name}?`}
         description="Removes it from the catalog and deletes the key/element from every file it lives in, across all instances. Committed to Git with attribution."
@@ -929,6 +1207,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
           Retire Parameter
         </Button>
       </Popconfirm>
+      )}
     </div>
   );
 }

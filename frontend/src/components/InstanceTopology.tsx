@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
-import { Button, Modal } from "antd";
+import { Button, Divider, Drawer, Space, Typography } from "antd";
 import { FileTextOutlined, TableOutlined } from "../icons";
 import { bindingsOf, type Grid, type Instance } from "../api";
 import { useUI } from "../store";
 import { envHex } from "../theme";
 import { StatusPill } from "./ui";
+import { InstanceActionBar } from "./InstancesView";
+import type { InstanceAction } from "./instanceActions";
 
 // InstanceTopology answers the question the table cannot: WHY does an instance
 // hold the value it does. It lays the real inheritance chain out top to bottom
@@ -12,8 +14,9 @@ import { StatusPill } from "./ui";
 // (with region and how many values they inherit vs. override). Everything is
 // derived from the grid's real bindings and cell provenance; nothing is
 // invented. Clicking a base file opens it in Files; clicking an instance opens
-// a dossier with "Open configuration". Without a shared base layer the base
-// node simply says so - the map never goes blank.
+// the shared dossier - a side sheet, so the chain stays on screen behind it -
+// carrying the same actions its row in the table carries. Without a shared base
+// layer the base node simply says so; the map never goes blank.
 
 interface BaseNode {
   file: string;
@@ -80,19 +83,34 @@ export function derive(grid: Grid, instances: Instance[]): { bases: BaseNode[]; 
   return { bases, insts, edges: [...edgeMap.values()] };
 }
 
-// The dossier behind an instance click: what this instance is, then the
-// explicit decision to jump into its filtered configuration sheet. Shared, so
-// clicking an instance means the same thing in every view of the estate.
+// THE DOSSIER: one instance, opened from wherever it was clicked.
+//
+// It is a side SHEET, not a dialog. A dialog is for a question that has to be
+// answered before anything else can happen, and "what is this instance" is not
+// one - it is a thing to read while the map or the tree stays in view behind
+// it, which is exactly what somebody comparing two sites is doing. A modal
+// covered the picture they were reading it against, and every glance back cost
+// a close and a re-open.
+//
+// It carries the SAME actions the table's rows carry, because an instance has
+// to mean the same thing wherever it is clicked. It used to have exactly one
+// ("Open configuration"), so clicking a node on the map and clicking the same
+// name in the table led to two different products.
 export function InstanceDossier({
   node,
   meta,
+  actions,
   onClose,
 }: {
   node: InstNode | null;
   meta?: Instance;
+  /** what can be done to this instance (see instanceActions) - the same list
+   *  the table builds. Omitted, the sheet is a read: no actions rather than
+   *  different ones. */
+  actions?: InstanceAction[];
   onClose: () => void;
 }) {
-  const { setSection, selectInstance, setJump } = useUI();
+  const { setSection, selectInstance, setJump, setFileFocus } = useUI();
   const rows: { label: string; value: React.ReactNode }[] = node
     ? [
         {
@@ -120,15 +138,22 @@ export function InstanceDossier({
             }]
           : []),
         ...(meta?.region ? [{ label: "Region", value: meta.region }] : []),
+        ...(meta?.site ? [{ label: "Site", value: meta.site }] : []),
+        ...(meta?.zone ? [{ label: "Zone", value: meta.zone }] : []),
         ...(meta?.folder ? [{ label: "Folder", value: <span className="mono text-xs">{meta.folder}</span> }] : []),
         { label: "Inherited from base", value: `${node.inherited} parameter${node.inherited === 1 ? "" : "s"}` },
         { label: "Local overrides", value: `${node.overrides} parameter${node.overrides === 1 ? "" : "s"}` },
       ]
     : [];
   return (
-    <Modal
+    <Drawer
       open={!!node}
-      onCancel={onClose}
+      onClose={onClose}
+      placement="right"
+      width={380}
+      // The picture behind it stays readable and stays interactive: this is a
+      // panel about what is on screen, not a question blocking it.
+      mask={false}
       title={
         node && (
           <span className="inline-flex items-center gap-2">
@@ -137,26 +162,10 @@ export function InstanceDossier({
           </span>
         )
       }
-      footer={
-        <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Close</Button>
-          <Button
-            type="primary"
-            icon={<TableOutlined />}
-            onClick={() => {
-              if (!node) return;
-              selectInstance(node.name);
-              setJump("instance", node.name);
-              setSection("config");
-              onClose();
-            }}
-          >
-            Open configuration
-          </Button>
-        </div>
-      }
-      width={420}
     >
+      {meta?.description && (
+        <div className="mb-3 text-[13px] text-ink-2">{meta.description}</div>
+      )}
       <div className="flex flex-col gap-2 py-1">
         {rows.map((r) => (
           <div key={r.label} className="flex items-baseline justify-between gap-4 text-[13px]">
@@ -164,11 +173,55 @@ export function InstanceDossier({
             <span className="text-right text-ink">{r.value}</span>
           </div>
         ))}
-        <div className="mt-1 text-xs text-ink-3">
-          Opening the configuration filters the editor to this instance only.
-        </div>
       </div>
-    </Modal>
+
+      <Divider style={{ margin: "16px 0 12px" }} />
+
+      {/* The two ways INTO this instance lead the list, because they are what
+          somebody opened the sheet to do. Everything the table offers follows
+          underneath, in the same words and the same order. */}
+      <Space direction="vertical" size={8} style={{ width: "100%" }}>
+        <Button
+          type="primary"
+          block
+          icon={<TableOutlined />}
+          onClick={() => {
+            if (!node) return;
+            selectInstance(node.name);
+            setJump("instance", node.name);
+            setSection("config");
+            onClose();
+          }}
+        >
+          Open configuration
+        </Button>
+        <Button
+          block
+          icon={<FileTextOutlined />}
+          disabled={!meta?.folder && !node}
+          onClick={() => {
+            if (!node) return;
+            setFileFocus({ instance: node.name, path: "" });
+            setSection("files");
+            onClose();
+          }}
+        >
+          Open its files
+        </Button>
+        {actions && actions.length > 0 && (
+          <>
+            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+              ACTIONS
+            </Typography.Text>
+            <InstanceActionBar actions={actions} size="middle" block />
+          </>
+        )}
+      </Space>
+
+      <div className="mt-3 text-xs text-ink-3">
+        Opening the configuration filters the editor to this instance only.
+      </div>
+    </Drawer>
   );
 }
 
@@ -209,14 +262,30 @@ function InstanceRow({
 
 // instances is what the page is currently showing (the Active/Archived/All
 // filter has already been applied), so every view narrows together.
-export default function InstanceTopology({ grid, instances }: { grid: Grid; instances: Instance[] }) {
+export default function InstanceTopology({
+  grid,
+  instances,
+  actionsFor,
+}: {
+  grid: Grid;
+  instances: Instance[];
+  /** what can be done to an instance, built once by the page that owns the
+   *  mutations and dialogs. The topology draws them; it does not decide them. */
+  actionsFor?: (i: Instance) => InstanceAction[];
+}) {
   const { setSection, setFileFocus } = useUI();
   const [selInst, setSelInst] = useState<InstNode | null>(null);
   const { bases, insts } = useMemo(() => derive(grid, instances), [grid, instances]);
 
   const metaOf = (name: string) => instances.find((i) => i.name === name);
+  const selMeta = selInst ? metaOf(selInst.name) : undefined;
   const dossier = (
-    <InstanceDossier node={selInst} meta={selInst ? metaOf(selInst.name) : undefined} onClose={() => setSelInst(null)} />
+    <InstanceDossier
+      node={selInst}
+      meta={selMeta}
+      actions={selMeta && actionsFor ? actionsFor(selMeta) : undefined}
+      onClose={() => setSelInst(null)}
+    />
   );
 
   // Group instances by environment - the middle layer of the inheritance

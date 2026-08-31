@@ -21,16 +21,14 @@ import {
 } from "../api";
 import { useRepoQuery } from "../repoQuery";
 import { effectiveRules, fmtValue } from "../rules";
-import { effectiveScope, groupField, SCOPE_META, type ScopeFacet } from "../scope";
+import { effectiveScope, groupField, isGroupFacet, SCOPE_ICON, SCOPE_META, GROUP_FACETS, type ScopeFacet } from "../scope";
 import { groupLeaf, groupTrail, trailLabel } from "../paramtree";
 import { useIdentity } from "../identity";
 import { useUI } from "../store";
 import {
   CodeOutlined,
   FormOutlined,
-  ScopeGlobalOutlined,
   ScopeInstanceOutlined,
-  ScopeSiteOutlined,
 } from "../icons";
 import EnvTag from "./EnvTag";
 import { EmptyState, InlineNotice } from "./ui";
@@ -71,14 +69,15 @@ const JsonPane = lazy(() => import("./group/JsonPane"));
 //    knows the shape would rather type them, and how a block gets pasted in
 //    from somewhere else.
 
-/** The glyph for a scope, for the one place the dialog still names one itself:
- *  the header, when there is only one section to name. The body has its own
- *  copy for its section rows (GroupBody). */
-const FACET_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
-  global: ScopeGlobalOutlined,
-  site: ScopeSiteOutlined,
-  instance: ScopeInstanceOutlined,
-};
+/** What a section is called in the JSON view. Each group scope gets its own
+ *  name: with all three under "groups", a zone value and a site value with the
+ *  same key were one entry, and reading the block back put whichever came last
+ *  into both. */
+function blockName(facet: ScopeFacet): string {
+  if (facet === "global") return "shared";
+  if (isGroupFacet(facet)) return `${facet}s`;
+  return "instances";
+}
 
 export default function GroupEditorModal({
   groupKey,
@@ -158,12 +157,15 @@ export default function GroupEditorModal({
       });
     }
 
-    const sited = at("site");
-    if (sited.length) {
-      // A group-scoped setting is shared by the systems of one group, so its
-      // column is the GROUP, not the instance: one field per site among the
-      // selected instances, writing to every instance in that site.
-      const field = groupField(sited[0].row.param.scope) ?? "site";
+    // Each group scope gets its OWN section, one per grouping the selected
+    // settings actually declare. They used to share one - "site" stood for all
+    // three - which meant a zone-scoped setting and a site-scoped one were
+    // edited in the same column under a heading naming only one of them, so a
+    // value typed for a zone landed on a site and the dialog said it had not.
+    for (const facet of GROUP_FACETS) {
+      const sited = at(facet);
+      if (!sited.length) continue;
+      const field = SCOPE_META[facet].field ?? groupField(sited[0].row.param.scope) ?? "site";
       const cols: Col[] = [];
       const seen = new Map<string, Col>();
       for (const i of selected) {
@@ -171,7 +173,7 @@ export default function GroupEditorModal({
         if (!key) continue;
         let col = seen.get(key);
         if (!col) {
-          col = { key: `g:${key}`, label: key, sub: field, instances: [] };
+          col = { key: `g:${field}:${key}`, label: key, sub: field, instances: [] };
           seen.set(key, col);
           cols.push(col);
         }
@@ -186,7 +188,7 @@ export default function GroupEditorModal({
       }
       const reached = cols.reduce((n, c) => n + c.instances.length, 0);
       out.push({
-        facet: "site",
+        facet,
         members: sited,
         cols,
         reach: cols.length
@@ -251,7 +253,7 @@ export default function GroupEditorModal({
         if (sec.facet === "global") Object.assign(block, values);
         else block[col.label] = values;
       }
-      doc[sec.facet === "global" ? "shared" : sec.facet === "site" ? "groups" : "instances"] = block;
+      doc[blockName(sec.facet)] = block;
     }
     return JSON.stringify(doc, null, 2);
   }, [sections, edits, committed]);
@@ -274,14 +276,16 @@ export default function GroupEditorModal({
         return false;
       }
       if (typeof doc !== "object" || doc === null || Array.isArray(doc)) {
-        setJsonError("The document has to be an object with shared / groups / instances in it.");
+        setJsonError(
+          `The document has to be an object with ${sections.map((sec) => blockName(sec.facet)).join(" / ")} in it.`,
+        );
         return false;
       }
       const next: Record<string, unknown> = {};
       const unknown: string[] = [];
       const blocks = doc as Record<string, unknown>;
       for (const sec of sections) {
-        const name = sec.facet === "global" ? "shared" : sec.facet === "site" ? "groups" : "instances";
+        const name = blockName(sec.facet);
         const block = blocks[name];
         if (block === undefined) continue;
         if (typeof block !== "object" || block === null) {
@@ -526,7 +530,7 @@ export default function GroupEditorModal({
                   <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sections[0].reach}</Typography.Text>
                   <Tooltip title={SCOPE_META[sections[0].facet].explain}>
                     <Tag color={SCOPE_META[sections[0].facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
-                      {(() => { const Icon = FACET_ICON[sections[0].facet]; return <Icon style={{ marginInlineEnd: 4 }} />; })()}
+                      {(() => { const Icon = SCOPE_ICON[sections[0].facet]; return <Icon style={{ marginInlineEnd: 4 }} />; })()}
                       {SCOPE_META[sections[0].facet].label}
                     </Tag>
                   </Tooltip>

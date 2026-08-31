@@ -28,7 +28,7 @@ import { api, ApiError, sameContent, ALL_INSTANCES } from "../api";
 import { useUI } from "../store";
 import { bindingsIndex } from "../bindingsIndex";
 import { FilesSkeleton } from "./Skeletons";
-import { StatusPill, MonoChip, EmptyState, LoadingStage } from "./ui";
+import { StatusPill, MonoChip, EmptyState, InlineNotice, LoadingStage } from "./ui";
 import { isMarkdown, languageFor } from "../monacoLang";
 import FileExplorer from "./FileExplorer";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -108,6 +108,7 @@ export default function FilesView() {
   const setImportFocus = useUI((s) => s.setImportFocus);
   const setCompare = useUI((s) => s.setCompare);
   const fileFocus = useUI((s) => s.fileFocus);
+  const viewChangeId = useUI((s) => s.viewChangeId);
   const projectQ = useRepoQuery({ queryKey: ["project-info"], queryFn: api.projectInfo, staleTime: 30_000 });
   const gridQ = useRepoQuery({ queryKey: ["grid"], queryFn: () => api.grid() });
   // Default to "All instances": every instance's files at once, so a linked
@@ -203,11 +204,19 @@ export default function FilesView() {
       folders.find((f) => path === f.folder || path.startsWith(f.folder + "/"))?.name;
   }, [gridQ.data]);
 
+  // WHOSE FILES. By default the working tree with this person's own draft laid
+  // over it; with a change picked in the bar above (the same control the
+  // parameters page carries, in the same place), the bytes that change would
+  // produce. A change that is not the reader's own draft is READ-ONLY, exactly
+  // as the grid is: an edit typed on top of somebody else's proposal would land
+  // in the reader's draft while the screen showed different content.
   const draftQ = useRepoQuery({
-    queryKey: ["files-draft", instance],
-    queryFn: () => api.render(instance!),
+    queryKey: ["files-draft", instance, viewChangeId],
+    queryFn: () => api.render(instance!, viewChangeId ? { change: viewChangeId } : undefined),
     enabled: !!instance,
   });
+  const viewing = draftQ.data?.viewing;
+  const readOnly = !canEdit || !!viewing?.readOnly;
   const committedQ = useRepoQuery({
     queryKey: ["files-committed", instance],
     queryFn: () => api.render(instance!, { draft: false }),
@@ -490,7 +499,7 @@ export default function FilesView() {
   });
   const flush = useRef<() => void>(() => {});
   useEffect(() => {
-    if (!canEdit || dirty === null || !selected) {
+    if (readOnly || dirty === null || !selected) {
       flush.current = () => {};
       return;
     }
@@ -506,7 +515,7 @@ export default function FilesView() {
       send();
     };
     return () => clearTimeout(t);
-  }, [dirty, selected, canEdit]);
+  }, [dirty, selected, readOnly]);
 
   // The one line the strip shows about saving. Nothing while a clean file sits
   // there; "Saving…" for the moment it takes; then what the save meant, which
@@ -597,8 +606,8 @@ export default function FilesView() {
             select(p);
             setReveal(undefined);
           }}
-          onAdd={addToManaged}
-          onRemove={(f) => retire.mutate(f)}
+          onAdd={readOnly ? undefined : addToManaged}
+          onRemove={readOnly ? undefined : (f) => retire.mutate(f)}
         />
       </div>
     </div>
@@ -674,7 +683,7 @@ export default function FilesView() {
               {managed.has(current.path) ? (
                 <StatusPill tone="ok">Managed</StatusPill>
               ) : (
-                canEdit && (
+                !readOnly && (
                   <Tooltip title="Not managed yet; add it to scan for settings">
                     <Button size="small" icon={<PlusCircleOutlined />} onClick={() => addToManaged(current.path)}>
                       Add to managed
@@ -788,6 +797,9 @@ export default function FilesView() {
                   </Button>
                 </Tooltip>
               )}
+              {/* Your own work, always - the submit button is about the
+                  reader's draft, not about whatever change they happen to be
+                  reading through. */}
               {canEdit && <SubmitChangesButton instances={gridQ.data?.instances} />}
               <Dropdown
                 trigger={["click"]}
@@ -817,6 +829,19 @@ export default function FilesView() {
           )}
         </div>
       </div>
+
+      {/* Reading somebody else's proposal. One line, because the picker above
+          already names the change and its state - what has to be added here is
+          the one fact that surface cannot say: typing is off. Without it, the
+          editor looks exactly as it always does and the first keystroke is the
+          explanation. */}
+      {viewing?.readOnly && (
+        <InlineNotice tone="info">
+          These are the files as {viewing.number ? `CR-${viewing.number}` : "this change"} would leave
+          them. Read-only: an edit here would land in your own draft while the screen showed
+          somebody else's. Switch back to Main to edit.
+        </InlineNotice>
+      )}
 
       {problem && (
         <Alert
@@ -928,7 +953,7 @@ export default function FilesView() {
                       diffLayout={diffLayout}
                       onlyChanges={onlyChanges}
                       dark={mode === "dark"}
-                      editable={canEdit}
+                      editable={!readOnly}
                       revealLine={problem?.line || focusMark?.line || reveal}
                       revealColumn={problem?.line ? problem.column : focusMark?.col}
                       marks={dirty === null ? marks : undefined}

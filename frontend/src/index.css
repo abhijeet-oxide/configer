@@ -5194,3 +5194,203 @@ mark.vd-ins {
 @media (max-width: 640px) {
   .cf-viewpick-pop { min-width: 0; max-width: calc(100vw - 24px); }
 }
+
+/* ------------------------------------------ the tree's sticky ancestor rail */
+
+/* Where am I. The ancestors of the topmost row, pinned over the scroller the
+   way an editor pins the enclosing function - because a name tree over a real
+   catalog is far deeper than the panel is tall, and everything below the fold
+   otherwise reads as a flat list of `port`, `enabled`, `timeout` with nothing
+   saying which of the four `enabled` flags is on screen.
+
+   It is a MATERIAL, not a slab: the rows underneath show through it blurred,
+   so the header reads as the surface lifting rather than as a box that
+   appeared. Same vocabulary as the navigation. */
+.cat-sticky {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  /* Nearly opaque, unlike the navigation's material. This one sits directly
+     over TEXT - the rows it is covering - and at the chrome's usual
+     translucency the row underneath ghosted through the ancestor's name and
+     both became hard to read. A material is the right vocabulary here; being
+     able to read the label is the point of the thing. */
+  background: color-mix(in srgb, var(--surface) 97%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--border) 60%, transparent),
+    0 6px 14px -12px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+}
+.cat-sticky-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  padding-block: 2px;
+  padding-inline-end: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  text-align: start;
+  cursor: pointer;
+}
+.cat-sticky-row:hover {
+  background: color-mix(in srgb, var(--brand) 8%, transparent);
+  color: var(--text);
+}
+.cat-sticky-row.is-on {
+  color: var(--brand);
+  font-weight: 600;
+}
+.cat-sticky-more {
+  cursor: default;
+  opacity: 0.5;
+  padding-inline-start: 6px;
+}
+.cat-sticky-more:hover {
+  background: transparent;
+}
+.cat-sticky-seg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cat-sticky-n {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+/* ------------------------------------------- the grid's shared-value columns */
+
+/* When the reader picks a scope that is not "per instance", the grid stops
+   asking once per system and asks once per GROUP. These columns are where the
+   value is actually SET, so they read as the primary surface and the instance
+   columns behind them read as the consequence: a faint brand wash, a rule down
+   the leading edge, and a header that names the group and how many systems are
+   in it. */
+.param-grid .cf-scope-head {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+.param-grid .cf-scope-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  line-height: 1.25;
+}
+.param-grid .cf-scope-col-sub {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-3);
+}
+/* The grid is a VIRTUAL table, so a body cell is a div carrying
+   .ant-table-cell, never a <td>. Styling this on td looked right in the
+   stylesheet and painted nothing at all on screen. */
+.param-grid .ant-table-cell.cf-scope-cell {
+  background: color-mix(in srgb, var(--brand) 5%, transparent);
+}
+/* A staged edit somewhere inside the group. The group's own cell has no single
+   instance to mark, so it carries a dot rather than the per-cell hairline. */
+.cf-scope-pending {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: 6px;
+  border-radius: 50%;
+  background: var(--c-review);
+  vertical-align: middle;
+}
+
+/* -------------------------------------------- the inspector's save bar & value */
+
+/* There is no Edit button in the inspector: the fields ARE the form. This bar
+   is the whole announcement that something is unsaved, and it is only present
+   when there is something to announce - so the panel never quietly holds an
+   edit, and never offers to save one that says nothing. It sticks to the
+   bottom of the scroller, because the field somebody just typed into may be
+   anywhere in a long form. */
+.cf-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid color-mix(in srgb, var(--c-review) 40%, var(--border));
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(180%) blur(14px);
+  -webkit-backdrop-filter: saturate(180%) blur(14px);
+  box-shadow: 0 6px 18px -14px rgba(0, 0, 0, 0.5);
+}
+.cf-savebar-what {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* The value editor: a value, and what it applies to, side by side. A value
+   without the systems it lands on beside it is the thing this replaces. */
+.cf-scopeval {
+  margin-bottom: 14px;
+  padding: 10px;
+  border-radius: var(--r-md, 10px);
+  border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--border));
+  background: color-mix(in srgb, var(--brand) 4%, transparent);
+}
+.cf-scopeval-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: var(--text-2);
+}
+.cf-scopeval-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cf-scopeval-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cf-scopeval-field {
+  flex: 1 1 55%;
+  min-width: 0;
+}
+.cf-scopeval-to {
+  flex: 1 1 45%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.cf-scopeval-key {
+  font-size: 12px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cf-scopeval-n {
+  font-size: 10px;
+  color: var(--text-3);
+}

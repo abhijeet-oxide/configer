@@ -13,7 +13,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, reviewItems, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
+import { api, revertRef, reviewItems, type ChangeItem, type ChangeNameCheck, type Instance } from "../api";
 import { useUI } from "../store";
 import { isProductionEnv } from "../theme";
 import { ChangeItemsTable, itemKey } from "./ChangeItemsTable";
@@ -124,7 +124,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
   const [undoing, setUndoing] = useState<string | null>(null);
   const revert = useMutation({
     mutationFn: (it: ChangeItem) =>
-      api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
+      (({ paramId, instance, action }) => api.revertValue(paramId, instance, action))(revertRef(it)),
     onSuccess: () => qc.invalidateQueries(),
     onError: (e: Error) => message.error(e.message),
     onSettled: () => setUndoing(null),
@@ -143,10 +143,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
       for (let i = 0; i < its.length; i += UNDO_BATCH) {
         const batch = its.slice(i, i + UNDO_BATCH);
         await api.revertValues(
-          batch.map((it) => ({
-            paramId: it.action === "edit-file" ? `file:${it.file}` : it.paramId,
-            instance: it.instance,
-          })),
+          batch.map(revertRef),
         );
         // Take the batch out of the list the moment the server has it, rather
         // than leaving a hundred rows standing until the very end.

@@ -556,6 +556,7 @@ definitions:
     - unmanage-parameter
     - add-parameter
     - realign-bindings
+    - update-parameter
     type: string
     x-enum-varnames:
     - ActionSet
@@ -568,6 +569,7 @@ definitions:
     - ActionUnmanageParameter
     - ActionAddParameter
     - ActionRealignBindings
+    - ActionUpdateParameter
   change.Approval:
     properties:
       approver:
@@ -2944,18 +2946,16 @@ paths:
     put:
       consumes:
       - application/json
-      description: Patch a parameter's type, validation, display name, description,
-        category, scope, secret flag, default, or file bindings. Nil fields are left
-        unchanged. Committed directly to the working branch with attribution.
+      description: Stage a patch to a parameter's type, validation, display name,
+        description, category, scope, secret flag, default, derived expression or
+        file bindings. Nil fields are left unchanged. Staged on the caller's draft
+        change request and written to `.configer/parameters.yaml` when that change
+        is submitted and published - nothing touches Git here. The response carries
+        the parameter as it WILL read once the change lands.
       parameters:
       - description: Parameter id (slug)
         in: path
         name: id
-        required: true
-        type: string
-      - description: Catalog revision the edit is based on (from a read's ETag)
-        in: header
-        name: If-Match
         required: true
         type: string
       - description: Partial parameter patch
@@ -2979,21 +2979,13 @@ paths:
           description: Unknown parameter
           schema:
             $ref: '#/definitions/api.APIError'
-        "412":
-          description: Stale revision; reload and reapply
-          schema:
-            $ref: '#/definitions/api.APIError'
         "422":
           description: Unknown validation preset
           schema:
             $ref: '#/definitions/api.APIError'
-        "428":
-          description: Missing If-Match
-          schema:
-            $ref: '#/definitions/api.APIError'
       security:
       - CookieSession: []
-      summary: Update a parameter
+      summary: Stage a parameter update
       tags:
       - Grid & parameters
   /api/parameters/{id}/history:
@@ -3234,6 +3226,10 @@ paths:
         in: query
         name: ref
         type: string
+      - description: Apply this change request's edits instead of the caller's draft
+        in: query
+        name: change
+        type: integer
       produces:
       - application/json
       responses:
@@ -4087,6 +4083,11 @@ paths:
         in: query
         name: instance
         required: true
+        type: string
+      - description: Undo only an item of this action (e.g. update-parameter). Omitted,
+          the first item at that address is undone.
+        in: query
+        name: action
         type: string
       produces:
       - application/json

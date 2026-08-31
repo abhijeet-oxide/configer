@@ -635,12 +635,14 @@ func (s *Server) parameterHistory(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} map[string]interface{}
 // @Failure     400 {object} APIError
 // @Failure     500 {object} APIError
+// @Param       change query int false "Apply this change request's edits instead of the caller's draft"
 // @Router      /api/render/{instance} [get]
 func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 	// The instance's REAL repository files (write-back-native: nothing is
 	// generated). ?ref serves them at a git ref; ?draft=false serves the
-	// working tree as committed; the default applies the current draft
-	// in memory, so the preview shows exactly what a publish would write.
+	// working tree as committed; ?change=<id> applies a named change request's
+	// edits; the default applies the current draft in memory, so the preview
+	// shows exactly what a publish would write.
 	var p *project.Project
 	var err error
 	var draft *change.ChangeRequest
@@ -662,10 +664,18 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, err)
 		return
 	}
-	var items []change.Item
-	if draft != nil {
-		items = draft.Items
+	// Files are read THROUGH a change for the same reason the grid is: a
+	// proposal is only reviewable if you can see what it says, and a rejected
+	// one lives nowhere else at all. `?change=` swaps the caller's own draft for
+	// the named change's edits, and the response says which change it is and
+	// whether the reader may write to it - the grid and the file view have to
+	// answer "whose values am I looking at" the same way, or the same picker
+	// above them means two different things.
+	overlay, viewing, ok := s.gridOverlay(w, r, draft)
+	if !ok {
+		return
 	}
+	items := overlay
 	instance := r.PathValue("instance")
 	var files []FileContent
 	if instance == allInstancesSentinel {
@@ -677,7 +687,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"instance": instance, "files": files})
+	writeJSON(w, http.StatusOK, map[string]any{"instance": instance, "files": files, "viewing": viewing})
 }
 
 // scan detects files and extracts candidate parameters (read-only).

@@ -1,7 +1,9 @@
 package api
 
-// Parameter catalog mutations: metadata is an admin action committed directly
-// to the target branch with attribution, keeping the tree consistent with Git.
+// Parameter catalog mutations. Editing a parameter's own metadata - its rules,
+// its scope, its default, the files it is bound to - STAGES into the caller's
+// draft and travels the ordinary road: draft, review, publish. Creating and
+// retiring a parameter are still administrative and commit directly.
 
 import (
 	"encoding/json"
@@ -15,22 +17,31 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
-// updateParameter patches a parameter's data type and/or validation rules.
+// updateParameter STAGES a patch to a parameter's own metadata on the caller's
+// draft.
 //
-// @Summary     Update a parameter
-// @Description Patch a parameter's type, validation, display name, description, category, scope, secret flag, default, or file bindings. Nil fields are left unchanged. Committed directly to the working branch with attribution.
+// It used to write .configer/parameters.yaml and commit it on the spot. That is
+// fine on one person's laptop and impossible anywhere the repository protects
+// its default branch: the push was refused, and it was refused AFTER the form
+// had said the rules were saved. It is also the wrong shape - a validation rule
+// decides what everybody else may type into a cell, which is exactly the sort of
+// change a second person should see before it lands.
+//
+// So it is a change like any other. Nothing moves until the draft is submitted,
+// reviewed and published, and the review names the fields that moved (see
+// changeset.structuralSummary) with the catalog's own diff beside them.
+//
+// @Summary     Stage a parameter update
+// @Description Stage a patch to a parameter's type, validation, display name, description, category, scope, secret flag, default, derived expression or file bindings. Nil fields are left unchanged. Staged on the caller's draft change request and written to `.configer/parameters.yaml` when that change is submitted and published - nothing touches Git here. The response carries the parameter as it WILL read once the change lands.
 // @Tags        Grid & parameters
 // @Accept      json
 // @Produce     json
 // @Param       id       path   string true "Parameter id (slug)"
-// @Param       If-Match header string true "Catalog revision the edit is based on (from a read's ETag)"
 // @Param       body     body object true "Partial parameter patch"
 // @Success     200 {object} model.Parameter
 // @Failure     400 {object} APIError "Malformed body or half-specified binding"
 // @Failure     404 {object} APIError "Unknown parameter"
-// @Failure     412 {object} APIError "Stale revision; reload and reapply"
 // @Failure     422 {object} APIError "Unknown validation preset"
-// @Failure     428 {object} APIError "Missing If-Match"
 // @Security    CookieSession
 // @Router      /api/parameters/{id} [put]
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
@@ -75,13 +86,18 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		req.Bindings = &bs
 	}
 
-	s.treeMu.Lock()
-	defer s.treeMu.Unlock()
-	// Optimistic concurrency: reject an edit built on a stale catalog view.
-	if !s.requireIfMatch(w, r) {
+	id := r.PathValue("id")
+	p, err := s.load()
+	if err != nil {
+		writeErr(w, err)
 		return
 	}
-	param, err := writer.UpdateParameter(s.RepoPath, r.PathValue("id"), writer.ParamPatch{
+	current, found := p.ParamByID(id)
+	if !found {
+		writeError(w, r, http.StatusNotFound, CodeNotFound, "parameter not found")
+		return
+	}
+	patch := writer.ParamPatch{
 		Type:        req.Type,
 		ItemType:    req.ItemType,
 		Validation:  req.Validation,
@@ -93,16 +109,83 @@ func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 		Default:     req.Default,
 		Derived:     req.Derived,
 		Bindings:    req.Bindings,
-	})
-	if err != nil {
-		writeError(w, r, http.StatusNotFound, CodeNotFound, err.Error())
+	}
+	// A patch that asks for nothing the catalog does not already say is not a
+	// change, and staging it would put a row in somebody's review that reads
+	// "update admin.port" and contains no difference at all. Typing a value back
+	// the way it was cancels a cell edit; the same has to be true here.
+	narrowed, differs := narrowPatch(current, patch)
+	if !differs {
+		// Nothing left to say. Any metadata edit already staged for this
+		// parameter is withdrawn - putting the form back the way it was is how
+		// somebody undoes one.
+		defer s.lockDraft(draftOwner(r))()
+		if draft := s.Store.CurrentDraft(draftOwner(r)); draft != nil {
+			_, _ = s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+				cr.RemoveItemKind(id, "", change.ActionUpdateParameter)
+				return nil
+			})
+			s.dropEmptyDraft(draftOwner(r))
+		}
+		writeJSON(w, http.StatusOK, current)
 		return
 	}
-	title := "Update parameter " + param.Name
-	if req.Bindings != nil && len(param.Bindings) > 0 {
-		title = "Attach parameter " + param.Name + " to " + param.Bindings[0].File
+	patch = narrowed
+	preview := writer.ApplyPatch(current, patch)
+
+	defer s.lockDraft(draftOwner(r))()
+	draft, err := s.Store.Draft(draftOwner(r), s.branch())
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
-	s.commitCatalogChange(w, r, title, req.Author, param)
+	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
+		cr.UpsertItem(change.Item{
+			ParamID: id, Action: change.ActionUpdateParameter,
+			// Old is the parameter's NAME, so a review still reads as the
+			// setting long after the entry it describes has been rewritten.
+			Old: current.Name, New: patch, UpdatedAt: time.Now().UTC(),
+		})
+		return nil
+	}); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
+// narrowPatch drops the fields a patch would not actually change, and reports
+// whether anything is left. It is what keeps "save" idempotent: a form posts
+// every field it holds, and eleven of the twelve are usually untouched.
+func narrowPatch(cur model.Parameter, patch writer.ParamPatch) (writer.ParamPatch, bool) {
+	out := writer.ParamPatch{}
+	changed := false
+	keep := func(differs bool, apply func()) {
+		if differs {
+			changed = true
+			apply()
+		}
+	}
+	keep(patch.Type != nil && *patch.Type != cur.Type, func() { out.Type = patch.Type })
+	keep(patch.ItemType != nil && *patch.ItemType != cur.ItemType, func() { out.ItemType = patch.ItemType })
+	keep(patch.DisplayName != nil && *patch.DisplayName != cur.DisplayName, func() { out.DisplayName = patch.DisplayName })
+	keep(patch.Description != nil && *patch.Description != cur.Description, func() { out.Description = patch.Description })
+	keep(patch.Category != nil && *patch.Category != cur.Category, func() { out.Category = patch.Category })
+	keep(patch.Scope != nil && *patch.Scope != cur.Scope, func() { out.Scope = patch.Scope })
+	keep(patch.Secret != nil && *patch.Secret != cur.Secret, func() { out.Secret = patch.Secret })
+	keep(patch.Derived != nil && *patch.Derived != cur.Derived, func() { out.Derived = patch.Derived })
+	keep(patch.Default != nil && stringify(*patch.Default) != stringify(cur.Default), func() { out.Default = patch.Default })
+	keep(patch.Validation != nil && !sameJSON(*patch.Validation, cur.Validation), func() { out.Validation = patch.Validation })
+	keep(patch.Bindings != nil && !sameJSON(*patch.Bindings, cur.Bindings), func() { out.Bindings = patch.Bindings })
+	return out, changed
+}
+
+// sameJSON compares two values by their JSON rendering, which is how the draft
+// store carries them anyway.
+func sameJSON(a, b any) bool {
+	x, err1 := json.Marshal(a)
+	y, err2 := json.Marshal(b)
+	return err1 == nil && err2 == nil && string(x) == string(y)
 }
 
 // addParameter creates a new catalog parameter from the GUI (e.g. an optional

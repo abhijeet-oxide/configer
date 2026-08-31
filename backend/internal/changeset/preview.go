@@ -2,6 +2,7 @@ package changeset
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -137,6 +138,15 @@ func plannedFiles(proj *project.Project, cr *change.ChangeRequest) []string {
 		switch {
 		case it.Act() == change.ActionEditFile:
 			add(it.File)
+		case it.Act() == change.ActionUpdateParameter || it.Act() == change.ActionUnmanageParameter:
+			// A catalog edit is a real diff in a real file, and the reviewer of
+			// a rule change wants to read it as one - a summary line saying
+			// "update parameter X" is the least a review can say about a
+			// validation rule that will refuse everybody's next edit.
+			add(".configer/parameters.yaml")
+			if it.Act() == change.ActionUnmanageParameter {
+				add(".configer/ignore.yaml")
+			}
 		case it.Structural():
 			// summarized, not byte-diffed
 		default:
@@ -186,6 +196,15 @@ func structuralSummary(it change.Item) string {
 			return "start managing " + name + " (new in " + it.File + ")"
 		}
 		return "start managing " + name
+	case change.ActionUpdateParameter:
+		name, _ := it.Old.(string)
+		if name == "" {
+			name = it.ParamID
+		}
+		if fields := patchFields(it); len(fields) > 0 {
+			return "update " + name + ": " + strings.Join(fields, ", ")
+		}
+		return "update " + name
 	case change.ActionRealignBindings:
 		var payload change.RealignPayload
 		_ = decodeInto(it.New, &payload)
@@ -202,6 +221,37 @@ func structuralSummary(it change.Item) string {
 		return strings.Join(parts, ", ") + " in " + it.File
 	}
 	return string(it.Act()) + " " + it.Instance
+}
+
+// patchFields names the parameter fields an update-parameter item actually
+// moves, in the words the form uses. A review that said only "update parameter
+// admin.port" left the reader to open a diff to find out whether a display name
+// or a validation rule had changed.
+func patchFields(it change.Item) []string {
+	raw, ok := it.New.(map[string]any)
+	if !ok {
+		b, err := json.Marshal(it.New)
+		if err != nil {
+			return nil
+		}
+		raw = map[string]any{}
+		if err := json.Unmarshal(b, &raw); err != nil {
+			return nil
+		}
+	}
+	labels := []struct{ key, label string }{
+		{"type", "data type"}, {"itemType", "entry type"}, {"validation", "validation rules"},
+		{"displayName", "display name"}, {"description", "description"}, {"category", "category"},
+		{"scope", "scope"}, {"secret", "secret flag"}, {"default", "default value"},
+		{"derived", "derived expression"}, {"bindings", "file bindings"},
+	}
+	var out []string
+	for _, f := range labels {
+		if v, ok := raw[f.key]; ok && v != nil {
+			out = append(out, f.label)
+		}
+	}
+	return out
 }
 
 // addedParameter decodes an add-parameter item's payload. A payload that will

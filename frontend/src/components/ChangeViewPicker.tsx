@@ -12,7 +12,14 @@ import { relTime } from "./DashboardView";
 import { StatusPill } from "./ui";
 import { useRefreshRepo } from "../pulse";
 
-// "Whose values am I looking at?" - one question, one control.
+// "Whose version am I looking at?" - one question, one control, ONE bar above
+// both surfaces that answer it.
+//
+// Parameters shows the configuration as values; Files shows the same
+// configuration as the bytes those values live in. They are two readings of one
+// thing, so they take one picker, in one place, saying one sentence - a control
+// that appeared over the grid and not over the files meant a reviewer could
+// compare a change's values and never its diff.
 //
 // The parameters page used to answer it with silence. It always showed the
 // published files with your own draft on top, and every other version of the
@@ -359,7 +366,7 @@ export default function ChangeViewPicker({
           },
         }}
       >
-        <Tooltip title="Which change's values the grid is showing">
+        <Tooltip title="Which change's configuration this page is showing">
           <Button size="small" icon={<BranchesOutlined />} style={{ flexShrink: 0, maxWidth: 280 }}>
             <span className="cf-viewbtn-label">
               {viewed ? `${label(viewed, isMine)} · ${viewed.title}` : "Main"}
@@ -396,8 +403,8 @@ export default function ChangeViewPicker({
           )}
           <span className="cf-viewbar-note">
             {viewed.state === "rejected"
-              ? "Never published - these values are what this change asked for."
-              : "Proposed values, laid over the published files."}
+              ? "Never published - this is what the change asked for."
+              : "Proposed changes, laid over the published files."}
           </span>
           <span className="cf-viewbar-spacer" />
           {viewed.state === "rejected" && me.canEdit && (

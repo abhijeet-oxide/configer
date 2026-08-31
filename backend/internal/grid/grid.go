@@ -16,6 +16,7 @@ import (
 	"github.com/abhijeet-oxide/configer/backend/internal/resolver"
 	"github.com/abhijeet-oxide/configer/backend/internal/semver"
 	"github.com/abhijeet-oxide/configer/backend/internal/validate"
+	"github.com/abhijeet-oxide/configer/backend/internal/writer"
 )
 
 // CellState describes the lifecycle status of a cell for a given instance
@@ -64,6 +65,11 @@ type Row struct {
 	// still here, still editable, and will leave the catalog when that change
 	// is published.
 	PendingUnmanage bool `json:"pendingUnmanage,omitempty"`
+	// PendingMeta marks a parameter whose own METADATA a draft change rewrites -
+	// its rules, its scope, its default. The row already SHOWS the patched
+	// parameter (see applyStructuralPreview), so without this the inspector
+	// would present a rule nobody has approved as though it were settled.
+	PendingMeta bool `json:"pendingMeta,omitempty"`
 	// PendingAdd marks a parameter a draft change STARTS managing: the value is
 	// already in the draft's file bytes, the catalog entry arrives when the
 	// change is published. It is here so a direct file edit that introduced
@@ -322,6 +328,25 @@ func applyStructuralPreview(g *Grid, it change.Item, r *resolver.Resolver) {
 			row.Cells[inst.Name] = cell
 		}
 		g.Rows = append(g.Rows, row)
+	case change.ActionUpdateParameter:
+		// The catalog entry has not moved yet, so the row is rebuilt as the
+		// change would leave it: the rules the reviewer is being asked to
+		// approve are the ones the panel shows, marked as not yet landed.
+		var patch writer.ParamPatch
+		if b, err := json.Marshal(it.New); err != nil {
+			return
+		} else if err := json.Unmarshal(b, &patch); err != nil {
+			return
+		}
+		for i := range g.Rows {
+			if g.Rows[i].Param.ID != it.ParamID {
+				continue
+			}
+			pm := writer.ApplyPatch(g.Rows[i].Param, patch)
+			pm.NameSegments = nameSegments(pm)
+			g.Rows[i].Param = pm
+			g.Rows[i].PendingMeta = true
+		}
 	case change.ActionUnmanageParameter:
 		// The row stays, marked: the parameter is still managed until the change
 		// is published, and hiding it early would leave the reader wondering

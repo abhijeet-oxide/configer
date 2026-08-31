@@ -1,11 +1,11 @@
-import { Button, Tag, Typography, Space, Modal, Form, Input, Select, AutoComplete, Popconfirm, Segmented, Tooltip, App as AntApp } from "antd";
+import { Button, Tag, Typography, Space, Modal, Form, Input, Select, AutoComplete, Popconfirm, Segmented, Tooltip, Dropdown, App as AntApp } from "antd";
 // The working-surface table: resizable, reorderable, pinnable columns whose
 // layout each person keeps. See `tablekit/README.md` for which tables get it.
 import { Table as DataTable } from "../tablekit";
 import {
-  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined, DownloadOutlined,
+  PlusOutlined, EditOutlined, CopyOutlined, DeleteOutlined, InboxOutlined, RollbackOutlined, SwapOutlined, DownloadOutlined, MoreOutlined,
 } from "../icons";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { InputRef } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -18,6 +18,7 @@ import InstanceTopology from "./InstanceTopology";
 import InstancesGeography from "./InstancesGeography";
 import { EmptyState } from "./ui";
 import { useIdentity } from "../identity";
+import { overflowActions, primaryActions, type InstanceAction } from "./instanceActions";
 
 // InstancesView is the Instances tab: the deployment targets of an application.
 // Creating, cloning or deleting an instance is a STRUCTURAL change: it stages
@@ -49,12 +50,127 @@ interface FormValues {
   description?: string;
   environment?: string;
   region?: string;
+  /** Which site and zone this instance is at. They are not decoration: a
+   *  parameter scoped to a site is edited ONCE for that site, and the instances
+   *  it reaches are exactly the ones carrying this value. Leave it blank and
+   *  the instance belongs to no site group - it is never swept into one. */
+  site?: string;
+  zone?: string;
   softwareVersion?: string;
   versionName?: string;
   status?: string;
   /** copy configuration values from this instance ("" = start empty) */
   baseInstance?: string;
   labels?: string;
+}
+
+// The row of things you can do to an instance: the everyday ones as labelled
+// buttons, the rest behind three dots.
+//
+// It is one component because it is drawn in three places - the table, the
+// dossier the topology opens, and the dossier the map opens - and three
+// hand-built copies of "compare, edit, then a menu" is how one of them ends up
+// missing the archive action next year.
+export function InstanceActionBar({
+  actions,
+  size = "small",
+  block = false,
+}: {
+  actions: InstanceAction[];
+  size?: "small" | "middle";
+  /** the dossier gives them room to be full-width buttons */
+  block?: boolean;
+}) {
+  const primary = primaryActions(actions);
+  const more = overflowActions(actions);
+  if (actions.length === 0) return null;
+  return (
+    <Space size={4} wrap={block}>
+      {primary.map((a) => {
+        const btn = (
+          <Button
+            key={a.key}
+            size={size}
+            icon={a.icon}
+            danger={a.danger}
+            disabled={a.disabled}
+            loading={a.loading}
+            onClick={a.confirm ? undefined : a.run}
+          >
+            {a.label}
+          </Button>
+        );
+        return a.confirm ? (
+          <Popconfirm
+            key={a.key}
+            title={a.confirm.title}
+            description={a.confirm.description}
+            okText={a.confirm.okText}
+            okButtonProps={{ danger: a.danger }}
+            onConfirm={a.run}
+          >
+            {btn}
+          </Popconfirm>
+        ) : a.hint ? (
+          <Tooltip key={a.key} title={a.hint}>
+            {btn}
+          </Tooltip>
+        ) : (
+          btn
+        );
+      })}
+      {more.length > 0 && (
+        <InstanceOverflow actions={more} size={size} />
+      )}
+    </Space>
+  );
+}
+
+// The three-dot menu. Its own component because a confirm inside a menu item
+// has to survive the menu closing under it: the item sets `pending`, the menu
+// shuts, and the confirmation is asked in a modal that outlives it.
+function InstanceOverflow({ actions, size }: { actions: InstanceAction[]; size: "small" | "middle" }) {
+  const [pending, setPending] = useState<InstanceAction | null>(null);
+  return (
+    <>
+      <Dropdown
+        trigger={["click"]}
+        menu={{
+          items: actions.map((a) => ({
+            key: a.key,
+            icon: a.icon,
+            label: a.label,
+            danger: a.danger,
+            disabled: a.disabled,
+          })),
+          onClick: ({ key }) => {
+            const a = actions.find((x) => x.key === key);
+            if (!a) return;
+            if (a.confirm) setPending(a);
+            else a.run();
+          },
+        }}
+      >
+        <Button size={size} icon={<MoreOutlined />} aria-label="More actions" title="More actions" />
+      </Dropdown>
+      <Modal
+        open={!!pending}
+        title={pending?.confirm?.title}
+        okText={pending?.confirm?.okText}
+        okButtonProps={{ danger: pending?.danger }}
+        onOk={() => {
+          pending?.run();
+          setPending(null);
+        }}
+        onCancel={() => setPending(null)}
+        destroyOnHidden
+      >
+        <Typography.Paragraph style={{ marginBottom: 0 }}>
+          {pending?.confirm?.description}
+        </Typography.Paragraph>
+      </Modal>
+    </>
+  );
 }
 
 export default function InstancesView({ grid }: { grid: Grid }) {
@@ -195,6 +311,8 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             description: mode === "clone" ? "" : instance.description,
             environment: instance.environment,
             region: instance.region,
+            site: instance.site,
+            zone: instance.zone,
             softwareVersion: instance.softwareVersion,
             versionName: instance.versionName,
             status: instance.status || "active",
@@ -219,6 +337,8 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       if (diff(environment, orig.environment)) input.environment = environment ?? "";
       if (diff(v.description, orig.description)) input.description = v.description ?? "";
       if (diff(v.region, orig.region)) input.region = v.region ?? "";
+      if (diff(v.site, orig.site)) input.site = v.site ?? "";
+      if (diff(v.zone, orig.zone)) input.zone = v.zone ?? "";
       if (diff(v.softwareVersion, orig.softwareVersion)) input.softwareVersion = v.softwareVersion ?? "";
       if (diff(v.versionName, orig.versionName)) input.versionName = v.versionName ?? "";
       if (diff(v.status, orig.status || "active")) input.status = v.status;
@@ -231,6 +351,8 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       description: v.description,
       environment,
       region: v.region,
+      site: v.site,
+      zone: v.zone,
       softwareVersion: v.softwareVersion,
       versionName: v.versionName,
       status: v.status,
@@ -240,6 +362,84 @@ export default function InstancesView({ grid }: { grid: Grid }) {
     if (v.baseInstance) input.cloneFrom = v.baseInstance;
     save.mutate({ mode: modal!.mode, orig: modal?.instance?.name, input });
   };
+
+  // Everything that can be done to one instance, built once. The table draws
+  // it as a row of buttons, the dossier draws it as a column of them, and
+  // neither of them decides what is on the list.
+  const actionsFor = useCallback(
+    (i: Instance): InstanceAction[] => {
+      const archived = (i.status || "active") === "archived";
+      const list: InstanceAction[] = [
+        {
+          key: "compare",
+          label: "Compare",
+          icon: <SwapOutlined />,
+          hint: "Compare this instance with another",
+          primary: true,
+          run: () => compareFrom(i.name),
+        },
+      ];
+      if (!canEdit) return list;
+      return [
+        ...list,
+        {
+          key: "edit",
+          label: "Edit info",
+          icon: <EditOutlined />,
+          hint: "Environment, region, version, labels",
+          primary: true,
+          run: () => openModal("edit", i),
+        },
+        {
+          key: "clone",
+          label: "Clone instance",
+          icon: <CopyOutlined />,
+          hint: "Create a new instance from this one's configuration",
+          run: () => openModal("clone", i),
+        },
+        {
+          key: "copy",
+          label: "Copy values in from…",
+          icon: <DownloadOutlined />,
+          hint: "Stage every value that differs from another instance",
+          run: () => setCopyInto({ target: i.name }),
+        },
+        archived
+          ? {
+              key: "activate",
+              label: "Reactivate",
+              icon: <RollbackOutlined />,
+              loading: setStatus.isPending,
+              run: () => setStatus.mutate({ name: i.name, status: "active" }),
+            }
+          : {
+              key: "archive",
+              label: "Archive",
+              icon: <InboxOutlined />,
+              hint: "Removes it from the active grid, keeps it in Git",
+              loading: setStatus.isPending,
+              run: () => setStatus.mutate({ name: i.name, status: "archived" }),
+            },
+        {
+          key: "retire",
+          label: "Retire instance",
+          icon: <DeleteOutlined />,
+          danger: true,
+          confirm: {
+            title: `Retire instance "${i.name}"?`,
+            description:
+              "Stages the removal of its folder and registry entry into your draft; nothing happens on Git until the change is submitted and approved.",
+            okText: "Stage retirement",
+          },
+          run: () => remove.mutate(i.name),
+        },
+      ];
+    },
+    // openModal and compareFrom are recreated each render but close over stable
+    // state; the mutations are what really change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [canEdit, setStatus.isPending, remove, setCopyInto],
+  );
 
   const shown = instances.filter((i) => {
     const st = i.status || "active";
@@ -293,9 +493,9 @@ export default function InstancesView({ grid }: { grid: Grid }) {
       </div>
 
       {view === "topology" ? (
-        <InstanceTopology grid={grid} instances={shown} />
+        <InstanceTopology grid={grid} instances={shown} actionsFor={actionsFor} />
       ) : view === "geography" ? (
-        <InstancesGeography grid={grid} instances={shown} />
+        <InstancesGeography grid={grid} instances={shown} actionsFor={actionsFor} />
       ) : (
       <DataTable<Instance>
         tableEnhancedKey="instances"
@@ -343,6 +543,20 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             render: (e: string) => (e ? <EnvTag env={e} /> : <span style={{ opacity: 0.4 }}>-</span>),
           },
           { title: "Region", dataIndex: "region", render: (v) => v || <span style={{ opacity: 0.4 }}>-</span> },
+          // Site and zone are columns because they are what a group-scoped
+          // parameter is edited by: "which instances does one value reach" is
+          // answered here, and an estate where nobody filled them in is an
+          // estate where those scopes silently reach nothing.
+          {
+            title: "Site",
+            dataIndex: "site",
+            render: (v: string) => v || <span style={{ opacity: 0.4 }}>-</span>,
+          },
+          {
+            title: "Zone",
+            dataIndex: "zone",
+            render: (v: string) => v || <span style={{ opacity: 0.4 }}>-</span>,
+          },
           {
             title: "Version",
             dataIndex: "softwareVersion",
@@ -383,53 +597,11 @@ export default function InstancesView({ grid }: { grid: Grid }) {
           },
           {
             title: "Actions",
-            width: 200,
-            render: (_v, i) => {
-              const archived = (i.status || "active") === "archived";
-              return (
-                <Space size={2}>
-                  <Tooltip title="Compare this instance with another">
-                    <Button size="small" type="text" icon={<SwapOutlined />} onClick={() => compareFrom(i.name)} />
-                  </Tooltip>
-                  {canEdit && (
-                    <>
-                      <Tooltip title="Edit metadata">
-                        <Button size="small" type="text" icon={<EditOutlined />} onClick={() => openModal("edit", i)} />
-                      </Tooltip>
-                      <Tooltip title="Clone this instance (copies its values)">
-                        <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => openModal("clone", i)} />
-                      </Tooltip>
-                      <Tooltip title="Copy values into this instance from another">
-                        <Button size="small" type="text" icon={<DownloadOutlined />} onClick={() => setCopyInto({ target: i.name })} />
-                      </Tooltip>
-                    </>
-                  )}
-                  {canEdit &&
-                    (archived ? (
-                      <Tooltip title="Reactivate">
-                        <Button size="small" type="text" icon={<RollbackOutlined />} loading={setStatus.isPending}
-                          onClick={() => setStatus.mutate({ name: i.name, status: "active" })} />
-                      </Tooltip>
-                    ) : (
-                      <Tooltip title="Archive (removes it from the active grid, keeps it in Git)">
-                        <Button size="small" type="text" icon={<InboxOutlined />} loading={setStatus.isPending}
-                          onClick={() => setStatus.mutate({ name: i.name, status: "archived" })} />
-                      </Tooltip>
-                    ))}
-                  {canEdit && (
-                    <Popconfirm
-                      title={`Retire instance "${i.name}"?`}
-                      description="Stages the removal of its folder and registry entry into your draft; nothing happens on Git until the change is submitted and approved."
-                      okText="Stage retirement"
-                      okButtonProps={{ danger: true }}
-                      onConfirm={() => remove.mutate(i.name)}
-                    >
-                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  )}
-                </Space>
-              );
-            },
+            // Wide enough for two labelled buttons and the overflow. Six
+            // icon-only buttons fitted in less, and cost the reader a guess per
+            // button about which glyph meant archive.
+            width: 250,
+            render: (_v, i) => <InstanceActionBar actions={actionsFor(i)} />,
           },
         ]}
       />
@@ -485,6 +657,35 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               style={{ flex: 1 }}
             >
               <Input placeholder="eu-central-1" />
+            </Form.Item>
+          </div>
+          {/* WHERE IT IS, in the estate's own terms. These two fields are what
+              a site- or zone-scoped parameter is edited BY: set them, and one
+              value can be given to every system at a site instead of typed into
+              four cells and hoped over. An instance left blank here belongs to
+              no group of that kind, and a group edit never reaches it. */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <Form.Item
+              name="site"
+              label="Site"
+              tooltip="The place this system is at. A site-scoped parameter is given one value per site, and it reaches every instance sharing this name."
+              style={{ flex: 1 }}
+            >
+              <AutoComplete
+                options={[...new Set(instances.map((i) => i.site).filter(Boolean))].map((sv) => ({ value: sv as string }))}
+                placeholder="e.g. dallas"
+              />
+            </Form.Item>
+            <Form.Item
+              name="zone"
+              label="Zone"
+              tooltip="The wider grouping this system sits in. A zone-scoped parameter is given one value per zone."
+              style={{ flex: 1 }}
+            >
+              <AutoComplete
+                options={[...new Set(instances.map((i) => i.zone).filter(Boolean))].map((zv) => ({ value: zv as string }))}
+                placeholder="e.g. central"
+              />
             </Form.Item>
           </div>
           <div style={{ display: "flex", gap: 10 }}>

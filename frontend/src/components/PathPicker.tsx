@@ -75,8 +75,12 @@ export default function PathPicker({
         author: "Local user",
       }),
     onSuccess: (p) => {
+      // Staged, like every other change to the catalog. Saying "is now
+      // attached" of something that will be attached when a change request is
+      // published is the sentence that sends somebody looking for a value that
+      // has not landed yet.
       message.success(
-        `${p.name} is now attached to ${primaryBinding(p).file}. Edits write back into the file from here on (committed to Git).`,
+        `Attaching ${p.name} to ${primaryBinding(p).file} is staged in your draft. Submit it for review, and edits write back into that file from then on.`,
         6,
       );
       qc.invalidateQueries();

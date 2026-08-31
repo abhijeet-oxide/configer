@@ -47,18 +47,63 @@ func mutateCatalog(root string, fn func(*model.Catalog) error) error {
 // left unchanged. Bindings is patchable only as a whole (the attach/re-map
 // flow: completing a design-phase parameter, or re-pointing one after a file
 // rename); it is never edited as free text in the UI.
+//
+// The json tags are load-bearing: a patch is what an update-parameter change
+// item CARRIES, so it is stored, reviewed and re-read as JSON, and a review
+// that has to name the fields somebody moved reads them by these names.
 type ParamPatch struct {
-	Type        *model.ParamType
-	ItemType    *model.ParamType
-	Validation  *model.Validation
-	DisplayName *string
-	Description *string
-	Category    *string
-	Scope       *model.Scope
-	Secret      *bool
-	Default     *any
-	Derived     *string
-	Bindings    *[]model.Binding
+	Type        *model.ParamType  `json:"type,omitempty"`
+	ItemType    *model.ParamType  `json:"itemType,omitempty"`
+	Validation  *model.Validation `json:"validation,omitempty"`
+	DisplayName *string           `json:"displayName,omitempty"`
+	Description *string           `json:"description,omitempty"`
+	Category    *string           `json:"category,omitempty"`
+	Scope       *model.Scope      `json:"scope,omitempty"`
+	Secret      *bool             `json:"secret,omitempty"`
+	Default     *any              `json:"default,omitempty"`
+	Derived     *string           `json:"derived,omitempty"`
+	Bindings    *[]model.Binding  `json:"bindings,omitempty"`
+}
+
+// ApplyPatch returns the parameter as it reads once the patch lands, without
+// touching a file. It is what lets a STAGED metadata edit be previewed - in the
+// grid, in the inspector - exactly as a staged value edit is, rather than
+// leaving the form showing the old rules until the change is published.
+func ApplyPatch(pm model.Parameter, patch ParamPatch) model.Parameter {
+	if patch.Type != nil {
+		pm.Type = *patch.Type
+	}
+	if patch.ItemType != nil {
+		pm.ItemType = *patch.ItemType
+	}
+	if patch.Validation != nil {
+		pm.Validation = *patch.Validation
+	}
+	if patch.DisplayName != nil {
+		pm.DisplayName = *patch.DisplayName
+	}
+	if patch.Description != nil {
+		pm.Description = *patch.Description
+	}
+	if patch.Category != nil {
+		pm.Category = *patch.Category
+	}
+	if patch.Scope != nil {
+		pm.Scope = *patch.Scope
+	}
+	if patch.Secret != nil {
+		pm.Secret = *patch.Secret
+	}
+	if patch.Default != nil {
+		pm.Default = *patch.Default
+	}
+	if patch.Derived != nil {
+		pm.Derived = *patch.Derived
+	}
+	if patch.Bindings != nil {
+		pm.Bindings = *patch.Bindings
+	}
+	return pm
 }
 
 // UpdateParameter applies a patch to one parameter in .configer/parameters.yaml

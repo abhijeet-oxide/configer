@@ -12,7 +12,7 @@ import {
 import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
-import { api, expandBinding, primaryBinding, structuralLabel, type ChangeItem, type Grid } from "../api";
+import { api, expandBinding, primaryBinding, revertRef, structuralLabel, type ChangeItem, type Grid } from "../api";
 import { fmtValue } from "../rules";
 import { useUI } from "../store";
 import SubmitChangesButton from "./SubmitChangesButton";
@@ -63,7 +63,12 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
       // folder). Grouping a catalog change under instances.yaml named a file it
       // never touches, in the one panel that exists to say which files move.
       if (it.action === "edit-file") return it.file ?? "(file)";
-      if (it.action === "add-parameter" || it.action === "unmanage-parameter" || it.action === "realign-bindings")
+      if (
+        it.action === "add-parameter" ||
+        it.action === "unmanage-parameter" ||
+        it.action === "update-parameter" ||
+        it.action === "realign-bindings"
+      )
         return ".configer/parameters.yaml";
       if (structuralLabel(it)) return ".configer/instances.yaml";
       const row = rows.get(it.paramId);
@@ -92,7 +97,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
 
   const revert = useMutation({
     mutationFn: (it: ChangeItem) =>
-      api.revertValue(it.action === "edit-file" ? `file:${it.file}` : it.paramId, it.instance),
+      (({ paramId, instance, action }) => api.revertValue(paramId, instance, action))(revertRef(it)),
     onSuccess: () => qc.invalidateQueries(),
     onError: (e: Error) => message.error(e.message),
   });

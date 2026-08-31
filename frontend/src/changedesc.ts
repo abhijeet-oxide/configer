@@ -74,6 +74,40 @@ function plain(v: unknown): unknown {
   return v;
 }
 
+/** A parameter patch's fields, in the words the inspector's form uses for them.
+ *  The patch carries ONLY what moved (the service narrows it before staging),
+ *  so every field here is a real difference. */
+const PARAM_FIELDS: { key: string; label: string }[] = [
+  { key: "displayName", label: "Display name" },
+  { key: "description", label: "Description" },
+  { key: "category", label: "Category" },
+  { key: "type", label: "Data type" },
+  { key: "itemType", label: "Entry type" },
+  { key: "scope", label: "Scope" },
+  { key: "secret", label: "Secret" },
+  { key: "default", label: "Default value" },
+  { key: "derived", label: "Derived from" },
+  { key: "validation", label: "Validation rules" },
+  { key: "bindings", label: "File bindings" },
+];
+
+function paramPatchFields(patch: unknown): NonNullable<ChangeDesc["fields"]> {
+  const p = (patch ?? {}) as Record<string, unknown>;
+  const out: NonNullable<ChangeDesc["fields"]> = [];
+  for (const f of PARAM_FIELDS) {
+    if (!(f.key in p) || p[f.key] === undefined) continue;
+    // Rules and bindings are structures rather than values; naming the field is
+    // the honest summary, and the catalog's own diff sits beside it in the
+    // review for anybody who wants the detail.
+    const after =
+      f.key === "validation" || f.key === "bindings"
+        ? "see the catalog diff"
+        : fmtValue(plain(p[f.key]));
+    out.push({ label: f.label, before: "", after });
+  }
+  return out;
+}
+
 export function describeChange(it: ChangeItem): ChangeDesc {
   const action = it.action ?? "set";
 
@@ -85,6 +119,23 @@ export function describeChange(it: ChangeItem): ChangeDesc {
       kind: "instance",
       subject: it.instance,
       what: src ? `cloned from ${src}` : "empty (no values copied)",
+    };
+  }
+  if (action === "update-parameter") {
+    const name = typeof it.old === "string" && it.old ? it.old : it.paramId;
+    const fields = paramPatchFields(it.new);
+    return {
+      tag: "Parameter rules",
+      tone: "review",
+      kind: "instance",
+      subject: name,
+      // A rule change decides what everybody else may type into a cell, so the
+      // review names the fields rather than saying "updated". An approver
+      // cannot weigh "update parameter admin.port" against anything.
+      what: fields.length
+        ? `${fields.map((f) => f.label.toLowerCase()).join(", ")} changed`
+        : "metadata updated",
+      fields,
     };
   }
   if (action === "unmanage-parameter") {

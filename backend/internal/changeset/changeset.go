@@ -718,6 +718,13 @@ func applyStructural(root string, proj *project.Project, it change.Item) error {
 	case change.ActionUnmanageParameter:
 		_, err := writer.UnmanageParameter(root, it.ParamID)
 		return err
+	case change.ActionUpdateParameter:
+		var patch writer.ParamPatch
+		if err := decodeInto(it.New, &patch); err != nil {
+			return fmt.Errorf("decode parameter patch: %w", err)
+		}
+		_, err := writer.UpdateParameter(root, it.ParamID, patch)
+		return err
 	}
 	return fmt.Errorf("unknown structural action %q", it.Act())
 }
@@ -766,7 +773,7 @@ func prBody(cr *change.ChangeRequest) string {
 		case change.ActionAddParameter:
 			pm := addedParameter(it)
 			fmt.Fprintf(&b, "| start managing `%s` | %s | - | `%v` |\n", pm.Name, inst, pm.Observed[it.Instance])
-		case change.ActionRealignBindings:
+		case change.ActionRealignBindings, change.ActionUpdateParameter, change.ActionUnmanageParameter:
 			fmt.Fprintf(&b, "| %s | %s | - | - |\n", structuralSummary(it), inst)
 		default:
 			fmt.Fprintf(&b, "| `%s` | %s | `%v` | `%v` |\n", it.ParamID, inst, it.Old, it.New)

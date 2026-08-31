@@ -155,6 +155,42 @@ never gate on the score, which exists only for the trend line.
   down the same road a hand edit travels, so the settings the copy carries
   arrive as add-parameter items and an entry identified by a key is refused
   rather than cloned into two entries with one identity.
+- **A parameter's own SETTINGS travel the same road as its value**
+  (`change.ActionUpdateParameter`, `PUT /api/parameters/{id}`). Its rules, its
+  scope, its default and the files it is bound to used to commit straight to the
+  working branch. That is fine on one laptop and impossible anywhere the
+  repository protects its default branch - the push was refused, and it was
+  refused AFTER the form said the rules were saved. A validation rule also
+  decides what everybody else may type into a cell, which is exactly the sort of
+  change a second person should see. So it STAGES: the item carries the patch
+  (`writer.ParamPatch`, json-tagged because it is stored and reviewed as JSON)
+  and the parameter's NAME as `Old`, so the review reads as the setting long
+  after the entry describing it has been rewritten. The review names the FIELDS
+  that moved (`changeset.patchFields`) with `.configer/parameters.yaml`'s own
+  diff beside them, the grid previews the patched parameter and marks the row
+  `pendingMeta`, and a patch that changes nothing WITHDRAWS any staged edit -
+  putting the form back the way it was is how one is undone.
+- **An item's identity includes its KIND** (`change.Action.Kind`). A parameter's
+  metadata edit and its global value edit sit at exactly the same address (this
+  parameter, no instance, no file); keyed on the address alone, renaming a
+  setting silently threw away the value somebody had just typed into it. Value
+  edits (set/reset/exclude) share one kind, as do the instance actions, so
+  setting a cell and then resetting it is still one pending answer. `DELETE
+  /api/values?action=` and `RemoveItemKind` undo one kind without taking the
+  other with it.
+- **A scope-level edit says what it MEANS, and the service works out the
+  writes** (`api/scopeedit.go`, `PUT /api/values` with `scope` + `group`). A
+  value shared by the four machines at one site was edited four times by hand,
+  and the only thing holding those four numbers together was that whoever typed
+  them remembered to. Now the client says "this is the value for site Dallas"
+  and `planScopeEdit` turns it into the writes it implies: `global` on a
+  parameter with a shared-file binding is ONE item; everything else FANS OUT
+  through `stageSetItem`, one item per instance, each with its own baseline,
+  its own type/unit/template/relation checks and its own row in the review - so
+  a group edit is reviewable as what it does to each system rather than as an
+  instruction nobody can check. An instance carrying no value for the grouping
+  field is in no group of that kind and is never swept in; a group scope that
+  does not name WHICH site is refused rather than guessed at.
 - **A branch says what the change is**: `<category>/<owner>/cr-<n>-<slug>`
   (owner omitted when there is no login, i.e. single-user; category is the
   change type - hotfix/feature/bugfix/… - and `change` when none was picked).
@@ -427,6 +463,51 @@ under, so two tables sharing a key share a layout.
 own vocabulary rather than a design-system piece (`ValueDiff`,
 `AppContextChips`).
 
+**Five scopes, kept apart** (`scope.ts`). `zone` and `environment` used to
+collapse into `site` in the UI, on the reasoning that a reader only needs to
+know "a group". They do not: the details panel offered all three, the toolbar
+offered one, and a setting carefully declared zone-scoped came back reading
+"Site-specific" with no way to filter for it - the two halves of the product
+disagreed about what had been saved. `ScopeFacet` is now the five the catalog
+understands, `SCOPE_FACETS` is the one order they are ever listed in (widest to
+narrowest) and `SCOPE_ICON` the one place a scope's glyph is decided; the
+toolbar offers only the scopes the estate actually uses, because a filter that
+can only ever produce an empty screen is not a choice.
+
+**A value that is not held per instance is not EDITED per instance.** Picking a
+scope that is not "instance" gives the grid a shared-value column group -
+one column for global, one per site/zone/environment otherwise (`scopeCols`,
+`ScopeValueCell`) - and the instance cells of any non-instance row stop taking
+edits (`lockFor`, `EditableCell.scopeLock`). A global setting shown in twelve
+columns invited twelve edits and then asked a dialog whether the person had
+meant to change everybody, a question they had already answered by declaring the
+scope; a site-scoped one invited four, with nothing to stop three being typed
+and the fourth forgotten. A locked cell is never a dead end - it says where the
+value is held and leads there - and the per-instance fan-outs ("set on other
+instances", "copy value to one") are gone from its menu, because those are the
+exact edit the lock exists to prevent. The inspector carries the same editor as
+a value/applies-to table (`ScopeValueEditor`), with the per-instance list kept
+underneath as the RECEIPT: proof the twelve systems really do read the one line
+above.
+
+**The inspector has no Edit button.** It was a mode: the panel opened read-only,
+every field was a label, and the fastest way to fix a typo in a description was
+click, wait for the form, find the field again, type, save. The fields ARE the
+form now, in the inspector and in the rules editor alike; a Save/Cancel bar
+(`.cf-savebar`) appears when a field really differs from the catalog, names what
+moved, and goes away again if it is put back - so the panel never quietly holds
+an edit and never offers to save one that says nothing. A viewer gets the same
+form, disabled (a `fieldset`), never a second read-only rendering of the same
+nine fields.
+
+**"Whose version am I looking at" is ONE question, so it has one control over
+both surfaces.** `ChangeViewPicker` sits above Parameters AND Files
+(`ConfigurationPage`), and `GET /api/render/{instance}?change=` answers it for
+bytes exactly as `?change=` answers it for values. A change that is not the
+reader's own draft is read-only in both. Offering the picker over the grid and
+not over the files meant a reviewer could compare a change's values and never
+its diff.
+
 **A name is read from the RIGHT, and what tells it apart carries the weight.**
 The grid shows a parameter's leaf on one line and its route underneath. On a
 real estate that leaves twelve rows saying `cpu` over a grey route, differing by
@@ -438,6 +519,28 @@ once per catalog over EVERY row, not per render and not over the filtered ones:
 what tells a value apart is a property of the estate, not of the current search,
 and a row whose emphasis moves when you type in the search box is worse than no
 emphasis. Weight and contrast only - the grid already spends colour on state.
+
+**Where am I, in a tree taller than the panel.** `CategoryTree` pins the
+ancestors of the topmost row over the scroller, the way an editor pins the
+enclosing function. A name tree over a real catalog is hundreds of rows deep and
+the panel is eight rows tall, so everything below the fold otherwise reads as a
+flat list of `port`, `enabled`, `timeout` with nothing saying which of the four
+`enabled` flags is on screen. The row at the top is read off the DOM (each row
+carries its own `data-tkey`), never computed from a row height the virtual list
+does not guarantee, and the chain comes from the tree itself rather than from
+cutting a key on "." - a key that CONTAINS a dot is one step.
+
+**An instance means the same thing wherever it is clicked.** What can be done to
+one is a LIST (`instanceActions.ts`), built once where the mutations and dialogs
+live and handed to whatever is drawing it: the table's rows, and the dossier the
+topology and the map both open. The table row shows Compare and Edit info as
+labelled buttons with the rest behind three dots; the dossier is a side SHEET,
+not a dialog, so the picture being read against stays on screen. It used to be a
+modal with exactly one action on it, which made clicking a node on the map and
+clicking the same name in the table two different products. Site and zone are
+columns and form fields there for a reason: they are what a group-scoped
+parameter is edited BY, and an estate where nobody filled them in is an estate
+where those scopes silently reach nothing.
 
 **One control per question.** "Which instances am I looking at, in what order,
 and am I reading one on its own" is ONE question, so it has ONE control:

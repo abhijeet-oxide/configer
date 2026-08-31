@@ -9,17 +9,32 @@ import {
   Typography,
   App as AntApp,
 } from "antd";
-import { EditOutlined, RegexOutlined, SaveOutlined } from "../icons";
-import { useState } from "react";
+import { CloseOutlined, EditOutlined, RegexOutlined, SaveOutlined } from "../icons";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type Parameter, type Validation } from "../api";
 import { describeSpans } from "../rules";
+import { useIdentity } from "../identity";
 
 // RuleEditor lets users define a parameter's data type and validation rules:
 // either custom (pattern, min/max, character limits, enum) or picked from the
-// predefined rule library. Saved rules are written to catalog.yaml and
-// immediately enforced by every cell editor and by the server on write.
+// predefined rule library.
+//
+// Two things about how it saves, and both were wrong before.
+//
+// The Save button was always there, and always pressable, whether or not
+// anything had been touched - so "did I change something?" was a question the
+// screen could not answer and pressing it was how you found out. Now the bar
+// appears when a rule really differs from what the catalog says, names what
+// moved, and offers Cancel beside Save; putting a field back the way it was
+// makes it go away again.
+//
+// And the save STAGES. A validation rule decides what everybody else may type
+// into a cell - it is exactly the sort of change a second person should see -
+// and writing it straight to the working branch was also simply impossible
+// anywhere the repository protects its default branch: the push was refused,
+// and it was refused after this form had said the rules were saved.
 
 const typeOptions = [
   "string",
@@ -41,6 +56,20 @@ const typeOptions = [
   "percentage",
   "list",
 ].map((t) => ({ value: t, label: t }));
+
+/** What each validation field is called in this form, so the save bar names
+ *  what the reader typed into rather than the key behind it. */
+const RULE_LABELS: Partial<Record<keyof Validation, string>> = {
+  required: "required",
+  min: "minimum",
+  max: "maximum",
+  pattern: "pattern",
+  minLength: "minimum length",
+  maxLength: "maximum length",
+  enum: "allowed values",
+  minItems: "minimum entries",
+  maxItems: "maximum entries",
+};
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -166,16 +195,45 @@ export default function RuleEditor({
 function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: () => void }) {
   const { message } = AntApp.useApp();
   const qc = useQueryClient();
+  const { canEdit } = useIdentity();
   const presetsQ = useRepoQuery({ queryKey: ["presets"], queryFn: api.presets });
 
+  const committed = useMemo<Validation>(() => ({ ...(param.validation ?? {}) }), [param.validation]);
   const [type, setType] = useState(param.type);
-  const [v, setV] = useState<Validation>({ ...(param.validation ?? {}) });
+  const [v, setV] = useState<Validation>(committed);
+  // The parameter changes underneath after a save (the grid comes back carrying
+  // the staged rules), and the form has to agree with it then rather than keep
+  // offering to save what it already said.
+  useEffect(() => {
+    setType(param.type);
+    setV(committed);
+  }, [param.type, committed]);
+
+  // What actually differs, named the way the fields are labelled. "Unsaved
+  // changes" is the sentence that makes somebody press Cancel to find out what
+  // they were.
+  const changed = useMemo(() => {
+    const out: string[] = [];
+    if (type !== param.type) out.push("data type");
+    const keys = new Set([...Object.keys(committed), ...Object.keys(v)]) as Set<keyof Validation>;
+    for (const k of keys) {
+      if (k === "preset") {
+        if (v.preset !== committed.preset) out.push("predefined rule");
+        continue;
+      }
+      if (JSON.stringify(v[k] ?? null) !== JSON.stringify(committed[k] ?? null)) out.push(RULE_LABELS[k] ?? String(k));
+    }
+    return [...new Set(out)];
+  }, [type, param.type, v, committed]);
+  const dirty = changed.length > 0;
 
   const save = useMutation({
     mutationFn: () => api.updateParameter(param.id, { type, validation: v }),
     onSuccess: () => {
-      message.success("Validation rules saved");
+      message.success("Staged in your draft: submit it for review to apply these rules");
       qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
     },
     onError: (e: Error) => message.error(e.message),
   });
@@ -195,7 +253,15 @@ function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: ()
   const patch = (delta: Partial<Validation>) => setV((old) => ({ ...old, ...delta }));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    // A fieldset, because `disabled` on one natively disables every control
+    // inside it: a viewer reads the same rules and simply cannot type into
+    // them. One form, disabled, rather than a second read-only rendering of the
+    // same nine fields - which is how two descriptions of one rule drift apart.
+    <fieldset
+      className="cf-rules"
+      disabled={!canEdit}
+      style={{ display: "flex", flexDirection: "column", gap: 10, border: 0, padding: 0, margin: 0, minInlineSize: 0 }}
+    >
       {v.schemaRef && <FromSchema v={v} />}
 
       <Field label="Data type">
@@ -353,15 +419,34 @@ function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: ()
         </Space>
       )}
 
-      <Button
-        type="primary"
-        size="small"
-        icon={<SaveOutlined />}
-        loading={save.isPending}
-        onClick={() => save.mutate()}
-      >
-        Save rules
-      </Button>
-    </div>
+      {dirty && canEdit && (
+        <div className="cf-savebar">
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            {changed.length} unsaved: {changed.join(", ")}
+          </Typography.Text>
+          <Space size={6}>
+            <Button
+              size="small"
+              icon={<CloseOutlined />}
+              onClick={() => {
+                setType(param.type);
+                setV(committed);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="primary"
+              size="small"
+              icon={<SaveOutlined />}
+              loading={save.isPending}
+              onClick={() => save.mutate()}
+            >
+              Save all
+            </Button>
+          </Space>
+        </div>
+      )}
+    </fieldset>
   );
 }

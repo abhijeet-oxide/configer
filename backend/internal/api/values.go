@@ -77,17 +77,17 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 		// Scope "global" stages a scope-level edit that applies to every
 		// instance not overriding at a more specific level ("change it for
 		// everyone"). Instance is ignored then.
-		Scope  string `json:"scope"`
+		Scope string `json:"scope"`
+		// Group names WHICH site / zone / environment a group-scoped edit is
+		// for. "these systems" is not an answer on its own, so an edit that
+		// leaves it out is refused rather than guessed at.
+		Group  string `json:"group"`
 		Value  any    `json:"value"`
 		Action string `json:"action"`
 		Author string `json:"author"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "invalid request body")
-		return
-	}
-	if req.Scope != "" && req.Scope != "global" {
-		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "only the global scope supports scope-level edits today")
 		return
 	}
 	p, err := s.load()
@@ -104,6 +104,24 @@ func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	action := change.Action(req.Action)
 	if action == "" {
 		action = change.ActionSet
+	}
+	// A scope-level edit that fans out is staged through the same path a bulk
+	// edit takes: one draft lock, one baseline read, and a row per instance in
+	// the review, each with its own before and after. The alternative - a single
+	// item meaning "and four other systems" - is a change nobody can check.
+	if req.Scope != "" && (isGroupScope(req.Scope) || req.Scope == string(model.ScopeGlobal)) {
+		plan, perr := planScopeEdit(p, param, req.Scope, req.Group)
+		if perr != nil {
+			writeError(w, r, http.StatusUnprocessableEntity, CodeValidationFailed, perr.Error())
+			return
+		}
+		if !plan.Shared {
+			s.stageScopeFanout(w, r, p, param, plan, action, req.Value)
+			return
+		}
+	} else if req.Scope != "" {
+		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "unsupported scope for a scope-level edit")
+		return
 	}
 	if req.Scope == "global" && action == change.ActionExclude {
 		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "exclusion is per-instance; a global value cannot be excluded")
@@ -377,6 +395,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 		Edits   []struct {
 			ParamID  string `json:"paramId"`
 			Scope    string `json:"scope"`
+			Group    string `json:"group"`
 			Instance string `json:"instance"`
 			Value    any    `json:"value"`
 		} `json:"edits"`
@@ -450,6 +469,29 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 					results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: "a global value cannot be reset or excluded; that is a per-instance action"})
 					continue
 				}
+				// A parameter meant for everyone whose only homes are
+				// per-instance files is still meant for everyone: it is written
+				// in each folder rather than refused for how the repository
+				// happens to be laid out.
+				if len(target.BindingsOn(model.LayerBase, model.Instance{})) == 0 {
+					plan, perr := planScopeEdit(p, target, e.Scope, "")
+					if perr != nil {
+						results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: perr.Error()})
+						continue
+					}
+					for _, inst := range plan.Instances {
+						didStage, errMsg := stageSetItem(cr, target, inst.Name, inst, inst, e.Value, rv)
+						if errMsg != "" {
+							results = append(results, result{ParamID: target.ID, Instance: inst.Name, Scope: e.Scope, Error: errMsg})
+							continue
+						}
+						if didStage {
+							staged++
+						}
+						results = append(results, result{ParamID: target.ID, Instance: inst.Name, Scope: e.Scope, OK: true})
+					}
+					continue
+				}
 				didStage, errMsg := stageGlobalItem(cr, target, e.Value, rv)
 				if errMsg != "" {
 					results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: errMsg})
@@ -461,8 +503,30 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 				results = append(results, result{ParamID: target.ID, Scope: e.Scope, OK: true})
 				continue
 			}
+			// A group scope (site / zone / environment) reaches several
+			// instances, each with its own file and its own baseline, so it
+			// expands here into the ordinary per-instance edits it means.
+			if isGroupScope(e.Scope) {
+				plan, perr := planScopeEdit(p, target, e.Scope, e.Group)
+				if perr != nil {
+					results = append(results, result{ParamID: target.ID, Scope: e.Scope, Error: perr.Error()})
+					continue
+				}
+				for _, inst := range plan.Instances {
+					didStage, errMsg := stageSetItem(cr, target, inst.Name, inst, inst, e.Value, rv)
+					if errMsg != "" {
+						results = append(results, result{ParamID: target.ID, Instance: inst.Name, Scope: e.Scope, Error: errMsg})
+						continue
+					}
+					if didStage {
+						staged++
+					}
+					results = append(results, result{ParamID: target.ID, Instance: inst.Name, Scope: e.Scope, OK: true})
+				}
+				continue
+			}
 			if e.Scope != "" {
-				results = append(results, result{ParamID: target.ID, Instance: e.Instance, Scope: e.Scope, Error: "only the global scope supports scope-level edits today"})
+				results = append(results, result{ParamID: target.ID, Instance: e.Instance, Scope: e.Scope, Error: "unsupported scope for a scope-level edit"})
 				continue
 			}
 			inst, ok := p.InstanceByName(e.Instance)
@@ -525,6 +589,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 // @Produce     json
 // @Param       paramId  query string true "Parameter id"
 // @Param       instance query string true "Instance name (empty for a global edit)"
+// @Param       action   query string false "Undo only an item of this action (e.g. update-parameter). Omitted, the first item at that address is undone."
 // @Success     200 {object} OKResponse
 // @Failure     404 {object} APIError "No draft"
 // @Failure     500 {object} APIError
@@ -533,6 +598,10 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	paramID := r.URL.Query().Get("paramId")
 	instance := r.URL.Query().Get("instance")
+	// A parameter's metadata edit and its global value edit sit at the same
+	// address (this parameter, no instance), so an undo that named only the
+	// address could take the wrong one. The caller says which kind it meant.
+	action := change.Action(r.URL.Query().Get("action"))
 	defer s.lockDraft(draftOwner(r))()
 	draft := s.Store.CurrentDraft(draftOwner(r))
 	if draft == nil {
@@ -540,7 +609,7 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
-		cr.RemoveItem(paramID, instance)
+		cr.RemoveItemKind(paramID, instance, action)
 		return nil
 	}); err != nil {
 		writeErr(w, err)
@@ -576,6 +645,7 @@ func (s *Server) revertValues(w http.ResponseWriter, r *http.Request) {
 		Items []struct {
 			ParamID  string `json:"paramId"`
 			Instance string `json:"instance"`
+			Action   string `json:"action,omitempty"`
 		} `json:"items"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -591,7 +661,7 @@ func (s *Server) revertValues(w http.ResponseWriter, r *http.Request) {
 	removed := 0
 	if _, err := s.Store.Update(draft.ID, func(cr *change.ChangeRequest) error {
 		for _, it := range req.Items {
-			if cr.RemoveItem(it.ParamID, it.Instance) {
+			if cr.RemoveItemKind(it.ParamID, it.Instance, change.Action(it.Action)) {
 				removed++
 			}
 		}

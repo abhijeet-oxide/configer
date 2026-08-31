@@ -79,7 +79,41 @@ const (
 	// the grid quietly starts showing one network's values under another's name.
 	// This is the item that keeps the catalog pointing at what it named.
 	ActionRealignBindings Action = "realign-bindings"
+	// ActionUpdateParameter edits a parameter's own metadata - its type, its
+	// validation rules, its scope, its default, the files it is bound to.
+	// ParamID carries the id; New a writer.ParamPatch; Old the parameter as it
+	// stands, so the review can say what moved rather than only what it becomes.
+	//
+	// It used to commit straight to the working branch, which is fine on a
+	// laptop and impossible anywhere a repository protects its default branch:
+	// the write simply failed, and it failed AFTER the form said it had saved.
+	// A rule is configuration like a value is, so it travels the same road -
+	// draft, review, publish - and nothing about a parameter reaches the trunk
+	// without somebody signing it off.
+	ActionUpdateParameter Action = "update-parameter"
 )
+
+// Kind groups actions that are the same KIND of edit to the same target, and it
+// is what an item's identity is really made of.
+//
+// Two edits replace each other when they say something different about one
+// thing: setting a cell then resetting it is one pending answer, not two. Two
+// edits about DIFFERENT things must not, however much of their address they
+// share - and a parameter's metadata and its global value share all of it
+// (paramId, no instance, no file). Keyed on the address alone, renaming a
+// setting silently threw away the value somebody had just typed into it.
+func (a Action) Kind() string {
+	switch a {
+	case "", ActionSet, ActionReset, ActionExclude:
+		return "value"
+	case ActionAddInstance, ActionRemoveInstance, ActionUpdateInstance:
+		return "instance"
+	case ActionUpdateParameter:
+		return "param-meta"
+	default:
+		return string(a)
+	}
+}
 
 // BindingMove is one parameter's in-file path following its entry.
 type BindingMove struct {
@@ -103,7 +137,8 @@ type RealignPayload struct {
 func (it Item) Structural() bool {
 	a := it.Act()
 	return a == ActionAddInstance || a == ActionRemoveInstance || a == ActionUpdateInstance ||
-		a == ActionUnmanageParameter || a == ActionAddParameter || a == ActionRealignBindings
+		a == ActionUnmanageParameter || a == ActionAddParameter || a == ActionRealignBindings ||
+		a == ActionUpdateParameter
 }
 
 // Item is one pending change: a (parameter, instance) cell edit, a
@@ -306,8 +341,10 @@ func (cr *ChangeRequest) SetReviewers(logins []string) {
 // UpsertItem adds or replaces the pending edit for (paramID, instance, file),
 // preserving the original Old value across successive edits of the same cell.
 func (cr *ChangeRequest) UpsertItem(it Item) {
+	kind := it.Act().Kind()
 	for i := range cr.Items {
-		if cr.Items[i].ParamID == it.ParamID && cr.Items[i].Instance == it.Instance && cr.Items[i].File == it.File {
+		if cr.Items[i].ParamID == it.ParamID && cr.Items[i].Instance == it.Instance &&
+			cr.Items[i].File == it.File && cr.Items[i].Act().Kind() == kind {
 			it.Old = cr.Items[i].Old // first observed value stays the baseline
 			cr.Items[i] = it
 			return
@@ -324,10 +361,25 @@ func (cr *ChangeRequest) UpsertItem(it Item) {
 // managing: they exist only because those lines do, and leaving them behind
 // would publish a catalog entry bound to a path the file no longer has.
 func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
+	return cr.removeItem(paramID, instance, "")
+}
+
+// RemoveItemKind is RemoveItem narrowed to one kind of edit (see Action.Kind),
+// which is how a metadata edit is undone without taking the value edit staged
+// on the same parameter with it. An empty kind matches any.
+func (cr *ChangeRequest) RemoveItemKind(paramID, instance string, action Action) bool {
+	if action == "" {
+		return cr.removeItem(paramID, instance, "")
+	}
+	return cr.removeItem(paramID, instance, action.Kind())
+}
+
+func (cr *ChangeRequest) removeItem(paramID, instance, kind string) bool {
 	file := ""
 	if strings.HasPrefix(paramID, "file:") {
 		paramID, file = "", strings.TrimPrefix(paramID, "file:")
 	}
+	matches := func(i int) bool { return kind == "" || cr.Items[i].Act().Kind() == kind }
 	drop := func(i int) bool {
 		undone := cr.Items[i]
 		cr.Items = append(cr.Items[:i], cr.Items[i+1:]...)
@@ -337,7 +389,8 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 		return true
 	}
 	for i := range cr.Items {
-		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance && cr.Items[i].File == file {
+		if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance &&
+			cr.Items[i].File == file && matches(i) {
 			return drop(i)
 		}
 	}
@@ -347,7 +400,7 @@ func (cr *ChangeRequest) RemoveItem(paramID, instance string) bool {
 	// did nothing at all.
 	if paramID != "" && file == "" {
 		for i := range cr.Items {
-			if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance {
+			if cr.Items[i].ParamID == paramID && cr.Items[i].Instance == instance && matches(i) {
 				return drop(i)
 			}
 		}

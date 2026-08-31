@@ -125,6 +125,8 @@ import phSparkle from "@iconify-icons/ph/sparkle";
 import phGlobeHemisphereWest from "@iconify-icons/ph/globe-hemisphere-west";
 import phMapPin from "@iconify-icons/ph/map-pin";
 import phBuildings from "@iconify-icons/ph/buildings";
+import phMapTrifold from "@iconify-icons/ph/map-trifold";
+import phStackSimple from "@iconify-icons/ph/stack-simple";
 
 export interface AppIconProps {
   className?: string;
@@ -179,10 +181,17 @@ export const UnorderedListOutlined = make("list", phListDashes);
 export const InboxOutlined = make("inbox", phTray);
 export const GlobalOutlined = make("global", phGlobe);
 // Scope glyphs, and they read as a sequence from widest to narrowest: a filled
-// hemisphere globe for global (shared everywhere), a row of buildings for a
-// site (a group of systems in one place), a map pin for instance (one specific
-// deployment target).
+// hemisphere globe for global (shared everywhere), stacked planes for an
+// environment (the estate cut into lab / prod / sandbox), a folded map for a
+// zone (a region of it), a row of buildings for a site (a group of systems in
+// one place), and a map pin for instance (one specific deployment target).
+//
+// Five glyphs rather than three, because the product now tells the three group
+// scopes apart: a zone-scoped setting drawn with the site glyph is a setting
+// whose declaration the screen quietly overwrote.
 export const ScopeGlobalOutlined = make("scope-global", phGlobeHemisphereWest);
+export const ScopeEnvironmentOutlined = make("scope-environment", phStackSimple);
+export const ScopeZoneOutlined = make("scope-zone", phMapTrifold);
 export const ScopeSiteOutlined = make("scope-site", phBuildings);
 export const ScopeInstanceOutlined = make("scope-instance", phMapPin);
 export const SettingOutlined = make("setting", phGear);

@@ -2344,7 +2344,7 @@ const docTemplateconfiger = `{
                         "CookieSession": []
                     }
                 ],
-                "description": "Patch a parameter's type, validation, display name, description, category, scope, secret flag, default, or file bindings. Nil fields are left unchanged. Committed directly to the working branch with attribution.",
+                "description": "Stage a patch to a parameter's type, validation, display name, description, category, scope, secret flag, default, derived expression or file bindings. Nil fields are left unchanged. Staged on the caller's draft change request and written to ` + "`" + `.configer/parameters.yaml` + "`" + ` when that change is submitted and published - nothing touches Git here. The response carries the parameter as it WILL read once the change lands.",
                 "consumes": [
                     "application/json"
                 ],
@@ -2354,20 +2354,13 @@ const docTemplateconfiger = `{
                 "tags": [
                     "Grid \u0026 parameters"
                 ],
-                "summary": "Update a parameter",
+                "summary": "Stage a parameter update",
                 "parameters": [
                     {
                         "type": "string",
                         "description": "Parameter id (slug)",
                         "name": "id",
                         "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Catalog revision the edit is based on (from a read's ETag)",
-                        "name": "If-Match",
-                        "in": "header",
                         "required": true
                     },
                     {
@@ -2399,20 +2392,8 @@ const docTemplateconfiger = `{
                             "$ref": "#/definitions/api.APIError"
                         }
                     },
-                    "412": {
-                        "description": "Stale revision; reload and reapply",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
                     "422": {
                         "description": "Unknown validation preset",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "428": {
-                        "description": "Missing If-Match",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -2743,6 +2724,12 @@ const docTemplateconfiger = `{
                         "type": "string",
                         "description": "Serve files at this git ref instead",
                         "name": "ref",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Apply this change request's edits instead of the caller's draft",
+                        "name": "change",
                         "in": "query"
                     }
                 ],
@@ -4027,6 +4014,12 @@ const docTemplateconfiger = `{
                         "name": "instance",
                         "in": "query",
                         "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Undo only an item of this action (e.g. update-parameter). Omitted, the first item at that address is undone.",
+                        "name": "action",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -4848,7 +4841,8 @@ const docTemplateconfiger = `{
                 "edit-file",
                 "unmanage-parameter",
                 "add-parameter",
-                "realign-bindings"
+                "realign-bindings",
+                "update-parameter"
             ],
             "x-enum-varnames": [
                 "ActionSet",
@@ -4860,7 +4854,8 @@ const docTemplateconfiger = `{
                 "ActionEditFile",
                 "ActionUnmanageParameter",
                 "ActionAddParameter",
-                "ActionRealignBindings"
+                "ActionRealignBindings",
+                "ActionUpdateParameter"
             ]
         },
         "change.Approval": {

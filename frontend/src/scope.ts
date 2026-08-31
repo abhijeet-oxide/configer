@@ -1,4 +1,8 @@
 import { bindingsOf, type Binding, type Instance, type Parameter, type Scope } from "./api";
+import {
+  ScopeGlobalOutlined, ScopeEnvironmentOutlined, ScopeZoneOutlined,
+  ScopeSiteOutlined, ScopeInstanceOutlined,
+} from "./icons";
 
 // How widely an edit lands - the first thing anybody needs to know before they
 // change a value, and the one thing a grid of identical numbers cannot say.
@@ -18,10 +22,20 @@ import { bindingsOf, type Binding, type Instance, type Parameter, type Scope } f
 
 export type { Scope };
 
-/** The three answers a reader actually needs: everyone, a group of systems, or
- *  this one system. `zone` and `environment` are groupings like `site` is, and
- *  collapse into it - the question is "a group", the field says which. */
-export type ScopeFacet = "global" | "site" | "instance";
+/** Every scope the product actually means, kept apart.
+ *
+ *  `zone` and `environment` used to collapse into `site` here, on the reasoning
+ *  that the reader only needs to know "a group". They do not: the details panel
+ *  offered all three, the toolbar offered one, and a setting somebody carefully
+ *  declared zone-scoped came back reading "Site-specific" with no way to filter
+ *  for it - so the two halves of the product disagreed about what had been
+ *  saved. A group scope has to say WHICH grouping, because that is the whole
+ *  content of the declaration: it names the instances an edit reaches. */
+export type ScopeFacet = "global" | "site" | "zone" | "environment" | "instance";
+
+/** The group scopes, widest grouping to narrowest, in the one order every list
+ *  of them is drawn in. */
+export const GROUP_FACETS = ["environment", "zone", "site"] as const;
 
 /** Which instance field a group scope is shared across, or null when the scope
  *  is not a group scope. */
@@ -38,6 +52,12 @@ export function groupField(scope: string | undefined): "site" | "zone" | "enviro
   }
 }
 
+/** Whether this facet groups instances (as opposed to reaching all of them or
+ *  exactly one). */
+export function isGroupFacet(f: ScopeFacet): f is "site" | "zone" | "environment" {
+  return f === "site" || f === "zone" || f === "environment";
+}
+
 /** A binding's precedence layer, mirroring model.Binding.EffectiveLayer: an
  *  explicit layer wins, otherwise a templated file is per-instance and a
  *  literal one is shared. */
@@ -51,7 +71,8 @@ export function bindingLayer(b: Binding): string {
 export function effectiveScope(p: Pick<Parameter, "scope" | "bindings">): ScopeFacet {
   const declared = (p.scope ?? "").toLowerCase();
   if (declared === "global") return "global";
-  if (groupField(declared)) return "site";
+  const field = groupField(declared);
+  if (field) return field;
   // Nothing declared it shared, but every place it is written is a file every
   // instance reads. Calling that per-instance would be a lie the first edit
   // exposes.
@@ -60,38 +81,73 @@ export function effectiveScope(p: Pick<Parameter, "scope" | "bindings">): ScopeF
   return "instance";
 }
 
+/** Whether a value for this parameter is edited per instance at all. Anything
+ *  else is edited ONCE, for everyone or for a named group - so the grid stops
+ *  asking somebody to type the same number into four cells and hope. */
+export function editsPerInstance(p: Pick<Parameter, "scope" | "bindings">): boolean {
+  return effectiveScope(p) === "instance";
+}
+
 interface FacetMeta {
   /** how the filter and the column name it */
   label: string;
+  /** the short word a column header or chip uses */
+  short: string;
   /** the tag's colour, in Ant Design's vocabulary */
   color: string;
   /** what it means, in one sentence, on hover */
   explain: string;
+  /** the instance field it groups by, for the group scopes */
+  field?: "site" | "zone" | "environment";
 }
 
-// Three scopes, three hues, and they are far enough apart to be told apart at a
+// Five scopes, five hues, and they are far enough apart to be told apart at a
 // glance down a column of hundreds of rows. Nothing here borrows red, orange or
 // gold: those mean "wrong" or "waiting" everywhere else in the product, and a
 // setting is not wrong for being shared.
 export const SCOPE_META: Record<ScopeFacet, FacetMeta> = {
   global: {
     label: "Global",
+    short: "All",
     color: "purple",
     explain: "One shared value: editing it changes every instance at once",
   },
+  environment: {
+    label: "Environment-specific",
+    short: "Environment",
+    color: "magenta",
+    field: "environment",
+    explain: "Shared by every instance in one environment: editing it changes that environment",
+  },
+  zone: {
+    label: "Zone-specific",
+    short: "Zone",
+    color: "geekblue",
+    field: "zone",
+    explain: "Shared by every instance in one zone: editing it changes that zone",
+  },
   site: {
     label: "Site-specific",
+    short: "Site",
     color: "cyan",
-    explain: "Shared by the instances of one group: editing it changes that group",
+    field: "site",
+    explain: "Shared by every instance at one site: editing it changes that site",
   },
   instance: {
     label: "Instance-specific",
+    short: "Instance",
     color: "blue",
     explain: "Each instance holds its own value: editing it changes that one system",
   },
 };
 
-/** The scope filter's own vocabulary: "all" plus the three facets. */
+/** Every scope, widest reach to narrowest. The one order they are listed in -
+ *  the filter, the scope column's sort, the details panel's picker - because a
+ *  list of scopes that reads in a different order in each place is a list
+ *  nobody learns. */
+export const SCOPE_FACETS: ScopeFacet[] = ["global", "environment", "zone", "site", "instance"];
+
+/** The scope filter's own vocabulary: "all" plus every facet. */
 export type ScopeFilter = "all" | ScopeFacet;
 
 /** Which instances an edit to this parameter really reaches, given the instance
@@ -112,8 +168,8 @@ export function reachOf(
 ): Instance[] {
   const facet = effectiveScope(param);
   if (facet === "global") return instances;
-  const field = groupField(param.scope);
-  if (facet === "site" && field) {
+  const field = SCOPE_META[facet].field;
+  if (field) {
     const keyOf = (i: Instance) => (i[field] ?? "").trim();
     const anchor = instances.find((i) => i.name === focus);
     if (anchor) {
@@ -126,6 +182,13 @@ export function reachOf(
   return one ? [one] : [];
 }
 
+/** One group of instances a group-scoped parameter is edited by: the key
+ *  ("dallas"), and the systems it reaches. */
+export interface ScopeGroup {
+  key: string;
+  instances: Instance[];
+}
+
 /** The groups a set of instances falls into for one group scope, in the order
  *  the instances arrived (which is already the estate order - see
  *  backend/internal/region). Used to say "these three sites" rather than
@@ -133,10 +196,18 @@ export function reachOf(
 export function groupsOf(
   param: Pick<Parameter, "scope">,
   instances: Instance[],
-): { key: string; instances: Instance[] }[] {
-  const field = groupField(param.scope);
+): ScopeGroup[] {
+  return groupsBy(groupField(param.scope), instances);
+}
+
+/** groupsOf against a field named directly, for the columns the grid draws when
+ *  the reader has picked a scope rather than a parameter. */
+export function groupsBy(
+  field: "site" | "zone" | "environment" | null,
+  instances: Instance[],
+): ScopeGroup[] {
   if (!field) return [];
-  const out: { key: string; instances: Instance[] }[] = [];
+  const out: ScopeGroup[] = [];
   const at = new Map<string, number>();
   for (const i of instances) {
     const key = (i[field] ?? "").trim();
@@ -152,6 +223,18 @@ export function groupsOf(
   return out;
 }
 
+/** The instances that carry NO value for a group field, and so belong to no
+ *  group of that kind. They are named rather than quietly dropped: "four of
+ *  your systems have no site" is a fact about the estate somebody has to fix,
+ *  not something for a column to hide. */
+export function ungrouped(
+  field: "site" | "zone" | "environment" | null,
+  instances: Instance[],
+): Instance[] {
+  if (!field) return [];
+  return instances.filter((i) => !(i[field] ?? "").trim());
+}
+
 /** One sentence naming exactly what a save will touch, in the reader's terms.
  *  A count on its own ("3 selected") is not an answer to "and what happens to
  *  everything else". */
@@ -163,8 +246,8 @@ export function reachSummary(
   const facet = effectiveScope(param);
   const n = instances.length;
   if (facet === "global") return `Applies to all ${n} instance${n === 1 ? "" : "s"}`;
-  const field = groupField(param.scope);
-  if (facet === "site" && field) {
+  const field = SCOPE_META[facet].field;
+  if (field) {
     const reached = reachOf(param, instances, focus);
     const keys = [...new Set(reached.map((i) => (i[field] ?? "").trim()).filter(Boolean))];
     if (keys.length === 0) return `No ${field} set on these instances, so this applies per instance`;
@@ -173,3 +256,26 @@ export function reachSummary(
   }
   return focus ? `Applies to ${focus} only` : "Applies to the instances you pick";
 }
+
+/** What a scope edit of this shape reaches, said in the fewest words that are
+ *  still exact. Used on the button that saves it and in the toast afterwards,
+ *  so the promise and the receipt use the same sentence. */
+export function reachLabel(facet: ScopeFacet, group: string | null, count: number): string {
+  const systems = `${count} instance${count === 1 ? "" : "s"}`;
+  if (facet === "global") return `all instances (${systems})`;
+  const field = SCOPE_META[facet].field;
+  if (field && group) return `${field} ${group} (${systems})`;
+  return systems;
+}
+
+/** The glyph for a scope, in ONE place. Three surfaces drew this map by hand -
+ *  the grid's scope column, the group editor, its body - and each of them had to
+ *  be found and corrected when the group scopes stopped collapsing into one. A
+ *  scope that reads as a different thing in a different panel is not a scope. */
+export const SCOPE_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
+  global: ScopeGlobalOutlined,
+  environment: ScopeEnvironmentOutlined,
+  zone: ScopeZoneOutlined,
+  site: ScopeSiteOutlined,
+  instance: ScopeInstanceOutlined,
+};

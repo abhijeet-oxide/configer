@@ -5,6 +5,7 @@ import { api, type Grid, type Instance, type RegionPlace } from "../api";
 import { useRepoQuery } from "../repoQuery";
 import { canonicalEnv, envHex } from "../theme";
 import { InstanceDossier, derive, type InstNode } from "./InstanceTopology";
+import type { InstanceAction } from "./instanceActions";
 import { InlineNotice } from "./ui";
 import { boxOf, geography, inUnitedStates, type Mode } from "./geo/world";
 import { usePanZoom } from "./geo/usePanZoom";
@@ -29,9 +30,11 @@ import { useElementSize } from "../hooks";
 // click, arrow keys - because three sites on one campus are one dot until
 // somebody can get closer.
 //
-// Clicking a pin opens the SAME dossier a topology click opens. An instance has
-// to mean the same thing wherever it is clicked, or each view becomes its own
-// little product with its own rules.
+// Clicking a pin opens the SAME dossier a topology click opens, carrying the
+// same actions the table's rows carry. An instance has to mean the same thing
+// wherever it is clicked, or each view becomes its own little product with its
+// own rules - and it did: the map's dialog offered one action and the table
+// offered six.
 
 interface Pin {
   region: string;
@@ -45,9 +48,14 @@ interface Pin {
 export default function InstancesGeography({
   grid,
   instances,
+  actionsFor,
 }: {
   grid: Grid;
   instances: Instance[];
+  /** what can be done to an instance, built once by the page that owns the
+   *  mutations and dialogs (see instanceActions). Clicking a pin has to lead to
+   *  the same place clicking a row does. */
+  actionsFor?: (i: Instance) => InstanceAction[];
 }) {
   const placesQ = useRepoQuery<RegionPlace[]>({
     queryKey: ["regions"],
@@ -364,11 +372,17 @@ export default function InstancesGeography({
         </>
       )}
 
-      <InstanceDossier
-        node={selected}
-        meta={selected ? instances.find((i) => i.name === selected.name) : undefined}
-        onClose={() => setSelected(null)}
-      />
+      {(() => {
+        const meta = selected ? instances.find((i) => i.name === selected.name) : undefined;
+        return (
+          <InstanceDossier
+            node={selected}
+            meta={meta}
+            actions={meta && actionsFor ? actionsFor(meta) : undefined}
+            onClose={() => setSelected(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

@@ -245,6 +245,7 @@ export type ItemAction =
   | "edit-file"
   | "unmanage-parameter"
   | "add-parameter"
+  | "update-parameter"
   | "realign-bindings";
 
 /** File contents equal ignoring end-of-file whitespace: a trailing-newline
@@ -254,13 +255,15 @@ export const sameContent = (a?: string, b?: string): boolean =>
   a === b || (a ?? "").replace(/\s+$/, "") === (b ?? "").replace(/\s+$/, "");
 
 /** Human label for a structural item ("" for plain cell edits). */
-export const structuralLabel = (it: { action?: string; instance: string; old?: unknown; new?: unknown; file?: string }): string => {
+export const structuralLabel = (it: { paramId?: string; action?: string; instance: string; old?: unknown; new?: unknown; file?: string }): string => {
   if (it.action === "add-instance")
     return `Add instance ${it.instance}${it.old ? ` (clone of ${String(it.old)})` : ""}`;
   if (it.action === "remove-instance") return `Retire instance ${it.instance}`;
   if (it.action === "update-instance") return `Update instance ${it.instance} settings`;
   if (it.action === "edit-file") return `Edited ${it.file ?? "a file"} directly`;
   if (it.action === "add-parameter") return `Start managing ${addedParamName(it)}`;
+  if (it.action === "update-parameter")
+    return `Update ${(typeof it.old === "string" && it.old) || it.paramId || "a parameter"}'s settings`;
   if (it.action === "realign-bindings") {
     const p = realignPayload(it);
     const parts: string[] = [];
@@ -309,6 +312,17 @@ export const reviewItems = (items: ChangeItem[]): ChangeItem[] => {
   if (explained.size === 0) return items;
   return items.filter((it) => !(it.action === "edit-file" && it.file && explained.has(it.file)));
 };
+
+/** How to address one staged item when undoing it. A file edit is addressed by
+ *  its file; everything else by its parameter and instance, plus the ACTION,
+ *  because a parameter's metadata edit and its global value edit sit at exactly
+ *  the same address and an undo that named only the address could take the
+ *  wrong one away. Every surface that offers an undo reads it from here. */
+export const revertRef = (it: ChangeItem): { paramId: string; instance: string; action?: string } => ({
+  paramId: it.action === "edit-file" ? `file:${it.file}` : it.paramId,
+  instance: it.scope === "global" ? "" : it.instance,
+  action: it.action,
+});
 
 /** The name of the parameter an add-parameter item starts managing. The item
  *  carries the whole catalog entry, so the change can read as the setting
@@ -538,6 +552,11 @@ export interface Row {
    *  value in the staged bytes, and the catalog entry arrives when that change
    *  is published */
   pendingAdd?: boolean;
+  /** a draft change rewrites this parameter's own settings - its rules, its
+   *  scope, its default. The row already SHOWS the patched parameter, so this
+   *  is what stops the inspector presenting a rule nobody has approved yet as
+   *  though it were settled. */
+  pendingMeta?: boolean;
 }
 
 export interface CategoryNode {
@@ -800,12 +819,21 @@ export interface Discovery {
 }
 
 /** A region the detection rules can put on a map. */
-/** One edit in a batch. `scope: "global"` stages a single shared-file edit and
- *  ignores `instance`; anything else is an edit to one instance's own files. */
+/** The scopes a value can be edited AT, rather than the instance it happens to
+ *  be looked at from. `global` reaches every instance; `site` / `zone` /
+ *  `environment` reach the instances sharing one value of that field, named by
+ *  `group`. See scope.ts for what each one means to the reader. */
+export type EditScope = "global" | "site" | "zone" | "environment";
+
+/** One edit in a batch. A `scope` stages the edit at that scope and ignores
+ *  `instance`: `global` reaches everyone, a group scope reaches the instances
+ *  in `group`. Without one it is an edit to one instance's own files. */
 export interface BatchEdit {
   paramId: string;
   instance?: string;
-  scope?: "global";
+  scope?: EditScope;
+  /** which site / zone / environment a group-scoped edit is for */
+  group?: string;
   value?: unknown;
 }
 
@@ -1991,14 +2019,23 @@ export const api = {
   ackFindings: () => send<{ ok: boolean }>("POST", rp("/repo/findings/ack")),
   retireFile: (file: string, author?: string) =>
     send<{ ok: boolean; retired: string[] }>("POST", rp("/parameters/retire-file"), { file, author }),
-  render: (instance: string, opts?: { draft?: boolean; ref?: string }) => {
+  // An instance's real repository files. By default the working tree with the
+  // reader's own draft laid over it; `ref` serves them at a git ref, `draft:
+  // false` as committed, and `change` through a NAMED change request - the same
+  // question the grid answers with ?change=, asked about bytes instead of
+  // values, so one picker above both surfaces means one thing.
+  render: (instance: string, opts?: { draft?: boolean; ref?: string; change?: number }) => {
     const qs = new URLSearchParams();
     if (opts?.ref) qs.set("ref", opts.ref);
+    else if (opts?.change) qs.set("change", String(opts.change));
     else if (opts?.draft === false) qs.set("draft", "false");
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
-    return get<{ instance: string; files: { path: string; content: string }[] }>(
-      rp(`/render/${encodeURIComponent(instance)}${suffix}`),
-    );
+    return get<{
+      instance: string;
+      files: { path: string; content: string }[];
+      /** the change these bytes are being read THROUGH, when one was named */
+      viewing?: ViewingChange;
+    }>(rp(`/render/${encodeURIComponent(instance)}${suffix}`));
   },
   stageFileEdit: (p: { instance?: string; path: string; content: string; author?: string }) =>
     put<{
@@ -2033,8 +2070,31 @@ export const api = {
     get<{ file: string; values: ManagedValue[] }>(
       rp(`/files/managed?file=${encodeURIComponent(file)}${instance ? `&instance=${encodeURIComponent(instance)}` : ""}`),
     ),
-  setValue: (p: { instance: string; paramId: string; value?: unknown; action?: CellAction; scope?: "global"; author?: string }) =>
-    put<{ ok: boolean; value: unknown; pending: number; changeId: number }>(rp("/values"), p),
+  // One value, at whatever scope it is really held. A scope that reaches
+  // several instances is fanned out server-side into an edit per instance -
+  // each with its own baseline and its own row in the review - so a group edit
+  // is reviewable as what it does to each system rather than as an instruction
+  // nobody can check. `reach` names what it touched, in the same words the
+  // editor promised before it was saved.
+  setValue: (p: {
+    instance: string;
+    paramId: string;
+    value?: unknown;
+    action?: CellAction;
+    scope?: EditScope;
+    group?: string;
+    author?: string;
+  }) =>
+    put<{
+      ok: boolean;
+      value: unknown;
+      pending: number;
+      changeId: number;
+      staged?: number;
+      instances?: number;
+      reach?: string;
+      results?: { instance: string; ok: boolean; error?: string }[];
+    }>(rp("/values"), p),
   // Fan a single parameter's edit across many instances in one request. Each
   // target reports success or a per-target error; valid targets still stage.
   bulkSetValue: (p: { paramId: string; edits: { instance: string; value?: unknown }[]; action?: CellAction }) =>
@@ -2063,14 +2123,21 @@ export const api = {
       "DELETE", rp(`/instances/${encodeURIComponent(name)}`), { author }),
   deleteParameter: (id: string, author?: string) =>
     send<{ ok: boolean }>("DELETE", rp(`/parameters/${encodeURIComponent(id)}`), { author }),
-  revertValue: (paramId: string, instance: string) =>
+  // `action` narrows the undo to one KIND of staged edit at that address. A
+  // parameter's metadata edit and its global value edit sit at the same address
+  // (this parameter, no instance), so an undo naming only the address could
+  // take the wrong one away.
+  revertValue: (paramId: string, instance: string, action?: string) =>
     send<{ ok: boolean }>(
       "DELETE",
-      rp(`/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}`),
+      rp(
+        `/values?paramId=${encodeURIComponent(paramId)}&instance=${encodeURIComponent(instance)}` +
+          (action ? `&action=${encodeURIComponent(action)}` : ""),
+      ),
     ),
   // Undo many at once: ONE request, one write. Per-item DELETEs serialize on
   // the draft lock, and a selection of eighty took long enough to look broken.
-  revertValues: (items: { paramId: string; instance: string }[]) =>
+  revertValues: (items: { paramId: string; instance: string; action?: string }[]) =>
     send<{ ok: boolean; removed: number; pending: number }>("DELETE", rp("/values/bulk"), { items }),
   /** STAGE "stop managing a parameter" on the draft: when the change is
    *  published the parameter leaves the catalog and the grid, and every file
@@ -2079,6 +2146,16 @@ export const api = {
   unmanageParameter: (id: string, author?: string) =>
     send<{ ok: boolean; staged: string; pending: number; changeId: number }>(
       "POST", rp(`/parameters/${encodeURIComponent(id)}/unmanage`), { author }),
+  /** STAGE a change to a parameter's own settings - its rules, its scope, its
+   *  default, the files it is bound to.
+   *
+   *  It is staged, not committed: a validation rule decides what everybody else
+   *  may type into a cell, and it used to be written straight to the working
+   *  branch, which is impossible anywhere the repository protects its default
+   *  branch. The response is the parameter as it WILL read once the change is
+   *  published, so the form can show what was just typed. Sending a patch that
+   *  changes nothing withdraws any metadata edit already staged - putting the
+   *  form back the way it was is how one is undone. */
   updateParameter: (
     id: string,
     patch: {
@@ -2098,7 +2175,7 @@ export const api = {
       bindings?: Binding[];
       author?: string;
     },
-  ) => putCatalog<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),
+  ) => put<Parameter>(rp(`/parameters/${encodeURIComponent(id)}`), patch),
   repoStatus: () => get<RepoStatus>(rp("/repo/status")),
   repoSync: () => send<RepoStatus>("POST", rp("/repo/sync")),
   // The change list is cursor-paginated server-side ({items, nextCursor,

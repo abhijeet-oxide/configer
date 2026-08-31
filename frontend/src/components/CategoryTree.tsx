@@ -2,7 +2,7 @@ import {
   Dropdown, Modal, Select, Tag, Tooltip, Tree, Typography, Input,
   App as AntApp, type GetRef,
 } from "antd";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { CopyOutlined, EditOutlined, FilterFilled } from "../icons";
 import { api, expandBinding, nameSegments, type Grid, type Instance, type Parameter } from "../api";
@@ -37,6 +37,21 @@ interface TreeItem {
   searchText: string;
   isLeaf?: boolean;
   children?: TreeItem[];
+  /** the node's own last step, in plain text - what the sticky header draws.
+   *  The `title` above is a React node wrapped in a context menu, and a header
+   *  that re-rendered one of those would carry its menu, its tooltip and its
+   *  click handlers to a place none of them belong. */
+  seg?: string;
+  /** parameters under this node, for the count the sticky header repeats */
+  count?: number;
+}
+
+/** One line of the sticky ancestor header. */
+interface StickyRow {
+  key: string;
+  seg: string;
+  count: number;
+  depth: number;
 }
 
 // An indexed step - net-info[3] - is one ENTRY of a repeated structure. That is
@@ -189,6 +204,27 @@ function ancestorPrefixes(parts: string[]): string[] {
   return out;
 }
 
+// Where each node hangs from, built from the tree itself rather than by cutting
+// a key on "." - for the same reason the rest of this panel does not: a key
+// that CONTAINS a dot ("query.dependencies") is one step, and slicing it in
+// half names an ancestor that has never existed.
+function parentIndex(items: TreeItem[]): Map<string, TreeItem[]> {
+  const chains = new Map<string, TreeItem[]>();
+  const walk = (list: TreeItem[], trail: TreeItem[]) => {
+    for (const it of list) {
+      chains.set(it.key, trail);
+      if (it.children?.length) walk(it.children, [...trail, it]);
+    }
+  };
+  walk(items, []);
+  return chains;
+}
+
+// How many ancestors the header will show before it gives up and says "…".
+// Four is where a header stops being orientation and starts being the tree
+// again: past that it eats the rows it exists to explain.
+const STICKY_MAX = 4;
+
 export default function CategoryTree({ grid }: { grid: Grid }) {
   const { categoryKey, setCategory, groupKey, setGroup, openGroupEditor, selectParam, selectedParamId, setJump, filters, setFilters } = useUI();
   const [query, setQuery] = useState("");
@@ -266,9 +302,15 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             key: `p:${p.id}`,
             isLeaf: true,
             searchText: p.name.toLowerCase(),
+            seg: p.leaf,
             title: (
+              // data-tkey is how the sticky header works out which row is at
+              // the top of the scroller: the virtual list renders whatever
+              // slice it likes, so the DOM has to be able to say which node
+              // each row IS rather than leaving it to arithmetic on a row
+              // height nothing guarantees.
               <Tooltip title={p.name} placement="right">
-                <Typography.Text style={{ fontSize: 12 }} className="mono" ellipsis>
+                <Typography.Text data-tkey={`p:${p.id}`} style={{ fontSize: 12 }} className="mono" ellipsis>
                   {p.leaf}
                 </Typography.Text>
               </Tooltip>
@@ -278,7 +320,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         const c = e.node;
         const entry = dupEntries.get(c.prefix);
         const label = (
-          <span style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+          <span data-tkey={c.prefix} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
             <span>{c.seg}</span>
             <Typography.Text type="secondary" style={{ fontSize: 11 }}>{c.count}</Typography.Text>
           </span>
@@ -287,6 +329,8 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         return {
           key: c.prefix,
           searchText: c.prefix.toLowerCase(),
+          seg: c.seg,
+          count: c.count,
           // Right-click is where the instructions live, so that clicking a
           // folder can stay the harmless thing it looks like. Duplicating is
           // here too: an entry of a repeated structure answers "give me
@@ -329,7 +373,12 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         };
       });
     return [
-      { key: "__all__", searchText: "all parameters", title: <b>All Parameters ({grid.rows.length})</b> },
+      {
+        key: "__all__",
+        searchText: "all parameters",
+        seg: "All Parameters",
+        title: <b data-tkey="__all__">All Parameters ({grid.rows.length})</b>,
+      },
       ...toItems(nameRoot),
     ];
   }, [nameRoot, dupEntries, grid.rows.length, categoryKey, openGroupEditor, setCategory, setGroup, selectParam]);
@@ -361,6 +410,68 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
     walk(shown.slice(1));
     return n;
   }, [filter, shown]);
+
+  // WHERE AM I - the header that does not scroll away.
+  //
+  // A name tree over a real catalog is hundreds of rows deep and the panel is
+  // eight rows tall, so the folder a setting belongs to leaves the screen long
+  // before the setting does. Everything below then reads as a flat list of
+  // leaves: `port`, `enabled`, `timeout`, with no way to tell which of the four
+  // `enabled` flags is on screen without scrolling back up to look - which
+  // loses the place you were trying to keep.
+  //
+  // So the ancestors of the topmost row stay pinned above it, the way an editor
+  // pins the enclosing function. They are the real nodes: clicking one selects
+  // that branch exactly as clicking it in the tree does.
+  const [sticky, setSticky] = useState<StickyRow[]>([]);
+  const chains = useMemo(() => parentIndex(shown), [shown]);
+  const holderRef = useRef<HTMLElement | null>(null);
+
+  // Which node is at the top, read off the DOM rather than computed from a row
+  // height. The list is virtual, so the rendered rows are an arbitrary slice of
+  // the tree; each row carries its own key (data-tkey) precisely so this does
+  // not have to guess how tall a row is or where the slice starts.
+  const recompute = useCallback(() => {
+    const holder = holderRef.current;
+    if (!holder) return;
+    const top = holder.getBoundingClientRect().top;
+    let key: string | null = null;
+    for (const row of holder.querySelectorAll<HTMLElement>(".ant-tree-treenode")) {
+      if (row.getBoundingClientRect().bottom > top + 1) {
+        key = row.querySelector("[data-tkey]")?.getAttribute("data-tkey") ?? null;
+        break;
+      }
+    }
+    // The chain ABOVE the top row. The row itself is not repeated: it is on
+    // screen, an inch below, and a header that echoed it would cost a line to
+    // say what the reader can already see.
+    const trail = key ? (chains.get(key) ?? []) : [];
+    const rows: StickyRow[] = trail
+      .filter((t) => t.key !== "__all__")
+      .map((t, i) => ({ key: t.key, seg: t.seg ?? t.key, count: t.count ?? 0, depth: i }));
+    setSticky((prev) => {
+      const same =
+        prev.length === rows.length && prev.every((p, i) => p.key === rows[i].key);
+      return same ? prev : rows;
+    });
+  }, [chains]);
+
+  // The scroller belongs to rc-virtual-list, so it is found rather than owned.
+  // Re-found whenever the drawn tree changes: a search that empties the tree
+  // unmounts the holder, and a listener on a detached node is a header frozen
+  // on the branch somebody was looking at before they typed.
+  useEffect(() => {
+    const box = ref.current;
+    const holder = box?.querySelector<HTMLElement>(".ant-tree-list-holder") ?? null;
+    holderRef.current = holder;
+    if (!holder) {
+      setSticky([]);
+      return;
+    }
+    recompute();
+    holder.addEventListener("scroll", recompute, { passive: true });
+    return () => holder.removeEventListener("scroll", recompute);
+  }, [ref, recompute, shown, height, expandedKeys]);
 
   // Reverse sync: when a parameter becomes selected (typically by clicking a
   // grid row), reveal and scroll to its leaf here.
@@ -411,7 +522,39 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             </Tag>
           )}
         </div>
-        <div ref={ref} style={{ flex: 1, minHeight: 0 }}>
+        <div ref={ref} style={{ flex: 1, minHeight: 0, position: "relative" }}>
+          {/* The pinned ancestors. Absolute over the scroller rather than a row
+              in it: the tree is virtual and owns its own layout, and a header
+              that took height from the list would change how many rows fit
+              every time somebody scrolled. */}
+          {sticky.length > 0 && (
+            <div className="cat-sticky" aria-hidden={false}>
+              {sticky.length > STICKY_MAX && (
+                <div className="cat-sticky-row cat-sticky-more">…</div>
+              )}
+              {sticky.slice(-STICKY_MAX).map((row) => (
+                <button
+                  key={row.key}
+                  type="button"
+                  className={"cat-sticky-row" + (groupKey === row.key ? " is-on" : "")}
+                  style={{ paddingInlineStart: 6 + Math.min(row.depth, STICKY_MAX) * 10 }}
+                  title={row.key}
+                  onClick={() => {
+                    // Exactly what clicking the branch in the tree does: pick
+                    // its rows out in the grid and scroll the panel back to it.
+                    setGroup(row.key);
+                    selectParam(null);
+                    if (categoryKey && row.key !== categoryKey && !row.key.startsWith(categoryKey + "."))
+                      setCategory(null);
+                    treeRef.current?.scrollTo({ key: row.key, align: "top" });
+                  }}
+                >
+                  <span className="cat-sticky-seg">{row.seg}</span>
+                  {row.count > 0 && <span className="cat-sticky-n">{row.count}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <Tree<TreeItem>
             ref={treeRef}
             treeData={shown}

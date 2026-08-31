@@ -24,8 +24,6 @@ import {
   QuestionCircleOutlined,
   SearchOutlined,
   GlobalOutlined,
-  ScopeGlobalOutlined,
-  ScopeSiteOutlined,
   ScopeInstanceOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
@@ -58,6 +56,7 @@ import {
   bindingsOf,
   expandBinding,
   type ChangeItem,
+  type EditScope,
   type Grid,
   type Instance,
   nameSegments,
@@ -66,9 +65,14 @@ import {
   type Row,
 } from "../api";
 import { effectiveRules, fmtValue, typeLabel } from "../rules";
-import { effectiveScope, SCOPE_META, type ScopeFacet, type ScopeFilter } from "../scope";
+import {
+  effectiveScope, groupsBy, isGroupFacet, reachLabel,
+  SCOPE_FACETS, SCOPE_ICON, SCOPE_META, ungrouped,
+  type ScopeFacet, type ScopeFilter, type ScopeGroup,
+} from "../scope";
 import { buildNameTree, inGroup, nameTreeOrder } from "../paramtree";
 import GroupEditorModal from "./GroupEditorModal";
+import FileExplorer from "./FileExplorer";
 import {
   CellView,
   EnumEditor,
@@ -90,6 +94,7 @@ function EditableCell({
   cell,
   param,
   instance,
+  scopeLock,
   allInstances,
   presets,
   pendingItem,
@@ -107,10 +112,25 @@ function EditableCell({
   onFind,
   onReplace,
   onOpenFile,
+  onEditShared,
 }: {
   cell: Cell | undefined;
   param: Parameter;
   instance: string;
+  /** Set when this parameter is NOT edited per instance: the short phrase
+   *  naming what one edit to it REACHES ("every instance", "site dallas").
+   *  Everything that has to say so composes its own sentence from it, so the
+   *  tooltip and the menu item read as English rather than as one string
+   *  wedged into two grammars.
+   *
+   *  A global setting shown in twelve columns invited twelve edits, and the
+   *  first one asked a dialog whether the person had meant to change everybody
+   *  - a question they had already answered by declaring the scope. Worse, a
+   *  site-scoped one invited four, and there was nothing anywhere to stop three
+   *  of them being typed and the fourth forgotten. So the cell shows the value
+   *  and does not take an edit; the shared-value column and the inspector do,
+   *  once, for the whole reach. */
+  scopeLock?: string;
   allInstances: string[];
   presets?: PresetRule[];
   pendingItem?: ChangeItem;
@@ -133,6 +153,9 @@ function EditableCell({
   onReplace: (value: string) => void;
   /** open the file this cell's value lives in (Files workspace) */
   onOpenFile?: () => void;
+  /** open the inspector on this parameter, which is where a scope-held value is
+   *  edited once for its whole reach */
+  onEditShared?: () => void;
 }) {
   // Whether this cell's context menu has ever been asked for, and whether it is
   // showing. See the bottom of this component: the menu is not mounted until
@@ -142,10 +165,12 @@ function EditableCell({
   if (!cell) return <span style={{ opacity: 0.3 }}>-</span>;
   const rules = effectiveRules(param, presets);
   // A cell is editable when the PARAMETER allows it (not n/a, not deprecated,
-  // not a template expression) AND this person may change configuration here.
-  // Everything below keys off this one value, so a viewer gets a grid that
-  // simply has no edit affordances rather than controls that fail on use.
-  const editable = canEdit && cell.editable;
+  // not a template expression), when its value is held per instance at all, AND
+  // when this person may change configuration here. Everything below keys off
+  // this one value, so a viewer - and a reader looking at a shared setting -
+  // gets a grid that simply has no edit affordances rather than controls that
+  // fail on use.
+  const editable = canEdit && cell.editable && !scopeLock;
 
   if (editing) {
     if (param.type === "list") {
@@ -182,16 +207,28 @@ function EditableCell({
   const menuItems = [
     ...(canEdit && revertible ? [{ key: "undo", label: "Undo pending change" }] : []),
     ...(editable ? [{ key: "edit", label: "Edit value" }] : []),
+    // A locked cell is not a dead end. It says where the value is held and
+    // leads there, because "you cannot change this here" without "and here is
+    // where you can" is the most annoying sentence a product can say.
+    ...(canEdit && scopeLock && onEditShared
+      ? [{ key: "editshared", label: `Edit the value for ${scopeLock}…` }]
+      : []),
+
     ...(editable && cell.source === "instance"
       ? [{ key: "reset", label: "Reset to inherited (remove from this instance's files)" }]
       : []),
     ...(editable && cell.set
       ? [{ key: "exclude", label: "Remove from this instance (delete the key)" }]
       : []),
-    ...(canEdit && cell.set && cell.value != null && allInstances.length > 1
+    // Both of these WRITE per instance, so a cell whose value is not held per
+    // instance must not offer them: fanning a global setting out to twelve
+    // instance files is the exact edit the lock exists to prevent, and offering
+    // it here would have undone the rule from inside the same menu that
+    // explains it.
+    ...(canEdit && !scopeLock && cell.set && cell.value != null && allInstances.length > 1
       ? [{ key: "bulkset", label: "Set on other instances…" }]
       : []),
-    ...(canEdit && cell.set && allInstances.length > 1
+    ...(canEdit && !scopeLock && cell.set && allInstances.length > 1
       ? [{
           key: "copy",
           label: "Copy value to one…",
@@ -254,11 +291,13 @@ function EditableCell({
         title={
           cell.templated
             ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."
-            : // A staged cell carries its own richer hover (before → after, plus
-              // the same invitation), so the native hint would double up.
-              editable && !pendingItem
-              ? "Double-click to edit · right-click for actions"
-              : undefined
+            : scopeLock
+              ? `Not held here: this value is shared by ${scopeLock}. Right-click to change it for all of them at once.`
+              : // A staged cell carries its own richer hover (before → after, plus
+                // the same invitation), so the native hint would double up.
+                editable && !pendingItem
+                ? "Double-click to edit · right-click for actions"
+                : undefined
         }
         onDoubleClick={editable ? onStartEdit : undefined}
       >
@@ -298,6 +337,7 @@ function EditableCell({
           domEvent.stopPropagation();
           if (key === "undo") onUndo();
           else if (key === "edit") onStartEdit();
+          else if (key === "editshared") onEditShared?.();
           else if (key === "bulkset") onBulkSet();
           else if (key === "reset") onAction("reset");
           else if (key === "exclude") onAction("exclude");
@@ -310,6 +350,136 @@ function EditableCell({
     >
       {body}
     </Dropdown>
+  );
+}
+
+// SCOPE COLUMN CELL: one value, for everyone or for one named group.
+//
+// A setting shared by the four machines at one site was edited four times, by
+// hand, and nothing on the screen held those four numbers together - the only
+// thing that did was whoever typed them remembering to type all four. The
+// fourth got missed, and the grid could not tell you so: four cells reading
+// different numbers looks exactly like four instances that were meant to
+// differ.
+//
+// So when the reader has said which scope they are working at, the grid stops
+// asking per instance and asks once per GROUP. The cell shows what that group
+// holds today - or says the group disagrees, which is itself the answer to a
+// question nobody could ask before - and editing it writes the value to every
+// instance in the group, in one request, with a row per system in the review.
+function ScopeValueCell({
+  row,
+  group,
+  facet,
+  presets,
+  canEdit,
+  editing,
+  pending,
+  onStartEdit,
+  onCancel,
+  onCommit,
+}: {
+  row: Row;
+  /** the instances this one value covers, and what the group is called */
+  group: ScopeGroup;
+  facet: ScopeFacet;
+  presets?: PresetRule[];
+  canEdit: boolean;
+  editing: boolean;
+  /** a staged edit exists for at least one instance in the group */
+  pending: boolean;
+  onStartEdit: () => void;
+  onCancel: () => void;
+  onCommit: (v: unknown) => void;
+}) {
+  const param = row.param;
+  const cells = group.instances.map((i) => row.cells[i.name]).filter(Boolean) as Cell[];
+  // What the group holds. "Mixed" is a real answer, not a failure to find one:
+  // it says the systems that are supposed to agree do not, which is exactly
+  // what somebody about to set a shared value needs to know first.
+  const rendered = new Set(cells.map((c) => (c.set ? fmtValue(c.value) : "\u0000absent")));
+  const mixed = rendered.size > 1;
+  const first = cells[0];
+  const editable =
+    canEdit &&
+    cells.length > 0 &&
+    cells.every((c) => c.editable) &&
+    !cells.some((c) => c.templated);
+
+  if (editing) {
+    const rules = effectiveRules(param, presets);
+    const initial = mixed ? undefined : first?.value;
+    if (param.type === "list")
+      return <ListEditor initial={initial} rules={rules} onCommit={onCommit} onCancel={onCancel} />;
+    if (param.type === "integer" || param.type === "number")
+      return (
+        <NumberEditor
+          initial={initial}
+          rules={rules}
+          integer={param.type === "integer"}
+          onCommit={onCommit}
+          onCancel={onCancel}
+        />
+      );
+    if (param.type === "enum" && rules.enum?.length)
+      return <EnumEditor initial={initial} options={rules.enum} onCommit={onCommit} onCancel={onCancel} />;
+    return (
+      <StringEditor
+        initial={initial}
+        rules={rules}
+        paramName={param.displayName || param.name}
+        onCommit={onCommit}
+        onCancel={onCancel}
+      />
+    );
+  }
+
+  const reach = reachLabel(facet, group.key || null, group.instances.length);
+  if (param.type === "boolean" && editable && !mixed && first?.set) {
+    return (
+      <span onClick={(e) => e.stopPropagation()} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+        <Switch size="small" checked={!!first.value} onChange={(v) => onCommit(v)} />
+        {pending && <span className="cf-scope-pending" title="Staged in your draft" />}
+      </span>
+    );
+  }
+  return (
+    <div
+      className="cell-body"
+      style={{ minHeight: 20, cursor: editable ? "text" : undefined }}
+      title={
+        editable
+          ? `Double-click to set this for ${reach}`
+          : cells.some((c) => c.templated)
+            ? "Template expression, computed when the chart renders. Edit it in file mode to keep the template."
+            : undefined
+      }
+      onDoubleClick={editable ? onStartEdit : undefined}
+    >
+      {cells.length === 0 ? (
+        <span style={{ opacity: 0.3 }}>-</span>
+      ) : mixed ? (
+        // Not an error, and deliberately not red: these systems are allowed to
+        // disagree until somebody says they should not. It is a fact, and
+        // setting the field is how it stops being true.
+        <Tooltip
+          title={group.instances
+            .map((i) => `${i.name}: ${row.cells[i.name]?.set ? fmtValue(row.cells[i.name]!.value) : "absent"}`)
+            .join("\n")}
+        >
+          <Tag color="warning" style={{ marginInlineEnd: 0 }}>
+            {rendered.size} different values
+          </Tag>
+        </Tooltip>
+      ) : !first?.set ? (
+        <Tag color="default" style={{ marginInlineEnd: 0 }}>absent</Tag>
+      ) : (
+        <span className="mono" style={{ fontSize: 12, color: first.valid === false ? c.danger : undefined }}>
+          {fmtValue(first.value)}
+        </span>
+      )}
+      {pending && <span className="cf-scope-pending" title="Staged in your draft" />}
+    </div>
   );
 }
 
@@ -549,6 +719,18 @@ function hl(text: string | undefined, q: string): React.ReactNode {
 //
 // It sits beside the instance picker rather than inside the settings gear
 // because it is context ("what am I looking at"), not a view option.
+// The parameters toolbar's file filter, drawn as the repository's own FOLDERS.
+//
+// It was a flat list of checkboxes: the file name on one line, its whole path
+// underneath in grey. On a GitOps repository that means fourteen rows all
+// reading `values.yaml`, told apart by a path the eye has to read backwards -
+// and the folder each one lives in, which is the only thing that distinguishes
+// them, was the least legible thing on the row.
+//
+// So it is a tree, the same shape the Files workspace shows and the same shape
+// the repository has: folders nest, a chain with one child collapses into one
+// row, and a folder's checkbox reflects and toggles everything under it. The
+// file name is the row; where it lives is where it sits.
 function FilePicker({
   choices,
   selected,
@@ -560,14 +742,18 @@ function FilePicker({
 }) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
-  const picked = useMemo(() => new Set(selected), [selected]);
   // A file the catalog no longer writes to must not keep filtering invisibly.
   const live = useMemo(
-    () => selected.filter((f) => choices.some((c) => c.file === f)),
+    () => selected.filter((f) => choices.some((cc) => cc.file === f)),
     [selected, choices],
   );
   const needle = q.trim().toLowerCase();
-  const shown = needle ? choices.filter((c) => c.file.toLowerCase().includes(needle)) : choices;
+  const shown = useMemo(
+    () => (needle ? choices.filter((cc) => cc.file.toLowerCase().includes(needle)) : choices),
+    [choices, needle],
+  );
+  const countOf = useMemo(() => new Map(choices.map((cc) => [cc.file, cc.count])), [choices]);
+  const checked = useMemo(() => new Set(live), [live]);
 
   if (choices.length < 2) return null;
 
@@ -585,7 +771,7 @@ function FilePicker({
       onOpenChange={setOpen}
       placement="bottomLeft"
       popupRender={() => (
-        <div className="cf-pop" style={{ width: 340, maxWidth: "90vw" }}>
+        <div className="cf-pop" style={{ width: 380, maxWidth: "92vw" }}>
           <div style={{ padding: 8, borderBottom: "1px solid var(--border)" }}>
             <Input
               size="small"
@@ -597,60 +783,27 @@ function FilePicker({
               onChange={(e) => setQ(e.target.value)}
             />
           </div>
-          <div style={{ maxHeight: 320, overflow: "auto", padding: 4 }}>
-            {shown.length === 0 && (
+          <div style={{ maxHeight: 340, overflow: "auto", padding: 4 }}>
+            {shown.length === 0 ? (
               <Typography.Text type="secondary" style={{ fontSize: 12, padding: 8, display: "block" }}>
                 No file matches “{q.trim()}”.
               </Typography.Text>
+            ) : (
+              // THE product's file tree, not a second one: the same component
+              // the Files workspace, the wizards and the path picker draw, so a
+              // folder looks and behaves the same wherever anybody meets one.
+              // The per-file count rides in its `meta` slot.
+              <FileExplorer
+                files={shown.map((cc) => cc.file)}
+                checked={checked}
+                onCheck={(next) => onChange([...next])}
+                meta={(path) => (
+                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                    {countOf.get(path) ?? 0}
+                  </Typography.Text>
+                )}
+              />
             )}
-            {shown.map((c) => (
-              <label
-                key={c.file}
-                className="cf-filepick-row"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "4px 6px",
-                  cursor: "pointer",
-                  borderRadius: 4,
-                }}
-              >
-                <Checkbox
-                  checked={picked.has(c.file)}
-                  onChange={() =>
-                    onChange(
-                      picked.has(c.file) ? live.filter((f) => f !== c.file) : [...live, c.file],
-                    )
-                  }
-                />
-                {/* The path is read from the RIGHT: the file name is what
-                    tells one document from another, the folders are context. */}
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <span className="mono" style={{ fontSize: 12, display: "block", lineHeight: 1.3 }}>
-                    {c.file.split("/").pop()}
-                  </span>
-                  <span
-                    className="mono"
-                    style={{
-                      fontSize: 10,
-                      color: "var(--text-3)",
-                      display: "block",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                      direction: "rtl",
-                      textAlign: "left",
-                    }}
-                  >
-                    {c.file}
-                  </span>
-                </span>
-                <Typography.Text type="secondary" style={{ fontSize: 11, flexShrink: 0 }}>
-                  {c.count}
-                </Typography.Text>
-              </label>
-            ))}
           </div>
           {live.length > 0 && (
             <div style={{ padding: 6, borderTop: "1px solid var(--border)" }}>
@@ -962,19 +1115,24 @@ function retiredRank(r: Row): number {
 }
 
 // Widest reach to narrowest: the only order in which a scope column tells the
-// reader anything.
-const SCOPE_ORDER: Record<ScopeFacet, number> = { global: 0, site: 1, instance: 2 };
-const SCOPE_ICON: Record<ScopeFacet, typeof ScopeGlobalOutlined> = {
-  global: ScopeGlobalOutlined,
-  site: ScopeSiteOutlined,
-  instance: ScopeInstanceOutlined,
-};
+// reader anything. It is the ONE order (scope.ts), so the column, the filter
+// and the details panel list the scopes the same way.
+const SCOPE_ORDER: Record<ScopeFacet, number> = SCOPE_FACETS.reduce(
+  (m, f, i) => {
+    m[f] = i;
+    return m;
+  },
+  {} as Record<ScopeFacet, number>,
+);
 
 // Scope is wide enough for its longest label ("Instance-specific") plus its
 // glyph. At 96 the tag ran out of its own column and into the description
 // beside it, which is how a column of hundreds of rows turned into two columns
 // of overlapping text.
 const META_DEFAULTS: Record<string, number> = { param: 240, type: 104, scope: 150, desc: 140 };
+// A shared-value column is wide enough for a value plus the "N different
+// values" tag that stands in for one when the group disagrees.
+const SCOPE_VALUE_W = 168;
 const META_MOVABLE = ["type", "scope", "desc"];
 
 // metaHeader wraps a plain column title with the same resize strip the instance
@@ -1269,6 +1427,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // look the same whether that is one shared line or twelve copies. So it is a
   // dimension of the view, not a column somebody sorts by.
   const [scopeFilter, setScopeFilter] = useState<ScopeFilter>("all");
+  // Which scope cell is open for editing, keyed "<paramId>|<groupKey>". A
+  // separate piece of state from the instance-cell one: they are different
+  // columns writing to different places, and sharing the key would open both.
+  const [scopeEditing, setScopeEditing] = useState<string | null>(null);
   // one-shot flash highlight after a jump from the left-hand trees, the
   // health map, or an application's details panel (kind "cell": row+column)
   const [flash, setFlash] = useState<{ kind: "param" | "instance" | "cell"; id: string; inst?: string; n?: number } | null>(null);
@@ -1388,6 +1550,35 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     },
   });
 
+  // Writing at a SCOPE: one value, and the service works out which instances it
+  // reaches. It is deliberately not a bulk request assembled here - the reach
+  // of a scope is the service's to decide, or the grid and the details panel
+  // would each carry their own copy of the rule and could disagree about which
+  // systems a value for "site dallas" touches.
+  const scopeSave = useMutation({
+    mutationFn: (p: { paramId: string; scope: EditScope; group?: string; value: unknown }) =>
+      api.setValue({ instance: "", paramId: p.paramId, scope: p.scope, group: p.group, value: p.value }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["grid"] });
+      qc.invalidateQueries({ queryKey: ["draft"] });
+      qc.invalidateQueries({ queryKey: ["changes"] });
+      qc.invalidateQueries({ queryKey: ["render"] });
+      const failed = (res.results ?? []).filter((r) => !r.ok);
+      // The receipt uses the same words the cell promised before it was typed
+      // into, so "this applies to site dallas" and "applied to site dallas" are
+      // recognisably the same sentence.
+      const where = res.reach ? ` for ${res.reach}` : "";
+      if (failed.length) {
+        message.warning(`Staged ${res.staged ?? 0}${where}; ${failed.length} refused (${failed[0].error})`, 6);
+      } else if ((res.staged ?? 1) === 0) {
+        message.info(`Already${where ? ` the value${where}` : " that value"} - nothing to stage.`);
+      } else {
+        message.success(`Staged${where}`);
+      }
+    },
+    onError: (e: Error) => message.error(`Rejected: ${e.message}`),
+  });
+
   // Canonical order matching the left parameter tree - by walking the very same
   // tree, which is the only way the two can be guaranteed to agree.
   //
@@ -1483,6 +1674,28 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
     [facetOf],
   );
 
+  // Whether an instance CELL may be typed into, and if not, the sentence naming
+  // where the value is really held. It is a function of the parameter and the
+  // instance rather than of the current filter: a shared setting is shared
+  // whichever scope the reader happens to be looking through, and a cell that
+  // took an edit under one filter and refused it under another would be a
+  // product with two different rules about the same value.
+  const lockFor = useCallback(
+    (param: Parameter, inst: Instance): string | undefined => {
+      const f = facetOf.get(param.id) ?? effectiveScope(param);
+      if (f === "instance") return undefined;
+      if (f === "global") return "every instance";
+      const field = SCOPE_META[f].field;
+      const key = field ? (inst[field] ?? "").trim() : "";
+      // An instance with no site is in no site group. Its value IS its own, so
+      // it stays editable - sweeping it into a group it does not belong to
+      // would be the one mistake this rule exists to prevent.
+      if (!key) return undefined;
+      return `${field} ${key}`;
+    },
+    [facetOf],
+  );
+
   // The rows of the branch the reader clicked in the tree. Clicking a group
   // POINTS at it - the rest of the estate stays on screen - so this is a set of
   // ids to mark, never a filter. Computed off the catalog, not the filtered
@@ -1540,10 +1753,61 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
   // estate, and a number that moved while you were choosing from it would be
   // describing the answer rather than the choice.
   const scopeCounts = useMemo(() => {
-    const n: Record<ScopeFacet, number> = { global: 0, site: 0, instance: 0 };
+    const n = SCOPE_FACETS.reduce(
+      (m, f) => {
+        m[f] = 0;
+        return m;
+      },
+      {} as Record<ScopeFacet, number>,
+    );
     for (const r of grid.rows) n[facetOf.get(r.param.id) ?? "instance"]++;
     return n;
   }, [grid.rows, facetOf]);
+
+  // THE SHARED-VALUE COLUMNS.
+  //
+  // They appear when the reader has picked a scope that is not "per instance" -
+  // which is exactly the moment every row on screen is edited once rather than
+  // once per system, and the moment a column per instance stops being the right
+  // shape for the question. Global gets one column ("every instance"); a group
+  // scope gets one per group, so "which site is this the value for" is answered
+  // by which column you typed in rather than by remembering.
+  //
+  // Nothing appears at "All scopes": the rows there are a mix of scopes and a
+  // column per site over a per-instance setting would be a promise the write
+  // path cannot keep.
+  const scopeCols = useMemo(() => {
+    if (scopeFilter === "all" || scopeFilter === "instance") return null;
+    if (scopeFilter === "global") {
+      return {
+        facet: "global" as ScopeFacet,
+        field: null,
+        groups: [{ key: "", instances: grid.instances }] as ScopeGroup[],
+        orphans: [] as Instance[],
+      };
+    }
+    const field = SCOPE_META[scopeFilter].field ?? null;
+    return {
+      facet: scopeFilter,
+      field,
+      groups: groupsBy(field, grid.instances),
+      // Instances carrying no value for the field belong to no group of this
+      // kind. They are NAMED rather than dropped: "four of your systems have no
+      // site" is a fact somebody has to fix, and a column layout that quietly
+      // left them out would be the reason nobody noticed.
+      orphans: ungrouped(field, grid.instances),
+    };
+  }, [scopeFilter, grid.instances]);
+
+  // Which scopes this estate actually uses. A filter offering "Zone" over a
+  // catalog with no zone-scoped setting is a control that can only ever produce
+  // an empty screen, and five of those would crowd out the ones that work.
+  // Instance is always offered when anything is instance-scoped, because "show
+  // me the ones I edit per system" is the everyday question.
+  const scopeChoices = useMemo(
+    () => SCOPE_FACETS.filter((f) => scopeCounts[f] > 0),
+    [scopeCounts],
+  );
 
   // Every file the catalog writes to, with how many parameters each carries.
   // Counted over ALL rows, never the filtered ones: the counts are a property
@@ -2027,6 +2291,90 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
       });
     }
     for (const key of metaOrder) if (meta[key]) base.push(meta[key]);
+
+    // The shared-value columns, ahead of the instance columns: this is where
+    // the value is actually SET at this scope, so it reads first and the
+    // per-instance columns behind it read as what they are - the consequences.
+    const scopeGroupCols: ColumnsType<Row> = scopeCols
+      ? [
+          {
+            title: (
+              <span className="cf-scope-head">
+                {(() => {
+                  const Icon = SCOPE_ICON[scopeCols.facet];
+                  return <Icon style={{ marginInlineEnd: 6 }} />;
+                })()}
+                <span>
+                  {scopeCols.facet === "global"
+                    ? "Shared value"
+                    : `Value per ${scopeCols.field}`}
+                </span>
+                {scopeCols.orphans.length > 0 && (
+                  <Tooltip
+                    title={`No ${scopeCols.field} is set on ${scopeCols.orphans
+                      .map((i) => i.name)
+                      .join(", ")}, so ${scopeCols.orphans.length === 1 ? "it belongs" : "they belong"} to no group here and this value does not reach ${scopeCols.orphans.length === 1 ? "it" : "them"}.`}
+                  >
+                    <Tag color="warning" style={{ marginInlineStart: 8, marginInlineEnd: 0 }}>
+                      {scopeCols.orphans.length} without a {scopeCols.field}
+                    </Tag>
+                  </Tooltip>
+                )}
+              </span>
+            ),
+            key: "scope-values",
+            children: (scopeCols.groups.length
+              ? scopeCols.groups
+              : ([{ key: "", instances: [] }] as ScopeGroup[])
+            ).map((g) => ({
+              title: (
+                <div className="cf-col-head cf-scope-col">
+                  <span>{g.key || `All ${grid.instances.length}`}</span>
+                  <span className="cf-scope-col-sub">
+                    {g.instances.length} instance{g.instances.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              ),
+              key: `scope:${g.key}`,
+              width: SCOPE_VALUE_W,
+              onCell: (r: Row) => ({
+                className:
+                  "cf-scope-cell" +
+                  (g.instances.some((i) => itemFor(r.param.id, i.name, r.cells[i.name]?.source))
+                    ? " cell-changed"
+                    : ""),
+                onClick: (e: React.MouseEvent) => e.stopPropagation(),
+              }),
+              render: (_v: unknown, r: Row) => {
+                const key = `${r.param.id}|${g.key}`;
+                return (
+                  <ScopeValueCell
+                    row={r}
+                    group={g}
+                    facet={scopeCols.facet}
+                    presets={presetsQ.data}
+                    canEdit={canEdit}
+                    editing={scopeEditing === key}
+                    pending={g.instances.some((i) => itemFor(r.param.id, i.name, r.cells[i.name]?.source))}
+                    onStartEdit={() => setScopeEditing(key)}
+                    onCancel={() => setScopeEditing(null)}
+                    onCommit={(value) => {
+                      setScopeEditing(null);
+                      scopeSave.mutate({
+                        paramId: r.param.id,
+                        scope: scopeCols.facet as EditScope,
+                        group: g.key || undefined,
+                        value,
+                      });
+                    }}
+                  />
+                );
+              },
+            })),
+          },
+        ]
+      : [];
+
     const instanceNames = grid.instances.map((i) => i.name);
     const instCols: ColumnsType<Row> = visibleInstances.map((inst) => ({
       title: viewInstance
@@ -2094,11 +2442,17 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         const key = `${r.param.id}|${inst.name}`;
         const cell = r.cells[inst.name];
         const pendingItem = itemFor(r.param.id, inst.name, cell?.source);
+        // Is this value held here at all? A global or group-scoped setting is
+        // not, and offering an edit in a column that cannot honour it - or that
+        // would honour it by silently changing eleven other systems - is the
+        // thing this replaces.
+        const lock = lockFor(r.param, inst);
         return (
           <EditableCell
             cell={cell}
             param={r.param}
             instance={inst.name}
+            scopeLock={lock}
             allInstances={instanceNames}
             presets={presetsQ.data}
             pendingItem={pendingItem}
@@ -2136,6 +2490,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               setSearchScope("value");
             }}
             onReplace={(value) => setFindReplace({ find: value })}
+            onEditShared={() => inspectParam(r.param.id, "overview")}
             onOpenFile={
               cell?.file
                 ? () => {
@@ -2191,13 +2546,14 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
           },
         ]
       : [];
-    return [...base, ...instCols, ...extraCols];
+    return [...base, ...scopeGroupCols, ...instCols, ...extraCols];
     // save.mutate/revert.mutate/setEditing are stable; the rest drive re-renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, viewChangeId, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc, facet, scopeCounts]);
+  }, [grid.instances, visibleInstances, viewInstance, grid.rows, editing, presetsQ.data, itemFor, pendingByParam, pendingInstances, canEdit, prefs.showTypeCol, prefs.showScopeCol, prefs.showDescCol, prefs.showBeforeAfter, viewChangeId, pinnedSet, fileFor, instWidths, metaOrder, PARAM_W, TYPE_W, SCOPE_W, DESC_W, flash, saved, active, selectedInstance, hlParam, hlDesc, facet, scopeCounts, scopeCols, scopeEditing]);
 
   const scrollX =
     PARAM_W + TYPE_W + SCOPE_W + DESC_W + (viewInstance ? 190 : 0) +
+    (scopeCols ? Math.max(scopeCols.groups.length, 1) * SCOPE_VALUE_W : 0) +
     visibleInstances.reduce((a, i) => a + (instWidths[i.name] ?? 150), 0);
   const headerH = prefs.density === "compact" ? 55 : 63;
   const title = categoryKey ? categoryKey.split(".").pop() : "All Parameters";
@@ -2375,8 +2731,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   icon={<SearchOutlined />}
                   title={`Nothing is ${SCOPE_META[scopeFilter].label.toLowerCase()} here`}
                   hint={
-                    scopeFilter === "site"
-                      ? "No setting is declared as shared by a group of systems. Set a parameter's scope to site, zone or environment in its details panel to manage one that way."
+                    isGroupFacet(scopeFilter)
+                      ? `No setting here is declared as shared by ${scopeFilter === "environment" ? "an environment" : `a ${scopeFilter}`}. Set a parameter's scope to ${scopeFilter} in its details panel to manage one that way.`
                       : scopeFilter === "global"
                         ? "Every setting here lives in an instance's own files, so each one is changed per instance."
                         : "Every setting here is shared, so there is nothing to change for one instance alone."
@@ -2569,8 +2925,8 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             reads or twelve copies that happen to agree. The counts are of the
             whole estate, so picking one narrows the list without the numbers
             moving underneath the choice. */}
-        <Tooltip title={scopeFilter === "all" ? "Show settings by how widely an edit to them lands" : SCOPE_META[scopeFilter].explain}>
-          {showScopeSeg ? (
+        <Tooltip title={scopeFilter === "all" ? "Show settings by how widely an edit to them lands - and edit it there" : SCOPE_META[scopeFilter].explain}>
+          {showScopeSeg && scopeChoices.length <= 3 ? (
             <Segmented
               size="small"
               value={scopeFilter}
@@ -2578,46 +2934,45 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               style={{ flexShrink: 0 }}
               options={[
                 { value: "all", label: "All scopes" },
-                {
-                  value: "global",
-                  label: (
-                    <span>
-                      <ScopeGlobalOutlined style={{ marginInlineEnd: 4 }} />
-                      Global{scopeCounts.global ? ` (${scopeCounts.global})` : ""}
-                    </span>
-                  ),
-                },
-                {
-                  value: "site",
-                  label: (
-                    <span>
-                      <ScopeSiteOutlined style={{ marginInlineEnd: 4 }} />
-                      Site{scopeCounts.site ? ` (${scopeCounts.site})` : ""}
-                    </span>
-                  ),
-                },
-                {
-                  value: "instance",
-                  label: (
-                    <span>
-                      <ScopeInstanceOutlined style={{ marginInlineEnd: 4 }} />
-                      Instance{scopeCounts.instance ? ` (${scopeCounts.instance})` : ""}
-                    </span>
-                  ),
-                },
+                ...scopeChoices.map((f) => {
+                  const Icon = SCOPE_ICON[f];
+                  return {
+                    value: f,
+                    label: (
+                      <span>
+                        <Icon style={{ marginInlineEnd: 4 }} />
+                        {SCOPE_META[f].short}
+                        {scopeCounts[f] ? ` (${scopeCounts[f]})` : ""}
+                      </span>
+                    ),
+                  };
+                }),
               ]}
             />
           ) : (
+            // Five scopes do not fit a segmented control on any real screen, and
+            // an estate that uses all of them is exactly the estate that needs
+            // to choose between them. The Select carries the same options, the
+            // same counts and the same glyphs.
             <Select
               size="small"
               value={scopeFilter}
               onChange={(v) => setScopeFilter(v)}
-              style={{ width: 128, flexShrink: 0 }}
+              style={{ width: 168, flexShrink: 0 }}
               options={[
                 { value: "all", label: "All scopes" },
-                { value: "global", label: `Global (${scopeCounts.global})` },
-                { value: "site", label: `Site (${scopeCounts.site})` },
-                { value: "instance", label: `Instance (${scopeCounts.instance})` },
+                ...scopeChoices.map((f) => {
+                  const Icon = SCOPE_ICON[f];
+                  return {
+                    value: f,
+                    label: (
+                      <span>
+                        <Icon style={{ marginInlineEnd: 6 }} />
+                        {SCOPE_META[f].short} ({scopeCounts[f]})
+                      </span>
+                    ),
+                  };
+                }),
               ]}
             />
           )}
@@ -2939,7 +3294,10 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             api
               .updateParameter(param.id, { scope: "instance", author: "Local user" })
               .then(() => {
-                message.info(`${param.name} is now scoped per instance; other systems keep the previous shared value.`, 5);
+                message.info(
+                  `${param.name} moving to per-instance scope is staged beside the value; other systems keep the previous shared value.`,
+                  5,
+                );
                 qc.invalidateQueries();
               })
               .catch((e: Error) => message.error(e.message));

@@ -94,7 +94,31 @@ function Subject({
  *  AND what an in-flight undo is tracked by, so "which row is busy" can never
  *  disagree with "which row was clicked". */
 export function itemKey(it: ChangeItem): string {
-  return `${it.paramId}|${it.instance}|${it.file ?? ""}`;
+  // The ACTION is part of the identity, not decoration. A parameter's metadata
+  // edit and its global value edit sit at the same address - this parameter, no
+  // instance, no file - so without it the two shared a row key: React drew one
+  // of them twice and an undo took whichever it found first.
+  return `${it.paramId}|${it.instance}|${it.file ?? ""}|${itemKind(it.action)}`;
+}
+
+/** The kinds of edit an address can hold at once, mirroring change.Action.Kind
+ *  on the service. Two items are the same edit when they agree on all of the
+ *  address AND on this. */
+export function itemKind(action?: string): string {
+  switch (action) {
+    case undefined:
+    case "":
+    case "set":
+    case "reset":
+    case "exclude":
+      return "value";
+    case "add-instance":
+    case "remove-instance":
+    case "update-instance":
+      return "instance";
+    default:
+      return action;
+  }
 }
 
 /** haystack is everything about one item a person might type to find it: the

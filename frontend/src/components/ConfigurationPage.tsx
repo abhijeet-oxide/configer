@@ -248,17 +248,22 @@ export default function ConfigurationPage({
           </Dropdown>
         )}
       </div>
-      {/* Whose values the parameters page is showing. It sits ABOVE the grid
-          rather than inside its toolbar because it is a fact about the whole
-          page - the details panel and the tree are reading the same change -
-          and because it has to be able to say, in words, that what is on screen
-          was never published. It is absent unless there is something to choose:
+      {/* Whose values the page is showing. It sits ABOVE the content rather
+          than inside a toolbar because it is a fact about the whole page - on
+          Parameters the details panel and the tree read the same change - and
+          because it has to be able to say, in words, that what is on screen was
+          never published. It is absent unless there is something to choose:
           with only main to look at, a control offering only main is noise.
 
-          The other tabs are the workspace's own (your draft's files, the
-          changes list, the audit trail) and are not read through a change, so
-          the strip belongs to this tab alone. */}
-      {active === "config" && (
+          It belongs to Parameters AND Files, in the same place, saying the same
+          thing. Both surfaces show the SAME configuration - one as values, one
+          as the bytes those values live in - so "whose version am I reading" is
+          one question, and answering it in one tab and not the other meant a
+          reviewer could compare a change's values but never its files.
+
+          The remaining tabs are the workspace's own (the changes list, the
+          audit trail) and are not read through a change. */}
+      {(active === "config" || active === "files") && (
         <ChangeViewPicker
           changes={changesQ.data}
           draftItems={draftItems}

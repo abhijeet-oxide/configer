@@ -31,4 +31,4 @@ defaults:
   safeToAutomate: false
   effort: small
 cache:
-  inputs: ["backend/go.sum", "backend/go.mod", "frontend/package-lock.json", "deploy/**", "**/Dockerfile"]
+  inputs: ["go.sum", "go.mod", "web/package-lock.json", "deploy/**", "**/Dockerfile"]

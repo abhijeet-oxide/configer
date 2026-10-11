@@ -15,7 +15,7 @@ tool:
   command: govulncheck
   args: ["-format", "sarif", "./..."]
   probe: ["govulncheck", "-h"]
-  workdir: backend
+  workdir: .
   optional: true
   install: "Install govulncheck: go install golang.org/x/vuln/cmd/govulncheck@latest"
   okExitCodes: [3]
@@ -28,4 +28,4 @@ defaults:
   safeToAutomate: false
   effort: small
 cache:
-  inputs: ["backend/**/*.go", "backend/go.sum"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go", "go.sum"]

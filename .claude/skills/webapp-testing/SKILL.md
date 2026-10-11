@@ -44,8 +44,8 @@ python scripts/with_server.py --server "npm run dev" --port 5173 -- python your_
 **Multiple servers (e.g., backend + frontend):**
 ```bash
 python scripts/with_server.py \
-  --server "cd backend && python server.py" --port 3000 \
-  --server "cd frontend && npm run dev" --port 5173 \
+  --server "python server.py" --port 3000 \
+  --server "cd web && npm run dev" --port 5173 \
   -- python your_automation.py
 ```
 

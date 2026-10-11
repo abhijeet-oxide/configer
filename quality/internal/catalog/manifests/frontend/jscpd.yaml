@@ -13,7 +13,7 @@ tool:
   args: ["--yes", "jscpd@4", "--reporters", "json", "--output", "{artifacts}/jscpd",
          "--min-lines", "12", "--threshold", "100", "--silent",
          "--ignore", "**/node_modules/**,**/dist/**,**/testdata/**,**/*.json",
-         "frontend/src", "backend/internal"]
+         "web/src", "backend/internal"]
   probe: ["node", "--version"]
   optional: true
   install: "jscpd is fetched on demand by npx; this needs network access on the runner."
@@ -26,4 +26,4 @@ defaults:
   safeToAutomate: false
   effort: small
 cache:
-  inputs: ["frontend/src/**", "backend/internal/**"]
+  inputs: ["web/src/**", "internal/**"]

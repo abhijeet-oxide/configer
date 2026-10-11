@@ -13,7 +13,7 @@ tool:
   # No --ruleset: Spectral finds the repository's own .spectral.yaml, which
   # extends spectral:oas and relaxes the rules that fight with a generated spec.
   args: ["--yes", "@stoplight/spectral-cli@6", "lint",
-         "backend/internal/api/docs/configer_swagger.json",
+         "internal/api/docs/configer_swagger.json",
          "--format", "json", "--output", "{out}"]
   probe: ["node", "--version"]
   optional: true
@@ -28,4 +28,4 @@ defaults:
   safeToAutomate: false
   effort: small
 cache:
-  inputs: ["backend/internal/api/docs/**", ".spectral.yaml"]
+  inputs: ["internal/api/docs/**", ".spectral.yaml"]

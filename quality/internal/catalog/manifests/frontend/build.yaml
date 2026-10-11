@@ -13,8 +13,8 @@ tool:
   command: npx
   args: ["vite", "build", "--logLevel", "warn"]
   probe: ["npx", "--no-install", "vite", "--version"]
-  workdir: frontend
-  install: "Run `npm install` in frontend/."
+  workdir: web
+  install: "Run `npm install` in web/."
 output:
   format: exit-code
 defaults:
@@ -22,4 +22,4 @@ defaults:
   confidence: high
   recommendation: "Fix the build error in the artifact log. Nothing downstream of the build was measured."
 cache:
-  inputs: ["frontend/src/**", "frontend/index.html", "frontend/vite.config.ts", "frontend/package-lock.json"]
+  inputs: ["web/src/**", "web/index.html", "web/vite.config.ts", "web/package-lock.json"]

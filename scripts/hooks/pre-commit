@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Keep the committed OpenAPI spec in step with the handlers that describe it.
 #
-# The spec under backend/internal/api/docs is GENERATED from the @Summary /
+# The spec under internal/api/docs is GENERATED from the @Summary /
 # @Router annotations on the handlers, and it is committed because the backend
 # serves it (/api/openapi.json, /api/docs). That combination has exactly one
-# failure mode: someone edits a handler, forgets `make docs`, and finds out from
+# failure mode: someone edits a handler, forgets `task docs`, and finds out from
 # a red CI run minutes later. Regenerating here removes the step from human
 # memory entirely - if the annotations changed, the spec is rebuilt and staged
 # alongside them, in the same commit.
 #
-# Installed by `make hooks` (which `make install` runs) via core.hooksPath.
+# Installed by `task hooks` (which `task install` runs) via core.hooksPath.
 # Skip it for one commit with:  SKIP_DOCS_HOOK=1 git commit ...
 set -euo pipefail
 
@@ -18,7 +18,7 @@ if [ "${SKIP_DOCS_HOOK:-}" = "1" ]; then
 fi
 
 ROOT="$(git rev-parse --show-toplevel)"
-DOCS="backend/internal/api/docs"
+DOCS="internal/api/docs"
 
 # ---------------------------------------------------------------------------
 # The quality gate, over the staged files only.
@@ -41,19 +41,19 @@ if [ "${SKIP_CQ:-}" != "1" ] && [ -x "$CQ" ]; then
     echo "" >&2
     echo "pre-commit: the quality gate is not satisfied by what is staged." >&2
     echo "  Details:  .cq/report.md" >&2
-    echo "  Retry:    make quality-precommit" >&2
+    echo "  Retry:    task quality:precommit" >&2
     echo "  Skip:     SKIP_CQ=1 git commit ..." >&2
     exit 1
   fi
 elif [ "${SKIP_CQ:-}" != "1" ]; then
   echo "pre-commit: quality/bin/cq is not built, so the quality gate was skipped." >&2
-  echo "            Build it once with 'make cq'." >&2
+  echo "            Build it once with 'task cq'." >&2
 fi
 
 # Only Go changes under the API package can move the spec; every other commit
 # pays nothing.
 staged_api_go="$(git diff --cached --name-only --diff-filter=ACMR \
-  -- 'backend/internal/api/*.go' | grep -v "^${DOCS}/" || true)"
+  -- 'internal/api/*.go' | grep -v "^${DOCS}/" || true)"
 if [ -z "$staged_api_go" ]; then
   exit 0
 fi
@@ -64,8 +64,8 @@ if ! command -v go >/dev/null 2>&1; then
 fi
 
 echo "pre-commit: API handlers changed - regenerating the OpenAPI spec…"
-if ! (cd "$ROOT/backend" && go generate ./internal/api >/dev/null 2>&1); then
-  echo "pre-commit: could not regenerate the OpenAPI spec. Run 'make docs' to see why." >&2
+if ! (cd "$ROOT" && go generate ./internal/api >/dev/null 2>&1); then
+  echo "pre-commit: could not regenerate the OpenAPI spec. Run 'task docs' to see why." >&2
   exit 1
 fi
 

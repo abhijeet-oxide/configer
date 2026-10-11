@@ -146,6 +146,6 @@ The REST API mirrors the UI. A few of the routes:
 | GET | `/api/repo/findings` | External-commit inbox (drift detection). |
 
 Full spec at `/api/openapi.yaml` and `/api/openapi.json`, interactive UI at
-`/api/docs`. The spec is generated from the handler annotations (`make docs`) and
+`/api/docs`. The spec is generated from the handler annotations (`task docs`) and
 CI fails if it drifts, so it always matches the code. Every repo-scoped route
 also mounts under `/api/repos/{id}/...` for multi-application workspaces.

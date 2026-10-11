@@ -14,7 +14,7 @@ category: backend
 tags: [house-rule, architecture]
 tiers: [pr, main]
 scopes: [backend]
-paths: ["backend/**/*.go"]
+paths: ["cmd/**/*.go", "internal/**/*.go"]
 cost: cheap
 tool:
   command: node
@@ -30,4 +30,4 @@ defaults:
   safeToAutomate: false
   effort: medium
 cache:
-  inputs: ["backend/**/*.go"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go"]

@@ -76,17 +76,17 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: |
-            backend/go.sum
+            go.sum
             quality/go.sum
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: web/package-lock.json
 
       - name: Install frontend dependencies
-        working-directory: frontend
+        working-directory: web
         run: npm ci
 
       # --- the analyzers ---------------------------------------------------
@@ -107,7 +107,7 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: ${{ env.GOLANGCI_VERSION }}
-          working-directory: backend
+          working-directory: .
           # The platform runs it; this action only puts it on PATH.
           args: --help
           install-mode: binary
@@ -164,9 +164,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .cq/cache
-          key: cq-${{ runner.os }}-${{ hashFiles('backend/go.sum', 'frontend/package-lock.json') }}-${{ github.sha }}
+          key: cq-${{ runner.os }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-${{ github.sha }}
           restore-keys: |
-            cq-${{ runner.os }}-${{ hashFiles('backend/go.sum', 'frontend/package-lock.json') }}-
+            cq-${{ runner.os }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-
             cq-${{ runner.os }}-
 
       # The baseline is what every regression budget compares against. It is
@@ -180,7 +180,7 @@ jobs:
             cq-baseline-${{ github.base_ref || github.ref_name }}-
 
       - name: Build cq
-        run: make cq
+        run: go -C quality build -trimpath -o bin/cq ./cmd/cq
 
       - name: What is installed
         run: ./quality/bin/cq doctor

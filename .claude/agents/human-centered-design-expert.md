@@ -84,7 +84,7 @@ journey.
    views (`ParameterGrid`, `FilesView`, `MonacoFileView`, `OnboardingWizard`,
    `InstancesView`, `SourceControlPanel`, `SubmitChangesButton`, `ComparePanel`,
    `WorkspaceView`). Note terminology exactly as shown to users.
-3. Where feasible, boot the product (`make dev`) and traverse the whole arc -
+3. Where feasible, boot the product (`task dev`) and traverse the whole arc -
    Understand -> Explore -> Change -> Validate -> Review -> Approve -> Publish ->
    Observe -> Investigate -> Recover - with the `webapp-testing` skill, judging
    coherence and cognitive load as a continuous felt experience, and checking

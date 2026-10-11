@@ -9,7 +9,7 @@ and what is left.
 **Tier 1 - extraction and per-value rules.** `yangschema` reads the models a
 repository ships and turns what they say into `model.Validation`. Those rules
 are enforced by `validate.Value` on every write path and mirrored in the browser
-(`frontend/src/rules.ts`) so a bad value is visible while it is still being
+(`web/src/rules.ts`) so a bad value is visible while it is still being
 typed. This is what an editor needs.
 
 **Tier 2 - whole-document validation.** `yangvalidate` holds the candidate
@@ -29,7 +29,7 @@ never say a change is model-valid when nothing checked it.
 
 ## Where the code is
 
-- `backend/internal/yangschema/` - the parser, the model index, and the mapping
+- `internal/yangschema/` - the parser, the model index, and the mapping
   from YANG facts to Configer validation.
   - `parse.go` - the statement tree (every YANG construct is `keyword arg { … }`,
     extensions included, so an unknown vendor keyword is carried not refused)
@@ -39,20 +39,20 @@ never say a change is model-valid when nothing checked it.
   - `deviation.go` - applying `deviation` after the whole set is indexed
   - `regex.go` - XSD regular expression to Go translation
   - `apply.go` - mapping a model node onto a `model.Parameter`
-- `backend/internal/yangvalidate/` - whole-document validation.
+- `internal/yangvalidate/` - whole-document validation.
   - `validate.go` - `Engine`, `Finding`, `Report`, engine selection
   - `document.go` - YAML/JSON/XML into a named node tree with paths and lines
   - `native.go` - the built-in document walker
   - `xpath.go` - the bounded XPath subset for `must`/`when`
   - `yanglint.go` - the libyang bridge and diagnostic normalization
-- `backend/internal/api/models.go` - the cached model set, and the
+- `internal/api/models.go` - the cached model set, and the
   `(file, path) -> parameter` locator that puts a finding on the row somebody
   edited
-- `backend/internal/api/validation.go` / `validationrun.go` - the run resource
+- `internal/api/validation.go` / `validationrun.go` - the run resource
   and the submit gate
-- `backend/internal/discovery/models.go` - attaching model facts during
+- `internal/discovery/models.go` - attaching model facts during
   onboarding and linking dependencies
-- `frontend/src/components/ValidationFlow.tsx` - the staged, live submit UI
+- `web/src/components/ValidationFlow.tsx` - the staged, live submit UI
 
 ## What tier 1 extracts
 

@@ -137,7 +137,7 @@ for (const route of routes) {
       detail: err.message,
       severity: "error",
       confidence: "high",
-      file: "frontend/src/App.tsx",
+      file: "web/src/App.tsx",
       component: route,
       recommendation:
         "The route did not reach DOMContentLoaded. Check that the dev server is serving this path and that the router knows it.",
@@ -154,7 +154,7 @@ for (const route of routes) {
         title: `Console error on ${route}: ${clip(text, 120)}`,
         severity: "error",
         confidence: "high",
-        file: "frontend/src",
+        file: "web/src",
         component: route,
         evidence: clip(text, 200),
         recommendation:
@@ -169,7 +169,7 @@ for (const route of routes) {
         title: `Uncaught exception on ${route}: ${clip(text, 120)}`,
         severity: "blocker",
         confidence: "high",
-        file: "frontend/src",
+        file: "web/src",
         component: route,
         evidence: clip(text, 200),
         recommendation:
@@ -193,7 +193,7 @@ for (const route of routes) {
             : `${route} requests ${key} ${list.length} times`,
           severity: periodic ? "warning" : "warning",
           confidence: periodic ? "medium" : "high",
-          file: "frontend/src/api.ts",
+          file: "web/src/api.ts",
           component: route,
           recommendation: periodic
             ? "If this is a deliberate poll, say so in the query's refetchInterval and make sure it stops when the tab is hidden. If it is not, something is invalidating the query on every render."
@@ -208,7 +208,7 @@ for (const route of routes) {
             title: `${key} took ${rec.ms}ms on ${route}`,
             severity: "warning",
             confidence: "high",
-            file: "backend/internal/api",
+            file: "internal/api",
             component: key,
             recommendation:
               "A request this slow on first paint blocks the screen. Profile the handler, or move the call off the critical path.",
@@ -221,7 +221,7 @@ for (const route of routes) {
             title: `${key} returned ${(rec.bytes / 1024).toFixed(0)} KiB on ${route}`,
             severity: "warning",
             confidence: "high",
-            file: "backend/internal/api",
+            file: "internal/api",
             component: key,
             recommendation:
               "Page or project the response. A payload this size is mostly fields the screen never reads.",
@@ -244,7 +244,7 @@ for (const route of routes) {
         title: `${route} is still showing a loading state after ${SETTLE_MS}ms`,
         severity: "warning",
         confidence: "medium",
-        file: "frontend/src",
+        file: "web/src",
         component: route,
         recommendation:
           "Either the query never resolves, or the loading flag is never cleared on the error path. Check what the screen does when the request fails.",
@@ -268,7 +268,7 @@ for (const route of routes) {
             detail: v.description,
             severity: v.impact === "critical" || v.impact === "serious" ? "error" : "warning",
             confidence: "high",
-            file: "frontend/src",
+            file: "web/src",
             component: route,
             evidence: clip(v.nodes?.[0]?.html ?? "", 200),
             docsUrl: v.helpUrl,

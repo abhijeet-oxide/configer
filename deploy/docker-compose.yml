@@ -9,7 +9,8 @@
 services:
   backend:
     build:
-      context: ../backend
+      context: ..
+      dockerfile: deploy/build/Dockerfile.configer
     environment:
       # Core settings
       CONFIGER_ADDR: :8080
@@ -71,7 +72,8 @@ services:
 
   frontend:
     build:
-      context: ../frontend
+      context: ..
+      dockerfile: deploy/build/Dockerfile.web
     depends_on:
       backend:
         condition: service_healthy

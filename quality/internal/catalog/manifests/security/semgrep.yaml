@@ -28,4 +28,4 @@ defaults:
   safeToAutomate: false
   effort: medium
 cache:
-  inputs: ["backend/**/*.go", "frontend/src/**", ".semgrepignore"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go", "web/src/**", ".semgrepignore"]

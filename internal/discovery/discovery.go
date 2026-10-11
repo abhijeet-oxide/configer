@@ -1,0 +1,874 @@
+// Package discovery turns an existing repository into a proposed Configer
+// application: it detects the layout (kpt / kustomize / plain folders),
+// derives the instances from the folder structure, extracts every candidate
+// parameter through the ingest parsers, DEDUPLICATES the same logical setting
+// across instances and files into one parameter with templated bindings, and
+// attaches validation rules found in JSON Schema files. The result is a
+// read-only proposal; initialization writes it to .configer/ as one commit.
+package discovery
+
+import (
+	"fmt"
+	"regexp"
+	"sort"
+	"strings"
+
+	"github.com/abhijeet-oxide/configer/internal/ingest"
+	"github.com/abhijeet-oxide/configer/internal/layout"
+	"github.com/abhijeet-oxide/configer/internal/model"
+	"github.com/abhijeet-oxide/configer/internal/pathedit"
+	"github.com/abhijeet-oxide/configer/internal/plugin"
+	"github.com/abhijeet-oxide/configer/internal/productmeta"
+	"github.com/abhijeet-oxide/configer/internal/project"
+	"github.com/abhijeet-oxide/configer/internal/yangschema"
+)
+
+// Result is the discovery proposal shown to the user before initializing.
+//
+// Its lists are always lists. A nil slice marshals to JSON `null`, and a client
+// that reasonably expects an array then reads a length off nothing - which is
+// how a repository the scan found nothing in took the whole page down instead
+// of showing an empty proposal. "Found nothing" is a normal answer here: plenty
+// of repositories hold manifests with no configuration Configer can manage.
+type Result struct {
+	Detection   layout.Detection     `json:"detection"`
+	Instances   []model.Instance     `json:"instances"`
+	Parameters  []model.Parameter    `json:"parameters"`
+	SharedFiles []string             `json:"sharedFiles,omitempty"`
+	Skipped     []ingest.SkippedFile `json:"skipped,omitempty"`
+	// Product is what a product descriptor in the repository says the
+	// application IS - its name, its human title, its release. It is a
+	// proposal like everything else here: the wizard offers it and the user
+	// may write over it. Absent for a repository that ships no descriptor.
+	Product *productmeta.Descriptor `json:"product,omitempty"`
+}
+
+// nonNil turns a nil slice into an empty one, so it marshals as [] not null.
+func nonNil[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
+}
+
+// Options steer one discovery run.
+type Options struct {
+	// Manage lists repo-relative files to include even though discovery would
+	// normally pass them over. The defaults are right for most repositories and
+	// wrong for some, and the person looking at their own repository is better
+	// placed to judge than a rule is - so this is their override, per file,
+	// rather than a setting that turns the judgement off everywhere.
+	Manage []string
+}
+
+// Discover scans root and builds the proposal.
+func Discover(root string, reg *plugin.Registry, ignore project.Ignore) (Result, error) {
+	return DiscoverWith(root, reg, ignore, Options{})
+}
+
+// DiscoverWith is Discover with per-file overrides.
+func DiscoverWith(root string, reg *plugin.Registry, ignore project.Ignore, opts Options) (Result, error) {
+	managed := map[string]bool{}
+	for _, f := range opts.Manage {
+		managed[f] = true
+	}
+	det := layout.Detect(root)
+	scan, err := ingest.ScanWith(root, reg, ignore, ingest.Options{Manage: opts.Manage})
+	if err != nil {
+		return Result{}, err
+	}
+
+	res := Result{Detection: det, Skipped: scan.Skipped}
+	for _, li := range det.Instances {
+		res.Instances = append(res.Instances, model.Instance{
+			Name:        li.Name,
+			Folder:      li.Folder,
+			Environment: li.Environment,
+			Status:      "active",
+		})
+	}
+	// An instance that ships a product descriptor knows its own release; that
+	// is also what selects the schema models the parameters are checked against.
+	res.Product = applyDescriptors(root, res.Instances)
+	version := ""
+	if res.Product != nil {
+		version = res.Product.Version
+	}
+
+	// Partition scanned files: inside an instance folder (instance layer,
+	// rel path within the folder) vs everything else (shared/base layer).
+	folderOf := func(file string) (inst layout.Instance, rel string, ok bool) {
+		for _, li := range det.Instances {
+			prefix := li.Folder + "/"
+			if strings.HasPrefix(file, prefix) {
+				return li, strings.TrimPrefix(file, prefix), true
+			}
+		}
+		return layout.Instance{}, "", false
+	}
+
+	type instGroup struct {
+		rel        string // path within the instance folder
+		path       string // path within the file
+		format     string
+		line       int // source line of the value (display only)
+		types      map[model.ParamType]bool
+		itemType   model.ParamType
+		name       string
+		display    string // kpt setter name when present
+		byInstance map[string]any
+		order      int
+	}
+	instGroups := map[string]*instGroup{}
+	var instOrder []string
+
+	type sharedGroup struct {
+		file   string
+		path   string
+		format string
+		line   int
+		typ    model.ParamType
+		item   model.ParamType
+		name   string
+		value  any
+		order  int
+	}
+	sharedGroups := map[string]*sharedGroup{}
+	var sharedOrder []string
+	sharedSeen := map[string]bool{}
+
+	for _, fr := range scan.Files {
+		// A file dropped here disappeared without a word: it was read, it had
+		// settings in it, and nothing said why none of them arrived. For a Flux
+		// repository that is the file Flux's own docs tell you to customize
+		// (flux-system/kustomization.yaml), so the silence pointed the user at
+		// the one file they must NOT edit.
+		if skipFile(fr.File) && !managed[fr.File] {
+			if len(fr.Candidates) > 0 {
+				res.Skipped = append(res.Skipped, ingest.SkippedFile{
+					File: fr.File, Reason: ingest.SkipStructural,
+				})
+			}
+			continue
+		}
+		if len(fr.Candidates) == 0 {
+			continue
+		}
+		// Reference-aware anchors: a candidate reached through a YAML alias
+		// (`*anchor`) is a mirror of the anchor's definition, not an independent
+		// setting. Drop the mirrors so the anchor is managed once, at its
+		// definition; edits propagate to every alias site at render, and the
+		// file's dedup structure is preserved (no anchor is expanded inline).
+		owned := fr.Candidates[:0:0]
+		for _, c := range fr.Candidates {
+			if c.AliasOf == "" {
+				owned = append(owned, c)
+			}
+		}
+		// Identity-addressed lists: rewrite positional list-of-maps bindings
+		// (env[0].value) to a stable key selector (env[name=LOG_LEVEL].value) so
+		// every entry is managed and the binding survives reordering.
+		cands := keyListSelectors(foldLists(owned))
+		li, rel, inInstance := folderOf(fr.File)
+		// A Kubernetes manifest (has top-level apiVersion + kind) carries
+		// envelope fields that are structure, not configuration; drop them so
+		// the import proposes only tunable values.
+		manifest := k8sManifest(cands)
+
+		var setters map[string]string
+		if det.Layout == layout.KindKpt && inInstance {
+			setters = settersFor(root, fr.File)
+		}
+
+		for _, c := range cands {
+			if structuralKey(c.Path) {
+				continue
+			}
+			if manifest && k8sStructural(c.Path) {
+				continue
+			}
+			if inInstance {
+				key := rel + "|" + c.Path
+				g, ok := instGroups[key]
+				if !ok {
+					g = &instGroup{
+						rel: rel, path: c.Path, format: c.Format, line: c.Line,
+						types: map[model.ParamType]bool{}, itemType: c.itemType,
+						name: c.Name, byInstance: map[string]any{}, order: len(instOrder),
+					}
+					instGroups[key] = g
+					instOrder = append(instOrder, key)
+				}
+				g.types[c.Type] = true
+				g.byInstance[li.Name] = c.Value
+				if s, ok := setters[leafOf(c.Path)]; ok {
+					g.display = s
+				}
+				continue
+			}
+			key := fr.File + "|" + c.Path
+			if _, ok := sharedGroups[key]; ok {
+				continue
+			}
+			sharedGroups[key] = &sharedGroup{
+				file: fr.File, path: c.Path, format: c.Format, line: c.Line,
+				typ: c.Type, item: c.itemType, name: c.Name, value: c.Value,
+				order: len(sharedOrder),
+			}
+			sharedOrder = append(sharedOrder, key)
+			if !sharedSeen[fr.File] {
+				sharedSeen[fr.File] = true
+				res.SharedFiles = append(res.SharedFiles, fr.File)
+			}
+		}
+	}
+
+	// Instance-layer parameters: one per (rel, path), bound via {folder}/rel.
+	var params []model.Parameter
+	for _, key := range instOrder {
+		g := instGroups[key]
+		p := model.Parameter{
+			Name:        g.name,
+			DisplayName: g.display,
+			Category:    categoryFor(g.name),
+			Type:        dominantType(g.types),
+			ItemType:    g.itemType,
+			Scope:       model.ScopeInstance,
+			Secret:      looksSecret(g.name),
+			Bindings:    []model.Binding{{File: "{folder}/" + g.rel, Path: g.path, Format: g.format, Line: g.line}},
+			Observed:    g.byInstance,
+		}
+		if v, same := commonValue(g.byInstance, len(res.Instances)); same {
+			p.Default = v
+		}
+		params = append(params, p)
+	}
+
+	// Merge instance-layer parameters that are the SAME logical setting in
+	// several locations (e.g. a namespace repeated in values.yaml and an XML
+	// file). Conservative rule: identical LEAF name AND identical values in
+	// every instance - a coincidence across the whole fleet is implausible.
+	params = mergeIdentical(params, func(p model.Parameter) string {
+		g := instGroups[instKeyOf(p)]
+		return leafOf(p.Name) + "|" + fmt.Sprintf("%v", sortedValues(g.byInstance))
+	})
+
+	// Shared (base-layer) parameters: literal bindings, global scope.
+	sharedParams := make([]model.Parameter, 0, len(sharedOrder))
+	for _, key := range sharedOrder {
+		g := sharedGroups[key]
+		sharedParams = append(sharedParams, model.Parameter{
+			Name:     g.name,
+			Category: categoryFor(g.name),
+			Type:     g.typ,
+			ItemType: g.item,
+			Scope:    model.ScopeGlobal,
+			Secret:   looksSecret(g.name),
+			Default:  g.value,
+			Bindings: []model.Binding{{File: g.file, Path: g.path, Format: g.format, Layer: model.LayerBase, Line: g.line}},
+		})
+	}
+	// Subchart canonicalization (Helm umbrella): a subchart's own defaults live
+	// at bare paths (charts/api/values.yaml: replicaCount) while the umbrella and
+	// each environment address the SAME setting under the subchart's alias key
+	// (api.replicaCount). Re-scope the subchart defaults under their alias and
+	// tag them the lowest (chart-default) layer, so they (a) stop over-merging
+	// across sibling subcharts - api's replicaCount is not worker's - and (b)
+	// unify with the aliased override, by logical name, in mergeSubchartDefaults.
+	for i := range sharedParams {
+		if len(sharedParams[i].Bindings) == 0 {
+			continue
+		}
+		if sub, ok := subchartOf(root, sharedParams[i].Bindings[0].File); ok {
+			sharedParams[i].Name = sub + "." + sharedParams[i].Name
+			sharedParams[i].Category = categoryFor(sharedParams[i].Name)
+			for j := range sharedParams[i].Bindings {
+				sharedParams[i].Bindings[j].Layer = model.LayerChartDefault
+			}
+		}
+	}
+	sharedParams = mergeIdentical(sharedParams, func(p model.Parameter) string {
+		return p.Name + "|" + fmt.Sprintf("%v", p.Default)
+	})
+
+	// Unify base and instance layers: when a shared file carries the same
+	// setting an instance-layer parameter manages (same in-file path and leaf
+	// name - the kustomize base + overlay-patch shape), the shared location
+	// becomes the parameter's BASE binding: instances without an override
+	// inherit the base value, exactly as their tooling merges it.
+	remaining := sharedParams[:0]
+	for _, sp := range sharedParams {
+		merged := false
+		for i := range params {
+			if leafOf(params[i].Name) == leafOf(sp.Name) && params[i].Bindings[0].Path == sp.Bindings[0].Path {
+				// No Default here: the base file supplies the fallback live.
+				params[i].Bindings = append(params[i].Bindings, sp.Bindings...)
+				merged = true
+				break
+			}
+		}
+		if !merged {
+			remaining = append(remaining, sp)
+		}
+	}
+	params = append(params, remaining...)
+
+	// Fold each subchart default into the same-named parameter the umbrella or an
+	// environment aliases (api.replicaCount here, api.replicaCount there), so one
+	// logical setting is one row with layered bindings instead of two rows the
+	// user cannot tell apart. Guarded to same-name pairs where a chart-default
+	// binding is involved, so repositories with no subcharts are untouched.
+	params = mergeSubchartDefaults(params)
+
+	// Attach schema-derived validation and assign unique IDs. One schema cache
+	// serves every parameter, so a shared schema file is read + parsed once.
+	schemas := schemaCache{}
+	models := loadModels(root, version)
+	used := map[string]bool{}
+	nodesByID := map[string]*yangschema.Node{}
+	for i := range params {
+		attachSchema(root, schemas, &params[i], res.Instances)
+		// A shipped schema model is the last word: it states what the setting IS,
+		// so it replaces both the JSON-Schema reading and the inference below
+		// rather than being layered under them.
+		node, hasModel := attachModel(models, &params[i])
+		if !hasModel {
+			// After the schema has had first say, sharpen still-generic parameters
+			// into their well-known operational types (CPU/memory/duration/…).
+			refineType(&params[i])
+		}
+		id := slugify(params[i].Name)
+		for n := 2; used[id]; n++ {
+			id = fmt.Sprintf("%s-%d", slugify(params[i].Name), n)
+		}
+		used[id] = true
+		params[i].ID = id
+		if node != nil {
+			nodesByID[id] = node
+		}
+	}
+	linkModelDependencies(models, params, nodesByID)
+	// With IDs assigned, wire resource limit >= request constraints across pairs.
+	linkResourceConstraints(params)
+
+	res.Parameters = params
+	// Every list leaves as a list, whatever the scan found.
+	res.Parameters = nonNil(res.Parameters)
+	res.Instances = nonNil(res.Instances)
+	res.SharedFiles = nonNil(res.SharedFiles)
+	res.Skipped = nonNil(res.Skipped)
+	return res, nil
+}
+
+// Tunable turns one file's raw candidates into the parameters discovery would
+// propose for them: YAML alias mirrors, indexed list leaves, positional
+// list-of-map entries, structural keys and the Kubernetes envelope all resolve
+// exactly as they do during onboarding, and each survivor comes back as a
+// parameter with the value found in the file as its Default and one binding at
+// the literal file (the caller re-scopes that to an instance folder).
+//
+// It is exported so that "what settings does this file have" has ONE answer.
+// The alternative - a second, simpler rule for the file editor - is how a file
+// edit ends up proposing `apiVersion` and `metadata.name` as parameters while
+// an import of the same file proposes neither.
+//
+// A file discovery would pass over entirely (a kustomization, a Kptfile, a
+// chart's plumbing, a schema) yields nothing.
+func Tunable(file string, cands []plugin.Candidate) []model.Parameter {
+	if skipFile(file) {
+		return nil
+	}
+	owned := cands[:0:0]
+	for _, c := range cands {
+		if c.AliasOf == "" {
+			owned = append(owned, c)
+		}
+	}
+	folded := keyListSelectors(foldLists(owned))
+	manifest := k8sManifest(folded)
+	out := make([]model.Parameter, 0, len(folded))
+	for _, c := range folded {
+		if structuralKey(c.Path) {
+			continue
+		}
+		if manifest && k8sStructural(c.Path) {
+			continue
+		}
+		p := model.Parameter{
+			ID:       slugify(c.Name),
+			Name:     c.Name,
+			Category: categoryFor(c.Name),
+			Type:     c.Type,
+			ItemType: c.itemType,
+			Secret:   looksSecret(c.Name),
+			Default:  c.Value,
+			Bindings: []model.Binding{{File: file, Path: c.Path, Format: c.Format, Line: c.Line}},
+		}
+		refineType(&p)
+		out = append(out, p)
+	}
+	return out
+}
+
+// instKeyOf reconstructs the instGroups key for a single-binding instance
+// parameter (used only inside the merge step, before bindings multiply).
+func instKeyOf(p model.Parameter) string {
+	b := p.Bindings[0]
+	return strings.TrimPrefix(b.File, "{folder}/") + "|" + b.Path
+}
+
+// mergeIdentical collapses parameters with the same merge key into one
+// parameter carrying all bindings, preserving order. The shortest name wins
+// the display (e.g. "namespace" over "net.namespace" for the same setting).
+//
+// TWO SETTINGS IN THE SAME FILE ARE TWO SETTINGS, whatever they are called and
+// whatever they happen to say today. The merge key is deliberately loose (leaf
+// name + value) because the same setting written into two different files is a
+// real shape; inside ONE document that same looseness is a disaster. A file
+// with seven <net-info> entries has seven binding-types, four of which read
+// "normal", and merging them made one row that wrote all four - and a net-label
+// merged with an unrelated ipv4-subnet-config net-label that carried the same
+// text, taking the shorter name with it, so the setting vanished from under the
+// entry it belongs to and edits landed in two places at once.
+func mergeIdentical(params []model.Parameter, keyFn func(model.Parameter) string) []model.Parameter {
+	index := map[string][]int{}
+	var out []model.Parameter
+	for _, p := range params {
+		k := keyFn(p)
+		merged := false
+		for _, i := range index[k] {
+			if sharesFile(out[i], p) {
+				continue
+			}
+			out[i].Bindings = append(out[i].Bindings, p.Bindings...)
+			if len(p.Name) < len(out[i].Name) {
+				out[i].Name = p.Name
+			}
+			merged = true
+			break
+		}
+		if merged {
+			continue
+		}
+		index[k] = append(index[k], len(out))
+		out = append(out, p)
+	}
+	return out
+}
+
+// sharesFile reports whether the two parameters both bind into the same file.
+func sharesFile(a, b model.Parameter) bool {
+	for _, ab := range a.Bindings {
+		for _, bb := range b.Bindings {
+			if ab.File == bb.File {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// subchartOf reports the alias of the Helm subchart a file belongs to, when the
+// file lives under a "charts/<sub>/" directory that actually holds a subchart
+// (has its own Chart.yaml). The Chart.yaml existence check - not the directory
+// name alone - is the robust signal: a kpt "packages/" folder or a kustomize
+// "components/" folder never matches, because neither carries a Chart.yaml.
+func subchartOf(root, file string) (string, bool) {
+	parts := strings.Split(file, "/")
+	for i := 0; i+1 < len(parts); i++ {
+		if parts[i] == "charts" {
+			chartYaml := strings.Join(parts[:i+2], "/") + "/Chart.yaml"
+			if _, err := osReadFile(root, chartYaml); err == nil {
+				return parts[i+1], true
+			}
+			return "", false
+		}
+	}
+	return "", false
+}
+
+// hasChartDefault reports whether any of the parameter's bindings is a
+// chart-default (subchart built-in) layer.
+func hasChartDefault(p model.Parameter) bool {
+	for _, b := range p.Bindings {
+		if b.Layer == model.LayerChartDefault {
+			return true
+		}
+	}
+	return false
+}
+
+// mergeSubchartDefaults collapses parameters that share a logical name when a
+// chart-default binding is involved, concatenating their bindings. This unifies
+// a subchart's built-in default with the umbrella/environment override of the
+// same setting. Order is preserved and the first (typically the override, which
+// carries the richer type/validation) keeps its metadata.
+func mergeSubchartDefaults(params []model.Parameter) []model.Parameter {
+	idx := map[string]int{}
+	var out []model.Parameter
+	for _, p := range params {
+		if j, ok := idx[p.Name]; ok && (hasChartDefault(p) || hasChartDefault(out[j])) {
+			out[j].Bindings = append(out[j].Bindings, p.Bindings...)
+			continue
+		}
+		idx[p.Name] = len(out)
+		out = append(out, p)
+	}
+	return out
+}
+
+// candidate is plugin.Candidate plus the folded list element type.
+type candidate struct {
+	Name     string
+	Path     string
+	Type     model.ParamType
+	itemType model.ParamType
+	Value    any
+	Format   string
+	Line     int
+}
+
+var indexSuffix = regexp.MustCompile(`\[\d+\]$`)
+
+// foldLists folds indexed leaves (servers[0], servers[1], …) back into ONE
+// list candidate, and passes scalars through. XML list candidates already
+// arrive whole from the XML parser.
+func foldLists(cands []plugin.Candidate) []candidate {
+	var out []candidate
+	lists := map[string]int{} // folded path -> position in out
+	for _, c := range cands {
+		if !indexSuffix.MatchString(c.Path) {
+			out = append(out, candidate{Name: c.Name, Path: c.Path, Type: c.Type, Value: c.Value, Format: c.Format, Line: c.Line})
+			continue
+		}
+		base := indexSuffix.ReplaceAllString(c.Path, "")
+		if i, ok := lists[base]; ok {
+			out[i].Value = append(out[i].Value.([]any), c.Value)
+			continue
+		}
+		lists[base] = len(out)
+		out = append(out, candidate{
+			// The folded list is named from its own path the way its FORMAT
+			// spells a name. Trimming "$." off the front is only right for
+			// YAML/JSON: an XML XPath came through untouched, so a repeated
+			// leaf element became a parameter literally named
+			// "/config/net-info[3]/device-pool-default" - not a dotted name at
+			// all, which stranded it at the ROOT of the parameter tree instead
+			// of nesting under net-info[3] beside its siblings.
+			Name:     strings.Join(pathedit.Segments(c.Format, base), "."),
+			Path:     base,
+			Type:     model.TypeList,
+			itemType: c.Type,
+			Value:    []any{c.Value},
+			Format:   c.Format,
+			Line:     c.Line, // the list's first element line
+		})
+	}
+	return out
+}
+
+// listMapEntry matches a path segment "<prefix>[<index>].<field><rest>", the
+// shape of a leaf inside a list of maps (env[0].name, servers[2].port.min).
+var listMapEntry = regexp.MustCompile(`^(.*?)\[(\d+)\]\.([^.\[]+)(.*)$`)
+
+// identityKeyPriority is the ordered set of fields treated as an entry's stable
+// identity in a list of maps. It is a plain configurable list, not per-format
+// hardcoding; the first one present-on-every-entry and unique wins. A JSON
+// Schema key hint (future) would slot in ahead of this.
+var identityKeyPriority = []string{
+	"name", "id", "key", "host", "hostname", "path", "mountPath",
+	"containerName", "device", "interface", "port",
+}
+
+// keyListSelectors rewrites positional list-of-maps candidates to identity-key
+// selectors. For each list whose entries share a usable identity field, every
+// non-identity leaf's path changes from `x[<i>].field` to `x[<key>=<val>].field`
+// and the identity leaf itself is dropped (it is the selector, not a tunable).
+// Lists without a usable identity key are left positional (safe fallback), and
+// scalars pass through untouched. Only YAML/JSON candidates are considered; XML
+// list candidates arrive whole from the XML parser.
+func keyListSelectors(cands []candidate) []candidate {
+	// Group entries by (list prefix). For each prefix collect index -> field -> value.
+	byPrefix := map[string]map[string]map[string]any{} // prefix -> idx -> field -> value
+	prefixOrder := []string{}
+	for _, c := range cands {
+		if c.Format == "xml" {
+			continue
+		}
+		m := listMapEntry.FindStringSubmatch(c.Path)
+		if m == nil {
+			continue
+		}
+		prefix, idx, field := m[1], m[2], m[3]
+		if _, ok := byPrefix[prefix]; !ok {
+			byPrefix[prefix] = map[string]map[string]any{}
+			prefixOrder = append(prefixOrder, prefix)
+		}
+		if _, ok := byPrefix[prefix][idx]; !ok {
+			byPrefix[prefix][idx] = map[string]any{}
+		}
+		// Only a scalar directly under the entry ("[i].field", no deeper rest)
+		// can serve as an identity key.
+		if m[4] == "" {
+			byPrefix[prefix][idx][field] = c.Value
+		} else if _, ok := byPrefix[prefix][idx][field]; !ok {
+			byPrefix[prefix][idx][field] = nil // present but not a scalar identity candidate
+		}
+	}
+
+	// Decide the identity key per prefix, and the per-index selector to use.
+	keyForPrefix := map[string]string{}     // prefix -> identity field
+	selectorForEntry := map[string]string{} // prefix+"\x00"+idx -> "field=value"
+	for _, prefix := range prefixOrder {
+		entries := byPrefix[prefix]
+		chosen := ""
+		for _, k := range identityKeyPriority {
+			ok, seen := true, map[string]bool{}
+			for _, fields := range entries {
+				v, present := fields[k]
+				if !present || v == nil {
+					ok = false
+					break
+				}
+				s := fmt.Sprintf("%v", v)
+				if seen[s] { // not unique across entries: unusable as identity
+					ok = false
+					break
+				}
+				seen[s] = true
+			}
+			if ok {
+				chosen = k
+				break
+			}
+		}
+		if chosen == "" {
+			continue // no usable identity: leave this list positional
+		}
+		keyForPrefix[prefix] = chosen
+		for idx, fields := range entries {
+			selectorForEntry[prefix+"\x00"+idx] = fmt.Sprintf("%s=%v", chosen, fields[chosen])
+		}
+	}
+
+	out := cands[:0:0]
+	for _, c := range cands {
+		m := listMapEntry.FindStringSubmatch(c.Path)
+		if m == nil || c.Format == "xml" {
+			out = append(out, c)
+			continue
+		}
+		prefix, idx, field := m[1], m[2], m[3]
+		key, ok := keyForPrefix[prefix]
+		if !ok {
+			out = append(out, c) // positional fallback
+			continue
+		}
+		if field == key && m[4] == "" {
+			continue // the identity leaf becomes the selector, not a parameter
+		}
+		sel := selectorForEntry[prefix+"\x00"+idx]
+		newPath := prefix + "[" + sel + "]." + field + m[4]
+		c.Path = newPath
+		c.Name = nameFromKeyedPath(newPath)
+		out = append(out, c)
+	}
+	return out
+}
+
+// nameFromKeyedPath renders a display name from a keyed path:
+// "$.api.env[name=LOG_LEVEL].value" -> "api.env.LOG_LEVEL.value".
+func nameFromKeyedPath(path string) string {
+	s := strings.TrimPrefix(strings.TrimPrefix(path, "$."), "$")
+	s = selectorInName.ReplaceAllString(s, ".$1")
+	return strings.TrimPrefix(s, ".")
+}
+
+var selectorInName = regexp.MustCompile(`\[[^=\]]+=([^\]]+)\]`)
+
+func leafOf(path string) string {
+	s := indexSuffix.ReplaceAllString(path, "")
+	if i := strings.LastIndexAny(s, "./"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
+}
+
+// dominantType picks the group's type: mixed inference degrades to string,
+// except a lone extra "string" alongside a specific type keeps the specific
+// one (e.g. an unset field in one instance).
+func dominantType(types map[model.ParamType]bool) model.ParamType {
+	if len(types) == 1 {
+		for t := range types {
+			return t
+		}
+	}
+	delete(types, model.TypeString)
+	if len(types) == 1 {
+		for t := range types {
+			return t
+		}
+	}
+	return model.TypeString
+}
+
+// commonValue returns the value shared by EVERY instance (as a default), and
+// whether such a value exists.
+func commonValue(byInstance map[string]any, instanceCount int) (any, bool) {
+	if len(byInstance) == 0 || len(byInstance) < instanceCount {
+		return nil, false
+	}
+	var first any
+	started := false
+	for _, v := range byInstance {
+		if !started {
+			first, started = v, true
+			continue
+		}
+		if fmt.Sprintf("%v", v) != fmt.Sprintf("%v", first) {
+			return nil, false
+		}
+	}
+	return first, true
+}
+
+func sortedValues(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+fmt.Sprintf("%v", m[k]))
+	}
+	return out
+}
+
+// categoryFor proposes a category from the setting's first name segment.
+func categoryFor(name string) string {
+	i := strings.IndexAny(name, "./")
+	if i <= 0 {
+		return "General"
+	}
+	seg := name[:i]
+	return strings.ToUpper(seg[:1]) + seg[1:]
+}
+
+// settersFor reads a file and returns its kpt setter map (key -> setter).
+func settersFor(root, file string) map[string]string {
+	b, err := osReadFile(root, file)
+	if err != nil {
+		return nil
+	}
+	return layout.SettersIn(b)
+}
+
+// skipFile drops files that describe structure rather than configuration:
+// schemas, kustomization manifests, Kptfiles, and Helm chart plumbing are
+// tooling metadata, not settings anyone tunes per instance. Helm templates
+// under templates/ are Go-templated manifests (rendered, not edited), so the
+// whole directory is skipped; the chart's values.yaml is kept - it holds the
+// tunable defaults.
+func skipFile(file string) bool {
+	lower := strings.ToLower(file)
+	// Anything inside a Helm templates/ or crds/ directory is generated or
+	// schema material, never a tuned value.
+	for _, seg := range []string{"/templates/", "/crds/"} {
+		if strings.Contains(lower, seg) {
+			return true
+		}
+	}
+	if strings.HasPrefix(lower, "templates/") || strings.HasPrefix(lower, "crds/") {
+		return true
+	}
+	base := lower[strings.LastIndex(lower, "/")+1:]
+	switch base {
+	case "kustomization.yaml", "kustomization.yml", "kptfile",
+		"chart.yaml", "chart.lock":
+		return true
+	}
+	return strings.HasSuffix(base, ".schema.json")
+}
+
+// structuralKey drops the top-level Kubernetes identity fields present in
+// almost any KRM document, regardless of whether the file is a full manifest.
+func structuralKey(path string) bool {
+	switch stripDoc(path) {
+	case "$.apiVersion", "$.kind":
+		return true
+	}
+	return false
+}
+
+// stripDoc removes a leading multi-document selector ("[1]$.spec" -> "$.spec")
+// so the structural/envelope checks compare against canonical paths regardless
+// of which document in a stream a candidate came from.
+func stripDoc(path string) string {
+	if _, rest, ok := pathedit.DocIndex(path); ok {
+		return rest
+	}
+	return path
+}
+
+// k8sManifest reports whether a scanned file is a Kubernetes manifest: it has
+// both a top-level apiVersion and kind. Helm values files and other plain
+// config do not, so their fields are left untouched.
+func k8sManifest(cands []candidate) bool {
+	var hasAPI, hasKind bool
+	for _, c := range cands {
+		switch stripDoc(c.Path) {
+		case "$.apiVersion":
+			hasAPI = true
+		case "$.kind":
+			hasKind = true
+		}
+	}
+	return hasAPI && hasKind
+}
+
+// k8sEnvelopePrefixes are the metadata-bookkeeping and cluster-reported
+// subtrees of a Kubernetes object: identity and status, never tunable config.
+var k8sEnvelopePrefixes = []string{
+	"$.metadata.name", "$.metadata.namespace", "$.metadata.labels",
+	"$.metadata.annotations", "$.metadata.creationTimestamp", "$.metadata.resourceVersion",
+	"$.metadata.uid", "$.metadata.generation", "$.metadata.finalizers",
+	"$.metadata.ownerReferences", "$.metadata.managedFields", "$.metadata.selfLink",
+	"$.status",
+}
+
+// k8sStructural reports whether a path is Kubernetes envelope/structure inside
+// a manifest file - the resource's identity and bookkeeping - rather than a
+// value someone tunes per instance.
+func k8sStructural(path string) bool {
+	path = stripDoc(path)
+	if path == "$.apiVersion" || path == "$.kind" {
+		return true
+	}
+	for _, pfx := range k8sEnvelopePrefixes {
+		if path == pfx || strings.HasPrefix(path, pfx+".") || strings.HasPrefix(path, pfx+"[") {
+			return true
+		}
+	}
+	return false
+}
+
+var secretRe = regexp.MustCompile(`(?i)(password|passwd|secret|token|api[-_]?key|private[-_]?key|credential)`)
+
+func looksSecret(name string) bool { return secretRe.MatchString(leafOf(name)) }
+
+func slugify(name string) string {
+	s := strings.ToLower(name)
+	s = strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+			return r
+		default:
+			return '-'
+		}
+	}, s)
+	return strings.Trim(strings.Join(strings.FieldsFunc(s, func(r rune) bool { return r == '-' }), "-"), "-")
+}
+
+// Ignore re-exports the project ignore type for callers.
+type Ignore = project.Ignore

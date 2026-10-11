@@ -10,31 +10,31 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: backend
+        working-directory: .
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"
-          cache-dependency-path: backend/go.sum
+          cache-dependency-path: go.sum
       - name: Vet
         run: go vet ./...
       # The spec is generated from the handler annotations AND committed (the
       # backend serves it at /api/docs), so it has to travel with the code. The
-      # pre-commit hook (`make hooks`, run by `make install`) regenerates it
+      # pre-commit hook (`task hooks`, run by `task install`) regenerates it
       # automatically; this is the safety net for a commit made without it, and
       # it uploads the corrected files so the fix is a download away rather than
       # a local re-run.
       - name: OpenAPI spec is in sync with the code
         id: docs
         working-directory: .
-        run: make docs-check
+        run: task docs:check
       - name: Upload the regenerated OpenAPI spec
         if: failure() && steps.docs.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: openapi-spec-regenerated
-          path: backend/internal/api/docs/
+          path: internal/api/docs/
       - name: Lint
         # golangci-lint v2 (the .golangci.yml is v2 schema). The binary must be
         # built with Go >= the module's target (go 1.25.0), so pin a v2.5.x
@@ -43,7 +43,7 @@ jobs:
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.5.0
-          working-directory: backend
+          working-directory: .
       - name: Test
         run: go test ./...
       - name: Build
@@ -59,14 +59,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: frontend
+        working-directory: web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: frontend/package-lock.json
+          cache-dependency-path: web/package-lock.json
       - run: npm ci || npm install
       - name: Lint
         run: npm run lint

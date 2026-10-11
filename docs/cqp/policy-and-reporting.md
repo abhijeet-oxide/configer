@@ -75,7 +75,7 @@ For a finding budget the message names the offenders:
 ```
 no-critical-security  FAIL
 1 error-or-worse security findings, and the budget allows 0.
-First: CVE-2025-0001 in golang.org/x/net (backend/go.mod).
+First: CVE-2025-0001 in golang.org/x/net (go.mod).
 ```
 
 ### Selectors
@@ -296,7 +296,7 @@ The contract, stated plainly:
       "severity": "warning",
       "confidence": "high",
       "title": "/applications requests GET /api/repos 3 times",
-      "where": [{ "path": "frontend/src/api.ts", "component": "/applications" }],
+      "where": [{ "path": "web/src/api.ts", "component": "/applications" }],
       "fix": {
         "recommendation": "Two components asked for the same thing independently. Share one query key so react-query serves both from one request.",
         "safeToAutomate": false,

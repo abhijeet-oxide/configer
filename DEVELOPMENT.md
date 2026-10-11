@@ -14,18 +14,18 @@ the feature tour in [FEATURES.md](FEATURES.md).
 ## Setup and daily workflow
 
 ```bash
-make install     # go mod download + npm install
-make dev         # backend :8080 (serving ./sample-repo) + frontend :5173
+task install     # go mod download + npm install
+task dev         # backend :8080 (serving ./sample-repo) + frontend :5173
 ```
 
-`make help` lists every target. The pieces individually:
+`task --list` lists every target. The pieces individually:
 
 ```bash
 # Backend against the bundled fixture
-cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
+CONFIGER_REPO=../sample-repo go run ./cmd/configer
 
 # Frontend (Vite proxies /api -> :8080)
-cd frontend && npm run dev
+cd web && npm run dev
 ```
 
 Copy `.env.example` to `.env` to override anything. Interactive API docs:
@@ -34,12 +34,12 @@ Copy `.env.example` to `.env` to override anything. Interactive API docs:
 ## Testing and verification
 
 ```bash
-make test            # go test ./... + tsc --noEmit
-make lint            # go vet + eslint + no em-dashes (CI also runs golangci-lint)
+task test            # go test ./... + tsc --noEmit
+task lint            # go vet + eslint + no em-dashes (CI also runs golangci-lint)
 ./scripts/smoke.sh   # end-to-end: onboard sample-repos/telco-ran from scratch,
                      # stage edits via the API, validate, submit, and assert the
                      # CR branch's surgical diffs
-make functional-test # scanner functional + scale suite over sample-repos/
+task functional-test # scanner functional + scale suite over sample-repos/
 ```
 
 Conventions worth knowing before writing tests:
@@ -48,12 +48,12 @@ Conventions worth knowing before writing tests:
   not just "contains" (see `internal/pathedit/pathedit_test.go`,
   `internal/changeset/changeset_test.go`).
 - Layout/discovery fixtures for all three conventions live under
-  `backend/internal/layout/testdata/{kpt,kustomize,plain}` and are shared by the
+  `internal/layout/testdata/{kpt,kustomize,plain}` and are shared by the
   discovery tests.
 - The scanner is exercised against realistic repos in `sample-repos/` by the
   build-tagged functional suite (`go test -tags functional ./internal/discovery/...`)
-  and the Node API suite (`frontend/functional/discovery.test.mjs`); run both
-  with `make functional-test`.
+  and the Node API suite (`web/functional/discovery.test.mjs`); run both
+  with `task functional-test`.
 - `internal/api/platform_test.go` is the role-enforcement matrix (anonymous 401,
   editor writes, merge approver-gated, admin-only member management) plus the
   single-user-mode regression.
@@ -75,7 +75,7 @@ telco RAN) used to test onboarding end to end. See `sample-repos/README.md`.
 The README and [FEATURES.md](FEATURES.md) images are captured from the live app:
 
 ```bash
-# with backend + frontend running (make dev)
+# with backend + frontend running (task dev)
 node scripts/capture-media.mjs
 ```
 
@@ -86,21 +86,21 @@ needed. The demo only stages a draft edit, leaving the sample repo untouched.
 ## API documentation
 
 The OpenAPI spec is generated from the handler annotations (the `// @Summary`,
-`// @Router`, ... comments in `backend/internal/api`), committed under
-`backend/internal/api/docs/`, and embedded in the binary so the UI and raw spec
+`// @Router`, ... comments in `internal/api`), committed under
+`internal/api/docs/`, and embedded in the binary so the UI and raw spec
 work offline. Regenerate after changing any handler:
 
 ```bash
-make docs        # or: cd backend && go generate ./internal/api
+task docs        # or: go generate ./internal/api
 ```
 
-CI runs `make docs-check`, which fails the build if the committed spec is stale,
+CI runs `task docs:check`, which fails the build if the committed spec is stale,
 so the docs can never silently drift from the code.
 
 ## Building and deployment
 
 ```bash
-make build                          # backend binary + frontend dist/
+task build                          # backend binary + frontend dist/
 cd deploy && docker compose up --build
 ```
 

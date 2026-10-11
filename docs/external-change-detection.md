@@ -35,7 +35,7 @@ assumes a single flat repository.
 fixing:
 
 1. **Configer put them there.** `layout.copyTree`
-   (`backend/internal/layout/layout.go:175`) is what "clone an instance" uses,
+   (`internal/layout/layout.go:175`) is what "clone an instance" uses,
    through `scaffoldByCopy`. It walks the source folder and copies **every
    regular file** with no name filtering at all - so if the source instance
    folder contained a `.git`, `.terraform`, `node_modules` or an editor
@@ -391,7 +391,7 @@ is answered by looking at the tool rather than by reading release notes.
 Bidirectional sync is now covered by a test suite that changes the repository
 the way a colleague's editor or a pipeline would - write files, `git commit`,
 no Configer API anywhere in the path - and then asks Configer what it knows
-(`backend/internal/api/external_change_test.go`, ten cases).
+(`internal/api/external_change_test.go`, ten cases).
 
 The headline result: **the read half of the claim was already true.** A value
 another developer commits IS the value the grid shows, with no import step and

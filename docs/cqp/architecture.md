@@ -131,7 +131,7 @@ tags: [performance]             # carried onto findings, used by PR labelling
 
 tiers: [pr, main]               # which stages this belongs to
 scopes: [backend]               # run when these areas changed
-paths: ["backend/**/*.go"]      # ...or when a changed file matches
+paths: ["cmd/**/*.go", "internal/**/*.go"]      # ...or when a changed file matches
 alwaysRun: false                # ...or unconditionally
 cost: moderate                  # cheap|moderate|heavy - scheduling order and default timeout
 needs: [some-other-check]       # must succeed first
@@ -141,7 +141,7 @@ tool:
   args: ["--json", "--out", "{out}"]
   probe: ["mytool", "--version"] # decides availability; cheap and side-effect free
   versionArgs: ["--version"]     # goes into the cache key
-  workdir: backend
+  workdir: .
   env: {FOO: "bar"}
   okExitCodes: [1]               # non-zero that means "ran fine, found things"
   optional: true                 # absence is normal, not a problem
@@ -160,7 +160,7 @@ defaults:                        # applied to every finding this tool produces
   docsUrl: https://...
 
 cache:
-  inputs: ["backend/**/*.go"]    # no inputs means no caching, which is the safe default
+  inputs: ["cmd/**/*.go", "internal/**/*.go"]    # no inputs means no caching, which is the safe default
 ```
 
 Templating available in `args`, `env` and `output.file`: `{repo}`, `{workdir}`,
@@ -196,7 +196,7 @@ func normalizeMyFormat(in Input) (Result, error) {
 | Normalizer | Carries |
 |---|---|
 | `sarif` | golangci-lint, Semgrep, Trivy, Gitleaks, OSV-Scanner, govulncheck, Hadolint, KubeLinter |
-| `exit-code` | tsc, go vet, gofmt, vite build, make docs-check, smoke, no-emdash |
+| `exit-code` | tsc, go vet, gofmt, vite build, task docs:check, smoke, no-emdash |
 | `junit` | Playwright, and any other test runner |
 | `cq` (native) | the runtime probe, and anything routed through `scripts/cq/adapt.mjs` |
 | `eslint`, `knip`, `jscpd`, `dependency-cruiser` | one each, native JSON |

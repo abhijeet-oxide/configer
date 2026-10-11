@@ -192,8 +192,8 @@ func normalizeGoCover(in Input) (Result, error) {
 	return t.result(in.Analyzer, 5), nil
 }
 
-// trimModulePrefix turns github.com/org/repo/backend/internal/x/y.go into
-// backend/internal/x/y.go by dropping everything up to the first path segment
+// trimModulePrefix turns github.com/org/repo/internal/x/y.go into
+// internal/x/y.go by dropping everything up to the first path segment
 // that looks like a directory in the repository rather than a domain.
 func trimModulePrefix(p string) string {
 	parts := strings.Split(p, "/")

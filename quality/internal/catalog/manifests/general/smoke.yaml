@@ -27,4 +27,4 @@ defaults:
 cache:
   # The fixture is part of the input: a change to the sample repository changes
   # what the script asserts, so a cached pass over the old one would be a lie.
-  inputs: ["backend/**/*.go", "sample-repos/telco-ran/**", "scripts/smoke.sh"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go", "sample-repos/telco-ran/**", "scripts/smoke.sh"]

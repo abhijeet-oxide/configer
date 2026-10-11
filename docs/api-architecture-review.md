@@ -2,7 +2,7 @@
 
 A Principal-API-Architect review of the Configer backend HTTP surface, with a
 concrete standard the team can hold every future endpoint to. It is written
-against the API as it exists in `backend/internal/api` and reflects the changes
+against the API as it exists in `internal/api` and reflects the changes
 landed alongside it (code-generated OpenAPI, standardized error envelope).
 
 Configer is unusual: it is **write-back-native GitOps**. The "database" is a
@@ -24,7 +24,7 @@ possible set that keeps the surface consistent as it grows.
    that do not map to CRUD (`/changes/{id}/submit`, `/merge`, `/reject`), and
    those are always `POST` on a sub-resource.
 2. **The contract is generated from the code.** OpenAPI is produced from handler
-   annotations (`make docs`); CI fails if it drifts (`make docs-check`). A spec
+   annotations (`task docs`); CI fails if it drifts (`task docs:check`). A spec
    is never hand-written, so it can never lie.
 3. **One error envelope, everywhere.** Every 4xx/5xx returns `APIError`
    (`code`, `error`, `requestId`, optional `fields`). Clients branch on `code`,
@@ -431,7 +431,7 @@ POST /api/changes/7/merge
 ## G. Production Readiness Checklist (use in PR + architecture review)
 
 Contract & docs
-- [ ] New/changed endpoint has full swaggo annotations; `make docs-check` passes.
+- [ ] New/changed endpoint has full swaggo annotations; `task docs:check` passes.
 - [ ] Path is a resource noun; any action verb is a `POST` sub-resource.
 - [ ] Request/response shapes have named schemas or documented `object`.
 
@@ -469,10 +469,10 @@ Observability & ops
 
 Round 1 (documentation + error contract):
 - **Code-generated OpenAPI** (swaggo): every endpoint annotated, spec generated
-  by `make docs` / `go generate`, embedded and served at `/api/openapi.json`,
+  by `task docs` / `go generate`, embedded and served at `/api/openapi.json`,
   `/api/openapi.yaml`, and `/api/docs`. The hand-written `openapi.yaml` (which
   had already drifted) was removed.
-- **CI drift guard** (`make docs-check`) so the spec can never fall behind code.
+- **CI drift guard** (`task docs:check`) so the spec can never fall behind code.
 - **Standardized `APIError` envelope** (`code` + `requestId` + `fields`), adopted
   by the shared 500 path and every write endpoint.
 
@@ -514,7 +514,7 @@ foundation makes adding OAuth/SSO providers a small change. The items marked
 
 ### H.1 The single source of truth: a typed API client *(shipped)*
 
-Every response now flows through one hardened client (`frontend/src/api.ts`):
+Every response now flows through one hardened client (`web/src/api.ts`):
 
 - **No silent false success.** Only a 2xx resolves with data. Every non-2xx
   becomes a typed `ApiError` carrying `{status, code, message, requestId,

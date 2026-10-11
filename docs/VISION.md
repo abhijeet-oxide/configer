@@ -46,7 +46,7 @@ publishing is approver-gated.
 
 - **Helm values adapter** - the one major layout not yet interpreted
   (values.yaml + per-env values files); the Adapter seam in
-  `backend/internal/layout` is where it lands.
+  `internal/layout` is where it lands.
 - **OAuth-driven repository picker** - onboarding currently takes a URL /
   local path; with login present, list the user's repositories and branches
   directly.

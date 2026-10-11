@@ -15,7 +15,7 @@ tool:
   command: sh
   args: ["-c", "go test -run '^$' -bench . -benchmem -count 6 ./... > \"$CQ_ARTIFACTS/bench.txt\" 2>&1; benchstat -format csv \"$CQ_ARTIFACTS/bench.txt\" > \"$1\"", "sh", "{out}"]
   probe: ["benchstat", "-h"]
-  workdir: backend
+  workdir: .
   optional: true
   install: "Install benchstat: go install golang.org/x/perf/cmd/benchstat@latest"
 output:

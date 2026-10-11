@@ -28,4 +28,4 @@ defaults:
   safeToAutomate: false
   effort: small
 cache:
-  inputs: ["backend/go.sum", "frontend/package-lock.json"]
+  inputs: ["go.sum", "web/package-lock.json"]

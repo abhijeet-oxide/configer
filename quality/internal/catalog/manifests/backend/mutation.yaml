@@ -13,7 +13,7 @@ cost: heavy
 timeoutSeconds: 3600
 tool:
   command: sh
-  args: ["-c", "cd backend && gremlins unleash --output=\"$CQ_ARTIFACTS/gremlins.json\" ./... >/dev/null 2>&1; cd \"$CQ_REPO\" && node scripts/cq/adapt.mjs gremlins < \"$CQ_ARTIFACTS/gremlins.json\" > \"$1\"", "sh", "{out}"]
+  args: ["-c", "gremlins unleash --output=\"$CQ_ARTIFACTS/gremlins.json\" ./... >/dev/null 2>&1; cd \"$CQ_REPO\" && node scripts/cq/adapt.mjs gremlins < \"$CQ_ARTIFACTS/gremlins.json\" > \"$1\"", "sh", "{out}"]
   probe: ["gremlins", "--version"]
   optional: true
   install: "Install Gremlins: go install github.com/go-gremlins/gremlins/cmd/gremlins@latest"

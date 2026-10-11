@@ -6,7 +6,7 @@ Configer supports flexible configuration through environment variables, making i
 
 ## Appearance / Theme
 
-The whole look is driven by one file, `frontend/src/theme.config.ts`.
+The whole look is driven by one file, `web/src/theme.config.ts`.
 
 - **Colors, logo, app name:** edit `themeOverrides` (deep-merged over the
   defaults). Anything you omit falls back to what Configer ships.
@@ -43,7 +43,7 @@ Never commit `.env` to version control-use `.env.example` as the template.
 **Where it is read from.** The backend looks for `.env` in its working
 directory and then upwards (so the repository-root file is found even though
 the server runs from `backend/`), and the Vite config reads the same root file
-plus an optional `frontend/.env`. Point `CONFIGER_ENV_FILE` at an explicit path
+plus an optional `web/.env`. Point `CONFIGER_ENV_FILE` at an explicit path
 to skip the search.
 
 **Precedence.** The real environment always wins: `.env` only fills in
@@ -75,7 +75,7 @@ being applied.
 | `CONFIGER_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `CONFIGER_SYNC_SECONDS` | `30` | Git sync interval (seconds); 0 = disabled |
 | `CONFIGER_ENV_FILE` | *(unset)* | Explicit `.env` path; skips the upward search |
-| `CONFIGER_WEB_DIR` | *(auto)* | Directory of the built UI to serve from this process; `./web` and `../frontend/dist` are tried when unset |
+| `CONFIGER_WEB_DIR` | *(auto)* | Directory of the built UI to serve from this process; `./web` and `../web/dist` are tried when unset |
 | `CONFIGER_LOCAL_FOLDERS` | *(auto)* | Offer the "Local folder" source. Auto-detected: on for a non-production server reached from the same machine, off for anything hosted. Set `true`/`false` to decide explicitly |
 
 ### Platform (users, sessions, roles, audit)
@@ -120,7 +120,7 @@ Frontend config is baked at build time using Vite's `VITE_*` prefix:
 | `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Where the dev server proxies `/api` |
 
 The product name, logo and palette are **not** environment variables: they live
-in `frontend/src/theme.config.ts`, which drives the CSS custom properties, the
+in `web/src/theme.config.ts`, which drives the CSS custom properties, the
 Ant Design tokens and the favicon from one place.
 
 **`VITE_API_BASE_URL` must end at the `/api` prefix.** Every endpoint is
@@ -219,8 +219,8 @@ The frontend can be reconfigured to point to a different backend without rebuild
 
 ```bash
 # Install dependencies
-cd frontend && npm install && cd ..
-cd backend && go mod download && cd ..
+cd web && npm install && cd ..
+go mod download && cd ..
 
 # Start everything
 npm start

@@ -1,0 +1,350 @@
+package discovery
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/abhijeet-oxide/configer/internal/ingest"
+	"github.com/abhijeet-oxide/configer/internal/layout"
+	"github.com/abhijeet-oxide/configer/internal/model"
+	"github.com/abhijeet-oxide/configer/internal/parsers"
+	"github.com/abhijeet-oxide/configer/internal/plugin"
+	"github.com/abhijeet-oxide/configer/internal/project"
+	"github.com/abhijeet-oxide/configer/internal/recognizers"
+)
+
+func registry() *plugin.Registry {
+	reg := plugin.NewRegistry()
+	parsers.Register(reg)
+	recognizers.Register(reg)
+	return reg
+}
+
+func paramsByName(res Result) map[string]model.Parameter {
+	m := map[string]model.Parameter{}
+	for _, p := range res.Parameters {
+		m[p.Name] = p
+	}
+	return m
+}
+
+// The plain fixture (../layout/testdata/plain) is the discovery contract:
+// two instances, a shared file, a namespace repeated across YAML and XML,
+// and a JSON Schema next to prod's values.yaml.
+func TestDiscoverPlainFolders(t *testing.T) {
+	res, err := Discover("../layout/testdata/plain", registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Detection.Layout != layout.KindPlainFolders {
+		t.Fatalf("layout = %s", res.Detection.Layout)
+	}
+	if len(res.Instances) != 2 || res.Instances[1].Folder != "instances/prod" {
+		t.Fatalf("instances = %+v", res.Instances)
+	}
+
+	byName := paramsByName(res)
+
+	// namespace exists in values.yaml AND net.xml with identical per-instance
+	// values -> ONE parameter with TWO templated bindings.
+	ns, ok := byName["namespace"]
+	if !ok {
+		t.Fatal("namespace parameter missing")
+	}
+	if len(ns.Bindings) != 2 {
+		t.Fatalf("namespace bindings = %+v, want 2 (values.yaml + net.xml)", ns.Bindings)
+	}
+	for _, b := range ns.Bindings {
+		if b.EffectiveLayer() != model.LayerInstance {
+			t.Errorf("namespace binding %s should be instance layer", b.File)
+		}
+	}
+
+	// app.port differs per instance -> instance-scoped, templated, no default.
+	port, ok := byName["app.port"]
+	if !ok {
+		t.Fatal("app.port parameter missing")
+	}
+	if port.Bindings[0].File != "{folder}/values.yaml" {
+		t.Errorf("port binding = %+v", port.Bindings[0])
+	}
+	if port.Default != nil {
+		t.Errorf("port default = %v, want none (values differ)", port.Default)
+	}
+
+	// The schema next to prod's values.yaml supplies validation.
+	if port.Type != model.TypeInteger || port.Validation.Min == nil || *port.Validation.Max != 65535 {
+		t.Errorf("port schema validation not attached: %+v", port.Validation)
+	}
+	if !ns.Validation.Required || ns.Validation.Pattern == "" {
+		t.Errorf("namespace schema validation not attached: %+v", ns.Validation)
+	}
+	if ns.Validation.SchemaRef == "" {
+		t.Error("namespace schemaRef missing")
+	}
+
+	// The shared file's setting is a global parameter with a literal binding.
+	dom, ok := byName["platform.domain"]
+	if !ok {
+		t.Fatal("platform.domain parameter missing")
+	}
+	if dom.Scope != model.ScopeGlobal || dom.Bindings[0].File != "shared/platform.yaml" {
+		t.Errorf("platform.domain = %+v", dom)
+	}
+	if dom.Default != "example.com" {
+		t.Errorf("platform.domain default = %v", dom.Default)
+	}
+}
+
+func TestDiscoverKptSetters(t *testing.T) {
+	res, err := Discover("../layout/testdata/kpt", registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Detection.Layout != layout.KindKpt {
+		t.Fatalf("layout = %s", res.Detection.Layout)
+	}
+	byName := paramsByName(res)
+	rep, ok := byName["app.replicas"]
+	if !ok {
+		t.Fatal("app.replicas missing")
+	}
+	if rep.DisplayName != "replicas" {
+		t.Errorf("displayName = %q, want kpt setter name", rep.DisplayName)
+	}
+	if rep.Bindings[0].File != "{folder}/config.yaml" {
+		t.Errorf("binding = %+v", rep.Bindings[0])
+	}
+}
+
+func TestDiscoverKustomize(t *testing.T) {
+	res, err := Discover("../layout/testdata/kustomize", registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Detection.Layout != layout.KindKustomize {
+		t.Fatalf("layout = %s", res.Detection.Layout)
+	}
+	byName := paramsByName(res)
+	// spec.replicas appears in every overlay's patch.yaml -> one templated param.
+	rep, ok := byName["spec.replicas"]
+	if !ok {
+		t.Fatalf("spec.replicas missing; have %v", keys(byName))
+	}
+	if rep.Bindings[0].File != "{folder}/patch.yaml" {
+		t.Errorf("binding = %+v", rep.Bindings[0])
+	}
+	// Base files land on the shared layer.
+	if _, ok := byName["spec.replicas"]; !ok {
+		t.Error("overlay param missing")
+	}
+}
+
+func keys(m map[string]model.Parameter) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+// A list leaves as a list. A nil slice marshals to JSON null, and a client that
+// reasonably expects an array then reads a length off nothing - which took the
+// onboarding page down for a repository the scan found nothing in. Finding
+// nothing is an ordinary answer here.
+func TestDiscoveryListsAreNeverNull(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# nothing here\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Discover(root, registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Parameters == nil || res.Instances == nil || res.SharedFiles == nil || res.Skipped == nil {
+		t.Fatalf("a nil list would marshal as null: %+v", res)
+	}
+	b, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"parameters":null`, `"instances":null`} {
+		if strings.Contains(string(b), field) {
+			t.Errorf("%s reached the client: %s", field, b)
+		}
+	}
+	if !strings.Contains(string(b), `"parameters":[]`) {
+		t.Errorf("an empty proposal should carry an empty list: %s", b)
+	}
+}
+
+// A Flux bootstrap repository, which is what prompted this: the components
+// manifest declares itself generated, and the kustomization beside it - the
+// file Flux's own documentation tells you to customize - is dropped as
+// structure. Both decisions are right; both were silent, and the second one
+// silently withheld the only file in the repository worth pointing at.
+func TestAFluxRepositoryExplainsEveryFileItPassesOver(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("clusters/wnv7a0/flux-system/gotk-components.yaml",
+		"---\n# This manifest was generated by flux. DO NOT EDIT.\napiVersion: v1\nkind: Namespace\nmetadata:\n  name: flux-system\n")
+	write("clusters/wnv7a0/flux-system/kustomization.yaml",
+		"apiVersion: kustomize.config.k8s.io/v1beta1\nkind: Kustomization\nresources:\n  - gotk-components.yaml\npatches:\n  - patch: |\n      - op: replace\n        path: /spec/replicas\n        value: 2\n")
+
+	res, err := Discover(root, registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	by := map[string]ingest.SkipReason{}
+	for _, s := range res.Skipped {
+		by[s.File] = s.Reason
+	}
+	if got := by["clusters/wnv7a0/flux-system/gotk-components.yaml"]; got != ingest.SkipGenerated {
+		t.Errorf("the generated manifest = %q, want %q", got, ingest.SkipGenerated)
+	}
+	if got := by["clusters/wnv7a0/flux-system/kustomization.yaml"]; got != ingest.SkipStructural {
+		t.Errorf("the kustomization = %q, want %q - it must not vanish without a word", got, ingest.SkipStructural)
+	}
+}
+
+// "Manage anyway": the default is right in general and wrong for some
+// repositories, and the person looking at their own repository is better placed
+// to judge than a rule is. Naming a file overrides the judgement for that file
+// only - it does not turn it off everywhere.
+func TestManageAnywayIncludesAPassedOverFile(t *testing.T) {
+	root := t.TempDir()
+	write := func(rel, body string) {
+		full := filepath.Join(root, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const gotk = "clusters/wnv7a0/flux-system/gotk-components.yaml"
+	write(gotk, "---\n# This manifest was generated by flux. DO NOT EDIT.\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: kustomize-controller\nspec:\n  replicas: 1\n  template:\n    spec:\n      containers:\n        - name: manager\n          image: ghcr.io/fluxcd/kustomize-controller:v1.4.0\n")
+	write("clusters/wnv7a0/other/gotk-sync.yaml", "---\n# This manifest was generated by flux. DO NOT EDIT.\napiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: x\ndata:\n  interval: 10m\n")
+
+	// By default both are passed over, and each says what produced it.
+	before, err := Discover(root, registry(), project.Ignore{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.Parameters) != 0 {
+		t.Fatalf("generated files should be passed over by default, got %d parameters", len(before.Parameters))
+	}
+	var seen *ingest.SkippedFile
+	for i := range before.Skipped {
+		if before.Skipped[i].File == gotk {
+			seen = &before.Skipped[i]
+		}
+	}
+	if seen == nil || seen.Origin == nil {
+		t.Fatalf("the file should be reported with what produced it, got %+v", before.Skipped)
+	}
+	if seen.Origin.ID != "flux" || seen.Origin.Regenerates == "" || seen.Origin.Instead == "" {
+		t.Errorf("the origin should name the tool, what regenerates it and what to do instead: %+v", *seen.Origin)
+	}
+
+	// Naming it brings that file in, and only that file.
+	after, err := DiscoverWith(root, registry(), project.Ignore{}, Options{Manage: []string{gotk}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after.Parameters) == 0 {
+		t.Fatal("the file the user chose to manage yielded no parameters")
+	}
+	for _, p := range after.Parameters {
+		for _, b := range p.Bindings {
+			if !strings.Contains(b.File, "gotk-components.yaml") {
+				t.Errorf("a file that was not named came in too: %s", b.File)
+			}
+		}
+	}
+	for _, sk := range after.Skipped {
+		if sk.File == gotk {
+			t.Error("a file being managed should no longer be reported as passed over")
+		}
+	}
+}
+
+// A repeated LEAF element in XML folds into one list parameter, and that
+// parameter must be named the way every other name is spelled - dotted. Naming
+// it from the raw path left "/config/net-info[2]/device-pool-default", which is
+// not a name the parameter tree can nest: it sat at the root, alone, while its
+// siblings nested under net-info[2].
+func TestFoldedXMLListKeepsTheDottedName(t *testing.T) {
+	cands, err := parsers.XMLParser{}.Extract("net.xml", []byte(`<config>
+  <net-info>
+    <net-label>media</net-label>
+    <device-pool-default>pool-a</device-pool-default>
+    <device-pool-default>pool-b</device-pool-default>
+  </net-info>
+</config>`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	folded := foldLists(cands)
+	var list *candidate
+	for i := range folded {
+		if folded[i].Type == model.TypeList {
+			list = &folded[i]
+		}
+	}
+	if list == nil {
+		t.Fatal("the repeated element did not fold into a list")
+	}
+	if list.Name != "config.net-info.device-pool-default" {
+		t.Errorf("name = %q, want the dotted name", list.Name)
+	}
+	if list.Path != "/config/net-info/device-pool-default" {
+		t.Errorf("path = %q, want the XPath without the positional predicate", list.Path)
+	}
+}
+
+// Tunable is the ONE answer to "what settings does this file have", so a file
+// editor asking it gets exactly what an import would have proposed: no
+// Kubernetes envelope, no apiVersion/kind, no alias mirrors.
+func TestTunableMatchesWhatImportWouldPropose(t *testing.T) {
+	cands, err := parsers.YAMLParser{}.Extract("app.yaml", []byte(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: prod
+spec:
+  replicas: 3
+status:
+  readyReplicas: 3
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, p := range Tunable("app.yaml", cands) {
+		got[p.Name] = true
+	}
+	if !got["spec.replicas"] {
+		t.Errorf("spec.replicas missing from %v", got)
+	}
+	for _, envelope := range []string{"apiVersion", "kind", "metadata.name", "metadata.namespace", "status.readyReplicas"} {
+		if got[envelope] {
+			t.Errorf("%s is Kubernetes envelope, not a setting: %v", envelope, got)
+		}
+	}
+	// A file that describes structure rather than settings yields nothing.
+	if p := Tunable("kustomization.yaml", cands); len(p) != 0 {
+		t.Errorf("kustomization.yaml proposed %+v", p)
+	}
+}

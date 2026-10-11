@@ -9,7 +9,7 @@ category: api
 tags: [api, contract]
 tiers: [pre-commit, pr, main]
 scopes: [api, backend]
-paths: ["backend/internal/api/*.go"]
+paths: ["internal/api/*.go"]
 cost: moderate
 tool:
   command: make
@@ -23,6 +23,6 @@ defaults:
   confidence: high
   safeToAutomate: true
   effort: trivial
-  recommendation: "Run `make docs && git add backend/internal/api/docs`. Installing the hooks with `make hooks` does it automatically on every commit."
+  recommendation: "Run `make docs && git add internal/api/docs`. Installing the hooks with `make hooks` does it automatically on every commit."
 cache:
-  inputs: ["backend/internal/api/*.go", "backend/internal/api/docs/**"]
+  inputs: ["internal/api/*.go", "internal/api/docs/**"]

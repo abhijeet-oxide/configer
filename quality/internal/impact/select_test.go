@@ -52,7 +52,7 @@ func TestBackendOnlyChangeSkipsFrontend(t *testing.T) {
 		analyzer("eslint", model.CategoryFrontend, []string{"frontend"}, nil),
 	}
 	got := selectIDs(t, Selector{Cfg: testConfig(), Tier: model.TierPR}, as,
-		changed("backend/internal/api/reads.go"))
+		changed("internal/api/reads.go"))
 
 	if !got["golangci"] {
 		t.Error("a backend change must run the backend checks")
@@ -68,7 +68,7 @@ func TestFrontendOnlyChangeSkipsBackend(t *testing.T) {
 		analyzer("eslint", model.CategoryFrontend, []string{"frontend"}, nil),
 	}
 	got := selectIDs(t, Selector{Cfg: testConfig(), Tier: model.TierPR}, as,
-		changed("frontend/src/components/ParameterGrid.tsx"))
+		changed("web/src/components/ParameterGrid.tsx"))
 
 	if !got["eslint"] {
 		t.Error("a frontend change must run the frontend checks")
@@ -114,10 +114,10 @@ func TestDocsOnlyChangeSkipsNearlyEverything(t *testing.T) {
 func TestCSSOnlyChangeSkipsBackend(t *testing.T) {
 	as := []model.Analyzer{
 		analyzer("golangci", model.CategoryBackend, []string{"backend"}, nil),
-		analyzer("stylelint", model.CategoryFrontend, nil, []string{"frontend/**/*.css"}),
+		analyzer("stylelint", model.CategoryFrontend, nil, []string{"web/**/*.css"}),
 	}
 	got := selectIDs(t, Selector{Cfg: testConfig(), Tier: model.TierPR}, as,
-		changed("frontend/src/styles.css"))
+		changed("web/src/styles.css"))
 
 	if !got["stylelint"] {
 		t.Error("a CSS change must run the checks whose path triggers match it")
@@ -149,7 +149,7 @@ func TestPrerequisitesAreAlwaysPulledIn(t *testing.T) {
 	size.Needs = []string{"build"}
 
 	p := Selector{Cfg: testConfig(), Tier: model.TierPR, Only: []string{"bundle-size"}}.
-		Select([]model.Analyzer{build, size}, changed("frontend/src/x.tsx"))
+		Select([]model.Analyzer{build, size}, changed("web/src/x.tsx"))
 
 	ids := map[string]bool{}
 	for _, id := range p.SelectedIDs() {
@@ -193,8 +193,8 @@ func TestTierGating(t *testing.T) {
 func TestClassifyNamesEveryAreaTouched(t *testing.T) {
 	cfg := testConfig()
 	scopes := Classify([]string{
-		"backend/internal/api/reads.go",
-		"frontend/src/App.tsx",
+		"internal/api/reads.go",
+		"web/src/App.tsx",
 		"README.md",
 	}, cfg.Scopes)
 

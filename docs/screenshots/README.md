@@ -8,10 +8,10 @@ README and [FEATURES.md](../../FEATURES.md) always reflect reality.
 
 ```bash
 # 1. backend, pointed at the bundled demo repo
-cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
+CONFIGER_REPO=../sample-repo go run ./cmd/configer
 
 # 2. frontend dev server
-cd frontend && npm run dev
+cd web && npm run dev
 
 # 3. capture the gallery + the README demo GIF (writes here and ../demo.gif)
 node scripts/capture-media.mjs

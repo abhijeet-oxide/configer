@@ -8,13 +8,13 @@ category: general
 tags: [format]
 tiers: [local, pre-commit, pr, main]
 scopes: [backend]
-paths: ["backend/**/*.go"]
+paths: ["cmd/**/*.go", "internal/**/*.go"]
 cost: cheap
 tool:
   command: sh
   args: ["-c", "out=$(gofmt -l .); if [ -n \"$out\" ]; then echo \"$out\"; exit 1; fi", "sh"]
   probe: ["gofmt", "-h"]
-  workdir: backend
+  workdir: .
   install: "Install Go: https://go.dev/dl/"
 output:
   format: exit-code
@@ -25,4 +25,4 @@ defaults:
   effort: trivial
   recommendation: "Run `make fmt` (or `gofmt -w backend`). The change is entirely mechanical."
 cache:
-  inputs: ["backend/**/*.go"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go"]

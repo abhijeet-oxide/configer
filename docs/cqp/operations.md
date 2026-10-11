@@ -190,7 +190,7 @@ to measure it.
   regression analyzers already in the catalog.
 - **`cq fix --safe`.** Apply every finding where `fix.safeToAutomate` is true,
   by delegating to each tool's own fixer (`eslint --fix`, `gofmt -w`,
-  `make docs`). The data is already in the report; this is the command that
+  `task docs`). The data is already in the report; this is the command that
   closes the agent loop without an agent.
 - **Schemathesis** at the `main` tier: property-based testing of the running API
   against its OpenAPI spec.

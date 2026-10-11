@@ -8,14 +8,14 @@ category: frontend
 tags: [types]
 tiers: [local, pre-commit, pr, main]
 scopes: [frontend]
-paths: ["frontend/**/*.{ts,tsx}", "frontend/tsconfig.json"]
+paths: ["web/**/*.{ts,tsx}", "web/tsconfig.json"]
 cost: moderate
 tool:
   command: npx
   args: ["tsc", "--noEmit", "--pretty", "false"]
   probe: ["npx", "--no-install", "tsc", "--version"]
-  workdir: frontend
-  install: "Run `npm install` in frontend/."
+  workdir: web
+  install: "Run `npm install` in web/."
 output:
   format: exit-code
 defaults:
@@ -24,4 +24,4 @@ defaults:
   effort: small
   recommendation: "Fix the type errors listed in the artifact log; each names a file and a line."
 cache:
-  inputs: ["frontend/src/**", "frontend/tsconfig.json", "frontend/package-lock.json"]
+  inputs: ["web/src/**", "web/tsconfig.json", "web/package-lock.json"]

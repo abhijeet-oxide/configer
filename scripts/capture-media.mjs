@@ -4,8 +4,8 @@
 // so the docs always show the current product.
 //
 // Prerequisites (two terminals):
-//   1. backend:  cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer
-//   2. frontend: cd frontend && npm run dev
+//   1. backend:  CONFIGER_REPO=../sample-repo go run ./cmd/configer
+//   2. frontend: cd web && npm run dev
 // then:          node scripts/capture-media.mjs
 //
 // The demo only STAGES a draft edit (never submits), so the sample repo's files

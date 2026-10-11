@@ -207,9 +207,9 @@ func manifestFor(names []string, comps []cdxComponent) string {
 			}
 			switch {
 			case strings.HasPrefix(c.PURL, "pkg:golang/"):
-				return "backend/go.mod"
+				return "go.mod"
 			case strings.HasPrefix(c.PURL, "pkg:npm/"):
-				return "frontend/package.json"
+				return "web/package.json"
 			}
 		}
 	}

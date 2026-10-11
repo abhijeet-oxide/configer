@@ -10,7 +10,7 @@ category: frontend
 tags: [lint, react]
 tiers: [pre-commit, pr, main]
 scopes: [frontend]
-paths: ["frontend/src/**/*.{ts,tsx,js,jsx}", "frontend/eslint.config.js"]
+paths: ["web/src/**/*.{ts,tsx,js,jsx}", "web/eslint.config.js"]
 changedFilesArg: "-"
 maxChangedFiles: 60
 cost: cheap
@@ -19,8 +19,8 @@ tool:
   args: ["eslint", "--format", "json", "--output-file", "{out}", "src"]
   probe: ["npx", "--no-install", "eslint", "--version"]
   versionArgs: ["--version"]
-  workdir: frontend
-  install: "Run `npm install` in frontend/."
+  workdir: web
+  install: "Run `npm install` in web/."
   okExitCodes: [1]
 output:
   format: eslint
@@ -32,4 +32,4 @@ defaults:
   effort: trivial
   docsUrl: https://eslint.org/docs/latest/rules/
 cache:
-  inputs: ["frontend/src/**", "frontend/eslint.config.js", "frontend/package-lock.json", "frontend/tsconfig.json"]
+  inputs: ["web/src/**", "web/eslint.config.js", "web/package-lock.json", "web/tsconfig.json"]

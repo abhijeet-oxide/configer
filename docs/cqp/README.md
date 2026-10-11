@@ -68,10 +68,10 @@ stages is a one-line data change, not a code change.
 ## Quick start
 
 ```bash
-make cq                    # build the binary into quality/bin/cq
-make quality-doctor        # what is installed, what is missing, and how to fix it
-make quality-local         # the fast loop
-make quality               # the full pull-request stage
+task cq                    # build the binary into quality/bin/cq
+task quality:doctor        # what is installed, what is missing, and how to fix it
+task quality:local         # the fast loop
+task quality               # the full pull-request stage
 ```
 
 Nothing needs configuring. `cq` ships with 33 analyzers and 20 budgets built in;

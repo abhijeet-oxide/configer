@@ -942,7 +942,7 @@
 }
 .ui-lockup-name {
   font-size: var(--fs-15);
-  font-weight: 650;
+  font-weight: 500;
   letter-spacing: -0.01em;
   color: var(--text);
   overflow: hidden;
@@ -961,16 +961,13 @@
 }
 /* A name: first word in the brand colour and heavier, the rest in the text
    colour. Every lockup, splash and title writes the name this way. */
-.ui-wordmark-lead {
-  color: var(--brand);
-  font-weight: 800;
-}
+/* The name is one plain run of ordinary text: no brand-blue first word, no
+   bold. Only the caption under it carries the brand colour. The split markup
+   stays so a tool can still style it, but both halves inherit by default. */
+.ui-wordmark-lead,
 .ui-wordmark-rest {
-  color: var(--text);
-  font-weight: 500;
-}
-.ui-lockup.on-dark .ui-wordmark-rest {
-  color: var(--nav-fg-strong);
+  color: inherit;
+  font-weight: inherit;
 }
 
 /* `on-dark` means "on the navigation's material", which is dark in one theme

@@ -68,7 +68,7 @@ func draftInstance(draft *change.ChangeRequest, p *project.Project, name string)
 // @Failure     404 {object} APIError "Parameter or instance not found"
 // @Failure     422 {object} APIError "Value failed coercion or validation"
 // @Failure     500 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/values [put]
 func (s *Server) stageValue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -386,7 +386,7 @@ func stageGlobalItem(cr *change.ChangeRequest, param model.Parameter, rawValue a
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Malformed body"
 // @Failure     404 {object} APIError "Parameter not found"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/values/bulk [put]
 func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -593,7 +593,7 @@ func (s *Server) bulkStageValue(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} OKResponse
 // @Failure     404 {object} APIError "No draft"
 // @Failure     500 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/values [delete]
 func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 	paramID := r.URL.Query().Get("paramId")
@@ -638,7 +638,7 @@ func (s *Server) revertValue(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Invalid request body"
 // @Failure     404 {object} APIError "No draft"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/values/bulk [delete]
 func (s *Server) revertValues(w http.ResponseWriter, r *http.Request) {
 	var req struct {

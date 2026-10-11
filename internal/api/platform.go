@@ -1,145 +1,112 @@
 package api
 
-// Platform layer: login-aware role enforcement, per-application member
-// management, and the audit trail. Everything degrades gracefully - with no
-// OAuth client configured the deployment behaves as the single-user tool it
-// always was, and the database is an embedded SQLite file.
+// Platform layer: sign-in through the platform's identity provider, every
+// request checked against the platform's policy engine, and the audit trail.
+// With no issuer configured the deployment is the single-user tool it always
+// was, and the database is an embedded SQLite file.
 
 import (
-	"encoding/json"
+	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/abhijeet-oxide/configer/internal/auth"
 	"github.com/abhijeet-oxide/configer/internal/store"
+	"github.com/abhijeet-oxide/softwareGateway/pkg/authz"
 )
 
-// newPlatform opens the platform store and OAuth service from the
-// environment. SQLite under dataDir by default; DATABASE_URL selects
-// PostgreSQL. OAuth is enabled by GITHUB_OAUTH_CLIENT_ID/SECRET.
+// newPlatform opens the platform store and the sign-in service from the
+// environment. DATABASE_URL selects PostgreSQL (the shared platform database);
+// CONFIGER_AUTH_ISSUER turns sign-in on.
 func newPlatform(dataDir string) (*store.Store, *auth.Service, error) {
 	st, err := store.Open(dataDir, os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return nil, nil, err
 	}
-	admins := map[string]bool{}
-	for _, a := range strings.Split(os.Getenv("CONFIGER_ADMINS"), ",") {
-		if a = strings.TrimSpace(a); a != "" {
-			admins[a] = true
-		}
-	}
-	svc := &auth.Service{
-		ClientID:      os.Getenv("GITHUB_OAUTH_CLIENT_ID"),
-		ClientSecret:  os.Getenv("GITHUB_OAUTH_CLIENT_SECRET"),
-		CallbackURL:   os.Getenv("CONFIGER_OAUTH_CALLBACK"),
-		AppURL:        os.Getenv("CONFIGER_APP_URL"),
-		APIBase:       os.Getenv("GITHUB_API_URL"),
-		WebBase:       os.Getenv("GITHUB_WEB_URL"),
-		Store:         st,
-		Admins:        admins,
-		SecureCookies: cookieSecure(),
+	svc, err := newAuth(st)
+	if err != nil {
+		_ = st.Close()
+		return nil, nil, err
 	}
 	return st, svc, nil
 }
 
-// cookieSecure decides whether session cookies get the Secure flag. It is on by
-// default in a production deployment (CONFIGER_ENV=production) and can be forced
-// either way with CONFIGER_COOKIE_SECURE, so a TLS-terminating proxy in any
-// environment can opt in.
-func cookieSecure() bool {
-	if v := os.Getenv("CONFIGER_COOKIE_SECURE"); v != "" {
-		switch strings.ToLower(strings.TrimSpace(v)) {
-		case "1", "true", "yes", "on":
-			return true
-		default:
-			return false
-		}
+// newAuth builds the verifier and the policy engine. A deployment that asked
+// for sign-in and cannot have it refuses to start: running anyway would mean
+// running in single-user mode, where everybody may do everything.
+func newAuth(st *store.Store) (*auth.Service, error) {
+	issuer := strings.TrimSpace(os.Getenv("CONFIGER_AUTH_ISSUER"))
+	svc := &auth.Service{Store: st, AdminRole: getenv("CONFIGER_ADMIN_ROLE", "org-admin")}
+	if issuer == "" {
+		return svc, nil
 	}
-	return strings.EqualFold(strings.TrimSpace(os.Getenv("CONFIGER_ENV")), "production")
+	tenant := strings.TrimSpace(os.Getenv("CONFIGER_AUTH_TENANT"))
+	if tenant == "" {
+		return nil, fmt.Errorf("CONFIGER_AUTH_ISSUER is set but CONFIGER_AUTH_TENANT is empty: refusing to start with no tenant boundary")
+	}
+	cerbos := strings.TrimSpace(os.Getenv("CONFIGER_CERBOS_ADDR"))
+	if cerbos == "" {
+		return nil, fmt.Errorf("CONFIGER_AUTH_ISSUER is set but CONFIGER_CERBOS_ADDR is empty: every action needs the policy engine")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	v, err := authz.NewVerifier(ctx, authz.Config{
+		Issuer:           issuer,
+		DiscoveryURL:     os.Getenv("CONFIGER_AUTH_DISCOVERYURL"),
+		HostHeader:       os.Getenv("CONFIGER_AUTH_HOSTHEADER"),
+		Audience:         os.Getenv("CONFIGER_AUTH_AUDIENCE"),
+		AudiencesFile:    os.Getenv("CONFIGER_AUTH_AUDIENCESFILE"),
+		JWKSCachePath:    getenv("CONFIGER_AUTH_JWKSCACHEPATH", "/tmp/artiauto-jwks.json"),
+		WorkloadJWKSFile: os.Getenv("CONFIGER_AUTH_WORKLOADJWKSFILE"),
+		RequireAudience:  true,
+		Tenant:           tenant,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("sign-in is configured but not usable: %w", err)
+	}
+	engine := authz.NewCerbos(cerbos)
+	engine.Tenant = tenant
+	svc.Verifier = v
+	svc.Engine = engine
+	return svc, nil
 }
 
-// defaultRole is the capability users get on an application where no earlier
-// source in the chain answered (see access.go): not a deployment administrator,
-// no explicit Configer grant, and no per-user Git credential to mirror.
-//
-// It is FULL access, deliberately. That case means Configer cannot yet tell one
-// person from another here - the application is reached through one shared
-// service credential, so every signed-in user has exactly the same access to it
-// whatever the product pretends. Handing everyone "view only" in that situation
-// does not protect anything; it just stops them using a tool they can already
-// use, which is what a locked-out first deployment looked like.
-//
-// Real per-user rules for shared-credential applications are the next layer -
-// they need the user management this tool has not built yet, and access.go's
-// ordered chain is where that source will slot in ahead of this default. Until
-// then an operator who wants it tighter sets CONFIGER_DEFAULT_ROLE=viewer (or
-// editor) and it applies immediately.
-func defaultRole() store.Role {
-	if r := store.Role(os.Getenv("CONFIGER_DEFAULT_ROLE")); r.Valid() {
-		return r
-	}
-	return store.RoleApprover
-}
-
-// roleLabel names a role the way the UI does, so a refusal reads as a sentence
-// about what someone can do here rather than an internal enum.
-func roleLabel(r store.Role) string {
-	switch r {
-	case store.RoleApprover:
-		return "approver"
-	case store.RoleEditor:
-		return "editor"
-	case store.RoleViewer:
-		return "view only"
-	}
-	return "none"
-}
-
-// roleRank orders roles by capability.
-func roleRank(r store.Role) int {
-	switch r {
-	case store.RoleApprover:
-		return 3
-	case store.RoleEditor:
-		return 2
-	case store.RoleViewer:
-		return 1
-	}
-	return 0
-}
-
-// requiredRole derives the capability a request needs: reads are viewer+,
-// writes editor+, and publishing (merge) approver.
-func requiredRole(r *http.Request) store.Role {
-	if strings.HasSuffix(r.URL.Path, "/merge") || strings.HasSuffix(r.URL.Path, "/approve") {
-		return store.RoleApprover
-	}
-	switch r.Method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return store.RoleViewer
-	default:
-		return store.RoleEditor
-	}
-}
-
-// authorize gates one repo-scoped request. With OAuth disabled everything is
-// allowed (single-user mode). With it enabled: unauthenticated requests are
-// rejected, and the user's effective role must cover the request.
+// authorize checks one application request against the policy engine. It
+// answers 401 when nobody is signed in and 403, in words, when the action is
+// not theirs to take.
 func (h *Hub) authorize(w http.ResponseWriter, r *http.Request, repoID string) bool {
 	if !h.auth.Enabled() {
 		return true
 	}
-	u, ok := auth.UserFrom(r.Context())
-	if !ok {
+	if _, ok := auth.UserFrom(r.Context()); !ok {
 		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
 		return false
 	}
-	need := requiredRole(r)
-	have := h.effectiveRole(r, repoID, u)
-	if roleRank(have) < roleRank(need) {
+	rest := r.URL.Path
+	if p := strings.TrimPrefix(rest, "/api/repos/"+repoID); p != rest {
+		rest = p
+	} else {
+		rest = strings.TrimPrefix(rest, "/api")
+	}
+	return h.allow(w, r, h.applicationResource(repoID), actionFor(r.Method, rest))
+}
+
+// allow puts one action to the policy engine and writes the refusal when the
+// answer is no.
+func (h *Hub) allow(w http.ResponseWriter, r *http.Request, res authz.Resource, action string) bool {
+	got, err := h.auth.Allowed(r.Context(), res, action)
+	if err != nil {
+		h.log().Error("permission check failed", "action", action, "kind", res.Kind, "error", err)
+		writeError(w, r, http.StatusServiceUnavailable, CodeUnavailable,
+			"permissions cannot be checked right now; try again in a moment")
+		return false
+	}
+	if !got[action] {
 		writeError(w, r, http.StatusForbidden, CodeForbidden,
-			"your access to this application is "+roleLabel(have)+"; this action needs "+roleLabel(need))
+			"you do not have permission to "+actionPhrase[action])
 		return false
 	}
 	return true
@@ -289,142 +256,38 @@ func humanizeAction(method, path string) string {
 	return verb + " " + head
 }
 
-// --- member management -----------------------------------------------------------
-
-// members lists explicit role assignments plus every known user, so the UI
-// can offer assignments without a separate user directory.
-// members lists role assignments for one application.
-//
-// @Summary     List members
-// @Description Explicit role assignments for one application plus the known-user directory, so the UI can offer assignments. Admin-only.
-// @Tags        Platform
-// @Produce     json
-// @Param       id path string true "Repository id"
-// @Success     200 {object} map[string]interface{}
-// @Failure     401 {object} APIError "Not signed in"
-// @Failure     403 {object} APIError "Admin only"
-// @Security    CookieSession
-// @Router      /api/repos/{id}/members [get]
-func (h *Hub) members(w http.ResponseWriter, r *http.Request) {
-	// The member roster includes the full user directory, so it is admin-only,
-	// matching the setMember/removeMember writes it accompanies.
-	if !h.requireAdmin(w, r, "see who can use this application") {
-		return
-	}
-	id := r.PathValue("id")
-	ms, err := h.platform.ListMembers(r.Context(), id)
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	users, err := h.platform.ListUsers(r.Context())
-	if err != nil {
-		writeErr(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"members":     ms,
-		"users":       users,
-		"defaultRole": defaultRole(),
-		"enabled":     h.auth.Enabled(),
-	})
-}
-
-// setMember assigns a role (admins only when auth is enabled).
-// setMember assigns a role on one application.
-//
-// @Summary     Assign a role
-// @Description Assign a role (viewer, editor, approver) to a user on one application. Admin-only.
-// @Tags        Platform
-// @Accept      json
-// @Produce     json
-// @Param       id   path string           true "Repository id"
-// @Param       body body SetMemberRequest true "Login + role"
-// @Success     200 {object} OKResponse
-// @Failure     400 {object} APIError "Missing login or invalid role"
-// @Failure     401 {object} APIError "Not signed in"
-// @Failure     403 {object} APIError "Admin only"
-// @Security    CookieSession
-// @Router      /api/repos/{id}/members [put]
-func (h *Hub) setMember(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r, "change who can use this application") {
-		return
-	}
-	var req struct {
-		Login string     `json:"login"`
-		Role  store.Role `json:"role"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Login == "" {
-		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "login and role are required")
-		return
-	}
-	if !req.Role.Valid() {
-		writeError(w, r, http.StatusBadRequest, CodeBadRequest, "role must be viewer, editor or approver")
-		return
-	}
-	repoID := r.PathValue("id")
-	if err := h.platform.SetMember(r.Context(), store.Member{Repo: repoID, Login: req.Login, Role: req.Role}); err != nil {
-		writeErr(w, err)
-		return
-	}
-	h.auditHub(r, repoID, "Granted role "+string(req.Role)+" to "+req.Login, "PUT /repos/"+repoID+"/members")
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// removeMember clears an explicit assignment (back to the deployment default).
-// removeMember clears an explicit role assignment.
-//
-// @Summary     Remove a member's role
-// @Description Clear a user's explicit role on one application (back to the deployment default). Admin-only.
-// @Tags        Platform
-// @Produce     json
-// @Param       id    path string true "Repository id"
-// @Param       login path string true "User login"
-// @Success     200 {object} OKResponse
-// @Failure     401 {object} APIError "Not signed in"
-// @Failure     403 {object} APIError "Admin only"
-// @Security    CookieSession
-// @Router      /api/repos/{id}/members/{login} [delete]
-func (h *Hub) removeMember(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r, "change who can use this application") {
-		return
-	}
-	repoID, login := r.PathValue("id"), r.PathValue("login")
-	if err := h.platform.RemoveMember(r.Context(), repoID, login); err != nil {
-		writeErr(w, err)
-		return
-	}
-	h.auditHub(r, repoID, "Revoked the explicit role of "+login, "DELETE /repos/"+repoID+"/members/"+login)
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// requireUser allows any signed-in user (or anyone when auth is disabled -
-// single-user mode has no login). Use it to gate hub-level endpoints that leak
-// nothing role-specific but must not be reachable anonymously on a multi-user
-// deployment (e.g. the server-token-backed GitHub browsing endpoints).
+// requireUser allows any signed-in person (or anyone in single-user mode).
 func (h *Hub) requireUser(w http.ResponseWriter, r *http.Request) bool {
 	if !h.auth.Enabled() {
 		return true
 	}
 	if _, ok := auth.UserFrom(r.Context()); !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
 		return false
 	}
 	return true
 }
 
-// myRole reports the caller's own effective role on one application, so the
-// UI can show it (profile card, settings) without the admin-only member
-// roster. It leaks nothing about anyone else.
+// requireWorkspace gates a workspace-level action: adding applications, reading
+// the audit trail.
+func (h *Hub) requireWorkspace(w http.ResponseWriter, r *http.Request, action string) bool {
+	if !h.requireUser(w, r) {
+		return false
+	}
+	return h.allow(w, r, workspaceResource(), action)
+}
+
+// myRole reports the caller's own access to one application, so the interface
+// can say what they may do.
 //
 // @Summary     My role on an application
-// @Description The caller's effective role (viewer, editor, approver) on one application, plus the deployment admin flag. In single-user mode (login not configured) the caller has every capability.
+// @Description The caller's access (viewer, editor, approver) to one application, derived from the platform's policies, plus the administrator flag. In single-user mode the caller may do everything.
 // @Tags        Platform
 // @Produce     json
 // @Param       id path string true "Repository id"
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repos/{id}/role [get]
 func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
 	if !h.auth.Enabled() {
@@ -435,13 +298,10 @@ func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
 	}
 	u, ok := auth.UserFrom(r.Context())
 	if !ok {
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "sign in to use this deployment"})
+		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
 		return
 	}
-	// The source travels with the role so the UI can say WHY - "this mirrors
-	// your permission on the repository in GitHub" answers the question a bare
-	// "Viewer" only raises.
-	g := h.grantFor(r, r.PathValue("id"), u)
+	g := h.grantFor(r, r.PathValue("id"))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"enabled": true,
 		"role":    g.Role,
@@ -451,58 +311,48 @@ func (h *Hub) myRole(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// requireAdmin allows deployment administrators (or anyone when auth is
-// disabled - single-user mode has no roles to protect). `what` names the thing
-// being asked for, in the user's own words ("manage who can use this
-// application"), so the refusal reads as a sentence about the product and never
-// mentions an environment variable the reader cannot act on.
-func (h *Hub) requireAdmin(w http.ResponseWriter, r *http.Request, what string) bool {
-	if !h.auth.Enabled() {
-		return true
+// people lists who has signed in to this deployment, so a change can name its
+// reviewers. Who may do what is the platform's to say, not this list's.
+//
+// @Summary     People
+// @Description Everyone who has signed in to this deployment, for the reviewer picker. Access is granted in the platform's identity provider, so there are no assignments to list.
+// @Tags        Platform
+// @Produce     json
+// @Param       id path string true "Repository id"
+// @Success     200 {object} map[string]interface{}
+// @Failure     401 {object} APIError "Not signed in"
+// @Security    BearerAuth
+// @Router      /api/repos/{id}/members [get]
+func (h *Hub) people(w http.ResponseWriter, r *http.Request) {
+	if !h.requireUser(w, r) {
+		return
 	}
-	u, ok := auth.UserFrom(r.Context())
-	if !ok {
-		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
-		return false
+	if !h.allow(w, r, h.applicationResource(r.PathValue("id")), actView) {
+		return
 	}
-	if !u.Admin {
-		writeError(w, r, http.StatusForbidden, CodeForbidden,
-			"only an administrator of this deployment can "+what)
-		return false
+	users, err := h.platform.ListUsers(r.Context())
+	if err != nil {
+		writeErr(w, err)
+		return
 	}
-	return true
+	writeJSON(w, http.StatusOK, map[string]any{
+		"members": []any{}, "users": users, "enabled": h.auth.Enabled(),
+	})
 }
 
-// requireAppLifecycle gates a change to an application's PLACE in the workspace
-// (renaming it, disconnecting it) rather than to its configuration. These
-// endpoints sit outside the per-repository dispatch, so they never passed
-// through authorize: any signed-in user - a viewer included - could rename or
-// remove an application everyone else depends on. They now need the same
-// capability as publishing, the most consequential per-application right.
-func (h *Hub) requireAppLifecycle(w http.ResponseWriter, r *http.Request, repoID, what string) bool {
-	if !h.auth.Enabled() {
-		return true
-	}
-	u, ok := auth.UserFrom(r.Context())
-	if !ok {
-		writeError(w, r, http.StatusUnauthorized, CodeUnauthorized, "sign in to use this deployment")
+// requireAppLifecycle gates a change to an application's place in the
+// workspace (renaming or disconnecting it).
+func (h *Hub) requireAppLifecycle(w http.ResponseWriter, r *http.Request, repoID string) bool {
+	if !h.requireUser(w, r) {
 		return false
 	}
-	have := h.effectiveRole(r, repoID, u)
-	if roleRank(have) < roleRank(store.RoleApprover) {
-		writeError(w, r, http.StatusForbidden, CodeForbidden,
-			"your access to this application is "+roleLabel(have)+"; only an approver can "+what)
-		return false
-	}
-	return true
+	return h.allow(w, r, h.applicationResource(repoID), actAdminister)
 }
 
-// auditLog serves the newest audit entries. The trail spans every application
-// and names who did what, so it is admin-only.
 // auditLog serves the newest audit entries.
 //
 // @Summary     Audit trail
-// @Description Audit events across all applications (or one via `?repo=`), newest first, naming who did what. Cursor-paginated: pass `limit` (default 50, max 200) and the previous `nextCursor`. Admin-only.
+// @Description Audit events across all applications (or one via `?repo=`), newest first, naming who did what. Cursor-paginated: pass `limit` (default 50, max 200) and the previous `nextCursor`. Needs the view_audit permission.
 // @Tags        Platform
 // @Produce     json
 // @Param       repo   query string false "Filter to one application id"
@@ -510,15 +360,14 @@ func (h *Hub) requireAppLifecycle(w http.ResponseWriter, r *http.Request, repoID
 // @Param       cursor query string false "Opaque cursor from the previous page"
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
-// @Failure     403 {object} APIError "Admin only"
-// @Security    CookieSession
+// @Failure     403 {object} APIError "Not permitted"
+// @Security    BearerAuth
 // @Router      /api/audit [get]
 func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r, "read the audit trail") {
+	if !h.requireWorkspace(w, r, actViewAudit) {
 		return
 	}
 	limit, afterID := pageParams(r)
-	// Fetch one extra row to know whether a further page exists.
 	evs, err := h.platform.EventsBefore(r.Context(), r.URL.Query().Get("repo"), limit+1, afterID)
 	if err != nil {
 		writeErr(w, err)
@@ -532,28 +381,24 @@ func (h *Hub) auditLog(w http.ResponseWriter, r *http.Request) {
 	if hasMore && len(evs) > 0 {
 		next = encodeCursor(evs[len(evs)-1].ID)
 	}
-	// `events` is kept for backward compatibility; `items`/`nextCursor`/`hasMore`
-	// are the standard pagination envelope.
 	writeJSON(w, http.StatusOK, map[string]any{
 		"events": evs, "items": evs, "nextCursor": next, "hasMore": hasMore,
 	})
 }
 
-// auditVerify recomputes the audit hash chain and reports whether the trail is
-// intact, naming the first broken row if not. Admin-only, like the trail.
 // auditVerify checks the audit hash chain.
 //
 // @Summary     Verify the audit trail
-// @Description Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Admin-only.
+// @Description Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Needs the view_audit permission.
 // @Tags        Platform
 // @Produce     json
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
-// @Failure     403 {object} APIError "Admin only"
-// @Security    CookieSession
+// @Failure     403 {object} APIError "Not permitted"
+// @Security    BearerAuth
 // @Router      /api/audit/verify [get]
 func (h *Hub) auditVerify(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAdmin(w, r, "read the audit trail") {
+	if !h.requireWorkspace(w, r, actViewAudit) {
 		return
 	}
 	ok, brokenAt, err := h.platform.VerifyAudit(r.Context())

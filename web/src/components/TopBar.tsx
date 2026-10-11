@@ -5,24 +5,22 @@ import {
   Dropdown,
   Typography,
 } from "antd";
-import { SearchOutlined, ExportOutlined, GithubOutlined, SettingOutlined, TeamOutlined, LogoutOutlined, MoonOutlined } from "../icons";
+import { SearchOutlined, ExportOutlined, GithubOutlined, SettingOutlined, LogoutOutlined, MoonOutlined } from "../icons";
 import { ThemeToggleButton, useTheme } from "../uikit";
 import { AccountMenu } from "./accountmenu";
 import { useIdentity } from "../identity";
-import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
 import { api, type Instance } from "../api";
 import { useUI } from "../store";
 import { useSignOut } from "../useSignOut";
-import { loginHref } from "./SignInView";
+import { signIn } from "../signin";
 import NotificationsPanel from "./NotificationsPanel";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
 import { modLabel } from "../platform";
 import { AppContextChips, Kbd } from "./ui";
 import { TopBar as Bar } from "../uikit";
-import MembersModal from "./MembersModal";
 
 // The application context bar: breadcrumb with the app switcher, then the
 // persistent context chips (branch, git sync state, instances, unsent edits)
@@ -212,7 +210,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
             )}
             <ThemeToggleButton />
             <NotificationsPanel awaiting={awaiting} />
-            <IdentityControl repoId={repoId} />
+            <IdentityControl />
           </Space>
         </>
       }
@@ -232,18 +230,17 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
 // Gateway's AccountMenu (avatar + account card) so both tools put the same
 // card in the same corner. Signed out on a multi-user deployment it is the
 // sign-in button instead; single-user mode shows the local operator.
-function IdentityControl({ repoId }: { repoId: string | null }) {
+function IdentityControl() {
   const { setSection, section } = useUI();
   const id = useIdentity();
   const { mode, toggleMode } = useTheme();
-  const [membersOpen, setMembersOpen] = useState(false);
   const logout = useSignOut();
 
   if (id.loading) return null;
   if (id.authEnabled && !id.signedIn) {
     return (
-      <Button size="small" type="primary" href={loginHref()}>
-        Sign in with GitHub
+      <Button size="small" type="primary" onClick={() => signIn()}>
+        Sign in
       </Button>
     );
   }
@@ -274,15 +271,11 @@ function IdentityControl({ repoId }: { repoId: string | null }) {
             icon: <MoonOutlined />,
             onClick: () => toggleMode(),
           },
-          ...(id.user?.admin && repoId
-            ? [{ key: "members", label: "People & roles", icon: <TeamOutlined />, onClick: () => setMembersOpen(true) }]
-            : []),
           ...(id.authEnabled
             ? [{ key: "logout", label: "Sign out", icon: <LogoutOutlined />, danger: true, onClick: () => logout.mutate() }]
             : []),
         ]}
       />
-      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </>
   );
 }

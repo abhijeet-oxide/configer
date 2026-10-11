@@ -27,7 +27,7 @@ import (
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Invalid id or nothing to revert"
 // @Failure     404 {object} APIError "Unknown change request"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/revert [post]
 func (s *Server) revertChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

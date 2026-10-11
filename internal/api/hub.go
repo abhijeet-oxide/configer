@@ -63,11 +63,6 @@ type Hub struct {
 	reindexCh      chan string
 	reindexPending map[string]bool
 
-	// gitRoles memoizes each user's permission on each application's repository
-	// (see access.go): authorization runs on every repo-scoped request, so the
-	// mirrored role cannot be a GitHub call each time.
-	gitRoles *gitRoleCache
-
 	// cloning holds the ids whose connect worker is still running. An id names a
 	// FOLDER on the server, so it must not be handed out again while the first
 	// attempt is still writing there - two clones in one directory delete each
@@ -121,7 +116,6 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 		errs:        map[string]string{},
 		connecting:  map[string]*connecting{},
 		cloning:     map[string]bool{},
-		gitRoles:    newGitRoleCache(),
 		openErrs:    map[string]openFailure{},
 	}
 	// The search index lives in the platform database (SQLite FTS5) with a
@@ -136,7 +130,7 @@ func NewHub(dataDir, seed string, interval time.Duration) (*Hub, error) {
 	h.reindexPending = map[string]bool{}
 	go h.reindexWorker()
 	if authSvc.Enabled() {
-		slog.Info("auth enabled: GitHub OAuth", slog.String("store", platform.Dialect()))
+		slog.Info("sign-in enabled: platform identity provider and policy engine", slog.String("store", platform.Dialect()))
 	} else {
 		// Say WHY, at startup, in the log: "sign-in is not configured" is the
 		// one message an operator needs to act on, and hunting for it in the UI
@@ -359,6 +353,8 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/healthz", h.health)
 	mux.HandleFunc("GET /api/readyz", h.ready)
+	// The platform's web image probes its upstream at /healthz.
+	mux.HandleFunc("GET /healthz", h.health)
 	// API documentation: generated spec (JSON + YAML) + interactive (embedded,
 	// offline) Swagger UI. The spec is generated from handler annotations.
 	mux.HandleFunc("GET /api/openapi.json", serveOpenAPISpecJSON)
@@ -386,9 +382,7 @@ func (h *Hub) Routes() http.Handler {
 	mux.HandleFunc("PATCH /api/repos/{id}", h.rename)
 	mux.HandleFunc("DELETE /api/repos/{id}", h.disconnect)
 	mux.HandleFunc("GET /api/repos/{id}/role", h.myRole)
-	mux.HandleFunc("GET /api/repos/{id}/members", h.members)
-	mux.HandleFunc("PUT /api/repos/{id}/members", h.setMember)
-	mux.HandleFunc("DELETE /api/repos/{id}/members/{login}", h.removeMember)
+	mux.HandleFunc("GET /api/repos/{id}/members", h.people)
 	mux.HandleFunc("/api/repos/{id}/", h.dispatch)
 	mux.HandleFunc("/api/", h.legacy)
 	// Everything that is not the API is the app itself: served from the bundled
@@ -657,20 +651,25 @@ func (h *Hub) list(w http.ResponseWriter, r *http.Request) {
 	out := make([]RepoSummary, 0, len(entries))
 	// Each card carries the CALLER's own access to that application, resolved
 	// for all of them together (see grantsFor).
-	u, signedIn := auth.UserFrom(r.Context())
+	if !h.requireUser(w, r) {
+		return
+	}
 	var grants map[string]Grant
-	if h.auth.Enabled() && signedIn {
+	if h.auth.Enabled() {
 		ids := make([]string, 0, len(entries))
 		for _, e := range entries {
 			ids = append(ids, e.ID)
 		}
-		grants = h.grantsFor(r, ids, u)
+		grants = h.grantsFor(r, ids)
 	}
 	for _, e := range entries {
 		sum := h.summarize(e)
 		if !h.auth.Enabled() {
 			sum.Role, sum.RoleSource = string(store.RoleApprover), "single-user"
 		} else if g, ok := grants[e.ID]; ok {
+			if g.Role == "" {
+				continue
+			}
 			sum.Role, sum.RoleSource = string(g.Role), g.Source
 		}
 		out = append(out, sum)
@@ -740,11 +739,11 @@ func (h *Hub) search(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} RepoSummary
 // @Failure     400 {object} APIError "Malformed body or empty name"
 // @Failure     404 {object} APIError "Unknown repository"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repos/{id} [patch]
 func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.requireAppLifecycle(w, r, id, "rename this application") {
+	if !h.requireAppLifecycle(w, r, id) {
 		return
 	}
 	var req struct {
@@ -784,11 +783,11 @@ func (h *Hub) rename(w http.ResponseWriter, r *http.Request) {
 // @Param       id path string true "Repository id"
 // @Success     200 {object} map[string]interface{}
 // @Failure     404 {object} APIError "Unknown repository"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repos/{id} [delete]
 func (h *Hub) disconnect(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.requireAppLifecycle(w, r, id, "disconnect this application") {
+	if !h.requireAppLifecycle(w, r, id) {
 		return
 	}
 	// Dismiss a still-connecting or failed background entry (it is not in the

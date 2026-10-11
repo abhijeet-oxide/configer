@@ -6,7 +6,6 @@ import {
   LogoutOutlined,
   SparkleOutlined,
   SwaggerOutlined,
-  TeamOutlined,
   ApiOutlined,
 } from "../icons";
 import { api } from "../api";
@@ -19,7 +18,6 @@ import { envHex } from "../theme";
 import { zoneOffsetLabel } from "../settings";
 import { StatusPill } from "./ui";
 import { AccessPill } from "./AppCard";
-import MembersModal from "./MembersModal";
 import {
   DensityControl,
   FontScaleControl,
@@ -103,9 +101,8 @@ function LiveClock() {
 
 export default function SettingsView() {
   const identity = useIdentity();
-  const { repoId, setSection, setWelcomeOpen } = useUI();
+  const { setSection, setWelcomeOpen } = useUI();
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
-  const [membersOpen, setMembersOpen] = useState(false);
   const logout = useSignOut();
 
   const deployment = useDeployment();
@@ -254,20 +251,6 @@ export default function SettingsView() {
             <>
               <Divider style={{ margin: "4px 0" }} />
               <Row
-                title="People & roles"
-                description="Who can view, edit and approve on the active application."
-                control={
-                  <Button
-                    icon={<TeamOutlined />}
-                    disabled={!repoId || !identity.authEnabled}
-                    onClick={() => setMembersOpen(true)}
-                  >
-                    Manage
-                  </Button>
-                }
-              />
-              <Divider style={{ margin: "4px 0" }} />
-              <Row
                 title="Plugins"
                 description="Format parsers and integrations available on this deployment."
                 control={
@@ -335,7 +318,6 @@ export default function SettingsView() {
           Preferences apply immediately and are stored in this browser, per device.
         </div>
       </div>
-      {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </div>
   );
 }

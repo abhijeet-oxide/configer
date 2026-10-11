@@ -57,7 +57,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Patch the application's name, description and metadata and commit ` + "`" + `.configer/application.yaml` + "`" + `. Nil fields are left unchanged; the layout is not editable here (it describes the repository, not the user).",
@@ -127,10 +127,10 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
-                "description": "Audit events across all applications (or one via ` + "`" + `?repo=` + "`" + `), newest first, naming who did what. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous ` + "`" + `nextCursor` + "`" + `. Admin-only.",
+                "description": "Audit events across all applications (or one via ` + "`" + `?repo=` + "`" + `), newest first, naming who did what. Cursor-paginated: pass ` + "`" + `limit` + "`" + ` (default 50, max 200) and the previous ` + "`" + `nextCursor` + "`" + `. Needs the view_audit permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -173,7 +173,7 @@ const docTemplateconfiger = `{
                         }
                     },
                     "403": {
-                        "description": "Admin only",
+                        "description": "Not permitted",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -185,10 +185,10 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
-                "description": "Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Admin-only.",
+                "description": "Recompute the audit hash chain and report whether the trail is intact, naming the first broken row if not. Needs the view_audit permission.",
                 "produces": [
                     "application/json"
                 ],
@@ -211,7 +211,7 @@ const docTemplateconfiger = `{
                         }
                     },
                     "403": {
-                        "description": "Admin only",
+                        "description": "Not permitted",
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
@@ -219,102 +219,16 @@ const docTemplateconfiger = `{
                 }
             }
         },
-        "/api/auth/callback": {
-            "get": {
-                "description": "Exchange the OAuth code, record the user, open a session cookie, and redirect back to the app. Invoked by GitHub, not called directly by clients.",
-                "tags": [
-                    "Platform"
-                ],
-                "summary": "GitHub OAuth callback",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "OAuth code",
-                        "name": "code",
-                        "in": "query"
-                    },
-                    {
-                        "type": "string",
-                        "description": "CSRF state",
-                        "name": "state",
-                        "in": "query"
-                    }
-                ],
-                "responses": {
-                    "302": {
-                        "description": "Redirect to the app with a session cookie"
-                    },
-                    "400": {
-                        "description": "Invalid state or code exchange failed",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "501": {
-                        "description": "Login not configured",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/auth/login": {
-            "get": {
-                "description": "Redirect the browser into GitHub's OAuth authorize page. Returns 501 when login is not configured.",
-                "tags": [
-                    "Platform"
-                ],
-                "summary": "Begin GitHub login",
-                "responses": {
-                    "302": {
-                        "description": "Redirect to GitHub"
-                    },
-                    "501": {
-                        "description": "Login not configured",
-                        "schema": {
-                            "type": "string"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/auth/logout": {
-            "post": {
-                "security": [
-                    {
-                        "CookieSession": []
-                    }
-                ],
-                "description": "End the current session and clear the session cookie.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Platform"
-                ],
-                "summary": "Sign out",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": true
-                        }
-                    }
-                }
-            }
-        },
         "/api/auth/me": {
             "get": {
-                "description": "Whether login is configured on this deployment, and who is signed in. Returns ` + "`" + `{enabled:false}` + "`" + ` in single-user mode.",
+                "description": "The signed-in person, and whether this deployment signs people in at all. Single-user mode answers enabled=false.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Platform"
                 ],
-                "summary": "Current identity",
+                "summary": "Who am I",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -505,7 +419,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Record approver sign-off on an under-review change request, advancing it to Approved without publishing (Publish/merge is a separate step). Requires the approver role when auth is enabled. 409 if not under review.",
@@ -557,7 +471,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Append a review note. The session identity is the author (the body's author field is only a single-user-mode fallback).",
@@ -615,7 +529,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Approve and merge the change request's pull request, publishing it. Requires the approver role when auth is enabled. Async: returns 202 with the change resource; poll ` + "`" + `state` + "`" + ` for Published. 409 if not mergeable; 502/504 on a downstream failure.",
@@ -767,7 +681,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Reject/close the change request (a draft is discarded, a submitted one is closed). An optional reason is recorded as a review comment.",
@@ -822,7 +736,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Copies a REJECTED change request's edits into the caller's draft so they can be corrected and submitted again. Items the repository has since settled (the value is already what the change asked for) are dropped and reported as ` + "`" + `settled` + "`" + `; the rest are re-baselined against the current files. When the caller has no draft yet, the change's title, description, category and reference are carried over too, and the new draft records ` + "`" + `resumedFrom` + "`" + `.",
@@ -883,7 +797,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage the inverse of a change request's edits into the current draft so publishing it rolls the change back. Value, file and add-instance edits invert; retiring an instance is skipped (its files are gone). Returns the draft id, how many items were staged, and any skipped items.",
@@ -929,7 +843,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Replace the (informational) reviewer list on a change request. Reviewers record who was asked to look, not who may merge.",
@@ -987,7 +901,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Turn the draft into a feature branch + commit (+ hosted pull request when a provider is configured) and move it to Under Review. Async: returns 202 with the change resource whose ` + "`" + `state` + "`" + ` the client polls. 409 if not in a submittable state; 502/504 if a downstream (GitHub/git) step fails.",
@@ -1197,7 +1111,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Remove the ` + "`" + `.configer` + "`" + ` folder and commit the removal, returning the repository to an unmanaged state. The repository's own configuration files are untouched.",
@@ -1268,7 +1182,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "File-mode save: a direct Monaco edit of one file, staged into the same draft as grid edits. Edits that only change managed values become ordinary validated cell items (fan-out preserved); edits that touch unmanaged content stage as one whole-file item, plus one add-parameter item per setting the edit introduced that nothing managed yet (` + "`" + `newParameters` + "`" + ` counts them). Managed values are always validated first.",
@@ -1326,7 +1240,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Copy one entry of a repeated structure in a file - an XML element that occurs several times under the same parent, or a YAML/JSON list entry - and stage the result in the current draft. The copy is appended AFTER the last entry of its kind so no existing entry is renumbered, and the settings it carries are staged as new parameters, exactly as if the block had been typed in by hand. XML is copied byte-for-byte (indentation and comments included). An entry identified by a key (` + "`" + `env[name=LOG_LEVEL]` + "`" + `) is refused: the copy would be a second entry with the same identity.",
@@ -1424,7 +1338,7 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "List the sub-folders of a directory on the server so the New Application flow can offer a folder picker (localhost mode). With no ` + "`" + `?path` + "`" + ` it starts at the user's home directory. Listing the server filesystem is an admin action when auth is enabled.",
@@ -1470,7 +1384,7 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "The branches of a GitHub repository (and its default branch), for the New Application flow.",
@@ -1523,7 +1437,7 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Organizations the signed-in user belongs to, with how many of their repositories this deployment can see. An organization with zero visible repositories has not approved the Configer OAuth app; ` + "`" + `grantUrl` + "`" + ` is where that is granted.",
@@ -1561,7 +1475,7 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Repositories the resolved credential can reach (own, collaborations, org), newest activity first. Backs the New Application picker.",
@@ -1599,7 +1513,7 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Search the signed-in user's own and organization repositories by name. Scoped server-side to the accounts the user belongs to, so it never searches all of GitHub.",
@@ -1748,7 +1662,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Promote scanned candidate parameters into the catalog in one attributed commit (the import wizard's final step). Already-managed or conflicting entries are skipped and reported, never fatal.",
@@ -1835,7 +1749,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Write the accepted onboarding proposal into ` + "`" + `.configer/` + "`" + ` as ONE attributed commit (reviewable history from the first action). Idempotent guard: an already-initialized repository returns 409.",
@@ -1917,7 +1831,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage a new deployment target as a pending structural change on the draft (it does NOT touch the main branch). On submit the CR branch carries the scaffolded folder plus the registry entry. ` + "`" + `cloneFrom` + "`" + ` seeds the new folder from an existing instance; ` + "`" + `folder` + "`" + ` instead ADOPTS a folder the repository already has (nothing is copied), which is how an instance created on Git elsewhere becomes managed here. The two are mutually exclusive.",
@@ -1974,7 +1888,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage a metadata/status edit (archive = status \"archived\") as a pending change - never a direct commit to the main branch. If the instance is itself still a pending add, the edit folds into that add.",
@@ -2030,7 +1944,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage the retirement of an instance (registry entry + folder) into the draft, reviewable before anything happens.",
@@ -2070,7 +1984,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage, into the draft, every parameter whose effective value on the ` + "`" + `source` + "`" + ` instance differs from this instance's, seeding one instance from another. Only per-instance parameters are copied; nothing touches Git until the draft is submitted.",
@@ -2193,7 +2107,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Create a new catalog parameter. Bindings may be empty for a design-phase parameter (attached later), but a half-specified binding is rejected. Committed directly with attribution.",
@@ -2250,7 +2164,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Retire every parameter sourced from one (typically deleted) file: the one-click resolution for a file_deleted finding.",
@@ -2341,7 +2255,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage a patch to a parameter's type, validation, display name, description, category, scope, secret flag, default, derived expression or file bindings. Nil fields are left unchanged. Staged on the caller's draft change request and written to ` + "`" + `.configer/parameters.yaml` + "`" + ` when that change is submitted and published - nothing touches Git here. The response carries the parameter as it WILL read once the change lands.",
@@ -2403,7 +2317,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Retire a parameter everywhere: the catalog entry is removed and the bound key/element is deleted from every real file it lives in. Committed directly with attribution.",
@@ -2497,7 +2411,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Point a managed parameter at a key in an external source, or clear the mapping (send null / {\"clear\":true}).",
@@ -2555,7 +2469,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage a pending change that removes a parameter from .configer/parameters.yaml and records its paths in .configer/ignore.yaml, so Configer stops showing it and a later scan does not propose it again. The repository's own configuration files are NOT touched: every value stays where it is. Staged on the current draft and applied when that change is submitted and published, like every other edit. Compare DELETE /api/parameters/{id}, which retires a parameter and deletes its value from every file.",
@@ -2787,7 +2701,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Mark all repository findings up to HEAD as seen, so they stop surfacing. Software versions are re-baselined at the same time, so only later moves read as news. A ` + "`" + `new_instance` + "`" + ` finding survives being acknowledged: a folder nobody manages is a state, not an event, and it clears by managing the instance or by an ignore rule.",
@@ -2866,7 +2780,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Force a fetch + fast-forward (local) or cache refresh (remote) now, instead of waiting for the poll interval, and return the fresh status.",
@@ -2910,7 +2824,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Start connecting a repository (clone a git URL, manage no-clone when ` + "`" + `mode:\"remote\"` + "`" + `, or open a local directory). Returns 202 with a ` + "`" + `status:\"connecting\"` + "`" + ` summary; poll GET /api/repos until it becomes ready or ` + "`" + `status:\"error\"` + "`" + `. Connecting an already-connected or in-flight origin returns 409 with the existing id (idempotent by origin).",
@@ -2961,7 +2875,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Remove a repository from the workspace. A clone Configer made is deleted from disk; a locally-opened working tree is left untouched.",
@@ -3000,7 +2914,7 @@ const docTemplateconfiger = `{
             "patch": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Change an application's display name. Only the human label changes; the registry id (and every per-repo route and deep link) stays stable, and the Git repository is untouched.",
@@ -3058,17 +2972,17 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
-                "description": "Explicit role assignments for one application plus the known-user directory, so the UI can offer assignments. Admin-only.",
+                "description": "Everyone who has signed in to this deployment, for the reviewer picker. Access is granted in the platform's identity provider, so there are no assignments to list.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Platform"
                 ],
-                "summary": "List members",
+                "summary": "People",
                 "parameters": [
                     {
                         "type": "string",
@@ -3091,127 +3005,6 @@ const docTemplateconfiger = `{
                         "schema": {
                             "$ref": "#/definitions/api.APIError"
                         }
-                    },
-                    "403": {
-                        "description": "Admin only",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    }
-                }
-            },
-            "put": {
-                "security": [
-                    {
-                        "CookieSession": []
-                    }
-                ],
-                "description": "Assign a role (viewer, editor, approver) to a user on one application. Admin-only.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Platform"
-                ],
-                "summary": "Assign a role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Repository id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "description": "Login + role",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/api.SetMemberRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.OKResponse"
-                        }
-                    },
-                    "400": {
-                        "description": "Missing login or invalid role",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "401": {
-                        "description": "Not signed in",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "403": {
-                        "description": "Admin only",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/repos/{id}/members/{login}": {
-            "delete": {
-                "security": [
-                    {
-                        "CookieSession": []
-                    }
-                ],
-                "description": "Clear a user's explicit role on one application (back to the deployment default). Admin-only.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "Platform"
-                ],
-                "summary": "Remove a member's role",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Repository id",
-                        "name": "id",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "User login",
-                        "name": "login",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/api.OKResponse"
-                        }
-                    },
-                    "401": {
-                        "description": "Not signed in",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
-                    },
-                    "403": {
-                        "description": "Admin only",
-                        "schema": {
-                            "$ref": "#/definitions/api.APIError"
-                        }
                     }
                 }
             }
@@ -3220,10 +3013,10 @@ const docTemplateconfiger = `{
             "get": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
-                "description": "The caller's effective role (viewer, editor, approver) on one application, plus the deployment admin flag. In single-user mode (login not configured) the caller has every capability.",
+                "description": "The caller's access (viewer, editor, approver) to one application, derived from the platform's policies, plus the administrator flag. In single-user mode the caller may do everything.",
                 "produces": [
                     "application/json"
                 ],
@@ -3261,7 +3054,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage the edits that bring a scope back to how it looked at a git ref into the current draft (nothing touches Git until it is published). ` + "`" + `scope` + "`" + ` is \"all\", \"instance\" (needs ` + "`" + `instance` + "`" + `) or \"parameter\" (needs ` + "`" + `paramId` + "`" + `, plus ` + "`" + `instance` + "`" + ` unless ` + "`" + `global` + "`" + `). Only value edits are restored; a parameter with no value at the ref has its instance override dropped. Returns the draft id, how many cells were staged, and any skipped notes.",
@@ -3454,7 +3247,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Define an external source (its kind must match a registered plugin). Non-secret connection details only; credentials are resolved server-side.",
@@ -3532,7 +3325,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage selected incoming source values into the draft change request (as normal cell edits). Secret values stage as their reference. Submit the draft to publish.",
@@ -3577,7 +3370,7 @@ const docTemplateconfiger = `{
             "post": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Re-fetch every configured source and update the cached snapshots the incoming-changes view reads.",
@@ -3609,7 +3402,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Patch a source's name, secret flag or connection config.",
@@ -3659,7 +3452,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Remove an external source. Parameters mapped to it keep their reference until re-mapped or cleared.",
@@ -3881,6 +3674,27 @@ const docTemplateconfiger = `{
                 }
             }
         },
+        "/api/v1/whoami": {
+            "get": {
+                "description": "The verified identity in the platform's shape: subject, tenant, organization roles and product roles.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Platform"
+                ],
+                "summary": "Platform identity",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
         "/api/validation/presets": {
             "get": {
                 "description": "The predefined validation-rule library (port, cidr, ipv4, ...) available to attach to parameters.",
@@ -3928,7 +3742,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage a validated cell edit into the draft change request. The value is coerced to the parameter's declared type and validated; nothing touches Git until the draft is submitted. ` + "`" + `action` + "`" + ` defaults to \"set\"; \"reset\" drops the instance override; \"exclude\" removes the key from the instance's files. ` + "`" + `scope:\"global\"` + "`" + ` edits the shared value for every instance.",
@@ -3989,7 +3803,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Drop one pending edit (identified by paramId + instance) from the current draft.",
@@ -4048,7 +3862,7 @@ const docTemplateconfiger = `{
             "put": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Stage several value edits at once. ` + "`" + `edits` + "`" + ` is a list of ` + "`" + `{instance, value}` + "`" + `, and each entry may add its own ` + "`" + `paramId` + "`" + ` (defaulting to the top-level one) and ` + "`" + `scope: \"global\"` + "`" + ` (a shared-file edit that applies to every instance, ignoring ` + "`" + `instance` + "`" + `). ` + "`" + `action` + "`" + ` defaults to \"set\" (\"reset\"/\"exclude\" drop the override and ignore value). Each value is coerced and validated independently; invalid targets are reported in ` + "`" + `results` + "`" + ` while valid ones still stage. Nothing touches Git until the draft is submitted.",
@@ -4097,7 +3911,7 @@ const docTemplateconfiger = `{
             "delete": {
                 "security": [
                     {
-                        "CookieSession": []
+                        "BearerAuth": []
                     }
                 ],
                 "description": "Drop many pending edits from the current draft in a single write. Each item is identified by paramId + instance (paramId \"file:\u003cpath\u003e\" for a whole-file edit). Unknown items are ignored; the response says how many were actually removed.",
@@ -4210,7 +4024,7 @@ const docTemplateconfiger = `{
                     "type": "boolean"
                 },
                 "githubSignIn": {
-                    "description": "GitHubSignIn: GitHub OAuth is configured, so a user can sign in and\nbrowse their own repositories.",
+                    "description": "GitHubSignIn is always false: people sign in with the platform. Kept so\nan older interface reading the field sees \"no GitHub sign-in\".",
                     "type": "boolean"
                 },
                 "hosted": {
@@ -4223,6 +4037,10 @@ const docTemplateconfiger = `{
                 },
                 "manualGitUrl": {
                     "description": "ManualGitURL: connecting a repository by its Git URL. Always available -\nit is the fallback that needs no integration at all.",
+                    "type": "boolean"
+                },
+                "platformSignIn": {
+                    "description": "PlatformSignIn: people sign in with the platform's identity provider.",
                     "type": "boolean"
                 }
             }
@@ -4529,24 +4347,6 @@ const docTemplateconfiger = `{
                         "alice",
                         "bob"
                     ]
-                }
-            }
-        },
-        "api.SetMemberRequest": {
-            "type": "object",
-            "properties": {
-                "login": {
-                    "type": "string",
-                    "example": "alice"
-                },
-                "role": {
-                    "type": "string",
-                    "enum": [
-                        "viewer",
-                        "editor",
-                        "approver"
-                    ],
-                    "example": "editor"
                 }
             }
         },
@@ -5683,11 +5483,11 @@ const docTemplateconfiger = `{
         }
     },
     "securityDefinitions": {
-        "CookieSession": {
-            "description": "Session cookie set by the GitHub OAuth login flow (` + "`" + `GET /api/auth/login` + "`" + ` -\u003e callback). Only required when the deployment has OAuth configured; single-user deployments need no authentication.",
+        "BearerAuth": {
+            "description": "` + "`" + `Bearer \u003ctoken\u003e` + "`" + `: an access token from the platform's identity provider, the same token Software Gateway accepts. Only required when the deployment has sign-in configured; single-user deployments need no authentication.",
             "type": "apiKey",
-            "name": "configer_session",
-            "in": "cookie"
+            "name": "Authorization",
+            "in": "header"
         }
     }
 }`

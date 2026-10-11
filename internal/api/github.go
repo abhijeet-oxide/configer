@@ -33,15 +33,12 @@ type GitHubRepo struct {
 	URL           string `json:"url"`
 }
 
-// githubCred resolves the GitHub credential for this request: the signed-in
-// user's own token when we have one, otherwise the server-wide token
-// (CONFIGER_GITHUB_TOKEN or GITHUB_TOKEN).
+// githubCred resolves the GitHub credential: the server-wide service token
+// (CONFIGER_GITHUB_TOKEN or GITHUB_TOKEN). People sign in with the platform, not
+// with GitHub, so there is no per-person token.
 func (h *Hub) githubCred(r *http.Request) (token, source, login string) {
 	if u, ok := auth.UserFrom(r.Context()); ok {
 		login = u.Login
-		if t := h.auth.GitHubToken(u.Login); t != "" {
-			return t, "session", u.Login
-		}
 	}
 	if t := getenv("CONFIGER_GITHUB_TOKEN", os.Getenv("GITHUB_TOKEN")); t != "" {
 		return t, "server", login
@@ -114,7 +111,7 @@ func (h *Hub) githubStatus(w http.ResponseWriter, r *http.Request) {
 		"available":     token != "",
 		"source":        source,
 		"login":         login,
-		"signInEnabled": h.auth.Enabled(),
+		"signInEnabled": false,
 	})
 }
 
@@ -130,12 +127,12 @@ func (h *Hub) githubStatus(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
 // @Failure     502 {object} APIError "GitHub call failed"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/github/repos [get]
 func (h *Hub) githubRepos(w http.ResponseWriter, r *http.Request) {
 	// A server-wide GITHUB_TOKEN must not let an anonymous caller enumerate
 	// repositories on the server's budget when login is enabled.
-	if !h.requireUser(w, r) {
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	token, _, _ := h.githubCred(r)
@@ -210,10 +207,10 @@ type GitHubOrg struct {
 // @Success     200 {object} map[string]interface{}
 // @Failure     401 {object} APIError "Not signed in"
 // @Failure     502 {object} APIError "GitHub call failed"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/github/orgs [get]
 func (h *Hub) githubOrgs(w http.ResponseWriter, r *http.Request) {
-	if !h.requireUser(w, r) {
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	token, _, _ := h.githubCred(r)
@@ -222,20 +219,14 @@ func (h *Hub) githubOrgs(w http.ResponseWriter, r *http.Request) {
 			map[string]string{"error": "sign in with GitHub to browse your organizations"})
 		return
 	}
-	orgs, scopes, err := h.userOrgs(r, token)
-	// A session granted before read:org was asked for stays perfectly valid -
-	// GitHub does not upgrade a token because the app now wants more - so it
-	// simply cannot list organizations. Saying "reconnect" is the difference
-	// between the feature never turning on for existing users and one click;
-	// answering 200 with an empty list keeps the picker working meanwhile.
-	needsReauth := err != nil || (scopes != "" && !hasScope(scopes, "read:org"))
+	orgs, _, err := h.userOrgs(r, token)
 	if err != nil {
 		orgs = []GitHubOrg{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"orgs":        orgs,
-		"grantUrl":    h.auth.GitHubGrantURL(),
-		"needsReauth": needsReauth && h.auth.Enabled(),
+		"grantUrl":    "",
+		"needsReauth": false,
 	})
 }
 
@@ -273,10 +264,10 @@ func (h *Hub) userOrgs(r *http.Request, token string) ([]GitHubOrg, string, erro
 // @Failure     400 {object} APIError "Missing or too-short term"
 // @Failure     401 {object} APIError "Not signed in"
 // @Failure     502 {object} APIError "GitHub call failed"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/github/repos/search [get]
 func (h *Hub) githubSearchRepos(w http.ResponseWriter, r *http.Request) {
-	if !h.requireUser(w, r) {
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	term := strings.TrimSpace(r.URL.Query().Get("q"))
@@ -367,10 +358,10 @@ func buildRepoSearchQuery(term string, owners []string) string {
 // @Failure     400 {object} APIError "Missing repo"
 // @Failure     401 {object} APIError "Not signed in"
 // @Failure     502 {object} APIError "GitHub call failed"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/github/branches [get]
 func (h *Hub) githubBranches(w http.ResponseWriter, r *http.Request) {
-	if !h.requireUser(w, r) {
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	full := strings.TrimSpace(r.URL.Query().Get("repo"))

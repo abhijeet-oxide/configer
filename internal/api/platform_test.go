@@ -2,17 +2,18 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
-	"time"
 
 	"github.com/abhijeet-oxide/configer/internal/auth"
-	"github.com/abhijeet-oxide/configer/internal/store"
+	"github.com/abhijeet-oxide/softwareGateway/pkg/authz"
 )
 
 // minimalRepo writes the smallest valid write-back-native application and
@@ -57,44 +58,87 @@ parameters:
 	return root
 }
 
-// testHub builds a Hub over a minimal repo with OAuth artificially enabled,
-// plus two sessions: an editor and an approver-with-admin.
-func testHub(t *testing.T) (*Hub, http.Handler) {
+// policy stands in for the platform's Cerbos: each subject holds a set of
+// actions per resource kind, and every question asked is recorded.
+type policy struct {
+	mu     sync.Mutex
+	grants map[string]map[string]bool // subject -> "kind:action"
+	asked  []string                   // "kind:action:product"
+}
+
+func (p *policy) grant(subject, kind string, actions ...string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.grants[subject] == nil {
+		p.grants[subject] = map[string]bool{}
+	}
+	for _, a := range actions {
+		p.grants[subject][kind+":"+a] = true
+	}
+}
+
+func (p *policy) Check(_ context.Context, id authz.Identity, res authz.Resource, actions ...string) (map[string]bool, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	out := map[string]bool{}
+	for _, a := range actions {
+		p.asked = append(p.asked, res.Kind+":"+a+":"+res.Product)
+		out[a] = p.grants[id.Subject][res.Kind+":"+a]
+	}
+	return out, nil
+}
+
+func (p *policy) lastAsked() string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.asked) == 0 {
+		return ""
+	}
+	return p.asked[len(p.asked)-1]
+}
+
+// testHub builds a Hub over a minimal repo with sign-in on: a bearer token is
+// the subject's name, and the policy decides everything.
+func testHub(t *testing.T) (*Hub, http.Handler, *policy) {
 	t.Helper()
 	repo := minimalRepo(t)
-	dataDir := t.TempDir()
-	hub, err := NewHub(dataDir, repo, 0)
+	hub, err := NewHub(t.TempDir(), repo, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = hub.Close() })
-
-	// Force-enable auth (no real GitHub round-trip in tests).
-	hub.auth = &auth.Service{ClientID: "test-client", ClientSecret: "test-secret", Store: hub.platform}
-	ctx := context.Background()
-	users := []struct {
-		login string
-		admin bool
-		token string
-	}{
-		{"eddy", false, "tok-editor"},
-		{"root", true, "tok-admin"},
-	}
-	for _, u := range users {
-		if err := hub.platform.UpsertUser(ctx, store.User{Login: u.login, Admin: u.admin, CreatedAt: time.Now()}); err != nil {
-			t.Fatal(err)
+	// Background work (the warmer, each application's sync loop) still writes
+	// under .git after a short test returns, and the temporary directory's
+	// removal then fails. Wait the warmer out and stop the loops first.
+	t.Cleanup(func() {
+		for _, e := range hub.registry.List() {
+			hub.opens.lock(e.ID)()
 		}
-		if err := hub.platform.CreateSession(ctx, u.token, u.login, time.Hour); err != nil {
-			t.Fatal(err)
+		hub.mu.Lock()
+		for _, s := range hub.servers {
+			s.StopSync()
 		}
+		hub.mu.Unlock()
+	})
+	pol := &policy{grants: map[string]map[string]bool{}}
+	hub.auth = &auth.Service{
+		Store:     hub.platform,
+		Engine:    pol,
+		AdminRole: "org-admin",
+		Verify: func(_ context.Context, raw string) (authz.Identity, error) {
+			if raw == "forged" {
+				return authz.Identity{}, errors.New("bad signature")
+			}
+			id := authz.Identity{Subject: raw, Email: raw + "@example.com", Name: raw, Method: "oidc"}
+			if raw == "root" {
+				id.OrgRoles = []string{"org-admin"}
+			}
+			return id, nil
+		},
 	}
-	// The deployment default role is viewer (least privilege), so grant the
-	// non-admin an explicit editor role for the write-path assertions.
-	repoID := hub.registry.List()[0].ID
-	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleEditor}); err != nil {
-		t.Fatal(err)
-	}
-	return hub, hub.Routes()
+	pol.grant("root", kindWorkspace, actCreateApplication, actViewAudit)
+	pol.grant("root", kindApplication, actView, actEdit, actSubmit, actApprove, actPublish, actReject, actAdminister)
+	return hub, hub.Routes(), pol
 }
 
 func call(t *testing.T, h http.Handler, method, path, token, body string) *httptest.ResponseRecorder {
@@ -106,93 +150,135 @@ func call(t *testing.T, h http.Handler, method, path, token, body string) *httpt
 		r = httptest.NewRequest(method, path, nil)
 	}
 	if token != "" {
-		r.AddCookie(&http.Cookie{Name: auth.SessionCookie, Value: token})
+		r.Header.Set("Authorization", "Bearer "+token)
 	}
 	w := httptest.NewRecorder()
 	h.ServeHTTP(w, r)
 	return w
 }
 
-func TestRoleEnforcement(t *testing.T) {
-	hub, h := testHub(t)
+// Incident guarded: role logic living in ArtiAuto's code, where the platform's
+// policies could not reach it. Every request must arrive at the policy engine
+// as the action the platform's policies are written against.
+func TestEveryRequestIsAskedAsANamedAction(t *testing.T) {
+	hub, h, pol := testHub(t)
 	repoID := hub.registry.List()[0].ID
 	base := "/api/repos/" + repoID
+	for _, c := range []struct{ method, path, want string }{
+		{"GET", base + "/grid", "artiauto_application:view:"},
+		{"PUT", base + "/values", "artiauto_application:edit:"},
+		{"POST", base + "/changes/4/submit", "artiauto_application:submit:"},
+		{"POST", base + "/changes/4/approve", "artiauto_application:approve:"},
+		{"POST", base + "/changes/4/merge", "artiauto_application:publish:"},
+		{"POST", base + "/changes/4/reject", "artiauto_application:reject:"},
+		{"PUT", base + "/application", "artiauto_application:administer:"},
+		{"POST", base + "/sources", "artiauto_application:administer:"},
+		{"POST", base + "/discover", "artiauto_application:view:"},
+		{"PATCH", "/api/repos/" + repoID, "artiauto_application:administer:"},
+		{"POST", "/api/repos", "artiauto_workspace:create_application:"},
+		{"GET", "/api/audit", "artiauto_workspace:view_audit:"},
+	} {
+		w := call(t, h, c.method, c.path, "nobody", "{}")
+		if w.Code != http.StatusForbidden {
+			t.Errorf("%s %s = %d, want 403 for a person holding nothing", c.method, c.path, w.Code)
+		}
+		if got := pol.lastAsked(); got != c.want {
+			t.Errorf("%s %s asked %q, want %q", c.method, c.path, got, c.want)
+		}
+	}
+}
 
-	// Unauthenticated requests are rejected when login is enabled.
+func TestSignInIsRequiredAndForgedTokensAreRefused(t *testing.T) {
+	hub, h, _ := testHub(t)
+	base := "/api/repos/" + hub.registry.List()[0].ID
 	if w := call(t, h, "GET", base+"/grid", "", ""); w.Code != http.StatusUnauthorized {
 		t.Errorf("anonymous read = %d, want 401", w.Code)
 	}
-	// An explicit editor reads and edits.
-	if w := call(t, h, "GET", base+"/grid", "tok-editor", ""); w.Code != http.StatusOK {
-		t.Errorf("editor read = %d: %s", w.Code, w.Body.String())
+	if w := call(t, h, "GET", base+"/grid", "forged", ""); w.Code != http.StatusUnauthorized {
+		t.Errorf("forged token = %d, want 401", w.Code)
 	}
-	if w := call(t, h, "PUT", base+"/values", "tok-editor",
+	if w := call(t, h, "GET", "/api/health", "", ""); w.Code != http.StatusOK {
+		t.Errorf("health without a token = %d, want 200", w.Code)
+	}
+}
+
+func TestPolicyDecidesReadsWritesAndPublishing(t *testing.T) {
+	hub, h, pol := testHub(t)
+	repoID := hub.registry.List()[0].ID
+	base := "/api/repos/" + repoID
+	pol.grant("eddy", kindApplication, actView, actEdit)
+
+	if w := call(t, h, "GET", base+"/grid", "eddy", ""); w.Code != http.StatusOK {
+		t.Errorf("read = %d: %s", w.Code, w.Body.String())
+	}
+	if w := call(t, h, "PUT", base+"/values", "eddy",
 		`{"instance":"staging","paramId":"p1","value":9090}`); w.Code != http.StatusOK {
-		t.Errorf("editor write = %d: %s", w.Code, w.Body.String())
+		t.Errorf("write = %d: %s", w.Code, w.Body.String())
 	}
-	// Publishing needs the approver role: the editor is denied.
-	if w := call(t, h, "POST", base+"/changes/1/merge", "tok-editor", ""); w.Code != http.StatusForbidden {
-		t.Errorf("editor merge = %d, want 403: %s", w.Code, w.Body.String())
+	w := call(t, h, "POST", base+"/changes/1/merge", "eddy", "")
+	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "publish changes") {
+		t.Errorf("publish = %d %s, want 403 naming what was refused", w.Code, w.Body.String())
 	}
-	// Approving is likewise approver-gated: the editor is denied.
-	if w := call(t, h, "POST", base+"/changes/1/approve", "tok-editor", ""); w.Code != http.StatusForbidden {
-		t.Errorf("editor approve = %d, want 403: %s", w.Code, w.Body.String())
+	if w := call(t, h, "GET", base+"/role", "eddy", ""); !strings.Contains(w.Body.String(), `"role":"editor"`) {
+		t.Errorf("derived role = %s, want editor", w.Body.String())
 	}
-	// Demote the editor to viewer: writes are denied too.
-	if err := hub.platform.SetMember(context.Background(), store.Member{Repo: repoID, Login: "eddy", Role: store.RoleViewer}); err != nil {
-		t.Fatal(err)
-	}
-	if w := call(t, h, "PUT", base+"/values", "tok-editor",
-		`{"instance":"staging","paramId":"p1","value":9091}`); w.Code != http.StatusForbidden {
-		t.Errorf("viewer write = %d, want 403", w.Code)
-	}
-	if w := call(t, h, "GET", base+"/grid", "tok-editor", ""); w.Code != http.StatusOK {
-		t.Errorf("viewer read = %d, want 200", w.Code)
+	pol.grant("eddy", kindApplication, actPublish)
+	if w := call(t, h, "GET", base+"/role", "eddy", ""); !strings.Contains(w.Body.String(), `"role":"approver"`) {
+		t.Errorf("derived role = %s, want approver", w.Body.String())
 	}
 
-	// Anyone signed in can read their OWN effective role (here: the demoted
-	// viewer); anonymous callers cannot.
-	if w := call(t, h, "GET", base+"/role", "tok-editor", ""); w.Code != http.StatusOK ||
-		!strings.Contains(w.Body.String(), `"role":"viewer"`) {
-		t.Errorf("own role = %d %s, want 200 with role viewer", w.Code, w.Body.String())
-	}
-	if w := call(t, h, "GET", base+"/role", "", ""); w.Code != http.StatusUnauthorized {
-		t.Errorf("anonymous role = %d, want 401", w.Code)
-	}
-	if w := call(t, h, "GET", base+"/role", "tok-admin", ""); w.Code != http.StatusOK ||
-		!strings.Contains(w.Body.String(), `"admin":true`) {
-		t.Errorf("admin role = %d %s, want 200 with admin true", w.Code, w.Body.String())
-	}
-
-	// Member management is admin-only.
-	if w := call(t, h, "PUT", base+"/members", "tok-editor",
-		`{"login":"eddy","role":"approver"}`); w.Code != http.StatusForbidden {
-		t.Errorf("non-admin member set = %d, want 403", w.Code)
-	}
-	if w := call(t, h, "PUT", base+"/members", "tok-admin",
-		`{"login":"eddy","role":"approver"}`); w.Code != http.StatusOK {
-		t.Errorf("admin member set = %d: %s", w.Code, w.Body.String())
-	}
-	// The promoted approver may now hit merge (404/409 for the missing CR is
-	// fine - the gate is what we test).
-	if w := call(t, h, "POST", base+"/changes/99/merge", "tok-editor", ""); w.Code == http.StatusForbidden {
-		t.Errorf("approver merge still forbidden: %s", w.Body.String())
-	}
-
-	// The audit trail recorded the successful write.
 	evs, err := hub.platform.Events(context.Background(), repoID, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 	found := false
 	for _, e := range evs {
-		// The action is humanized; the raw endpoint stays in the detail.
-		if e.Login == "eddy" && strings.Contains(e.Detail, "/values") && e.Action == "Edited a configuration value" {
+		if e.Login == "eddy@example.com" && e.Action == "Edited a configuration value" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("audit trail missing the editor's write: %+v", evs)
+		t.Errorf("audit trail missing the write, named by the signed-in person: %+v", evs)
+	}
+}
+
+// An application nobody let you see is not on your portfolio at all.
+func TestPortfolioListsOnlyWhatYouMaySee(t *testing.T) {
+	hub, h, pol := testHub(t)
+	if w := call(t, h, "GET", "/api/repos", "vera", ""); strings.Contains(w.Body.String(), hub.registry.List()[0].ID) {
+		t.Errorf("an application vera may not view is listed: %s", w.Body.String())
+	}
+	pol.grant("vera", kindApplication, actView)
+	if w := call(t, h, "GET", "/api/repos", "vera", ""); !strings.Contains(w.Body.String(), `"role":"viewer"`) {
+		t.Errorf("an application vera may view is missing: %s", w.Body.String())
+	}
+}
+
+// A product role reaches an application through the product the application
+// names in its own metadata.
+func TestApplicationCarriesItsProductToThePolicy(t *testing.T) {
+	hub, h, pol := testHub(t)
+	repoID := hub.registry.List()[0].ID
+	hub.ensureOpen(repoID)
+	s, _ := hub.server(repoID)
+	app := "apiVersion: configer.io/v1\nkind: Application\nname: t\nlayout: plain-folders\nmetadata:\n  product: sbc\n"
+	if err := os.WriteFile(filepath.Join(s.RepoPath, ".configer", "application.yaml"), []byte(app), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	call(t, h, "GET", "/api/repos/"+repoID+"/grid", "eddy", "")
+	if got := pol.lastAsked(); got != "artiauto_application:view:sbc" {
+		t.Errorf("asked %q, want the product sbc on the resource", got)
+	}
+}
+
+func TestAdministratorFlagComesFromTheOrganizationRole(t *testing.T) {
+	hub, h, _ := testHub(t)
+	repoID := hub.registry.List()[0].ID
+	if w := call(t, h, "GET", "/api/repos/"+repoID+"/role", "root", ""); !strings.Contains(w.Body.String(), `"admin":true`) {
+		t.Errorf("org-admin role = %s, want admin true", w.Body.String())
+	}
+	if w := call(t, h, "GET", "/api/repos/"+repoID+"/role", "eddy", ""); !strings.Contains(w.Body.String(), `"admin":false`) {
+		t.Errorf("plain person = %s, want admin false", w.Body.String())
 	}
 }
 
@@ -238,88 +324,4 @@ func TestHumanizeAction(t *testing.T) {
 			t.Errorf("humanizeAction(%q, %q) = %q, want %q", c.method, c.path, got, c.want)
 		}
 	}
-}
-
-// TestAppLifecycleIsApproverGated covers the workspace-level endpoints that sit
-// OUTSIDE the per-repository dispatch, so they never passed through authorize:
-// renaming and disconnecting an application. A viewer (and a plain editor) must
-// not be able to rename an application everyone shares, or remove it outright.
-func TestAppLifecycleIsApproverGated(t *testing.T) {
-	hub, h := testHub(t)
-	repoID := hub.registry.List()[0].ID
-	ctx := context.Background()
-
-	// eddy starts as an editor (testHub grants that): enough to change values,
-	// never enough to rename or disconnect.
-	for _, c := range []struct{ method, path, body string }{
-		{"PATCH", "/api/repos/" + repoID, `{"name":"renamed"}`},
-		{"DELETE", "/api/repos/" + repoID, ""},
-	} {
-		if w := call(t, h, c.method, c.path, "tok-editor", c.body); w.Code != http.StatusForbidden {
-			t.Errorf("editor %s %s = %d, want 403: %s", c.method, c.path, w.Code, w.Body.String())
-		}
-	}
-	// A viewer is refused the same way.
-	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleViewer}); err != nil {
-		t.Fatal(err)
-	}
-	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "tok-editor", ""); w.Code != http.StatusForbidden {
-		t.Errorf("viewer disconnect = %d, want 403", w.Code)
-	}
-	// Anonymous callers never get in.
-	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "", ""); w.Code != http.StatusUnauthorized {
-		t.Errorf("anonymous disconnect = %d, want 401", w.Code)
-	}
-	// The application is still there: nothing above took effect.
-	if len(hub.registry.List()) != 1 {
-		t.Fatalf("repository was removed by a caller that should have been refused")
-	}
-	// An approver may rename, and a deployment admin may disconnect.
-	if err := hub.platform.SetMember(ctx, store.Member{Repo: repoID, Login: "eddy", Role: store.RoleApprover}); err != nil {
-		t.Fatal(err)
-	}
-	if w := call(t, h, "PATCH", "/api/repos/"+repoID, "tok-editor", `{"name":"renamed"}`); w.Code != http.StatusOK {
-		t.Errorf("approver rename = %d: %s", w.Code, w.Body.String())
-	}
-	if w := call(t, h, "DELETE", "/api/repos/"+repoID, "tok-admin", ""); w.Code != http.StatusOK {
-		t.Errorf("admin disconnect = %d: %s", w.Code, w.Body.String())
-	}
-}
-
-// Connecting an application records an EXPLICIT approver grant for whoever
-// connected it, rather than leaving them on whatever the deployment default
-// happens to be. That is what makes it survive an operator tightening the
-// default: the person who set the application up keeps working on it, and
-// nobody else is granted anything.
-func TestConnectingAnApplicationMakesYouItsApprover(t *testing.T) {
-	t.Setenv("CONFIGER_DEFAULT_ROLE", "viewer") // the tightened deployment
-	hub, _ := testHub(t)
-	ctx := context.Background()
-	repoID := hub.registry.List()[0].ID
-
-	// Someone who did not connect it starts at the deployment default.
-	if g := hub.grantFor(userReq(t, "vera"), repoID, store.User{Login: "vera"}); g.Role != store.RoleViewer || g.Source != "default" {
-		t.Fatalf("before connecting = %+v, want viewer from the default", g)
-	}
-
-	// The connect worker records the caller as the application's approver.
-	if err := hub.platform.SetMember(ctx, store.Member{
-		Repo: repoID, Login: "vera", Role: store.RoleApprover,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	g := hub.grantFor(userReq(t, "vera"), repoID, store.User{Login: "vera"})
-	if g.Role != store.RoleApprover || g.Source != "configer" {
-		t.Fatalf("after connecting = %+v, want approver from an explicit grant", g)
-	}
-	// And it grants nothing to anyone else.
-	if got := hub.effectiveRole(userReq(t, "someone"), repoID, store.User{Login: "someone"}); got != store.RoleViewer {
-		t.Fatalf("another user's role = %q, want the deployment default", got)
-	}
-}
-
-func userReq(t *testing.T, login string) *http.Request {
-	t.Helper()
-	r := httptest.NewRequest(http.MethodGet, "/", nil)
-	return r.WithContext(auth.WithUser(r.Context(), store.User{Login: login}))
 }

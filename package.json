@@ -14,8 +14,6 @@
     "test": "concurrently \"npm:test:backend\" \"npm:test:frontend\"",
     "test:backend": "go test ./...",
     "test:frontend": "cd web && npx tsc --noEmit",
-    "docker:up": "cd deploy && docker compose up --build",
-    "docker:down": "cd deploy && docker compose down",
     "setup": "node scripts/setup.js",
     "smoke": "./scripts/smoke.sh"
   },

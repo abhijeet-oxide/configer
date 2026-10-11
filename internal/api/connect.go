@@ -20,7 +20,6 @@ import (
 
 	"github.com/abhijeet-oxide/configer/internal/auth"
 	"github.com/abhijeet-oxide/configer/internal/gitengine"
-	"github.com/abhijeet-oxide/configer/internal/store"
 	"github.com/abhijeet-oxide/configer/internal/workspace"
 )
 
@@ -54,15 +53,12 @@ type connecting struct {
 // @Success     202 {object} RepoSummary "Connecting; poll the portfolio"
 // @Failure     400 {object} APIError "Missing url"
 // @Failure     409 {object} APIError "Already connected or connecting"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repos [post]
 func (h *Hub) connect(w http.ResponseWriter, r *http.Request) {
 	// Connecting a repository puts it in front of everyone who uses this
-	// deployment (and, for a private one, spends the server's credential doing
-	// it), so it needs a signed-in caller. Like rename and disconnect, this
-	// endpoint sits outside the per-repository dispatch and so never passed
-	// through authorize - it accepted anonymous callers outright.
-	if !h.requireUser(w, r) {
+	// deployment and spends the server's credential doing it.
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	var req struct {
@@ -275,18 +271,6 @@ func (h *Hub) connectWorker(sp connectSpec) {
 	h.mu.Lock()
 	delete(h.connecting, sp.id)
 	h.mu.Unlock()
-	// Whoever connected it owns it: approver on their own application, so they
-	// can edit, review and publish without an administrator having to grant
-	// them access to something they just created. Everyone else still starts at
-	// the deployment default (viewer), so this grants nothing to anybody else.
-	if sp.owner != "" && h.platform != nil && h.auth.Enabled() {
-		if err := h.platform.SetMember(context.Background(), store.Member{
-			Repo: e.ID, Login: sp.owner, Role: store.RoleApprover,
-		}); err != nil {
-			slog.Warn("could not record the connecting user as the application's approver",
-				slog.String("id", e.ID), slog.String("login", sp.owner), slog.Any("error", err))
-		}
-	}
 	h.enqueueReindex(e.ID)
 	slog.Info("workspace connected repository", slog.String("id", e.ID), slog.String("origin", gitengine.Redact(e.Origin)))
 }

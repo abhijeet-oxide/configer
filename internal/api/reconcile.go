@@ -92,7 +92,7 @@ func (s *Server) analyzeImport(w http.ResponseWriter, r *http.Request) {
 // @Param       body body object true "{parameters: Parameter[], ignoreFiles?: string[]}"
 // @Success     200 {object} map[string]interface{}
 // @Failure     400 {object} APIError "Malformed body or nothing selected"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/import [post]
 func (s *Server) importParameters(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -251,7 +251,7 @@ func mergeBindings(params []model.Parameter) []model.Parameter {
 // @Success     200 {object} map[string]interface{}
 // @Failure     400 {object} APIError "file is required"
 // @Failure     404 {object} APIError "No parameters are sourced from that file"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters/retire-file [post]
 func (s *Server) retireFile(w http.ResponseWriter, r *http.Request) {
 	var req struct {

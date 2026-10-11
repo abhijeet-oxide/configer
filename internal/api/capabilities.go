@@ -24,9 +24,11 @@ type Capabilities struct {
 	// LocalFolders: the "Local folder" source is meaningful here, i.e. the
 	// browser and the server share a filesystem.
 	LocalFolders bool `json:"localFolders"`
-	// GitHubSignIn: GitHub OAuth is configured, so a user can sign in and
-	// browse their own repositories.
+	// GitHubSignIn is always false: people sign in with the platform. Kept so
+	// an older interface reading the field sees "no GitHub sign-in".
 	GitHubSignIn bool `json:"githubSignIn"`
+	// PlatformSignIn: people sign in with the platform's identity provider.
+	PlatformSignIn bool `json:"platformSignIn"`
 	// GitHubBrowse: a GitHub credential is available right now (the signed-in
 	// user's, or a deployment-wide token), so the repository picker can list.
 	GitHubBrowse bool `json:"githubBrowse"`
@@ -50,11 +52,12 @@ func (h *Hub) capabilities(w http.ResponseWriter, r *http.Request) {
 	token, _, _ := h.githubCred(r)
 	hosted := !servesLocalBrowser(r, h.Environment)
 	writeJSON(w, http.StatusOK, Capabilities{
-		LocalFolders: localFoldersEnabled(r, h.Environment),
-		GitHubSignIn: h.auth.Enabled(),
-		GitHubBrowse: token != "",
-		ManualGitURL: true,
-		Hosted:       hosted,
+		LocalFolders:   localFoldersEnabled(r, h.Environment),
+		GitHubSignIn:   false,
+		PlatformSignIn: h.auth.Enabled(),
+		GitHubBrowse:   token != "",
+		ManualGitURL:   true,
+		Hosted:         hosted,
 	})
 }
 

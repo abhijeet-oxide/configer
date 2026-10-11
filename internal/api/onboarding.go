@@ -67,7 +67,7 @@ func (s *Server) discover(w http.ResponseWriter, r *http.Request) {
 // @Header      201 {string} Location "URL of the initialized application"
 // @Failure     400 {object} APIError "Missing name or instances"
 // @Failure     409 {object} APIError "Already initialized"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/init [post]
 func (s *Server) initApp(w http.ResponseWriter, r *http.Request) {
 	var req struct {

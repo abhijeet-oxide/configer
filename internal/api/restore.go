@@ -56,7 +56,7 @@ type restoreTarget struct {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Missing ref or unknown scope"
 // @Failure     404 {object} APIError "Unknown ref, instance or parameter"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/restore [post]
 func (s *Server) restore(w http.ResponseWriter, r *http.Request) {
 	var req restoreRequest

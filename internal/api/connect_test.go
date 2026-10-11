@@ -19,7 +19,7 @@ import (
 // scratch space the user cannot see, on a button they pressed once. The
 // leftover is cleared instead.
 func TestPrepareCloneDirClearsLeftover(t *testing.T) {
-	hub, _ := testHub(t)
+	hub, _, _ := testHub(t)
 	dir := filepath.Join(t.TempDir(), "repos", "leftover")
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
 		t.Fatal(err)
@@ -35,7 +35,7 @@ func TestPrepareCloneDirClearsLeftover(t *testing.T) {
 // A directory a CONNECTED application still uses is never removed: that would
 // destroy the working copy of a healthy application.
 func TestPrepareCloneDirKeepsConnected(t *testing.T) {
-	hub, _ := testHub(t)
+	hub, _, _ := testHub(t)
 	inUse := hub.registry.List()[0].Path
 	err := hub.prepareCloneDir("acme/x", inUse)
 	if err == nil {
@@ -134,8 +134,8 @@ func TestQuotedReasonHasNoCredential(t *testing.T) {
 // empty page, so the answer carries a stable code and plain words - not a bare
 // "unknown repository: <id>" that every view turns into a red toast.
 func TestUnknownApplicationIsAState(t *testing.T) {
-	_, handler := testHub(t)
-	res := call(t, handler, http.MethodGet, "/api/repos/does-not-exist/grid", "tok-admin", "")
+	_, handler, _ := testHub(t)
+	res := call(t, handler, http.MethodGet, "/api/repos/does-not-exist/grid", "root", "")
 	if res.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", res.Code)
 	}
@@ -161,7 +161,7 @@ func (e errString) Error() string { return string(e) }
 // and the loser reported "a previous copy was still on the server" on every
 // attempt from then on. An id is not free until its worker has finished.
 func TestConnectDoesNotReuseAFolderAWorkerIsStillUsing(t *testing.T) {
-	hub, handler := testHub(t)
+	hub, handler, _ := testHub(t)
 	const url = "https://example.invalid/acme/ran-config.git"
 	// The attempts below really do start background workers; let them finish so
 	// the test does not tear its own data directory down underneath one.
@@ -199,7 +199,7 @@ func TestConnectDoesNotReuseAFolderAWorkerIsStillUsing(t *testing.T) {
 // from under the running clone - that is what turned one slow repository into a
 // failure on every attempt after it. The worker clears up after itself instead.
 func TestDismissingALiveConnectionLeavesItsFolderToTheWorker(t *testing.T) {
-	hub, handler := testHub(t)
+	hub, handler, _ := testHub(t)
 	const id = "slow-repo"
 	dir := filepath.Join(hub.dataDir, "repos", id)
 	if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
@@ -210,7 +210,7 @@ func TestDismissingALiveConnectionLeavesItsFolderToTheWorker(t *testing.T) {
 	hub.cloning[id] = true // a clone is under way
 	hub.mu.Unlock()
 
-	if res := call(t, handler, http.MethodDelete, "/api/repos/"+id, "tok-admin", ""); res.Code != http.StatusOK {
+	if res := call(t, handler, http.MethodDelete, "/api/repos/"+id, "root", ""); res.Code != http.StatusOK {
 		t.Fatalf("dismiss = %d, want 200", res.Code)
 	}
 	if _, err := os.Stat(dir); err != nil {
@@ -228,7 +228,7 @@ func TestDismissingALiveConnectionLeavesItsFolderToTheWorker(t *testing.T) {
 func connectOnce(t *testing.T, h http.Handler, url, name string) string {
 	t.Helper()
 	body, _ := json.Marshal(map[string]string{"url": url, "name": name})
-	res := call(t, h, http.MethodPost, "/api/repos", "tok-admin", string(body))
+	res := call(t, h, http.MethodPost, "/api/repos", "root", string(body))
 	if res.Code != http.StatusAccepted {
 		t.Fatalf("connect = %d: %s", res.Code, res.Body.String())
 	}
@@ -261,7 +261,7 @@ func waitForConnects(t *testing.T, hub *Hub) {
 // leftover is cleared at the end - after the copy succeeded - and never gets a
 // vote on whether the repository can be added.
 func TestALeftoverWorkingCopyDoesNotStopAConnection(t *testing.T) {
-	hub, handler := testHub(t)
+	hub, handler, _ := testHub(t)
 	defer waitForConnects(t, hub)
 	source := hub.registry.List()[0].Path // a real git repository to copy from
 
@@ -320,7 +320,7 @@ func TestUnfinishedCopiesAreSweptAtStartup(t *testing.T) {
 // The one refusal at this step that is NOT Configer's own fault names the
 // application in the way and what to do, rather than describing storage.
 func TestPlacementRefusalNamesTheApplicationInTheWay(t *testing.T) {
-	hub, _ := testHub(t)
+	hub, _, _ := testHub(t)
 	inUse := hub.registry.List()[0]
 	err := hub.placeClone("acme/flux-cd", t.TempDir(), inUse.Path)
 	if err == nil {
@@ -379,7 +379,7 @@ func TestCloneTimeoutIsBoundedAndTunable(t *testing.T) {
 // then tried to turn into a repository, failing on "nothing to commit". Git
 // gets a path of its own now, and an empty repository is named as such.
 func TestAnEmptyRepositoryIsRecognizedNotMisread(t *testing.T) {
-	hub, handler := testHub(t)
+	hub, handler, _ := testHub(t)
 	defer waitForConnects(t, hub)
 
 	bare := filepath.Join(t.TempDir(), "empty.git")
@@ -415,7 +415,7 @@ func TestAnEmptyRepositoryIsRecognizedNotMisread(t *testing.T) {
 // And a repository that DOES have commits still arrives with its history: the
 // staging path must hand git somewhere of its own, not a folder that exists.
 func TestAStagedCloneKeepsItsGitDirectory(t *testing.T) {
-	hub, handler := testHub(t)
+	hub, handler, _ := testHub(t)
 	defer waitForConnects(t, hub)
 	source := hub.registry.List()[0].Path
 

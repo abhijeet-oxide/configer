@@ -1,3 +1,5 @@
+import { basename } from "./authkit/base";
+import { isCallback } from "./authkit/session";
 import { create } from "zustand";
 import { setApiRepo } from "./api";
 import {
@@ -43,6 +45,13 @@ const SLUG_TO_SECTION: Record<string, string> = Object.fromEntries(
   Object.entries(SECTION_TO_SLUG).map(([s, slug]) => [slug, s]),
 );
 
+// routePath is the address below the path this app is served under, so the
+// same routes hold at "/" and behind the front door at "/artiauto".
+function routePath(): string {
+  const p = window.location.pathname;
+  return basename && p.startsWith(basename) ? p.slice(basename.length) || "/" : p;
+}
+
 // parseLocation reads the current path + query into a view. A path-named app
 // wins; otherwise a legacy ?app=&view= link resolves; otherwise it is the
 // portfolio. repoId is null only when the location does not name an app (the
@@ -54,7 +63,7 @@ function parseLocation(): { repoId: string | null; section: string; param: strin
   const legacyApp = p.get("app");
   if (legacyApp) return { repoId: legacyApp, section: p.get("view") || "overview", param, inst };
 
-  const segs = window.location.pathname.split("/").filter(Boolean);
+  const segs = routePath().split("/").filter(Boolean);
   if (segs[0] === "application" && segs[1]) {
     const slug = segs[2];
     const section = slug ? SLUG_TO_SECTION[slug] ?? "overview" : "overview";
@@ -116,16 +125,6 @@ export function parseNewApp(search: string): { open: boolean; source: NewAppSour
   return { open: v === "1", source: null };
 }
 
-/** The address that reopens the dialog on the step it is on: the current page
- *  plus the dialog's own parameter. Signing in with GitHub leaves the app
- *  entirely, and the URL is the only thing that survives that round trip - so
- *  the return address is built here rather than read back off the location,
- *  which may not have been rewritten yet. */
-export function newAppReturnTo(source: NewAppSource | null): string {
-  const q = new URLSearchParams(window.location.search);
-  q.set("new", source ?? "1");
-  return `${window.location.pathname}?${q.toString()}`;
-}
 
 const initialNewApp = parseNewApp(window.location.search);
 
@@ -605,7 +604,9 @@ let lastPath = pathFor(useUI.getState());
 let lastNavKey = navKey(useUI.getState());
 // Canonicalize the initial URL (root "/" -> "/overview", and legacy
 // ?app=&view= links -> the path form) without adding a history entry.
-window.history.replaceState(null, "", lastPath);
+// Not on the sign-in callback: its ?code= is what completes the sign-in, and
+// the gate reads it after this module has loaded.
+if (!isCallback()) window.history.replaceState(null, "", basename + lastPath);
 useUI.subscribe((s) => {
   const next = pathFor(s);
   if (next === lastPath) return;
@@ -613,9 +614,9 @@ useUI.subscribe((s) => {
   const nk = navKey(s);
   if (nk !== lastNavKey) {
     lastNavKey = nk;
-    window.history.pushState(null, "", next); // real navigation: Back returns here
+    window.history.pushState(null, "", basename + next); // real navigation: Back returns here
   } else {
-    window.history.replaceState(null, "", next); // in-view refinement: no history noise
+    window.history.replaceState(null, "", basename + next); // in-view refinement: no history noise
   }
 });
 

@@ -51,7 +51,7 @@ func (s *Server) getApplication(w http.ResponseWriter, _ *http.Request) {
 // @Failure     412 {object} APIError "Stale revision; reload and reapply"
 // @Failure     422 {object} APIError "Empty name"
 // @Failure     428 {object} APIError "Missing If-Match"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/application [put]
 func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -117,7 +117,7 @@ func (s *Server) updateApplication(w http.ResponseWriter, r *http.Request) {
 // @Produce     json
 // @Success     200 {object} OKResponse
 // @Failure     500 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/deinit [post]
 func (s *Server) deinit(w http.ResponseWriter, r *http.Request) {
 	var req struct {

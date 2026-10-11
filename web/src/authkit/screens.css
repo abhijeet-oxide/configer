@@ -1,0 +1,143 @@
+/* Every value pinned, fallbacks included, so the server's first paint and
+   React's render match. The kit's type variables and Ant Design's reset only
+   exist once scripts run; without these the splash jumped as they arrived. */
+.ui-boot-splash {
+  font-family: var(--font-ui, "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
+  font-size: var(--text-body, 13px);
+  line-height: 1.5;
+}
+.ui-boot-splash .ui-boot-name { font-size: var(--fs-15, 15px); }
+.platform-boot-label {
+  margin-top: calc(-1 * var(--sp-2));
+  font-size: var(--fs-13, 13px);
+  color: var(--text-2);
+}
+
+/* --- the platform's pages: catalogue and signed-out ----------------------- */
+.platform-page {
+  position: relative;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--sp-6) 16px;
+  background: var(--canvas);
+  color: var(--text);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.platform-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+.platform-glow {
+  position: absolute;
+  left: 50%;
+  top: -340px;
+  width: min(1400px, 160vw);
+  height: 680px;
+  translate: -50% 0;
+  background: radial-gradient(closest-side,
+    color-mix(in srgb, var(--brand) 24%, transparent) 0%,
+    color-mix(in srgb, var(--brand) 12%, transparent) 45%,
+    color-mix(in srgb, var(--brand) 4%, transparent) 75%,
+    transparent 100%);
+  animation: platform-breathe 12s ease-in-out infinite alternate;
+}
+[data-theme="dark"] .platform-glow { opacity: 0.6; }
+.platform-grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(color-mix(in srgb, var(--text) 7%, transparent) 1px, transparent 1px);
+  background-size: 24px 24px;
+  -webkit-mask-image: radial-gradient(ellipse 60% 40% at 50% 0%, #000 10%, transparent 70%);
+  mask-image: radial-gradient(ellipse 60% 40% at 50% 0%, #000 10%, transparent 70%);
+}
+
+.platform-card {
+  width: min(100%, 420px);
+  padding: 36px 32px 28px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
+  box-shadow: var(--el-3), inset 0 0 0 1px var(--border);
+  text-align: center;
+  animation: platform-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.platform-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: var(--fs-15, 15px);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+.platform-card-title {
+  margin: 0;
+  font-size: var(--text-heading, 22px);
+  line-height: 1.25;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+.platform-card-body {
+  margin: 8px 0 0;
+  font-size: var(--fs-14, 14px);
+  line-height: 1.5;
+  color: var(--text-2);
+}
+.platform-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 28px;
+}
+.platform-actions .ant-btn { height: 44px; border-radius: 12px; font-weight: 600; }
+
+.platform-done {
+  display: block;
+  width: 88px;
+  height: 88px;
+  margin: 28px auto 20px;
+  overflow: visible;
+}
+.platform-done-halo {
+  fill: var(--brand-soft);
+  transform-origin: center;
+  animation: platform-pop 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.platform-done-ring,
+.platform-done-tick {
+  fill: none;
+  stroke: var(--brand);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+.platform-done-ring { animation: platform-draw 0.7s 0.15s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+.platform-done-tick { stroke-width: 5; animation: platform-draw 0.45s 0.7s cubic-bezier(0.65, 0, 0.35, 1) forwards; }
+
+@keyframes platform-breathe {
+  from { transform: scale(1); opacity: 0.85; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+@keyframes platform-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes platform-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes platform-draw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .platform-glow, .platform-card, .platform-done-halo { animation: none; }
+  .platform-done-ring, .platform-done-tick { animation: none; stroke-dashoffset: 0; }
+}

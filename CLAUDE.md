@@ -345,12 +345,28 @@ importing an existing `workspace.json` once), so replicas see the same
 applications. Never add per-pod state that a restart cannot rebuild, and never
 put an application open on the startup path.
 
-**Platform (optional, off without OAuth env):** `store` (SQLite default /
-Postgres via DATABASE_URL: users, sessions, app_members, audit_events,
-workspace_repos, change_requests), `auth` (GitHub OAuth, cookie sessions),
-`api/platform.go` (role enforcement: viewer < editor < approver, merge is
-approver-gated; members endpoints admin-only; audit trail). Configuration data
-NEVER goes in the DB - only workflow and operational state.
+**Platform (off without `CONFIGER_AUTH_ISSUER`):** ArtiAuto is one application
+of the ngUSPe Automation Platform and lives in the platform repository as the
+submodule `apps/artiauto`. It imports the platform's `pkg/authz` through a
+`replace ... => ../..` in `go.mod`, so it builds inside a platform checkout only.
+`auth` verifies the platform's ZITADEL bearer tokens and asks the platform's
+Cerbos about every action; there is no sign-in and no role logic of its own.
+`api/access.go` names each request as an action on `artiauto_application`
+(view, edit, submit, approve, publish, reject, administer) or
+`artiauto_workspace` (create_application, view_audit); the policies live in
+the platform repository's `config/access/policies`. An application's product
+(`metadata.product` in `.configer/application.yaml`) is what lets a product
+role reach it. The viewer/editor/approver words the UI shows are DERIVED from
+those answers. `store` (SQLite default / Postgres via DATABASE_URL, tables in
+the schema `artiauto`: users, audit_events, workspace_repos, change_requests).
+Configuration data NEVER goes in the DB - only workflow and operational state.
+
+**Web sign-in:** `web/src/authkit/` is the THIRD shared folder, byte-identical
+to `softwareGateway/web/src/authkit/`: the OIDC code+PKCE session, the gate that
+completes a sign-in, and the sign-in screens. The API client sends its token
+and starts a sign-in on a 401 that a renewal cannot fix. Preferences are the
+platform's one record (`uikit.appearance.v1`); `settings.ts` translates it for
+the store, and `main.tsx` follows changes made by Software Gateway.
 
 **HTTP:** `api/hub.go` (workspace: /api/repos/{id}/… + auth + dispatch),
 per-repo handlers split by resource (`reads.go`, `values.go`,

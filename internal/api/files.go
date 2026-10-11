@@ -323,7 +323,7 @@ func (e errInstanceNotFound) Error() string {
 // @Failure     400 {object} APIError "path and content are required"
 // @Failure     404 {object} APIError "Unknown instance"
 // @Failure     422 {object} APIError "A managed value failed validation, or the file does not parse"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/files/draft [put]
 func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -528,7 +528,7 @@ func (s *Server) stageFileEdit(w http.ResponseWriter, r *http.Request) {
 // @Failure     400 {object} APIError "file and path are required"
 // @Failure     404 {object} APIError "Unknown instance or file"
 // @Failure     422 {object} APIError "The entry cannot be duplicated, or the file does not parse"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/files/duplicate [post]
 func (s *Server) duplicateEntry(w http.ResponseWriter, r *http.Request) {
 	var req struct {

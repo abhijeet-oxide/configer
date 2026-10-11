@@ -21,6 +21,10 @@ export default defineConfig(({ mode }) => {
     define: {
       "import.meta.env.VITE_API_BASE_URL": JSON.stringify(env.VITE_API_BASE_URL ?? ""),
     },
+    // Relative, so the bundle works at "/" and behind the platform's front door
+    // at "/artiauto/": the web container writes <base href> into index.html and
+    // every asset resolves against it (src/authkit/base.ts).
+    base: "./",
     plugins: [react(), tailwindcss(), brand()],
     build: {
       rollupOptions: {

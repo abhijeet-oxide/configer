@@ -42,7 +42,7 @@ import (
 // @Failure     400 {object} APIError "Malformed body or half-specified binding"
 // @Failure     404 {object} APIError "Unknown parameter"
 // @Failure     422 {object} APIError "Unknown validation preset"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters/{id} [put]
 func (s *Server) updateParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -202,7 +202,7 @@ func sameJSON(a, b any) bool {
 // @Header      201 {string} Location "URL of the created parameter"
 // @Failure     400 {object} APIError "Malformed body, missing name, or half-specified binding"
 // @Failure     409 {object} APIError "A parameter with that id already exists"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters [post]
 func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -265,7 +265,7 @@ func (s *Server) addParameter(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} OKResponse
 // @Failure     404 {object} APIError "Unknown parameter"
 // @Failure     409 {object} APIError "Deletion failed"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters/{id} [delete]
 func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -322,7 +322,7 @@ func (s *Server) deleteParameter(w http.ResponseWriter, r *http.Request) {
 // @Param       id path string true "Parameter id (slug)"
 // @Success     200 {object} object "Staged; pending is the draft's item count"
 // @Failure     404 {object} APIError "Unknown parameter"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters/{id}/unmanage [post]
 func (s *Server) unmanageParameter(w http.ResponseWriter, r *http.Request) {
 	var req struct {

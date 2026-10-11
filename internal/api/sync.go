@@ -125,7 +125,7 @@ func (s *Server) repoStatus(w http.ResponseWriter, _ *http.Request) {
 // @Tags        Import & reconcile
 // @Produce     json
 // @Success     200 {object} RepoStatus
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repo/sync [post]
 func (s *Server) repoSync(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, s.syncOnce())

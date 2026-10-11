@@ -1,3 +1,5 @@
+import { authorization, renewSession, requireSignIn } from "./authkit/session";
+import { appUrl } from "./authkit/base";
 // Typed client for the Configer backend REST API.
 import { markOffline, markOnline, OfflineError, saveSnapshot } from "./offline";
 
@@ -1318,9 +1320,12 @@ export function normalizeApiBase(raw: string | undefined | null): string {
 // public/config.js) > the build-time VITE_API_BASE_URL > the same-origin "/api"
 // (nginx/Vite proxy it to the backend). This lets a static SPA point at a
 // separate API host, and lets ops repoint it without rebuilding.
+// Behind the platform's front door this app lives under a path ("/artiauto"),
+// read from the <base href> the web container writes; its API is there too.
 const API_BASE = normalizeApiBase(
   (typeof window !== "undefined" && window.__CONFIGER__?.apiBaseUrl) ||
-    import.meta.env.VITE_API_BASE_URL,
+    import.meta.env.VITE_API_BASE_URL ||
+    appUrl("/api"),
 );
 
 /** Where this build is actually calling the API. Shown when a probe fails, so
@@ -1566,12 +1571,10 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // concurrency) instead of silently clobbering a concurrent change.
 let lastCatalogRev: string | null = null;
 
-// A 401 means the session is missing or expired. We dispatch an event rather
-// than hard-redirecting, so the app can surface a graceful "sign in again"
-// prompt; the auth layer listens for it.
-export const UNAUTHORIZED_EVENT = "configer:unauthorized";
+// A 401 that survived one renewal means nobody is signed in: the platform's
+// sign-in starts, once, however many reads were refused at the same moment.
 function emitUnauthorized() {
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent(UNAUTHORIZED_EVENT));
+  requireSignIn();
 }
 
 interface ReqOpts {
@@ -1586,7 +1589,9 @@ interface ReqOpts {
 // resilience layer informed, and captures the catalog revision from ETags. A
 // network failure becomes OfflineError; a timeout becomes TimeoutError; the
 // caller turns a non-2xx response into a typed ApiError.
-async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promise<Response> {
+async function request(path: string, init?: RequestInit, opts?: ReqOpts, renewed = false): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  for (const [k, v] of Object.entries(await authorization())) headers.set(k, v);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), opts?.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   // Chain an external abort signal (a caller cancelling a superseded request)
@@ -1599,10 +1604,8 @@ async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promis
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
+      headers,
       signal: controller.signal,
-      // Send the session cookie even when the API is on another origin (the
-      // backend allows the configured origin with credentials).
-      credentials: "include",
     });
   } catch {
     if (controller.signal.aborted) throw new TimeoutError();
@@ -1612,6 +1615,11 @@ async function request(path: string, init?: RequestInit, opts?: ReqOpts): Promis
     clearTimeout(timer);
   }
   markOnline();
+  // A token that expired between two clicks is worth one quiet renewal; a
+  // second 401 is a sign-in, decided in httpError.
+  if (res.status === 401 && !renewed && (await renewSession())) {
+    return request(path, init, opts, true);
+  }
   const etag = res.headers.get("ETag");
   if (etag) lastCatalogRev = etag;
   return res;

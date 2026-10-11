@@ -98,7 +98,7 @@ func (s *Server) listSources(w http.ResponseWriter, _ *http.Request) {
 // @Success     201 {object} object
 // @Failure     400 {object} APIError
 // @Failure     409 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/sources [post]
 func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -148,7 +148,7 @@ func (s *Server) addSource(w http.ResponseWriter, r *http.Request) {
 // @Param       body body object true "{name?, secret?, config?}"
 // @Success     200 {object} object
 // @Failure     404 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/sources/{id} [put]
 func (s *Server) updateSource(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -183,7 +183,7 @@ func (s *Server) updateSource(w http.ResponseWriter, r *http.Request) {
 // @Param       id path string true "Source id"
 // @Success     200 {object} map[string]interface{}
 // @Failure     404 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/sources/{id} [delete]
 func (s *Server) deleteSource(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
@@ -268,7 +268,7 @@ func (s *Server) sourceContents(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError
 // @Failure     404 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/parameters/{id}/source [post]
 func (s *Server) mapParameterSource(w http.ResponseWriter, r *http.Request) {
 	paramID := r.PathValue("id")
@@ -419,7 +419,7 @@ func targetInstances(p *project.Project, param model.Parameter) []model.Instance
 // @Param       body body object true "{changes:[{paramId,instance}], author?}"
 // @Success     200 {object} object
 // @Failure     400 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/sources/incoming/accept [post]
 func (s *Server) acceptIncoming(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -523,7 +523,7 @@ func valueForAccept(param model.Parameter, ic IncomingChange) (any, string) {
 // @Produce     json
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/sources/refresh [post]
 func (s *Server) refreshSources(w http.ResponseWriter, r *http.Request) {
 	p, err := s.load()

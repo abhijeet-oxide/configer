@@ -101,17 +101,18 @@ so the docs can never silently drift from the code.
 
 ```bash
 task build                          # backend binary + frontend dist/
-cd deploy && docker compose up --build
 ```
 
-The compose stack runs the backend (repo mounted read-write), the SPA behind
-nginx (:8088), and Postgres as the platform database. Single-node deployments
-can skip Postgres entirely - the platform store defaults to an embedded SQLite
-file under `CONFIGER_DATA`.
+Images, the chart and the compose stack are the platform repository's: it
+builds ArtiAuto's backend image (`deploy/build/Dockerfile.artiauto`) and web
+image (`deploy/build/Dockerfile.artiauto-web`) from this submodule, and its
+`docker compose up -d` runs ArtiAuto behind the platform's front door at
+`/artiauto/`. Single-node work without the platform needs none of it: the
+store defaults to an embedded SQLite file under `CONFIGER_DATA`.
 
-To enable multi-user mode, create a GitHub OAuth app (callback
-`<public-url>/api/auth/callback`) and set `GITHUB_OAUTH_CLIENT_ID`/`SECRET` plus
-`CONFIGER_ADMINS`; see [CONFIG.md](CONFIG.md).
+Multi-user mode is the platform's: sign-in with its identity provider and every
+action checked by its policy engine. Run the whole platform from the platform
+repository (`docker compose up -d`) to work with it; see [CONFIG.md](CONFIG.md).
 
 ## Troubleshooting
 

@@ -35,7 +35,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26.5"
   NODE_VERSION: "22"
   # Pinned tool versions. Reproducible builds start here: an unpinned scanner
   # silently changes what "green" means between two runs of the same commit.
@@ -79,15 +79,33 @@ jobs:
             go.sum
             quality/go.sum
 
+      # ArtiAuto imports the platform's pkg/authz through a replace that points
+      # at the platform checkout around it (it is the submodule apps/artiauto).
+      # Here it stands alone, so a workspace file outside the tree points the
+      # module at a clone instead. PLATFORM_CHECKOUT_TOKEN can read the
+      # private platform repository.
+      - name: Put the platform where the Go module expects it
+        env:
+          TOKEN: ${{ secrets.PLATFORM_CHECKOUT_TOKEN }}
+        run: |
+          git clone --depth 1 "https://x-access-token:${TOKEN}@github.com/abhijeet-oxide/softwareGateway" /tmp/platform
+          cd /tmp && go work init "$GITHUB_WORKSPACE" "$GITHUB_WORKSPACE/quality"
+          go work edit -replace=github.com/abhijeet-oxide/softwareGateway=/tmp/platform
+          echo "GOWORK=/tmp/go.work" >> "$GITHUB_ENV"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
 
       - name: Install frontend dependencies
         working-directory: web
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       # --- the analyzers ---------------------------------------------------
       #

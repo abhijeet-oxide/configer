@@ -558,7 +558,7 @@ func folderIgnored(folder string, patterns []string) bool {
 // @Produce     json
 // @Success     200 {object} map[string]interface{}
 // @Failure     500 {object} APIError
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/repo/findings/ack [post]
 func (s *Server) ackFindings(w http.ResponseWriter, r *http.Request) {
 	head, err := s.Backend.HeadSHA(r.Context(), "HEAD")

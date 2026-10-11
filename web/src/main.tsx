@@ -5,9 +5,10 @@ import { App as AntApp } from 'antd'
 import { QueryCache, QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import App from './App.tsx'
 import BootGate from './components/BootGate'
-import AuthGate from './components/AuthGate'
+import { SessionGate } from './authkit/SessionGate'
 import { useUI } from './store'
-import { ThemeProvider, defaultAppearance, watchSystemMode } from './uikit'
+import { APPEARANCE_KEY, ThemeProvider, loadAppearance, saveAppearance, watchSystemMode } from './uikit'
+import { fromAppearance, resolveMode } from './settings'
 import { ApiError } from './api'
 import { notifyError, setNotifier } from './notify'
 import './styles.css'
@@ -77,6 +78,25 @@ function ThemeRoot() {
   const themePref = useUI((s) => s.themePref)
   const fontScale = useUI((s) => s.fontScale)
   const density = useUI((s) => s.density)
+  // The rest of the platform record (contrast, colour vision, motion, links,
+  // dates) is painted as stored. Another application on this origin, or
+  // another tab, changing it arrives as a storage event, and both halves
+  // follow: what the store holds and what only the kit reads.
+  const [shared, setShared] = React.useState(loadAppearance)
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== null && e.key !== APPEARANCE_KEY) return
+      const next = loadAppearance()
+      setShared(next)
+      const s = fromAppearance(next)
+      useUI.setState({
+        themePref: s.theme, mode: resolveMode(s.theme), fontScale: s.fontScale,
+        density: s.density, timeZone: s.timeZone, hourCycle: s.hourCycle,
+      })
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
   // The provider paints "follow system" itself, but the store's resolved
   // `mode` is read by the surfaces that cannot express themselves in CSS
   // variables - Monaco's own theme, the chart colours - so it has to keep up
@@ -87,21 +107,25 @@ function ThemeRoot() {
   }, [themePref])
   return (
     <ThemeProvider
-      value={{ ...defaultAppearance, onboardedAt: "configer", theme: themePref, fontScale, density }}
+      value={{ ...shared, onboardedAt: shared.onboardedAt || "artiauto", theme: themePref, fontScale, density }}
       onChange={(next) => {
         const ui = useUI.getState()
         if (next.theme !== themePref) ui.setThemePref(next.theme)
         if (next.fontScale !== fontScale) ui.setFontScale(next.fontScale)
         if (next.density !== density) ui.setDensity(next.density)
+        const { contrast, colorVision, motion, underlineLinks, dateFormat } = next
+        const merged = { ...loadAppearance(), contrast, colorVision, motion, underlineLinks, dateFormat }
+        saveAppearance(merged)
+        setShared(merged)
       }}
     >
       <GlobalFeedback />
       {/* Nothing renders until we know the service is there (BootGate) and
-          whether this browser may see it at all (AuthGate). */}
+          who is signing in (SessionGate). */}
       <BootGate>
-        <AuthGate>
+        <SessionGate>
           <App />
-        </AuthGate>
+        </SessionGate>
       </BootGate>
     </ThemeProvider>
   )

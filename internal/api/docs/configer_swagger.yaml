@@ -45,8 +45,8 @@ definitions:
         type: boolean
       githubSignIn:
         description: |-
-          GitHubSignIn: GitHub OAuth is configured, so a user can sign in and
-          browse their own repositories.
+          GitHubSignIn is always false: people sign in with the platform. Kept so
+          an older interface reading the field sees "no GitHub sign-in".
         type: boolean
       hosted:
         description: |-
@@ -62,6 +62,10 @@ definitions:
         description: |-
           ManualGitURL: connecting a repository by its Git URL. Always available -
           it is the fallback that needs no integration at all.
+        type: boolean
+      platformSignIn:
+        description: 'PlatformSignIn: people sign in with the platform''s identity
+          provider.'
         type: boolean
     type: object
   api.ChangeNameCheck:
@@ -305,19 +309,6 @@ definitions:
         items:
           type: string
         type: array
-    type: object
-  api.SetMemberRequest:
-    properties:
-      login:
-        example: alice
-        type: string
-      role:
-        enum:
-        - viewer
-        - editor
-        - approver
-        example: editor
-        type: string
     type: object
   api.StagedResponse:
     properties:
@@ -1393,7 +1384,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Update application identity
       tags:
       - Onboarding
@@ -1401,7 +1392,7 @@ paths:
     get:
       description: 'Audit events across all applications (or one via `?repo=`), newest
         first, naming who did what. Cursor-paginated: pass `limit` (default 50, max
-        200) and the previous `nextCursor`. Admin-only.'
+        200) and the previous `nextCursor`. Needs the view_audit permission.'
       parameters:
       - description: Filter to one application id
         in: query
@@ -1428,18 +1419,18 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
         "403":
-          description: Admin only
+          description: Not permitted
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Audit trail
       tags:
       - Platform
   /api/audit/verify:
     get:
       description: Recompute the audit hash chain and report whether the trail is
-        intact, naming the first broken row if not. Admin-only.
+        intact, naming the first broken row if not. Needs the view_audit permission.
       produces:
       - application/json
       responses:
@@ -1453,75 +1444,18 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
         "403":
-          description: Admin only
+          description: Not permitted
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Verify the audit trail
-      tags:
-      - Platform
-  /api/auth/callback:
-    get:
-      description: Exchange the OAuth code, record the user, open a session cookie,
-        and redirect back to the app. Invoked by GitHub, not called directly by clients.
-      parameters:
-      - description: OAuth code
-        in: query
-        name: code
-        type: string
-      - description: CSRF state
-        in: query
-        name: state
-        type: string
-      responses:
-        "302":
-          description: Redirect to the app with a session cookie
-        "400":
-          description: Invalid state or code exchange failed
-          schema:
-            type: string
-        "501":
-          description: Login not configured
-          schema:
-            type: string
-      summary: GitHub OAuth callback
-      tags:
-      - Platform
-  /api/auth/login:
-    get:
-      description: Redirect the browser into GitHub's OAuth authorize page. Returns
-        501 when login is not configured.
-      responses:
-        "302":
-          description: Redirect to GitHub
-        "501":
-          description: Login not configured
-          schema:
-            type: string
-      summary: Begin GitHub login
-      tags:
-      - Platform
-  /api/auth/logout:
-    post:
-      description: End the current session and clear the session cookie.
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties: true
-            type: object
-      security:
-      - CookieSession: []
-      summary: Sign out
       tags:
       - Platform
   /api/auth/me:
     get:
-      description: Whether login is configured on this deployment, and who is signed
-        in. Returns `{enabled:false}` in single-user mode.
+      description: The signed-in person, and whether this deployment signs people
+        in at all. Single-user mode answers enabled=false.
       produces:
       - application/json
       responses:
@@ -1530,7 +1464,7 @@ paths:
           schema:
             additionalProperties: true
             type: object
-      summary: Current identity
+      summary: Who am I
       tags:
       - Platform
   /api/capabilities:
@@ -1644,7 +1578,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Approve a change request
       tags:
       - Editing & change requests
@@ -1682,7 +1616,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Comment on a change request
       tags:
       - Editing & change requests
@@ -1726,7 +1660,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Merge (publish) a change request
       tags:
       - Editing & change requests
@@ -1827,7 +1761,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Reject a change request
       tags:
       - Editing & change requests
@@ -1871,7 +1805,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Resume a rejected change
       tags:
       - Editing & change requests
@@ -1903,7 +1837,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Revert a change request
       tags:
       - Editing & change requests
@@ -1941,7 +1875,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Set reviewers
       tags:
       - Editing & change requests
@@ -1988,7 +1922,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Submit a change request
       tags:
       - Editing & change requests
@@ -2161,7 +2095,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Remove Configer metadata
       tags:
       - Onboarding
@@ -2234,7 +2168,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Stage a file edit
       tags:
       - Files
@@ -2277,7 +2211,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Duplicate a repeated entry
       tags:
       - Files
@@ -2340,7 +2274,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Browse server folders
       tags:
       - Workspace
@@ -2375,7 +2309,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: List GitHub branches
       tags:
       - Workspace
@@ -2401,7 +2335,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: List GitHub organizations
       tags:
       - Workspace
@@ -2426,7 +2360,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: List GitHub repositories
       tags:
       - Workspace
@@ -2462,7 +2396,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Search GitHub repositories
       tags:
       - Workspace
@@ -2565,7 +2499,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Import scanned parameters
       tags:
       - Import & reconcile
@@ -2635,7 +2569,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Initialize an application
       tags:
       - Onboarding
@@ -2693,7 +2627,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Create an instance
       tags:
       - Instances
@@ -2719,7 +2653,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Delete an instance
       tags:
       - Instances
@@ -2757,7 +2691,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Update an instance
       tags:
       - Instances
@@ -2797,7 +2731,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Copy values from another instance
       tags:
       - Editing & change requests
@@ -2881,7 +2815,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Create a parameter
       tags:
       - Grid & parameters
@@ -2912,7 +2846,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Delete a parameter
       tags:
       - Grid & parameters
@@ -2984,7 +2918,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Stage a parameter update
       tags:
       - Grid & parameters
@@ -3062,7 +2996,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Map a parameter to a source
       tags:
       - Sources
@@ -3095,7 +3029,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Stage "stop managing" a parameter
       tags:
       - Grid & parameters
@@ -3129,7 +3063,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Retire parameters from a file
       tags:
       - Grid & parameters
@@ -3294,7 +3228,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Acknowledge findings
       tags:
       - Import & reconcile
@@ -3343,7 +3277,7 @@ paths:
           schema:
             $ref: '#/definitions/api.RepoStatus'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Force a sync
       tags:
       - Import & reconcile
@@ -3394,7 +3328,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Connect a repository
       tags:
       - Workspace
@@ -3421,7 +3355,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Disconnect a repository
       tags:
       - Workspace
@@ -3459,14 +3393,15 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Rename an application
       tags:
       - Workspace
   /api/repos/{id}/members:
     get:
-      description: Explicit role assignments for one application plus the known-user
-        directory, so the UI can offer assignments. Admin-only.
+      description: Everyone who has signed in to this deployment, for the reviewer
+        picker. Access is granted in the platform's identity provider, so there are
+        no assignments to list.
       parameters:
       - description: Repository id
         in: path
@@ -3485,96 +3420,16 @@ paths:
           description: Not signed in
           schema:
             $ref: '#/definitions/api.APIError'
-        "403":
-          description: Admin only
-          schema:
-            $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
-      summary: List members
-      tags:
-      - Platform
-    put:
-      consumes:
-      - application/json
-      description: Assign a role (viewer, editor, approver) to a user on one application.
-        Admin-only.
-      parameters:
-      - description: Repository id
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: Login + role
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/api.SetMemberRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.OKResponse'
-        "400":
-          description: Missing login or invalid role
-          schema:
-            $ref: '#/definitions/api.APIError'
-        "401":
-          description: Not signed in
-          schema:
-            $ref: '#/definitions/api.APIError'
-        "403":
-          description: Admin only
-          schema:
-            $ref: '#/definitions/api.APIError'
-      security:
-      - CookieSession: []
-      summary: Assign a role
-      tags:
-      - Platform
-  /api/repos/{id}/members/{login}:
-    delete:
-      description: Clear a user's explicit role on one application (back to the deployment
-        default). Admin-only.
-      parameters:
-      - description: Repository id
-        in: path
-        name: id
-        required: true
-        type: string
-      - description: User login
-        in: path
-        name: login
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/api.OKResponse'
-        "401":
-          description: Not signed in
-          schema:
-            $ref: '#/definitions/api.APIError'
-        "403":
-          description: Admin only
-          schema:
-            $ref: '#/definitions/api.APIError'
-      security:
-      - CookieSession: []
-      summary: Remove a member's role
+      - BearerAuth: []
+      summary: People
       tags:
       - Platform
   /api/repos/{id}/role:
     get:
-      description: The caller's effective role (viewer, editor, approver) on one application,
-        plus the deployment admin flag. In single-user mode (login not configured)
-        the caller has every capability.
+      description: The caller's access (viewer, editor, approver) to one application,
+        derived from the platform's policies, plus the administrator flag. In single-user
+        mode the caller may do everything.
       parameters:
       - description: Repository id
         in: path
@@ -3594,7 +3449,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: My role on an application
       tags:
       - Platform
@@ -3631,7 +3486,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Restore configuration to a snapshot
       tags:
       - Editing & change requests
@@ -3768,7 +3623,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Add a source
       tags:
       - Sources
@@ -3795,7 +3650,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Delete a source
       tags:
       - Sources
@@ -3827,7 +3682,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Update a source
       tags:
       - Sources
@@ -3939,7 +3794,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Accept incoming changes
       tags:
       - Sources
@@ -3960,7 +3815,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Refresh sources
       tags:
       - Sources
@@ -4036,6 +3891,21 @@ paths:
       summary: Open one timeline snapshot
       tags:
       - Grid & parameters
+  /api/v1/whoami:
+    get:
+      description: 'The verified identity in the platform''s shape: subject, tenant,
+        organization roles and product roles.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Platform identity
+      tags:
+      - Platform
   /api/validation/presets:
     get:
       description: The predefined validation-rule library (port, cidr, ipv4, ...)
@@ -4105,7 +3975,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Revert a pending value edit
       tags:
       - Editing & change requests
@@ -4148,7 +4018,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Stage a value edit
       tags:
       - Editing & change requests
@@ -4183,7 +4053,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Revert several pending edits
       tags:
       - Editing & change requests
@@ -4220,7 +4090,7 @@ paths:
           schema:
             $ref: '#/definitions/api.APIError'
       security:
-      - CookieSession: []
+      - BearerAuth: []
       summary: Stage value edits across parameters and instances
       tags:
       - Editing & change requests
@@ -4246,11 +4116,11 @@ schemes:
 - https
 - http
 securityDefinitions:
-  CookieSession:
-    description: Session cookie set by the GitHub OAuth login flow (`GET /api/auth/login`
-      -> callback). Only required when the deployment has OAuth configured; single-user
-      deployments need no authentication.
-    in: cookie
-    name: configer_session
+  BearerAuth:
+    description: '`Bearer <token>`: an access token from the platform''s identity
+      provider, the same token Software Gateway accepts. Only required when the deployment
+      has sign-in configured; single-user deployments need no authentication.'
+    in: header
+    name: Authorization
     type: apiKey
 swagger: "2.0"

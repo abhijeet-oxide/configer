@@ -57,7 +57,7 @@ import HomeView from "./components/HomeView";
 import FilesView from "./components/FilesView";
 import AuditView from "./components/AuditView";
 import MobileParamList from "./components/MobileParamList";
-import { loginHref } from "./components/SignInView";
+import { signIn } from "./signin";
 import EditorStatusBar from "./components/EditorStatusBar";
 import { EmptyState } from "./components/ui";
 import { AppShell, PageTransition } from "./uikit";
@@ -944,7 +944,7 @@ function MobileProfileButton() {
       <Button
         size="small"
         type="primary"
-        href={loginHref()}
+        onClick={() => signIn()}
       >
         Sign in
       </Button>

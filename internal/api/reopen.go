@@ -108,7 +108,7 @@ func rebaseline(p *project.Project, rv *resolver.Resolver, it change.Item) chang
 // @Failure     404 {object} APIError "No such change request"
 // @Failure     409 {object} APIError "Only a rejected change can be resumed"
 // @Failure     422 {object} APIError "Nothing left to resume"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/reopen [post]
 func (s *Server) reopenChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

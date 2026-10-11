@@ -10,11 +10,11 @@ import (
 	"github.com/abhijeet-oxide/configer/internal/auth"
 )
 
-// A hub whose GitHub API points at a stub server; the server-wide token
-// stands in for a signed-in user (the credential resolution is shared).
+// A hub whose GitHub API points at a stub server, using the server-wide token.
 func stubHub(t *testing.T, ghURL string) *Hub {
 	t.Helper()
-	return &Hub{auth: &auth.Service{APIBase: ghURL}}
+	t.Setenv("GITHUB_API_URL", ghURL)
+	return &Hub{auth: &auth.Service{}}
 }
 
 func TestGitHubStatusWithoutAnyCredential(t *testing.T) {

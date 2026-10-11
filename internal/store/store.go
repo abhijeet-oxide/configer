@@ -16,8 +16,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,7 +29,7 @@ import (
 	_ "modernc.org/sqlite"             // sqlite driver (pure Go)
 )
 
-// User is an authenticated person (GitHub identity).
+// User is a signed-in person, as the platform's identity provider names them.
 type User struct {
 	Login     string    `json:"login"`
 	Name      string    `json:"name,omitempty"`
@@ -49,13 +51,6 @@ const (
 // Valid reports whether r is a known role.
 func (r Role) Valid() bool {
 	return r == RoleViewer || r == RoleEditor || r == RoleApprover
-}
-
-// Member is one user's role on one application.
-type Member struct {
-	Repo  string `json:"repo"` // workspace application id
-	Login string `json:"login"`
-	Role  Role   `json:"role"`
 }
 
 // Event is one audit-trail entry.
@@ -88,7 +83,7 @@ func Open(dataDir, databaseURL string) (*Store, error) {
 	var dialect string
 	var err error
 	if databaseURL != "" {
-		db, err = sql.Open("pgx", databaseURL)
+		db, err = openPostgres(databaseURL)
 		dialect = "postgres"
 	} else {
 		if err := os.MkdirAll(dataDir, 0o755); err != nil {
@@ -139,6 +134,40 @@ func tunePool(db *sql.DB, dialect string) {
 	db.SetConnMaxIdleTime(2 * time.Minute)
 }
 
+// openPostgres opens the platform database with ArtiAuto's tables in their own
+// schema. The database is shared with Software Gateway, whose tables are in
+// public; a search_path already in the URL wins.
+func openPostgres(databaseURL string) (*sql.DB, error) {
+	u, err := url.Parse(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("DATABASE_URL is not a URL: %w", err)
+	}
+	q := u.Query()
+	schema := q.Get("search_path")
+	if schema == "" {
+		schema = DefaultSchema
+		q.Set("search_path", schema)
+		u.RawQuery = q.Encode()
+	}
+	if !schemaName.MatchString(schema) {
+		return nil, fmt.Errorf("schema %q is not a plain lower-case name", schema)
+	}
+	db, err := sql.Open("pgx", u.String())
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.Exec(`CREATE SCHEMA IF NOT EXISTS ` + schema); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("create schema %s: %w", schema, err)
+	}
+	return db, nil
+}
+
+// DefaultSchema holds ArtiAuto's tables in the shared platform database.
+const DefaultSchema = "artiauto"
+
+var schemaName = regexp.MustCompile(`^[a-z_][a-z0-9_]*$`)
+
 // Close releases the database.
 func (s *Store) Close() error { return s.db.Close() }
 
@@ -161,18 +190,6 @@ var migrations = []string{
 		is_admin    BOOLEAN NOT NULL DEFAULT FALSE,
 		created_at  TIMESTAMP NOT NULL
 	)`,
-	`CREATE TABLE IF NOT EXISTS sessions (
-		token       TEXT PRIMARY KEY,
-		login       TEXT NOT NULL,
-		expires_at  TIMESTAMP NOT NULL,
-		created_at  TIMESTAMP NOT NULL
-	)`,
-	`CREATE TABLE IF NOT EXISTS app_members (
-		repo   TEXT NOT NULL,
-		login  TEXT NOT NULL,
-		role   TEXT NOT NULL,
-		PRIMARY KEY (repo, login)
-	)`,
 	`CREATE TABLE IF NOT EXISTS audit_events (
 		id        BIGINT NOT NULL,
 		at        TIMESTAMP NOT NULL,
@@ -185,7 +202,6 @@ var migrations = []string{
 		PRIMARY KEY (id)
 	)`,
 	`CREATE INDEX IF NOT EXISTS idx_audit_at ON audit_events (at)`,
-	`CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions (expires_at)`,
 }
 
 func (s *Store) migrate() error {
@@ -258,97 +274,6 @@ func (s *Store) ListUsers(ctx context.Context) ([]User, error) {
 		out = append(out, u)
 	}
 	return out, rows.Err()
-}
-
-// --- sessions ------------------------------------------------------------------
-
-// CreateSession stores a session token for a user.
-func (s *Store) CreateSession(ctx context.Context, token, login string, ttl time.Duration) error {
-	now := time.Now().UTC()
-	_, err := s.db.ExecContext(ctx, s.rebind(
-		`INSERT INTO sessions (token, login, expires_at, created_at) VALUES (?, ?, ?, ?)`),
-		token, login, now.Add(ttl), now)
-	return err
-}
-
-// SessionUser resolves a session token to its user (ErrNotFound when the
-// token is unknown or expired).
-func (s *Store) SessionUser(ctx context.Context, token string) (User, error) {
-	var login string
-	err := s.db.QueryRowContext(ctx, s.rebind(
-		`SELECT login FROM sessions WHERE token = ? AND expires_at > ?`), token, time.Now().UTC()).
-		Scan(&login)
-	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, ErrNotFound
-	}
-	if err != nil {
-		return User{}, err
-	}
-	return s.GetUser(ctx, login)
-}
-
-// DeleteSession logs a session out.
-func (s *Store) DeleteSession(ctx context.Context, token string) error {
-	_, err := s.db.ExecContext(ctx, s.rebind(`DELETE FROM sessions WHERE token = ?`), token)
-	return err
-}
-
-// PruneSessions drops expired sessions.
-func (s *Store) PruneSessions(ctx context.Context) error {
-	_, err := s.db.ExecContext(ctx, s.rebind(`DELETE FROM sessions WHERE expires_at <= ?`), time.Now().UTC())
-	return err
-}
-
-// --- application members ---------------------------------------------------------
-
-// SetMember assigns a user's role on an application (delete via RemoveMember).
-func (s *Store) SetMember(ctx context.Context, m Member) error {
-	if !m.Role.Valid() {
-		return fmt.Errorf("unknown role %q", m.Role)
-	}
-	_, err := s.db.ExecContext(ctx, s.rebind(`
-		INSERT INTO app_members (repo, login, role) VALUES (?, ?, ?)
-		ON CONFLICT (repo, login) DO UPDATE SET role = excluded.role`),
-		m.Repo, m.Login, string(m.Role))
-	return err
-}
-
-// RemoveMember clears a user's explicit role on an application.
-func (s *Store) RemoveMember(ctx context.Context, repo, login string) error {
-	_, err := s.db.ExecContext(ctx, s.rebind(
-		`DELETE FROM app_members WHERE repo = ? AND login = ?`), repo, login)
-	return err
-}
-
-// ListMembers returns the explicit role assignments for one application.
-func (s *Store) ListMembers(ctx context.Context, repo string) ([]Member, error) {
-	rows, err := s.db.QueryContext(ctx, s.rebind(
-		`SELECT repo, login, role FROM app_members WHERE repo = ? ORDER BY login`), repo)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var out []Member
-	for rows.Next() {
-		var m Member
-		if err := rows.Scan(&m.Repo, &m.Login, &m.Role); err != nil {
-			return nil, err
-		}
-		out = append(out, m)
-	}
-	return out, rows.Err()
-}
-
-// MemberRole returns a user's explicit role on an application (ErrNotFound
-// when none is assigned; callers apply the deployment default).
-func (s *Store) MemberRole(ctx context.Context, repo, login string) (Role, error) {
-	var r string
-	err := s.db.QueryRowContext(ctx, s.rebind(
-		`SELECT role FROM app_members WHERE repo = ? AND login = ?`), repo, login).Scan(&r)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "", ErrNotFound
-	}
-	return Role(r), err
 }
 
 // --- audit ---------------------------------------------------------------------

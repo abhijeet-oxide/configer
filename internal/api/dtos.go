@@ -103,9 +103,3 @@ type CommentRequest struct {
 type ReviewersRequest struct {
 	Reviewers []string `json:"reviewers" example:"alice,bob"`
 }
-
-// SetMemberRequest assigns a role on one application.
-type SetMemberRequest struct {
-	Login string `json:"login" example:"alice"`
-	Role  string `json:"role" example:"editor" enums:"viewer,editor,approver"`
-}

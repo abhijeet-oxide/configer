@@ -40,10 +40,10 @@ package api
 // @produce                    json
 // @schemes                    https http
 //
-// @securityDefinitions.apikey CookieSession
-// @in                         cookie
-// @name                       configer_session
-// @description                Session cookie set by the GitHub OAuth login flow (`GET /api/auth/login` -> callback). Only required when the deployment has OAuth configured; single-user deployments need no authentication.
+// @securityDefinitions.apikey BearerAuth
+// @in                         header
+// @name                       Authorization
+// @description                `Bearer <token>`: an access token from the platform's identity provider, the same token Software Gateway accepts. Only required when the deployment has sign-in configured; single-user deployments need no authentication.
 //
 // @tag.name                   Health
 // @tag.description            Liveness, readiness, and deployment identity probes.

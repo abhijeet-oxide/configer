@@ -50,14 +50,13 @@ func hasConfiger(dir string) bool {
 // @Success     200 {object} map[string]interface{}
 // @Failure     400 {object} APIError "Unreadable or missing path"
 // @Failure     403 {object} APIError "Permission denied"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/fs/browse [get]
 func (h *Hub) browseFolders(w http.ResponseWriter, r *http.Request) {
-	// Listing the server's own filesystem is a deployment-admin action. In
-	// single-user (localhost) mode auth is disabled and this is a no-op; with
-	// OAuth enabled it stops any signed-in user - let alone an anonymous one -
-	// from enumerating server directories (e.g. ?path=/etc).
-	if !h.requireAdmin(w, r, "browse folders on the machine Configer runs on") {
+	// Listing the server's own filesystem is part of adding an application, and
+	// with sign-in on it stops anybody without that permission from
+	// enumerating server directories (e.g. ?path=/etc).
+	if !h.requireWorkspace(w, r, actCreateApplication) {
 		return
 	}
 	// The UI hides this source on a hosted deployment; the server refuses it

@@ -218,7 +218,7 @@ func (s *Server) prStatus(w http.ResponseWriter, r *http.Request) {
 // @Failure     409 {object} APIError "Not in a submittable state"
 // @Failure     502 {object} APIError "A downstream (GitHub/git) step failed"
 // @Failure     504 {object} APIError "A downstream step timed out"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/submit [post]
 func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -311,7 +311,7 @@ func (s *Server) submitChange(w http.ResponseWriter, r *http.Request) {
 // @Failure     400 {object} APIError "Invalid id"
 // @Failure     403 {object} APIError "Approver role required"
 // @Failure     409 {object} APIError "Not under review"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/approve [post]
 func (s *Server) approveChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -344,7 +344,7 @@ func (s *Server) approveChange(w http.ResponseWriter, r *http.Request) {
 // @Failure     409 {object} APIError "Not in a mergeable state"
 // @Failure     502 {object} APIError "The merge failed upstream"
 // @Failure     504 {object} APIError "The merge timed out upstream"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/merge [post]
 func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -388,7 +388,7 @@ func (s *Server) mergeChange(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Invalid id, body, or empty comment"
 // @Failure     404 {object} APIError "Unknown change request"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/comments [post]
 func (s *Server) addChangeComment(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -434,7 +434,7 @@ func (s *Server) addChangeComment(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Invalid id or body"
 // @Failure     404 {object} APIError "Unknown change request"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/reviewers [put]
 func (s *Server) setChangeReviewers(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))
@@ -472,7 +472,7 @@ func (s *Server) setChangeReviewers(w http.ResponseWriter, r *http.Request) {
 // @Failure     400 {object} APIError "Invalid id"
 // @Failure     409 {object} APIError "Not in a rejectable state"
 // @Failure     502 {object} APIError "Closing the pull request failed upstream"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/changes/{id}/reject [post]
 func (s *Server) rejectChange(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(r.PathValue("id"))

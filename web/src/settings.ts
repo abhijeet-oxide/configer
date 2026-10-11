@@ -1,3 +1,4 @@
+import { APPEARANCE_KEY, defaultAppearance, loadAppearance, saveAppearance, type Appearance } from "./uikit/prefs";
 // Personal settings: the ONE model for everything a person tunes about their
 // own Configer experience (appearance, comfort, time). It is deliberately
 // separate from view state (store.ts keeps navigation and selections) and from
@@ -34,7 +35,6 @@ export const defaultSettings: UserSettings = {
   hourCycle: "auto",
 };
 
-const KEY = "configer.settings.v1";
 
 /** The device's own IANA time zone (always defined in modern browsers). */
 export function deviceTimeZone(): string {
@@ -53,30 +53,55 @@ export function resolveMode(pref: ThemePref): Mode {
   return pref;
 }
 
+// The settings live in the platform's ONE preference record
+// (uikit.appearance.v1, see uikit/prefs.ts), shared by every application on
+// the origin: a theme or text size chosen in Software Gateway holds here, and
+// the other way round. This module only translates between that record and the
+// fields this application's store reads.
 export function loadSettings(): UserSettings {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<UserSettings>;
-      return sanitize({ ...defaultSettings, ...parsed });
-    }
-  } catch {
-    // corrupted document: fall through to migration/defaults
-  }
-  // First run on this device: adopt the legacy per-key values if present, so
-  // an existing user's choices survive the upgrade.
-  const legacyMode = localStorage.getItem("configer.mode");
-  const legacyScale = localStorage.getItem("configer.fontScale");
-  const migrated: UserSettings = {
-    ...defaultSettings,
-    ...(legacyMode === "light" || legacyMode === "dark" ? { theme: legacyMode as Mode } : {}),
-    ...(legacyScale === "large" ? { fontScale: "large" as FontScale } : {}),
-  };
-  return migrated;
+  migrateLegacy();
+  return fromAppearance(loadAppearance());
 }
 
 export function saveSettings(s: UserSettings): void {
-  localStorage.setItem(KEY, JSON.stringify(s));
+  saveAppearance(toAppearance(s, loadAppearance()));
+}
+
+export function fromAppearance(a: Appearance): UserSettings {
+  return sanitize({
+    theme: a.theme,
+    fontScale: a.fontScale,
+    density: a.density,
+    timeZone: a.timeZone || null,
+    hourCycle: a.hourCycle === "24" ? "h23" : "h12",
+  });
+}
+
+function toAppearance(s: UserSettings, base: Appearance): Appearance {
+  return {
+    ...base,
+    theme: s.theme,
+    fontScale: s.fontScale,
+    density: s.density,
+    timeZone: s.timeZone ?? "",
+    hourCycle: s.hourCycle === "auto" ? base.hourCycle : s.hourCycle === "h23" ? "24" : "12",
+  };
+}
+
+// Before the platform record, this application kept its own. Carried across
+// once, so nobody loses a dark theme to the merge.
+const LEGACY_KEY = "configer.settings.v1";
+function migrateLegacy(): void {
+  try {
+    const raw = localStorage.getItem(LEGACY_KEY);
+    if (!raw) return;
+    localStorage.removeItem(LEGACY_KEY);
+    if (localStorage.getItem(APPEARANCE_KEY)) return;
+    const old = sanitize({ ...defaultSettings, ...(JSON.parse(raw) as Partial<UserSettings>) });
+    saveAppearance(toAppearance(old, defaultAppearance));
+  } catch {
+    // An unreadable legacy record is simply not carried across.
+  }
 }
 
 // sanitize guards against a hand-edited or stale document: any field with an

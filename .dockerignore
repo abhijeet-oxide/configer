@@ -1,9 +1,0 @@
-# Build context is the repository root for both images.
-.git
-**/node_modules
-web/dist
-bin
-configer-data
-.cq
-quality/bin
-sample-repos

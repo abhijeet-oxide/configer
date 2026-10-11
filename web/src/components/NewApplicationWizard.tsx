@@ -35,10 +35,9 @@ import { useDebounced } from "../hooks";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, StillConnectingError, type GitHubRepo, type RepoSummary } from "../api";
 import { useCapabilities } from "../deployment";
-import { newAppReturnTo, useUI, type NewAppSource } from "../store";
+import { useUI, type NewAppSource } from "../store";
 import { relTime } from "./DashboardView";
 import { InlineNotice, Stepper } from "./ui";
-import { loginHref } from "./SignInView";
 import { describeError, sentence } from "../notify";
 import { InlineListSkeleton } from "./Skeletons";
 
@@ -575,9 +574,6 @@ function RepoStep({
   onBack?: () => void;
 }) {
   const [q, setQ] = useState("");
-  // Set once the browser has been sent to GitHub, so the button that sent it
-  // stops looking unpressed while the navigation happens.
-  const [leaving, setLeaving] = useState(false);
   const reposQ = useQuery({
     queryKey: ["github-repos"],
     queryFn: api.githubRepos,
@@ -650,72 +646,25 @@ function RepoStep({
 
   if (loading) return <InlineListSkeleton rows={5} />;
 
-  // Two different situations wear the same "we cannot list your repositories"
-  // shape, and they need different pages. If signing in is possible, invite it.
-  // If GitHub was never connected to this deployment, DON'T offer a button that
-  // cannot work: say the integration is unavailable in the user's own terms -
-  // no OAuth, no environment variables, nothing they cannot act on - and lead
-  // with the path that does work here.
+  // Without the deployment's GitHub credential there is nothing to list. Lead
+  // with the path that works here rather than a button that cannot.
   if (!status?.available) {
-    if (!status?.signInEnabled) {
-      return (
-        <div style={{ textAlign: "center", padding: "20px 12px" }}>
-          <BranchesOutlined className="choice-card-icon" style={{ opacity: 0.6 }} />
-          <Typography.Title level={5} style={{ marginTop: 14 }}>
-            Add a repository by its address
-          </Typography.Title>
-          <Typography.Paragraph type="secondary" style={{ maxWidth: 460, margin: "0 auto 18px" }}>
-            GitHub integration is not available on this deployment, so repositories are added by
-            their Git address instead. An administrator can connect GitHub to let you browse and
-            pick from your repositories.
-          </Typography.Paragraph>
-          <Button type="primary" size="large" icon={<BranchesOutlined />} onClick={onManual}>
-            Add by Git address
-          </Button>
-          {onBack && (
-            <div style={{ marginTop: 14 }}>
-              <Button type="link" size="small" onClick={onBack}>
-                <ArrowLeftOutlined /> Back to choosing a source
-              </Button>
-            </div>
-          )}
-        </div>
-      );
-    }
     return (
       <div style={{ textAlign: "center", padding: "20px 12px" }}>
-        <GithubOutlined className="choice-card-icon" style={{ opacity: 0.6 }} />
+        <BranchesOutlined className="choice-card-icon" style={{ opacity: 0.6 }} />
         <Typography.Title level={5} style={{ marginTop: 14 }}>
-          Connect your GitHub account
+          Add a repository by its address
         </Typography.Title>
-        <Typography.Paragraph type="secondary" style={{ maxWidth: 440, margin: "0 auto 18px" }}>
-          Sign in once and ArtiAuto shows the repositories you have access to - yours and your
-          organizations' - so creating an application is a couple of clicks, with no URLs or
-          tokens to paste.
+        <Typography.Paragraph type="secondary" style={{ maxWidth: 460, margin: "0 auto 18px" }}>
+          GitHub integration is not available on this deployment, so repositories are added by
+          their Git address instead. An administrator can connect GitHub to let you browse and
+          pick from your repositories.
         </Typography.Paragraph>
-        <Button
-          type="primary"
-          size="large"
-          icon={<GithubOutlined />}
-          // Come back to THIS step, not to the page underneath: signing in
-          // navigates away entirely, and a user who returns to a closed dialog
-          // has to start the flow over.
-          href={loginHref(newAppReturnTo("git"))}
-          // Leaving for GitHub takes a moment and the page shows nothing while
-          // it happens, so the button says it is going rather than looking
-          // unpressed. It stays a link: middle-click and copy still work.
-          loading={leaving}
-          onClick={() => setLeaving(true)}
-        >
-          {leaving ? "Taking you to GitHub…" : "Continue with GitHub"}
+        <Button type="primary" size="large" icon={<BranchesOutlined />} onClick={onManual}>
+          Add by Git address
         </Button>
-        <div style={{ marginTop: 14 }}>
-          <Button type="link" onClick={onManual}>
-            Connect manually (git URL)
-          </Button>
-        </div>
         {onBack && (
-          <div style={{ marginTop: 4 }}>
+          <div style={{ marginTop: 14 }}>
             <Button type="link" size="small" onClick={onBack}>
               <ArrowLeftOutlined /> Back to choosing a source
             </Button>
@@ -843,23 +792,6 @@ function RepoStep({
         <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           Showing your most recently updated repositories. Search to reach the rest.
         </Typography.Text>
-      )}
-      {/* A session granted before Configer asked for organization access stays
-          valid - GitHub does not upgrade a token because the app now wants more
-          - so organizations simply cannot be listed for it. Without this the
-          feature would be permanently off for everyone who was already signed
-          in, and silently so. */}
-      {orgsQ.data?.needsReauth && !searching && (
-        <InlineNotice
-          tone="info"
-          action={
-            <Button size="small" href={loginHref(newAppReturnTo("git"))}>
-              Reconnect
-            </Button>
-          }
-        >
-          Reconnect your GitHub account to see which organizations you belong to.
-        </InlineNotice>
       )}
       {/* An organization the user belongs to that contributed nothing has not
           approved this app. Without this it is simply absent, and the user is

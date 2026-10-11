@@ -111,7 +111,7 @@ func derefLabels(p *map[string]string) map[string]string {
 // @Failure     400 {object} APIError "Malformed body or invalid name"
 // @Failure     404 {object} APIError "Clone source not found"
 // @Failure     409 {object} APIError "Name already exists (committed or pending)"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/instances [post]
 func (s *Server) addInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
@@ -259,7 +259,7 @@ func (s *Server) stageStructural(w http.ResponseWriter, owner string, it change.
 // @Success     200 {object} StagedResponse
 // @Failure     400 {object} APIError "Malformed body"
 // @Failure     404 {object} APIError "Unknown instance"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/instances/{name} [put]
 func (s *Server) updateInstance(w http.ResponseWriter, r *http.Request) {
 	var req instanceReq
@@ -347,7 +347,7 @@ func decodeInstance(v any) model.Instance {
 // @Param       name path string true "Instance name"
 // @Success     200 {object} StagedResponse
 // @Failure     404 {object} APIError "Unknown instance"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/instances/{name} [delete]
 func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -388,7 +388,7 @@ func (s *Server) deleteInstance(w http.ResponseWriter, r *http.Request) {
 // @Success     200 {object} object
 // @Failure     400 {object} APIError "Malformed body"
 // @Failure     404 {object} APIError "Instance not found"
-// @Security    CookieSession
+// @Security    BearerAuth
 // @Router      /api/instances/{name}/copy-from [post]
 func (s *Server) copyInstanceValues(w http.ResponseWriter, r *http.Request) {
 	target := r.PathValue("name")

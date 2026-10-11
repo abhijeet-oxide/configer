@@ -56,9 +56,9 @@ export function AccessPill({ r }: { r: RepoSummary }) {
     r.roleSource === "git"
       ? "This mirrors your permission on the repository in GitHub."
       : r.roleSource === "admin"
-        ? "You are an administrator of this Configer deployment."
+        ? "You are an administrator of this ArtiAuto deployment."
         : r.roleSource === "configer"
-          ? "An administrator granted you this access in Configer."
+          ? "An administrator granted you this access in ArtiAuto."
           : "This deployment's default access.";
   return (
     <Tooltip title={why}>

@@ -1,3 +1,4 @@
+import brand from "./brand";
 // The deployment's own identity: which Configer this is, which version, and
 // which environment it serves.
 //
@@ -69,7 +70,9 @@ export function sourceNoun(caps: Capabilities): string {
 export function useDeployment(): Deployment {
   const q = useHealth();
   return {
-    name: q.data?.name || "Configer",
+    // The product name the UI shows is the brand's, not the service's internal
+    // name (the backend still reports "Configer").
+    name: brand.appName,
     version: q.data?.version || "",
     environment: q.data?.environment || "",
     reachable: !!q.data,

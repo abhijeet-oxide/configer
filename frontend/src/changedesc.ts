@@ -145,7 +145,7 @@ export function describeChange(it: ChangeItem): ChangeDesc {
       tone: "danger",
       kind: "instance",
       subject: name,
-      what: "Configer stops managing it; the value stays in every file",
+      what: "ArtiAuto stops managing it; the value stays in every file",
     };
   }
   if (action === "add-parameter") {

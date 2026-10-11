@@ -2198,7 +2198,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                   </Tooltip>
                 )}
                 {r.pendingAdd && (
-                  <Tooltip title="A file edit in your draft added this setting. Configer starts managing it when that change is published, so it is not editable from the grid yet - change it in file mode.">
+                  <Tooltip title="A file edit in your draft added this setting. ArtiAuto starts managing it when that change is published, so it is not editable from the grid yet - change it in file mode.">
                     <Tag color="green" style={{ fontSize: "var(--text-micro)", lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                       new
                     </Tag>

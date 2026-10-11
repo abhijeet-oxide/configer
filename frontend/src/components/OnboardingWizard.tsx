@@ -513,8 +513,8 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           title="Nothing to manage in this repository yet"
           subtitle={
             skipped.length > 0
-              ? "Configer read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below - and you can overrule that for any of them."
-              : "Configer read the files and found no settings it can put in a grid. It looks for configuration values in YAML, JSON or XML - usually one folder per environment or cluster."
+              ? "ArtiAuto read the files and found no settings it can put in a grid. Every configuration file it saw was passed over, for the reasons below - and you can overrule that for any of them."
+              : "ArtiAuto read the files and found no settings it can put in a grid. It looks for configuration values in YAML, JSON or XML - usually one folder per environment or cluster."
           }
           actions={
             <>
@@ -549,7 +549,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
   // structure Configer has already worked out.
   const steps = [
     { label: "Application", icon: <ApartmentOutlined />, explain: "Name it, and confirm the instances found in the repository" },
-    { label: "Parameters", icon: <TableOutlined />, explain: "Choose the files and settings Configer should manage" },
+    { label: "Parameters", icon: <TableOutlined />, explain: "Choose the files and settings ArtiAuto should manage" },
     { label: "Initialize", icon: <CheckCircleOutlined />, explain: "One Git commit adding .configer/ metadata" },
   ];
   const LAST = steps.length - 1;
@@ -568,7 +568,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
       : step === 0
         ? appName.trim() === ""
           ? "Give the application a name to continue."
-          : "No instance folders were found, so there is nothing to lay out as columns yet. Configer expects one folder per environment or cluster."
+          : "No instance folders were found, so there is nothing to lay out as columns yet. ArtiAuto expects one folder per environment or cluster."
         : step === 1
           ? "Select at least one setting to manage."
           : "";
@@ -586,7 +586,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             <div className="cf-onb-eyebrow">Set up an application</div>
             <h1 className="cf-onb-title">{projectName}</h1>
             <p className="cf-onb-sub">
-              Configer scanned the repository and proposes how to manage it. Nothing is written until
+              ArtiAuto scanned the repository and proposes how to manage it. Nothing is written until
               the last step, which makes one reviewable Git commit adding metadata under{" "}
               <span className="mono">.configer/</span> - your configuration files stay exactly where
               they are.
@@ -685,7 +685,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             </header>
             {insts.length === 0 ? (
               <InlineNotice tone="warn">
-                No instances were found. Configer looks for one folder per instance (instances/,
+                No instances were found. ArtiAuto looks for one folder per instance (instances/,
                 environments/, overlays/, kpt packages) - add such a structure, or connect a
                 different branch.
               </InlineNotice>
@@ -853,7 +853,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               One row per <i>logical</i> setting from the selected files: a value repeated across
               files or instances is deduplicated into one parameter (the{" "}
               <Tag color="blue" style={{ marginInline: 2 }}>N files</Tag> badge shows how many
-              locations it maps to). Untick anything Configer should not manage.
+              locations it maps to). Untick anything ArtiAuto should not manage.
             </Typography.Paragraph>
             <Space style={{ marginBottom: 10 }} wrap>
               <Input

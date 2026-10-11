@@ -49,7 +49,7 @@ export default function UserAvatar({
 
   const el = bot ? (
     <span
-      aria-label="Configer Bot"
+      aria-label="ArtiAuto Bot"
       style={{
         width: size,
         height: size,
@@ -103,7 +103,7 @@ export default function UserAvatar({
 
   if (!tooltip) return el;
   return (
-    <Tooltip title={bot ? "Configer Bot (automation)" : label}>
+    <Tooltip title={bot ? "ArtiAuto Bot (automation)" : label}>
       {el}
     </Tooltip>
   );

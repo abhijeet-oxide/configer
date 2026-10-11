@@ -119,7 +119,7 @@ export default function WelcomeTour() {
     {
       key: "time",
       title: "Set your clock",
-      lead: "Every date and time in Configer is shown in your zone. We detected this device's - keep it, or follow a team elsewhere.",
+      lead: "Every date and time in ArtiAuto is shown in your zone. We detected this device's - keep it, or follow a team elsewhere.",
       body: (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <Field label="Time zone">

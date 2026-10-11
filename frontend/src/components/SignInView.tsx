@@ -104,7 +104,7 @@ function Welcome() {
             <div className="auth-aside-copy">
               <h2 className="auth-aside-title">Your repository, as a grid you can edit.</h2>
               <p className="auth-aside-text">
-                Configer reads the configuration already in your Git repository, shows it as
+                ArtiAuto reads the configuration already in your Git repository, shows it as
                 parameters across instances, and writes your edits back into those same files.
               </p>
             </div>
@@ -135,7 +135,7 @@ function Welcome() {
 
             <ul className="auth-points">
               <li>
-                <CheckCircleFilled /> Your configuration stays in Git. Configer edits your
+                <CheckCircleFilled /> Your configuration stays in Git. ArtiAuto edits your
                 repository's own files and never copies them into a separate database.
               </li>
               <li>

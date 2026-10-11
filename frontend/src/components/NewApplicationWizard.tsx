@@ -182,7 +182,7 @@ export default function NewApplicationWizard({
     >
       <Typography.Paragraph type="secondary" className="wizard-intro" style={{ marginTop: 4 }}>
         An application manages the configuration in one Git repository
-        {caps.localFolders ? ", remote or a folder on this machine" : ""}. Configer scans it for
+        {caps.localFolders ? ", remote or a folder on this machine" : ""}. ArtiAuto scans it for
         settings; no changes are made until you confirm.
       </Typography.Paragraph>
       <div className="wizard-steps mb-5 mt-2 rounded-card-lg bg-surface-2 px-4 py-3">
@@ -279,7 +279,7 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
             Local folder
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
-            Point at a folder on this machine. Configer turns it into a local Git repository
+            Point at a folder on this machine. ArtiAuto turns it into a local Git repository
             (history included) and manages the configuration in place.
           </Typography.Text>
           <Button type="primary" ghost size="small" style={{ marginTop: "auto" }}>
@@ -358,7 +358,7 @@ function LocalFolderStep({
             Click to select a local directory
           </Typography.Text>
           <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", maxWidth: 420 }}>
-            Browse the folders on this machine and choose one to manage. Configer reads the folder
+            Browse the folders on this machine and choose one to manage. ArtiAuto reads the folder
             in place - no files are uploaded.
           </Typography.Text>
         </div>
@@ -403,7 +403,7 @@ function LocalFolderStep({
       )}
       <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", marginTop: 12 }}>
         <FileSearchOutlined /> The folder is added as itself
-        {picked && !picked.isRepo && " - a local Git repository is initialized for it"}. Configer
+        {picked && !picked.isRepo && " - a local Git repository is initialized for it"}. ArtiAuto
         then scans it and shows the configuration files it found, so you choose what to manage.
       </Typography.Text>
 
@@ -538,7 +538,7 @@ function FolderPickerModal({
                       <span>{f.name}</span>
                       {f.hasConfiger ? (
                         <Tag color="geekblue" style={{ fontSize: "var(--text-micro)" }}>
-                          Configer app
+                          ArtiAuto app
                         </Tag>
                       ) : f.isRepo ? (
                         <Tag style={{ fontSize: "var(--text-micro)" }}>git repo</Tag>
@@ -552,7 +552,7 @@ function FolderPickerModal({
         )}
       </div>
       <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", display: "block", marginTop: 8 }}>
-        Browsing the machine Configer runs on. Click a folder to open it, then “Use this folder”.
+        Browsing the machine ArtiAuto runs on. Click a folder to open it, then “Use this folder”.
       </Typography.Text>
     </Modal>
   );
@@ -689,7 +689,7 @@ function RepoStep({
           Connect your GitHub account
         </Typography.Title>
         <Typography.Paragraph type="secondary" style={{ maxWidth: 440, margin: "0 auto 18px" }}>
-          Sign in once and Configer shows the repositories you have access to - yours and your
+          Sign in once and ArtiAuto shows the repositories you have access to - yours and your
           organizations' - so creating an application is a couple of clicks, with no URLs or
           tokens to paste.
         </Typography.Paragraph>
@@ -876,7 +876,7 @@ function RepoStep({
           }
         >
           No repositories visible in {unapproved.slice(0, 3).join(", ")}
-          {unapproved.length > 3 ? ` and ${unapproved.length - 3} more` : ""}. Configer needs the
+          {unapproved.length > 3 ? ` and ${unapproved.length - 3} more` : ""}. ArtiAuto needs the
           organization&rsquo;s approval before its repositories appear here.
         </InlineNotice>
       )}
@@ -938,7 +938,7 @@ function FinishStep({
               Branch of <span className="mono" style={{ marginInlineStart: 4 }}>{repo.fullName}</span>
             </>
           }
-          extra="Configer reads and writes on this branch; every edit still goes through review."
+          extra="ArtiAuto reads and writes on this branch; every edit still goes through review."
         >
           {branchesQ.isError ? (
             <InlineNotice
@@ -975,7 +975,7 @@ function FinishStep({
         </Form.Item>
         <Form.Item
           label="Application name"
-          extra="How this configuration appears across Configer. The repository is not renamed."
+          extra="How this configuration appears across ArtiAuto. The repository is not renamed."
         >
           <Input
             value={name}
@@ -989,7 +989,7 @@ function FinishStep({
         <InlineNotice tone={failure.tone}>{failure.text}</InlineNotice>
       ) : (
         <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
-          <FileSearchOutlined /> After creating, Configer scans this branch and shows the
+          <FileSearchOutlined /> After creating, ArtiAuto scans this branch and shows the
           configuration files it found, so you choose what to manage.
         </Typography.Text>
       )}

@@ -11,7 +11,7 @@ export const stateMeta: Record<ChangeState, { color: string; label: string; expl
   draft: {
     color: "default",
     label: "Draft",
-    explain: "Your edits are saved here in Configer only; nothing has been written to Git yet.",
+    explain: "Your edits are saved here in ArtiAuto only; nothing has been written to Git yet.",
   },
   under_review: {
     color: "processing",

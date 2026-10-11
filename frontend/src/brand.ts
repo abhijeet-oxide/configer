@@ -1,6 +1,6 @@
 import type { BrandIdentity } from "./uikit";
 
-// WHO THIS DEPLOYMENT IS. The one file that says "Configer".
+// WHO THIS DEPLOYMENT IS. The one file that says "ArtiAuto".
 //
 // Everything else visual - the palette, the spacing, the controls, the
 // primitives - comes from `uikit/`, the design system this tool shares byte for
@@ -11,29 +11,24 @@ import type { BrandIdentity } from "./uikit";
 //
 // So a rebrand is this file plus `uikit/tokens.ts`, and nothing else.
 
+// The AT&T globe, the same path and colour Software Gateway uses
+// (Iconify simple-icons:atandt), so the suite shares one mark.
+const ATT_GLOBE =
+  "M4.584 21.438a12.08 12.08 0 0 0 7.349 2.495a12 12 0 0 0 7.887-2.967c-.944.607-3.64 2.023-7.887 2.023c-3.708 0-6.068-.81-7.349-1.55m8.158.606c2.966 0 6.202-.809 8.09-2.427c.539-.405 1.01-1.011 1.483-1.753c.27-.472.539-1.011.741-1.483c-1.82 2.63-7.011 4.315-12.404 4.315c-3.776 0-7.888-1.214-9.506-3.573c1.483 3.236 6 4.92 11.596 4.92m-3.236-5.257C3.37 16.787.472 13.955 0 12c0 .674.067 1.483.202 2.09c.068.27.27.674.607 1.079c1.483 1.55 5.191 3.707 11.595 3.707c8.697 0 10.72-2.898 11.124-3.842c.27-.674.472-1.888.472-2.967v-.674c-.607 2.292-8.022 5.394-14.494 5.394m-8.427-9.91C.742 7.55.337 8.763.202 9.37c-.067.27 0 .404.068.607c.741 1.55 4.45 4.044 13.078 4.044c5.259 0 9.371-1.28 10.045-3.64c.135-.404.135-.876 0-1.483c-.202-.674-.472-1.483-.809-2.09c.068 3.101-8.562 5.124-12.944 5.124c-4.719 0-8.696-1.888-8.696-4.248c.067-.337.135-.606.135-.809M19.82 3.034c.068.067.068.135.068.27c0 1.348-4.045 3.64-10.517 3.64c-4.787 0-5.663-1.753-5.663-2.9c0-.404.135-.808.472-1.213c-.607.607-1.146 1.147-1.686 1.82c-.202.27-.337.54-.337.675c0 2.36 5.865 3.977 11.259 3.977c5.797 0 8.427-1.887 8.427-3.573c0-.606-.203-.943-.81-1.618a17 17 0 0 0-1.213-1.078m-1.753-1.281A11.8 11.8 0 0 0 11.933.067C9.64.067 7.55.674 5.73 1.82c-.539.27-.876.54-.876.877c0 1.01 2.36 2.09 6.54 2.09c4.112 0 7.348-1.214 7.348-2.36c.067-.202-.203-.405-.675-.674";
+
 const brand: BrandIdentity = {
-  appName: "Configer",
+  appName: "ArtiAuto",
   tagline: "Configuration Lifecycle Management",
-  navCaption: "CONFIG LIFECYCLE",
-  // Configuration LAYERS: a solid top plate over two receding echo edges - the
-  // base layer and the instance overlays stacked on top. Symmetrical about the
-  // vertical axis; the layers gently breathe (animated in index.css, paused
-  // under prefers-reduced-motion). Rounded joins keep it soft, not spiky.
+  navCaption: "ngUSPe",
   logo: {
     svg:
-      "<svg class='cfg-mark' width='19' height='19' viewBox='0 0 24 24' fill='none' " +
-      "stroke-linejoin='round' stroke-linecap='round' xmlns='http://www.w3.org/2000/svg'>" +
-      "<path class='cfg-bot' d='M3.6 15.3 L12 19.8 L20.4 15.3' stroke='white' stroke-width='1.9' stroke-opacity='0.32'/>" +
-      "<path class='cfg-mid' d='M3.6 11.6 L12 16.1 L20.4 11.6' stroke='white' stroke-width='1.9' stroke-opacity='0.58'/>" +
-      "<path class='cfg-top' d='M12 3.6 L20.6 8 L12 12.4 L3.4 8 Z' fill='white'/></svg>",
+      "<svg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'>" +
+      "<path fill='#009fdb' d='" + ATT_GLOBE + "'/></svg>",
+    bare: true,
   },
   favicon:
-    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>" +
-    "<rect width='32' height='32' rx='8' fill='#0071e3'/>" +
-    "<g fill='none' stroke='white' stroke-linejoin='round' stroke-linecap='round'>" +
-    "<path d='M8 20.4 L16 24.6 L24 20.4' stroke-width='2.4' stroke-opacity='0.32'/>" +
-    "<path d='M8 16.9 L16 21.1 L24 16.9' stroke-width='2.4' stroke-opacity='0.58'/>" +
-    "<path d='M16 6.4 L24 10.5 L16 14.6 L8 10.5 Z' fill='white' stroke='none'/></g></svg>",
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'>" +
+    "<path fill='#009fdb' d='" + ATT_GLOBE + "'/></svg>",
 };
 
 export default brand;

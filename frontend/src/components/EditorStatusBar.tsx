@@ -82,8 +82,8 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
         <Tooltip
           title={
             changes > 0
-              ? `Your ${changes} change(s) build on ${st?.branch ?? "the base branch"}. Configer commits them to a review branch for you when you submit.`
-              : "This is the branch your saved edits build on. Configer commits them to a review branch for you."
+              ? `Your ${changes} change(s) build on ${st?.branch ?? "the base branch"}. ArtiAuto commits them to a review branch for you when you submit.`
+              : "This is the branch your saved edits build on. ArtiAuto commits them to a review branch for you."
           }
         >
           <span style={item} onClick={() => setScmOpen(true)}>

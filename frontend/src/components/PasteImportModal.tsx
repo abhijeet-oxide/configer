@@ -77,7 +77,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
     >
       <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-body)" }}>
         Paste a YAML, JSON, or XML config and name the repository file it belongs to (so the values
-        can be written back there). Configer proposes the settings it finds; pick the ones to manage.
+        can be written back there). ArtiAuto proposes the settings it finds; pick the ones to manage.
       </Typography.Paragraph>
       <Input
         placeholder="Target file, e.g. instances/prod/values.yaml"

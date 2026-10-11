@@ -21,7 +21,7 @@ export default function PluginsView() {
     <div style={{ padding: 24, overflow: "auto", height: "100%" }}>
       <Typography.Title level={4}><ApiOutlined /> Plugins</Typography.Title>
       <Typography.Paragraph type="secondary">
-        Everything Configer does to a repository is a plugin: ingest parsers, schema importers,
+        Everything ArtiAuto does to a repository is a plugin: ingest parsers, schema importers,
         transposers (generate artifacts like Flux manifests), validators, and AI providers.
       </Typography.Paragraph>
       <List

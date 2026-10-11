@@ -1,3 +1,4 @@
+import './connectionProbe'
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App as AntApp } from 'antd'

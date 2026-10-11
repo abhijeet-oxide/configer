@@ -200,7 +200,6 @@ export default function InstancesOverview() {
             show_column_visibility
             className="cr-table"
             rowKey="key"
-            size="small"
             dataSource={shown}
             pagination={false}
             onRow={(row) => ({ onClick: () => setSel(row), style: { cursor: "pointer" } })}

@@ -129,7 +129,6 @@ export default function ChangesOverview() {
             tableEnhancedKey="changes-overview"
             className="cr-table"
             rowKey="key"
-            size="small"
             dataSource={shown}
             pagination={false}
             onRow={(row) => ({ onClick: () => open(row), style: { cursor: "pointer" } })}

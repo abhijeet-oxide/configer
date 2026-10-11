@@ -879,7 +879,6 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
             <DataTable<Parameter>
               tableEnhancedKey="onboarding-parameters"
               show_column_visibility
-            size="small"
             rowKey="id"
             dataSource={shownParams}
             scroll={{ x: "max-content" }}

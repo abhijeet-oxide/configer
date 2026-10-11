@@ -1,14 +1,14 @@
 import {
   Breadcrumb,
   Space,
-  Tooltip,
   Button,
-  Avatar,
   Dropdown,
   Typography,
 } from "antd";
-import { SearchOutlined, ExportOutlined, SunOutlined, MoonOutlined, GithubOutlined } from "../icons";
-import { pointOf, useTheme } from "../uikit";
+import { SearchOutlined, ExportOutlined, GithubOutlined, SettingOutlined, TeamOutlined, LogoutOutlined, MoonOutlined } from "../icons";
+import { ThemeToggleButton, useTheme } from "../uikit";
+import { AccountMenu } from "./accountmenu";
+import { useIdentity } from "../identity";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRepoQuery } from "../repoQuery";
@@ -19,7 +19,7 @@ import { loginHref } from "./SignInView";
 import NotificationsPanel from "./NotificationsPanel";
 import { useSearchOpen } from "../search";
 import { useSwitchRepo } from "../useSwitchRepo";
-import { modLabel, shortcut } from "../platform";
+import { modLabel } from "../platform";
 import { AppContextChips, Kbd } from "./ui";
 import { TopBar as Bar } from "../uikit";
 import MembersModal from "./MembersModal";
@@ -28,7 +28,7 @@ import MembersModal from "./MembersModal";
 // persistent context chips (branch, git sync state, instances, unsent edits)
 // so the user always knows where they are and whether anything is pending.
 // Appearance and every other personal preference live on the Settings page
-// (the rail's profile card); this bar keeps only the quick dark-mode toggle.
+// (the account menu at the right); this bar keeps only the quick theme toggle.
 
 // The application-scoped sections and their human tab labels, for the
 // breadcrumb (Home / Applications / <name> / <tab>).
@@ -76,8 +76,7 @@ function ellipsis(maxWidth: number): React.CSSProperties {
 }
 
 export default function TopBar({ project }: { project?: string; instances?: Instance[] }) {
-  const { setSection, repoId, section, mode } = useUI();
-  const { toggleMode } = useTheme();
+  const { setSection, repoId, section } = useUI();
   const switchRepo = useSwitchRepo();
   const openSearch = useSearchOpen((s) => s.openSearch);
 
@@ -99,6 +98,23 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   return (
     <Bar
       left={
+        <>
+          {/* SEARCH on the left, the way Software Gateway's bar opens. The
+              trail stays only inside an application, where it carries the
+              application switcher; elsewhere the page title says where you are. */}
+          <button
+            type="button"
+            className="gw-search"
+            onClick={() => openSearch(inApp ? "app" : "global")}
+            aria-label="Search"
+          >
+            <SearchOutlined />
+            <span className="gw-search-placeholder">
+              {inApp ? "Search parameters, values, changes" : "Search applications, instances, changes"}
+            </span>
+            <Kbd>{modLabel} K</Kbd>
+          </button>
+          {inApp && (
         <Breadcrumb
           items={[
             // Every trail starts at Home: on the start page it is the only
@@ -183,40 +199,18 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
               : []),
           ]}
         />
+          )}
+        </>
       }
       right={
         <>
-          {/* Global "search anything" opener: applications, actions, and
-              (inside an app) that app's parameters, values, and changes.
-              Cmd/Ctrl-K opens the same palette. */}
-          <Tooltip title={`Search everything (${shortcut("K")})`}>
-            <Button
-              size="small"
-              icon={<SearchOutlined />}
-              onClick={() => openSearch(inApp ? "app" : "global")}
-              style={{ flexShrink: 0, color: "var(--text-3)" }}
-            >
-              Search
-              <span style={{ marginLeft: 8 }}>
-                <Kbd>{modLabel} K</Kbd>
-              </span>
-            </Button>
-          </Tooltip>
           <Space size={4} style={{ flexShrink: 0 }}>
             {inApp && gitUrl && (
               <Button size="small" icon={isGitHub ? <GithubOutlined /> : <ExportOutlined />} href={gitUrl} target="_blank" rel="noreferrer">
                 {isGitHub ? "Open in GitHub" : "View in Git"}
               </Button>
             )}
-            <Tooltip title={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}>
-              <Button
-                size="small"
-                type="text"
-                aria-label={mode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-                icon={mode === "dark" ? <SunOutlined /> : <MoonOutlined />}
-                onClick={(e) => toggleMode(pointOf(e))}
-              />
-            </Tooltip>
+            <ThemeToggleButton />
             <NotificationsPanel awaiting={awaiting} />
             <IdentityControl repoId={repoId} />
           </Space>
@@ -234,55 +228,60 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
   );
 }
 
-// IdentityControl is the sign-in surface. Single-user deployments (no OAuth
-// configured) show nothing; multi-user ones show a Sign-in button or the
-// user's avatar menu (people & roles for admins, sign out).
+// IdentityControl is the person at the right of the bar, drawn with Software
+// Gateway's AccountMenu (avatar + account card) so both tools put the same
+// card in the same corner. Signed out on a multi-user deployment it is the
+// sign-in button instead; single-user mode shows the local operator.
 function IdentityControl({ repoId }: { repoId: string | null }) {
-  const { setSection } = useUI();
-  const meQ = useQuery({ queryKey: ["me"], queryFn: api.me, staleTime: 60_000 });
+  const { setSection, section } = useUI();
+  const id = useIdentity();
+  const { mode, toggleMode } = useTheme();
   const [membersOpen, setMembersOpen] = useState(false);
   const logout = useSignOut();
 
-  const me = meQ.data;
-  if (!me?.enabled) return null;
-  if (!me.user) {
+  if (id.loading) return null;
+  if (id.authEnabled && !id.signedIn) {
     return (
-      <Button
-        size="small"
-        type="primary"
-        href={loginHref()}
-      >
+      <Button size="small" type="primary" href={loginHref()}>
         Sign in with GitHub
       </Button>
     );
   }
-  const u = me.user;
-  const initials = (u.name || u.login).slice(0, 2).toUpperCase();
+  const name = id.displayName;
+  const initials = name
+    .split(/\s+/)
+    .map((w) => w.charAt(0))
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+  const roles = [
+    ...(id.admin ? ["Administrator"] : []),
+    ...(id.role ? [id.role.charAt(0).toUpperCase() + id.role.slice(1)] : []),
+  ];
   return (
     <>
-      <Dropdown
-        trigger={["click"]}
-        menu={{
-          items: [
-            { key: "who", label: <b>{u.name || u.login}</b>, disabled: true },
-            { key: "settings", label: "Settings" },
-            ...(u.admin && repoId
-              ? [{ key: "members", label: "People & roles…" }]
-              : []),
-            { type: "divider" as const },
-            { key: "logout", label: "Sign out" },
-          ],
-          onClick: ({ key }) => {
-            if (key === "logout") logout.mutate();
-            if (key === "settings") setSection("settings");
-            if (key === "members") setMembersOpen(true);
+      <AccountMenu
+        name={name}
+        initials={initials}
+        email={id.user?.login}
+        roles={roles}
+        active={section === "settings" || section === "plugins"}
+        items={[
+          { key: "settings", label: "Profile & settings", icon: <SettingOutlined />, onClick: () => setSection("settings") },
+          {
+            key: "appearance",
+            label: mode === "dark" ? "Switch to light mode" : "Switch to dark mode",
+            icon: <MoonOutlined />,
+            onClick: () => toggleMode(),
           },
-        }}
-      >
-        <Avatar size={26} src={u.avatarUrl || undefined} style={{ background: "var(--brand)", flexShrink: 0, cursor: "pointer" }}>
-          {initials}
-        </Avatar>
-      </Dropdown>
+          ...(id.user?.admin && repoId
+            ? [{ key: "members", label: "People & roles", icon: <TeamOutlined />, onClick: () => setMembersOpen(true) }]
+            : []),
+          ...(id.authEnabled
+            ? [{ key: "logout", label: "Sign out", icon: <LogoutOutlined />, danger: true, onClick: () => logout.mutate() }]
+            : []),
+        ]}
+      />
       {repoId && <MembersModal open={membersOpen} onClose={() => setMembersOpen(false)} repoId={repoId} />}
     </>
   );

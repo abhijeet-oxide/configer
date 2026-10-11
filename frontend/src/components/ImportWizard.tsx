@@ -467,7 +467,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
                 {r.local ? <HddOutlined /> : <GithubOutlined />}
                 {r.name}
                 {r.project && r.project !== r.name && (
-                  <span style={{ opacity: 0.55, fontSize: 12 }}>{r.project}</span>
+                  <span style={{ opacity: 0.55, fontSize: "var(--text-small)" }}>{r.project}</span>
                 )}
               </Space>
             ),
@@ -477,7 +477,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           <div style={{ marginTop: 12 }}>
             <Space size={4} wrap>
               {selected.branch && (
-                <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
+                <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: "var(--text-caption)" }}>
                   {selected.branch}
                 </Tag>
               )}
@@ -485,7 +485,7 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
               <Tag>{selected.instances} instances</Tag>
               {selected.id === repoId && <Tag color="blue">currently open</Tag>}
             </Space>
-            <div className="mono" style={{ fontSize: 11, opacity: 0.55, marginTop: 6, overflowWrap: "anywhere" }}>
+            <div className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.55, marginTop: 6, overflowWrap: "anywhere" }}>
               {selected.origin}
             </div>
           </div>
@@ -509,9 +509,9 @@ function ConnectStep({ onNext }: { onNext: () => void }) {
           },
         }}
       >
-        <PlusOutlined style={{ fontSize: 26, opacity: 0.5 }} />
+        <PlusOutlined style={{ fontSize: "var(--text-display)", opacity: 0.5 }} />
         <div style={{ fontWeight: 500 }}>New application</div>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           Connect a GitHub repository; it is scanned here immediately afterwards.
         </Typography.Text>
       </Card>
@@ -604,10 +604,10 @@ function ScanStep({
           {promises.map((p) => (
             <Card key={p.title} size="small">
               <Space align="start" size={12}>
-                <span style={{ fontSize: 22, color: "var(--c-review)" }}>{p.icon}</span>
+                <span style={{ fontSize: "var(--text-section)", color: "var(--c-review)" }}>{p.icon}</span>
                 <div>
                   <Typography.Text strong>{p.title}</Typography.Text>
-                  <Typography.Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: 13 }}>
+                  <Typography.Paragraph type="secondary" style={{ margin: "4px 0 0", fontSize: "var(--text-body)" }}>
                     {p.text}
                   </Typography.Paragraph>
                 </div>
@@ -795,7 +795,7 @@ function ChooseStep({
       </Typography.Paragraph>
       {selCount > 1 && (
         <Space wrap size={8} style={{ marginBottom: 10, padding: "8px 10px", background: "rgba(42,120,214,0.07)", borderRadius: 8 }}>
-          <Typography.Text strong style={{ fontSize: 12 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-small)" }}>
             Apply to {selCount} selected:
           </Typography.Text>
           <AutoComplete
@@ -845,7 +845,7 @@ function ChooseStep({
               <div>
                 <span className="mono">{d.cand.name}</span>
                 {multiFile && (
-                  <div style={{ fontSize: 11, opacity: 0.55 }} className="mono">
+                  <div style={{ fontSize: "var(--text-caption)", opacity: 0.55 }} className="mono">
                     {d.cand.file}
                   </div>
                 )}
@@ -997,7 +997,7 @@ function ReviewStep({
           { title: "Type", dataIndex: "type", width: 90, render: (v: string) => <Tag>{v}</Tag> },
           { title: "Category", dataIndex: "category", width: 160 },
           { title: "Scope", dataIndex: "scope", width: 110 },
-          { title: "File", width: 220, render: (_, d) => <span className="mono" style={{ fontSize: 11, opacity: 0.6 }}>{d.cand.file}</span> },
+          { title: "File", width: 220, render: (_, d) => <span className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.6 }}>{d.cand.file}</span> },
         ]}
       />
       <InlineNotice className="mb-4">

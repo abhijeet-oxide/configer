@@ -124,12 +124,12 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${token.colorBorderSecondary}` }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <BranchesOutlined style={{ color: token.colorPrimary }} />
-          <Typography.Text strong className="mono" style={{ fontSize: 13 }} ellipsis={{ tooltip: currentBranch }}>
+          <Typography.Text strong className="mono" style={{ fontSize: "var(--text-body)" }} ellipsis={{ tooltip: currentBranch }}>
             {currentBranch ?? "…"}
           </Typography.Text>
           {hasDraft && draftBranch && (
             <Tooltip title="Your first edit moved you off the main branch onto this feature branch. It gets a real name when you submit the change request.">
-              <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+              <Tag color="processing" style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>
                 {draftBranch === "feature/unnamed" ? "new · unnamed" : "feature"}
               </Tag>
             </Tooltip>
@@ -162,7 +162,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
           )}
           {(st?.ahead ?? 0) > 0 && <Tag color="warning">{st!.ahead} ahead</Tag>}
         </div>
-        <Typography.Paragraph type="secondary" style={{ fontSize: 11.5, margin: "8px 0 0" }}>
+        <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-caption)", margin: "8px 0 0" }}>
           {hasDraft ? (
             <>
               Every edit - a value, a new instance, an instance's settings - is collected on this
@@ -182,7 +182,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
       <div style={{ flex: 1, minHeight: 0, overflow: "auto", padding: "10px 8px" }}>
         <Typography.Text
           type="secondary"
-          style={{ fontSize: 11, letterSpacing: 0.4, paddingInline: 6, textTransform: "uppercase" }}
+          style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4, paddingInline: 6, textTransform: "uppercase" }}
         >
           Changes {items.length > 0 && `· ${items.length}`}
         </Typography.Text>
@@ -198,7 +198,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
               <div key={fc.file}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 6px" }}>
                   <FileOutlined style={{ opacity: 0.6 }} />
-                  <Typography.Text className="mono" style={{ fontSize: 12 }} ellipsis={{ tooltip: fc.file }}>
+                  <Typography.Text className="mono" style={{ fontSize: "var(--text-small)" }} ellipsis={{ tooltip: fc.file }}>
                     {fc.file}
                   </Typography.Text>
                   <span
@@ -206,7 +206,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
                       marginLeft: "auto",
                       color: token.colorWarning,
                       fontWeight: 700,
-                      fontSize: 12,
+                      fontSize: "var(--text-small)",
                       minWidth: 16,
                       textAlign: "center",
                     }}
@@ -231,32 +231,32 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {structuralLabel(it) ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <Tag color="blue" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                            <Tag color="blue" style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>
                               structure
                             </Tag>
-                            <span style={{ fontSize: 12 }}>{structuralLabel(it)}</span>
+                            <span style={{ fontSize: "var(--text-small)" }}>{structuralLabel(it)}</span>
                           </div>
                         ) : (
                           <>
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               <a
                                 className="mono"
-                                style={{ fontSize: 12 }}
+                                style={{ fontSize: "var(--text-small)" }}
                                 onClick={() => selectParam(it.paramId)}
                               >
                                 {it.paramId}
                               </a>
                               {it.scope === "global" ? (
-                                <Tag color="purple" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                                <Tag color="purple" style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>
                                   global
                                 </Tag>
                               ) : (
-                                <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{it.instance}</Tag>
+                                <Tag style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>{it.instance}</Tag>
                               )}
                             </div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, marginTop: 2 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-caption)", marginTop: 2 }}>
                               <span className="mono" style={{ opacity: 0.5 }}>{fmtValue(it.old)}</span>
-                              <ArrowRightOutlined style={{ opacity: 0.4, fontSize: 9 }} />
+                              <ArrowRightOutlined style={{ opacity: 0.4, fontSize: "var(--text-badge)" }} />
                               <span className="mono" style={{ color: token.colorSuccessText }}>{afterValue(it)}</span>
                             </div>
                           </>
@@ -291,7 +291,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
           gap: 8,
         }}
       >
-        <Typography.Text type="secondary" style={{ fontSize: 11.5 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
           {items.length > 0
             ? `${items.length} change${items.length > 1 ? "s" : ""} ready`
             : draftId

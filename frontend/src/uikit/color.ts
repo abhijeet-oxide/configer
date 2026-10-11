@@ -104,8 +104,8 @@ export const verdict: Record<Verdict, string> = {
 
 /**
  * Which environment a thing runs in - deliberately distinct from the status
- * palette, so colour carries ONE meaning. Production is a serious indigo, not
- * danger red: a healthy production instance is not an error.
+ * palette, so colour carries ONE meaning. Sandbox is slate, lab blue,
+ * production orange - not danger red: a healthy production instance is not an error.
  *
  * These are real values rather than variables because callers mix them
  * (a chip's tinted background is derived from the returned colour), and they
@@ -115,7 +115,38 @@ export const verdict: Record<Verdict, string> = {
 export const envColors: Record<string, string> = tokens.envColors;
 
 export const envHex = (env: string | undefined): string =>
-  (env ? envColors[env.toLowerCase()] : undefined) ?? "#8c8c8c";
+  (env ? envColors[env.toLowerCase()] : undefined) ?? "#ff9c84";
+
+/**
+ * The themed FACE of a move destination - sandbox, lab or production - as a
+ * foreground/background/border triple of variables: the colour of the button
+ * that moves a release into the environment, and of the tag that names it.
+ *
+ * This is the counterpart of `envColors`, not a replacement. envColors is the
+ * identity MARK (one hue in both modes, a real value because callers mix it);
+ * a tone is the SURFACE, and a surface has to flip with the theme - a slate
+ * tag is near-white type on dark and near-black on light - so it is three
+ * var() references and follows the switch like everything else here.
+ *
+ * Only the three pipeline destinations have one. Any other environment
+ * (staging, development, ...) keeps its mark, and callers fall back to
+ * `envHex` or a neutral treatment.
+ */
+export interface EnvTone {
+  fg: string;
+  bg: string;
+  bd: string;
+}
+
+export const envTones: Record<string, EnvTone> = {
+  sandbox: { fg: cssVar("env-sandbox"), bg: cssVar("env-sandbox-bg"), bd: cssVar("env-sandbox-bd") },
+  lab: { fg: cssVar("env-lab"), bg: cssVar("env-lab-bg"), bd: cssVar("env-lab-bd") },
+  production: { fg: cssVar("env-prod"), bg: cssVar("env-prod-bg"), bd: cssVar("env-prod-bd") },
+  prod: { fg: cssVar("env-prod"), bg: cssVar("env-prod-bg"), bd: cssVar("env-prod-bd") },
+};
+
+export const envTone = (env: string | undefined): EnvTone | undefined =>
+  (env ? envTones[env.toLowerCase()] : undefined);
 
 /** Whether an environment label denotes production, so a change touching it
  *  can be weighted more heavily at review time. Both spellings, any case. */

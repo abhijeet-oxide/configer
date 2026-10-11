@@ -871,12 +871,12 @@ function CollapsedRail({
           userSelect: "none",
         }}
       >
-        {side === "left" ? <RightOutlined style={{ fontSize: 11, opacity: 0.7 }} /> : <LeftOutlined style={{ fontSize: 11, opacity: 0.7 }} />}
+        {side === "left" ? <RightOutlined style={{ fontSize: "var(--text-caption)", opacity: 0.7 }} /> : <LeftOutlined style={{ fontSize: "var(--text-caption)", opacity: 0.7 }} />}
         <span
           style={{
             writingMode: "vertical-rl",
             transform: side === "left" ? "none" : "rotate(180deg)",
-            fontSize: 12,
+            fontSize: "var(--text-small)",
             opacity: 0.65,
             letterSpacing: 0.3,
           }}
@@ -918,7 +918,7 @@ function CollapsibleSide({
         }}
         aria-label="Collapse panel"
       >
-        {side === "left" ? <LeftOutlined style={{ fontSize: 11 }} /> : <RightOutlined style={{ fontSize: 11 }} />}
+        {side === "left" ? <LeftOutlined style={{ fontSize: "var(--text-caption)" }} /> : <RightOutlined style={{ fontSize: "var(--text-caption)" }} />}
       </div>
     </Tooltip>
   );

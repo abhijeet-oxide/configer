@@ -198,7 +198,7 @@ export default function GroupBody({
                 {SCOPE_META[r.sec.facet].label}
               </Tag>
             </Tooltip>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{r.sec.reach}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>{r.sec.reach}</Typography.Text>
           </div>
         );
       }

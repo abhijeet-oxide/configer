@@ -109,7 +109,7 @@ export default function NotificationsPanel({ awaiting }: { awaiting: number }) {
       trigger="click"
       placement="bottomRight"
       content={content}
-      styles={{ body: { padding: 0 } }}
+      styles={{ container: { padding: 0 } }}
     >
       <Tooltip title="Notifications" placement="bottom">
         {/* Unread notifications count on the bell; work waiting for a person is

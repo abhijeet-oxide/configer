@@ -63,7 +63,7 @@ function CountPill({ n, tone = "review" }: { n: number; tone?: "review" | "pendi
         background: `var(--c-${tone}-bg)`,
         border: `1px solid var(--c-${tone}-bd)`,
         color: `var(--c-${tone})`,
-        fontSize: 10.5,
+        fontSize: "var(--text-micro)",
         fontWeight: 600,
         display: "inline-flex",
         alignItems: "center",
@@ -243,7 +243,7 @@ export default function ConfigurationPage({
             <button className={`app-tab${moreActive ? " app-tab-active" : ""}`}>
               {moreActive ? moreActive.label : "More"}
               {overflowBadge > 0 && !moreActive && <CountPill n={overflowBadge} />}
-              <DownOutlined style={{ fontSize: 9, marginLeft: 2 }} />
+              <DownOutlined style={{ fontSize: "var(--text-badge)", marginLeft: 2 }} />
             </button>
           </Dropdown>
         )}

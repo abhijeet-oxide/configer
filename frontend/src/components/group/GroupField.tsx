@@ -201,7 +201,7 @@ function GroupField({
         field
       )}
       {err && (
-        <Typography.Text type="danger" style={{ fontSize: 11, display: "block", marginTop: 2 }}>
+        <Typography.Text type="danger" style={{ fontSize: "var(--text-caption)", display: "block", marginTop: 2 }}>
           {err}
         </Typography.Text>
       )}

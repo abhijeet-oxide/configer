@@ -381,7 +381,7 @@ export default function ChangeViewPicker({
                 {unsent} unsent
               </span>
             )}
-            <DownOutlined style={{ fontSize: 9, opacity: 0.55, marginInlineStart: 2 }} />
+            <DownOutlined style={{ fontSize: "var(--text-badge)", opacity: 0.55, marginInlineStart: 2 }} />
           </Button>
         </Tooltip>
       </Dropdown>

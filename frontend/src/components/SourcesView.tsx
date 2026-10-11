@@ -172,13 +172,13 @@ export default function SourcesView() {
                       <Typography.Text strong>{c.paramName}</Typography.Text>{" "}
                       {c.instance ? <Tag>{c.instance}</Tag> : <Tag color="geekblue">all</Tag>}
                       {c.secret && <Tag color="gold">secret</Tag>}
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                         from {c.sourceName}
                       </Typography.Text>
                     </span>
                   }
                   description={
-                    <span style={{ fontSize: 12 }}>
+                    <span style={{ fontSize: "var(--text-small)" }}>
                       <Typography.Text delete type="secondary">
                         {fmt(c.current)}
                       </Typography.Text>{" "}
@@ -279,7 +279,7 @@ function SourceCard({ source, onOpen, onDelete }: { source: Source; onOpen: () =
               borderRadius: 10,
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 20,
+              fontSize: "var(--text-heading)",
               color: hex,
               background: `color-mix(in srgb, ${hex} 14%, transparent)`,
             }}
@@ -291,7 +291,7 @@ function SourceCard({ source, onOpen, onDelete }: { source: Source; onOpen: () =
               {source.name}
               {source.secret && <Tag color="gold">secret</Tag>}
             </div>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }} ellipsis>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }} ellipsis>
               {source.pluginName ?? source.kind}
               {source.config?.repoUrl ? ` · ${source.config.repoUrl}` : ""}
               {source.config?.address ? ` · ${source.config.address}` : ""}

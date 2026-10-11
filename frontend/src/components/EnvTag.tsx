@@ -23,7 +23,7 @@ export default function EnvTag({
   return (
     <Tag
       style={{
-        fontSize: 11,
+        fontSize: "var(--text-caption)",
         color: hex,
         background: `${hex}14`,
         borderColor: `${hex}55`,

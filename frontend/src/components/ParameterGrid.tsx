@@ -474,7 +474,7 @@ function ScopeValueCell({
       ) : !first?.set ? (
         <Tag color="default" style={{ marginInlineEnd: 0 }}>absent</Tag>
       ) : (
-        <span className="mono" style={{ fontSize: 12, color: first.valid === false ? c.danger : undefined }}>
+        <span className="mono" style={{ fontSize: "var(--text-small)", color: first.valid === false ? c.danger : undefined }}>
           {fmtValue(first.value)}
         </span>
       )}
@@ -785,7 +785,7 @@ function FilePicker({
           </div>
           <div style={{ maxHeight: 340, overflow: "auto", padding: 4 }}>
             {shown.length === 0 ? (
-              <Typography.Text type="secondary" style={{ fontSize: 12, padding: 8, display: "block" }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", padding: 8, display: "block" }}>
                 No file matches “{q.trim()}”.
               </Typography.Text>
             ) : (
@@ -798,7 +798,7 @@ function FilePicker({
                 checked={checked}
                 onCheck={(next) => onChange([...next])}
                 meta={(path) => (
-                  <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
                     {countOf.get(path) ?? 0}
                   </Typography.Text>
                 )}
@@ -819,7 +819,7 @@ function FilePicker({
         <Badge dot={live.length > 0} color="var(--c-review)" offset={[-4, 2]}>
           <Button size="small" icon={<FileOutlined />} aria-label="Files shown" style={{ flexShrink: 0, maxWidth: 190 }}>
             <span className="cf-instbtn-label">{label}</span>
-            <DownOutlined style={{ fontSize: 9, opacity: 0.55, marginInlineStart: 2 }} />
+            <DownOutlined style={{ fontSize: "var(--text-badge)", opacity: 0.55, marginInlineStart: 2 }} />
           </Button>
         </Badge>
       </Tooltip>
@@ -1040,7 +1040,7 @@ function BulkSetModal({
       onOk={() => onApply([...sel])}
       onCancel={onClose}
     >
-      <div style={{ marginBottom: 12, fontSize: 13 }}>
+      <div style={{ marginBottom: 12, fontSize: "var(--text-body)" }}>
         Set the value to{" "}
         <span className="mono" style={{ color: "var(--c-review)", fontWeight: 600 }}>{fmtValue(value)}</span>{" "}
         on the instances you choose. Each becomes a pending change you review before publishing.
@@ -1051,19 +1051,19 @@ function BulkSetModal({
           return (
             <div key={env}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, textTransform: "capitalize" }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--text-small)", fontWeight: 600, textTransform: "capitalize" }}>
                   <span style={{ width: 7, height: 7, borderRadius: 4, background: envHex(env) }} />
                   {env}
                 </span>
-                <a style={{ fontSize: 12 }} onClick={() => setMany(insts, !allOn)}>
+                <a style={{ fontSize: "var(--text-small)" }} onClick={() => setMany(insts, !allOn)}>
                   {allOn ? "Clear" : "Select all"}
                 </a>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingLeft: 13 }}>
                 {insts.map((i) => (
                   <Checkbox key={i.name} checked={sel.has(i.name)} onChange={() => toggle(i.name)}>
-                    <span className="mono" style={{ fontSize: 12 }}>{i.name}</span>
-                    {i.region && <span style={{ fontSize: 11, color: "var(--text-3)", marginLeft: 6 }}>{i.region}</span>}
+                    <span className="mono" style={{ fontSize: "var(--text-small)" }}>{i.name}</span>
+                    {i.region && <span style={{ fontSize: "var(--text-caption)", color: "var(--text-3)", marginLeft: 6 }}>{i.region}</span>}
                   </Checkbox>
                 ))}
               </div>
@@ -1248,7 +1248,7 @@ function instanceHeader(
           >
             <Tag
               color={staged === "added" ? "gold" : "red"}
-              style={{ fontSize: 10, lineHeight: "15px", marginInlineEnd: 0 }}
+              style={{ fontSize: "var(--text-micro)", lineHeight: "15px", marginInlineEnd: 0 }}
             >
               {staged === "added" ? "new" : "retiring"}
             </Tag>
@@ -1279,7 +1279,7 @@ function instanceHeader(
         </div>
       ) : (
         <div
-          style={{ fontSize: 10, fontWeight: 400, opacity: 0.65 }}
+          style={{ fontSize: "var(--text-micro)", fontWeight: 400, opacity: 0.65 }}
           title={inst.versionName && inst.versionName !== inst.softwareVersion ? `Version ${inst.softwareVersion}` : undefined}
         >
           {inst.versionName || inst.softwareVersion}
@@ -2180,7 +2180,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               <div className="cf-pname-top">
                 {pinnedSet.has(r.param.id) && (
                   <Tooltip title="Pinned to the top of the grid">
-                    <PushpinFilled style={{ color: "var(--c-review)", fontSize: 11, flexShrink: 0 }} />
+                    <PushpinFilled style={{ color: "var(--c-review)", fontSize: "var(--text-caption)", flexShrink: 0 }} />
                   </Tooltip>
                 )}
                 {r.param.secret && <LockOutlined style={{ color: c.pending, flexShrink: 0 }} />}
@@ -2192,21 +2192,21 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 </span>
                 {r.pendingUnmanage && (
                   <Tooltip title="A change in your draft stops managing this parameter. It leaves the grid when that change is published; every value stays in the files.">
-                    <Tag color="orange" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                    <Tag color="orange" style={{ fontSize: "var(--text-micro)", lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                       unmanaging
                     </Tag>
                   </Tooltip>
                 )}
                 {r.pendingAdd && (
                   <Tooltip title="A file edit in your draft added this setting. Configer starts managing it when that change is published, so it is not editable from the grid yet - change it in file mode.">
-                    <Tag color="green" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                    <Tag color="green" style={{ fontSize: "var(--text-micro)", lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                       new
                     </Tag>
                   </Tooltip>
                 )}
                 {bindingsOf(r.param).length === 0 && (
                   <Tooltip title="Design phase: not attached to a configuration file yet. Attach it to real file locations from the details panel.">
-                    <Tag color="purple" style={{ fontSize: 10, lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
+                    <Tag color="purple" style={{ fontSize: "var(--text-micro)", lineHeight: "16px", marginInlineStart: 2, flexShrink: 0 }}>
                       design
                     </Tag>
                   </Tooltip>
@@ -2284,7 +2284,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         width: DESC_W,
         ellipsis: true,
         render: (_v, r) => (
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             {hl(r.param.displayName || r.param.description, hlDesc)}
           </Typography.Text>
         ),
@@ -2520,7 +2520,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               return (
                 <span
                   style={{
-                    fontSize: 12,
+                    fontSize: "var(--text-small)",
                     color: c.source === "instance" ? "var(--c-review)" : "var(--text-2)",
                     fontWeight: c.source === "instance" ? 600 : 400,
                   }}
@@ -2538,9 +2538,9 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
               const items = pendingByParam.get(r.param.id) ?? [];
               const hit = items.some((it) => it.instance === viewInstance || it.scope === "global");
               return hit ? (
-                <span style={{ color: "var(--c-danger)", fontWeight: 600, fontSize: 12 }}>Yes</span>
+                <span style={{ color: "var(--c-danger)", fontWeight: 600, fontSize: "var(--text-small)" }}>Yes</span>
               ) : (
-                <span style={{ color: "var(--text-3)", fontSize: 12 }}>No</span>
+                <span style={{ color: "var(--text-3)", fontSize: "var(--text-small)" }}>No</span>
               );
             },
           },
@@ -2907,7 +2907,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
                 style={{ flexShrink: 0, maxWidth: 190 }}
               >
                 <span className="cf-instbtn-label">{instanceLabel}</span>
-                <DownOutlined style={{ fontSize: 9, opacity: 0.55, marginInlineStart: 2 }} />
+                <DownOutlined style={{ fontSize: "var(--text-badge)", opacity: 0.55, marginInlineStart: 2 }} />
               </Button>
             </Badge>
           </Tooltip>
@@ -3040,7 +3040,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             ]}
           />
         )}
-        <span style={{ fontSize: 12, color: "var(--text-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
+        <span style={{ fontSize: "var(--text-small)", color: "var(--text-3)", flexShrink: 0, whiteSpace: "nowrap" }}>
           {/* Pinned rows are held out of the list but are still on screen, so
               they count towards what the reader can see. */}
           {isFiltered
@@ -3094,7 +3094,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         </Space.Compact>
         {hlq && (
           <Space size={2} style={{ flexShrink: 0 }}>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
               {rows.length} match{rows.length === 1 ? "" : "es"}
             </Typography.Text>
             <Tooltip title="Previous match">
@@ -3217,7 +3217,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
         footer={null}
         width={420}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: "var(--text-small)" }}>
           {/* The legend has to show the mark it is describing, so this is the
               real thing: a staged value, with the part of it that moved. */}
           <span>
@@ -3238,7 +3238,7 @@ export default function ParameterGrid({ grid }: { grid: Grid }) {
             <span className="prov-chip prov-default"><span className="prov-dot" />def</span>{" "}
             a built-in default with no file behind it. A value set on the instance itself carries no mark.
           </span>
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
             Everything you edit is saved to Git and only goes live after approval.
           </Typography.Text>
         </div>
@@ -3487,7 +3487,7 @@ function FindReplaceModal({
         <Typography.Text type="secondary">No editable cells currently hold that value.</Typography.Text>
       ) : (
         <>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             {matches.length} cell{matches.length === 1 ? "" : "s"} across {byParam} parameter{byParam === 1 ? "" : "s"} will change
             {replace !== "" && (
               <>
@@ -3503,7 +3503,7 @@ function FindReplaceModal({
               dataSource={matches.slice(0, 300)}
               pagination={false}
               columns={[
-                { title: "Parameter", dataIndex: "name", render: (v) => <span className="mono" style={{ fontSize: 12 }}>{v}</span> },
+                { title: "Parameter", dataIndex: "name", render: (v) => <span className="mono" style={{ fontSize: "var(--text-small)" }}>{v}</span> },
                 { title: "Instance", dataIndex: "instance", width: 150 },
               ]}
             />
@@ -3646,7 +3646,7 @@ function UnmanageModal({
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         <div>
           <div className="mono" style={{ fontWeight: 600 }}>{param.name}</div>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             {bs.length === 0
               ? "Not attached to a file yet."
               : `${bs.length} location${bs.length === 1 ? "" : "s"} across ${instances} instance${instances === 1 ? "" : "s"}`}
@@ -3655,7 +3655,7 @@ function UnmanageModal({
         <InlineNotice tone="ok">
           Every value stays exactly where it is. Nothing is written to your configuration files.
         </InlineNotice>
-        <Typography.Text style={{ fontSize: 13 }}>
+        <Typography.Text style={{ fontSize: "var(--text-body)" }}>
           This is staged as a change like any other: nothing happens until you submit it and an
           approver publishes it. When it lands, the parameter leaves{" "}
           <code>.configer/parameters.yaml</code> and the grid, and its paths are remembered in{" "}
@@ -3714,7 +3714,7 @@ function GlobalPrompt({
           <Typography.Paragraph style={{ marginBottom: 8 }}>
             New value: <span className="mono" style={{ color: c.ok }}>{fmtValue(ask.value)}</span>
           </Typography.Paragraph>
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+          <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-small)", marginBottom: 0 }}>
             "Change it for everyone" updates the shared global value. "Only for {ask.instance}" sets an
             override on that system alone and changes the parameter's scope from global to instance;
             the others keep the previous shared value. Value changes are staged for review first,

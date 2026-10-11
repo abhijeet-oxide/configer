@@ -124,7 +124,7 @@ export default function PathPicker({
             style={{
               padding: "7px 10px",
               borderBottom: "1px solid rgba(127,137,160,0.18)",
-              fontSize: 12,
+              fontSize: "var(--text-small)",
               fontWeight: 600,
             }}
           >
@@ -193,7 +193,7 @@ export default function PathPicker({
           {
             title: "Path (mapped for you)",
             render: (_v, c) => (
-              <span className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{c.path}</span>
+              <span className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.65 }}>{c.path}</span>
             ),
           },
           {

@@ -109,7 +109,7 @@ export default function ValueDiff({
       >
         <div className="vd-modal">
           <div className="vd-modal-head">
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
               {stats.edits === 0
                 ? "The values are identical."
                 : `${stats.edits} edit${stats.edits === 1 ? "" : "s"} · ${stats.removed} character${

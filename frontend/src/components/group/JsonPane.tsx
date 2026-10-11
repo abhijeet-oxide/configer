@@ -1,4 +1,5 @@
 import { Editor } from "@monaco-editor/react";
+import { typography } from "../../uikit";
 import "../../monaco";
 
 // The group editor's JSON view, in its own lazily-loaded module for exactly the
@@ -29,7 +30,7 @@ export default function JsonPane({
         minimap: { enabled: false },
         lineNumbersMinChars: 3,
         scrollBeyondLastLine: false,
-        fontSize: 12,
+        fontSize: typography.normal.small,
         tabSize: 2,
         renderLineHighlight: "none",
         overviewRulerLanes: 0,

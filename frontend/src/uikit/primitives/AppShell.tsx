@@ -1,6 +1,9 @@
-import type { ReactNode } from "react";
-import { Badge, Tooltip } from "antd";
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
+import { Badge, Dropdown, Tooltip } from "antd";
+import type { MenuProps } from "antd";
 import type { BrandIdentity } from "../brand";
+import { stepCritical } from "../spring";
 import { BrandLockup, BrandMark } from "./BrandLockup";
 import { ChevronLeftIcon, ChevronRightIcon } from "../icons";
 
@@ -25,8 +28,35 @@ export interface NavItem {
   icon: ReactNode;
   /** a count worth interrupting for; 0 or undefined draws nothing */
   badge?: number;
+  /** danger for failures, ok for work in flight; the nav accent otherwise */
+  badgeTone?: "danger" | "ok";
   disabled?: boolean;
   /** why it is disabled, said in the tooltip rather than left to guesswork */
+  disabledHint?: string;
+  /**
+   * The group this entry opens. When it differs from the previous entry's, a
+   * quiet section label is drawn above it (expanded rail only). Leave it
+   * undefined for a flat rail.
+   */
+  section?: string;
+  /**
+   * In-app destination. Prefer this over `onClick` for pages: a real link
+   * updates history immediately and survives a heavy page still mounting,
+   * which is how a click on Releases used to swallow the next nav click.
+   */
+  to?: string;
+  onClick?: () => void;
+}
+
+/** One choice in the top-bar account menu. The app names the items; this kit
+ *  only draws them. */
+export interface NavProfileMenuItem {
+  key: string;
+  label: ReactNode;
+  icon?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  /** why it is disabled, shown on hover rather than left to guesswork */
   disabledHint?: string;
   onClick?: () => void;
 }
@@ -38,8 +68,35 @@ export interface NavProfile {
   avatarUrl?: string;
   /** shown when there is no avatar image; the initials are derived if omitted */
   initials?: string;
+  /**
+   * WHAT KIND of account this is, as a glyph on the corner of the avatar.
+   *
+   * The second line already names it in words, and words in 10.5px grey type
+   * are the least glanceable thing in a rail: "Admin", "Operator", "Security",
+   * "Reader" and "User" occupy the same position and differ by a few letters,
+   * for the one fact that decides whether every control on screen is available
+   * to you.
+   *
+   * A badge rather than a replacement for the initials, which are who you are
+   * rather than what you are - and it survives the collapsed rail, where the
+   * words do not. The app supplies the glyph because the KINDS are the app's
+   * (this kit knows nothing about tenant roles); `badgeLabel` is what the
+   * badge means, for the tooltip and for a screen reader.
+   */
+  badge?: ReactNode;
+  badgeLabel?: string;
   active?: boolean;
+  /**
+   * Single-click destination when there is no `menu`. Prefer `menu` for the
+   * top-bar control: a chevron that opens nothing is a broken affordance.
+   */
   onClick?: () => void;
+  /**
+   * The account menu. When present, the top-bar control opens these choices
+   * instead of navigating on the click itself. The app owns which items exist
+   * (profile, appearance, sign out, …); this kit only hosts them.
+   */
+  menu?: NavProfileMenuItem[];
   tooltip?: string;
 }
 
@@ -55,24 +112,11 @@ export function NavEntry({
   collapsed: boolean;
 }) {
   const disabled = !!item.disabled;
-  const inner = (
-    <div
-      className={`ui-nav-item${active ? " is-active" : ""}${disabled ? " is-disabled" : ""}${
-        collapsed ? " is-collapsed" : ""
-      }`}
-      onClick={disabled ? undefined : item.onClick}
-      onKeyDown={(e) => {
-        if (disabled) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          item.onClick?.();
-        }
-      }}
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-disabled={disabled}
-      aria-current={active ? "page" : undefined}
-    >
+  const className = `ui-nav-item${active ? " is-active" : ""}${disabled ? " is-disabled" : ""}${
+    collapsed ? " is-collapsed" : ""
+  }`;
+  const body = (
+    <>
       {/*
         A count goes where there is room for it, which depends on the width.
 
@@ -89,7 +133,7 @@ export function NavEntry({
           count={item.badge ?? 0}
           size="small"
           offset={[2, 0]}
-          color="var(--nav-bg-active)"
+          color={item.badgeTone ? `var(--c-${item.badgeTone})` : "var(--nav-bg-active)"}
         >
           <span className="ui-nav-item-icon">{item.icon}</span>
         </Badge>
@@ -98,8 +142,38 @@ export function NavEntry({
       )}
       {!collapsed && <span className="ui-nav-item-label">{item.label}</span>}
       {!collapsed && !!item.badge && (
-        <span className="ui-nav-count ui-num">{item.badge > 99 ? "99+" : item.badge}</span>
+        <span className={`ui-nav-count ui-num${item.badgeTone ? ` tone-${item.badgeTone}` : ""}`}>
+          {item.badge > 99 ? "99+" : item.badge}
+        </span>
       )}
+    </>
+  );
+  const inner = item.to && !disabled ? (
+    <Link
+      to={item.to}
+      className={className}
+      aria-current={active ? "page" : undefined}
+      onClick={item.onClick}
+    >
+      {body}
+    </Link>
+  ) : (
+    <div
+      className={className}
+      onClick={disabled ? undefined : item.onClick}
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          item.onClick?.();
+        }
+      }}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
+      aria-current={active ? "page" : undefined}
+    >
+      {body}
     </div>
   );
   const tip = disabled ? (item.disabledHint ?? item.label) : collapsed ? item.label : "";
@@ -120,8 +194,43 @@ export function NavEntry({
  * tooltip, so the same component serves both widths rather than a second
  * narrow one drifting away from the wide one.
  */
+
+function reducedNow(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true
+  );
+}
+
+function useReducedMotion(): boolean {
+  const [on, setOn] = useState(reducedNow);
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const apply = () => setOn(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+  return on;
+}
+
+function navWidthPx(collapsed: boolean): number {
+  const name = collapsed ? "--shell-nav-collapsed-width" : "--shell-nav-width";
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const n = parseFloat(raw);
+  if (Number.isFinite(n) && n > 0) return n;
+  return collapsed ? 64 : 236;
+}
+
+function nearWidth(value: number, velocity: number, target: number): boolean {
+  return Math.abs(value - target) < 0.5 && Math.abs(velocity) < 8;
+}
+
 export function SideNav({
   brand,
+  onBrandClick,
+  brandHref,
+  brandLabel,
   items,
   activeKey,
   collapsed = false,
@@ -132,6 +241,15 @@ export function SideNav({
   collapseLabel = "Collapse",
 }: {
   brand: BrandIdentity;
+  /** opens the application's root when the product mark or name is selected */
+  onBrandClick?: () => void;
+  /** a page OUTSIDE this app the mark opens instead, as a full page load in
+   *  the same tab: a platform page listing every application. Wins over
+   *  onBrandClick. */
+  brandHref?: string;
+  /** what the mark says it opens, as its accessible name and hover hint;
+   *  defaults to this app's home */
+  brandLabel?: string;
   items: NavItem[];
   activeKey?: string;
   collapsed?: boolean;
@@ -147,19 +265,104 @@ export function SideNav({
   footer?: ReactNode;
   collapseLabel?: string;
 }) {
+  const navRef = useRef<HTMLElement>(null);
+  const width = useRef({ value: 0, velocity: 0, ready: false });
+  const frame = useRef(0);
+  const reduced = useReducedMotion();
+
+  // Width follows the pixels on screen, not a fixed 260ms curve. The collapsed
+  // class still selects the resting width; inline width only exists while the
+  // spring is moving, so a second click retargets from the current width and
+  // keeps its velocity. Reduced motion snaps.
+  useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const target = navWidthPx(collapsed);
+    cancelAnimationFrame(frame.current);
+
+    if (!width.current.ready) {
+      const presented = el.getBoundingClientRect().width;
+      width.current = {
+        value: presented > 0 ? presented : target,
+        velocity: 0,
+        ready: true,
+      };
+      return;
+    }
+
+    if (reduced) {
+      width.current = { value: target, velocity: 0, ready: true };
+      el.style.width = "";
+      return;
+    }
+
+    // Hold the presented width for this frame. The class already names the
+    // destination, and without this the rail would jump before the first tick.
+    el.style.width = `${width.current.value}px`;
+
+    if (nearWidth(width.current.value, width.current.velocity, target)) {
+      width.current = { value: target, velocity: 0, ready: true };
+      el.style.width = "";
+      return;
+    }
+
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      const next = stepCritical(width.current.value, width.current.velocity, target, dt);
+      width.current = { ...next, ready: true };
+      if (nearWidth(next.value, next.velocity, target)) {
+        width.current = { value: target, velocity: 0, ready: true };
+        el.style.width = "";
+        return;
+      }
+      el.style.width = `${next.value}px`;
+      frame.current = requestAnimationFrame(tick);
+    };
+    frame.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame.current);
+  }, [collapsed, reduced]);
+
   return (
-    <nav className={`ui-nav${collapsed ? " is-collapsed" : ""}`} aria-label="Main">
-      <div className="ui-nav-brand">
-        {collapsed ? (
-          <BrandMark brand={brand} />
-        ) : (
-          <BrandLockup brand={brand} onDark />
-        )}
-      </div>
+    <nav
+      ref={navRef}
+      className={`ui-nav${collapsed ? " is-collapsed" : ""}`}
+      aria-label="Main"
+    >
+      {brandHref ? (
+        <Tooltip title={brandLabel} placement="right" mouseEnterDelay={0.4}>
+          <a
+            className="ui-nav-brand is-clickable"
+            href={brandHref}
+            aria-label={brandLabel ?? `Go to ${brand.appName} home`}
+          >
+            {collapsed ? <BrandMark brand={brand} /> : <BrandLockup brand={brand} onDark />}
+          </a>
+        </Tooltip>
+      ) : onBrandClick ? (
+        <button
+          type="button"
+          className="ui-nav-brand is-clickable"
+          onClick={onBrandClick}
+          aria-label={`Go to ${brand.appName} home`}
+        >
+          {collapsed ? <BrandMark brand={brand} /> : <BrandLockup brand={brand} onDark />}
+        </button>
+      ) : (
+        <div className="ui-nav-brand">
+          {collapsed ? <BrandMark brand={brand} /> : <BrandLockup brand={brand} onDark />}
+        </div>
+      )}
 
       <div className="ui-nav-items">
-        {items.map((it) => (
-          <NavEntry key={it.key} item={it} active={activeKey === it.key} collapsed={collapsed} />
+        {items.map((it, i) => (
+          <Fragment key={it.key}>
+            {!collapsed && it.section && it.section !== items[i - 1]?.section && (
+              <div className="ui-nav-section">{it.section}</div>
+            )}
+            <NavEntry item={it} active={activeKey === it.key} collapsed={collapsed} />
+          </Fragment>
         ))}
       </div>
 
@@ -196,7 +399,7 @@ function ProfileCard({ profile, collapsed }: { profile: NavProfile; collapsed: b
       }`}
       role="button"
       tabIndex={0}
-      aria-label={`${profile.name} - open settings`}
+      aria-label={`Open settings for ${profile.name}`}
       onClick={profile.onClick}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
@@ -205,11 +408,23 @@ function ProfileCard({ profile, collapsed }: { profile: NavProfile; collapsed: b
         }
       }}
     >
-      {profile.avatarUrl ? (
-        <img className="ui-nav-avatar" src={profile.avatarUrl} alt="" />
-      ) : (
-        <span className="ui-nav-avatar is-initials">{initials}</span>
-      )}
+      <span className="ui-nav-avatar-slot">
+        {profile.avatarUrl ? (
+          <img className="ui-nav-avatar" src={profile.avatarUrl} alt="" />
+        ) : (
+          <span className="ui-nav-avatar is-initials">{initials}</span>
+        )}
+        {profile.badge && (
+          <span
+            className="ui-nav-avatar-badge"
+            role={profile.badgeLabel ? "img" : undefined}
+            aria-label={profile.badgeLabel}
+            aria-hidden={profile.badgeLabel ? undefined : true}
+          >
+            {profile.badge}
+          </span>
+        )}
+      </span>
       {!collapsed && (
         <div className="ui-nav-profile-text">
           <div className="ui-nav-profile-name">{profile.name}</div>
@@ -220,10 +435,86 @@ function ProfileCard({ profile, collapsed }: { profile: NavProfile; collapsed: b
   );
   return (
     <Tooltip
-      title={collapsed ? profile.name : (profile.tooltip ?? "Profile and settings")}
+      title={
+        collapsed
+          ? // COLLAPSED, the two lines of text are gone and the badge is the
+            // only thing left saying what this account is - so the hover has to
+            // carry both facts rather than only the name.
+            profile.badgeLabel
+            ? `${profile.name} - ${profile.badgeLabel}`
+            : profile.name
+          : (profile.tooltip ?? "Profile and settings")
+      }
       placement="right"
     >
       {inner}
+    </Tooltip>
+  );
+}
+
+/** The person, at the right end of the bar: avatar, name and a chevron that
+ *  opens their account menu. The same data as the navigation's profile card, for a
+ *  tool that keeps its navigation to places only. */
+export function TopBarProfile({ profile }: { profile: NavProfile }) {
+  const initials =
+    profile.initials ?? (profile.name || "?").slice(0, 2).toUpperCase();
+  const trigger = (
+    <button
+      type="button"
+      className={`ui-topbar-profile${profile.active ? " is-active" : ""}`}
+      onClick={profile.menu?.length ? undefined : profile.onClick}
+      aria-haspopup={profile.menu?.length ? "menu" : undefined}
+      aria-label={
+        profile.menu?.length
+          ? `Account menu for ${profile.name}`
+          : `Open profile for ${profile.name}`
+      }
+    >
+      <span className="ui-nav-avatar-slot">
+        {profile.avatarUrl ? (
+          <img className="ui-topbar-avatar" src={profile.avatarUrl} alt="" />
+        ) : (
+          <span className="ui-topbar-avatar">{initials}</span>
+        )}
+        {profile.badge && (
+          <span className="ui-nav-avatar-badge" aria-hidden>
+            {profile.badge}
+          </span>
+        )}
+      </span>
+    </button>
+  );
+
+  if (profile.menu?.length) {
+    const items: MenuProps["items"] = profile.menu.map((item) => ({
+      key: item.key,
+      icon: item.icon,
+      danger: item.danger,
+      disabled: item.disabled,
+      // Disabled items swallow pointer events, so the hint has to sit on an
+      // inner span the tooltip can still hear.
+      label:
+        item.disabled && item.disabledHint ? (
+          <Tooltip title={item.disabledHint} placement="left">
+            <span>{item.label}</span>
+          </Tooltip>
+        ) : (
+          item.label
+        ),
+      onClick: item.disabled ? undefined : item.onClick,
+    }));
+    return (
+      <Dropdown menu={{ items }} trigger={["click"]} placement="bottomRight">
+        <Tooltip title={profile.name} placement="bottomRight">
+          {trigger}
+        </Tooltip>
+      </Dropdown>
+    );
+  }
+
+  return (
+    <Tooltip title={profile.badgeLabel ?? profile.tooltip ?? "Profile and settings"}>
+      {trigger}
     </Tooltip>
   );
 }
@@ -285,15 +576,18 @@ export function AppShell({
    *  built of panes that each scroll independently, which must not also sit
    *  inside a scroller or the whole frame slides and the navigation with it */
   flush = false,
+  /** state the frame itself answers to - the phone drawer's is-nav-open */
+  className,
 }: {
   /** omit (or pass null) for a full-bleed view: a focus mode, a wizard */
   nav?: ReactNode;
   header?: ReactNode;
   children: ReactNode;
   flush?: boolean;
+  className?: string;
 }) {
   return (
-    <div className="ui-shell">
+    <div className={`ui-shell${className ? ` ${className}` : ""}`}>
       {nav}
       <div className="ui-shell-main">
         {header}

@@ -72,17 +72,17 @@ export function CategoryDonut({ data, size = 132 }: { data: Slice[]; size?: numb
           y={R + 1}
           textAnchor="middle"
           dominantBaseline="middle"
-          style={{ fontSize: 20, fontWeight: 600, fill: "currentColor" }}
+          style={{ fontSize: "var(--text-heading)", fontWeight: 600, fill: "currentColor" }}
         >
           {total}
         </text>
       </svg>
       <div style={{ display: "flex", flexDirection: "column", gap: 3, minWidth: 0 }}>
         {arcs.map((a) => (
-          <span key={a.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+          <span key={a.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: "var(--text-small)" }}>
             <span style={{ width: 9, height: 9, borderRadius: 3, background: a.color, flexShrink: 0 }} />
-            <Typography.Text ellipsis style={{ fontSize: 12, maxWidth: 130 }}>{a.label}</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>{a.value}</Typography.Text>
+            <Typography.Text ellipsis style={{ fontSize: "var(--text-small)", maxWidth: 130 }}>{a.label}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>{a.value}</Typography.Text>
           </span>
         ))}
       </div>
@@ -124,14 +124,14 @@ export function HealthTiles({ data, onClick }: { data: TileDatum[]; onClick?: (n
               cursor: onClick ? "pointer" : undefined,
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: 13 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, fontSize: "var(--text-body)" }}>
               <Icon style={{ color }} />
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</span>
             </div>
-            <div style={{ fontSize: 11, opacity: 0.75, marginTop: 2 }}>
+            <div style={{ fontSize: "var(--text-caption)", opacity: 0.75, marginTop: 2 }}>
               {t.environment ?? "-"} · {t.version ?? "-"}
             </div>
-            <div style={{ fontSize: 11, marginTop: 2, color }}>{note}</div>
+            <div style={{ fontSize: "var(--text-caption)", marginTop: 2, color }}>{note}</div>
           </div>
         );
       })}

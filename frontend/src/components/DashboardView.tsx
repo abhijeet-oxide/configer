@@ -301,7 +301,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
             }}
           >
             <Button size="small" icon={<SettingOutlined />}>
-              Manage <DownOutlined style={{ fontSize: 9 }} />
+              Manage <DownOutlined style={{ fontSize: "var(--text-badge)" }} />
             </Button>
           </Dropdown>
         </StaggerItem>
@@ -363,7 +363,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <SectionCard title="Needs your attention">
             {attention.length === 0 ? (
               <div className="flex items-center gap-2.5 py-2 text-ink-2">
-                <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
+                <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: "var(--text-emphasis)" }} />
                 No items require attention.
               </div>
             ) : (

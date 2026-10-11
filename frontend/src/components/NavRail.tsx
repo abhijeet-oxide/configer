@@ -151,7 +151,12 @@ function DeploymentChip() {
   const m = useDeployment();
   if (!m.reachable) return null;
   return (
-    <div className="ui-nav-note">
+    <div
+      className="ui-nav-note"
+      // The shared kit now fills this slot with its ConnectionPill; a plain
+      // text note keeps its old alignment explicitly.
+      style={{ alignItems: "center", gap: 6, padding: "0 var(--sp-3)", color: "var(--nav-fg)" }}
+    >
       <span
         style={{
           width: 6,

@@ -194,7 +194,7 @@ function DetailsTab({
   const sourceRow = design ? (
     <Space direction="vertical" size={4}>
       <Tag color="purple">design phase: not attached yet</Tag>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
         Values can be set and reviewed now; they render into files once attached.
       </Typography.Text>
       {canEdit && (
@@ -206,18 +206,18 @@ function DetailsTab({
   ) : (
     <Space direction="vertical" size={6} style={{ width: "100%" }}>
       {allSources.length > 1 && (
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
           Mapped to {allSources.length} locations · one edit updates all
         </Typography.Text>
       )}
       {allSources.map((sb, i) => (
         <div key={`${sb.file}|${sb.path}`} style={{ display: "flex", alignItems: "flex-start", gap: 6, minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: 1 }}>
-            <span className="mono" style={{ fontSize: 12 }}>{sb.file}</span>
+            <span className="mono" style={{ fontSize: "var(--text-small)" }}>{sb.file}</span>
             {i === 0 && allSources.length > 1 && (
-              <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>primary</Tag>
+              <Tag style={{ marginInlineStart: 6, fontSize: "var(--text-micro)" }}>primary</Tag>
             )}
-            <div className="mono" style={{ fontSize: 11, opacity: 0.65 }}>{sb.path}</div>
+            <div className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.65 }}>{sb.path}</div>
           </div>
           <Tooltip title="Open the file and jump to this line">
             <Button
@@ -359,7 +359,7 @@ function DetailsTab({
         {dirty && canEdit && (
           <div className="cf-savebar">
             <div className="cf-savebar-what">
-              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
                 {dirtyFields.length} unsaved: {dirtyFields.map(fieldLabel).join(", ")}
               </Typography.Text>
             </div>
@@ -450,7 +450,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
       <Typography.Title level={5} style={{ marginTop: 0, marginBottom: 4 }}>
         Inspector
       </Typography.Title>
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
         Select a cell to see its value, the file it comes from and its rules. Selecting a row
         shows the parameter's metadata, history and dependencies here.
       </Typography.Text>
@@ -458,7 +458,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
       {invalid > 0 && (
         <>
           <Divider style={{ margin: "12px 0" }} />
-          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
             NEEDS FIXING
           </Typography.Text>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -466,12 +466,12 @@ function IdlePanel({ grid }: { grid: Grid }) {
               <a
                 key={r.param.id}
                 onClick={() => jumpTo(r.param.id)}
-                style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}
+                style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "var(--text-small)" }}
               >
                 <span className="mono" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {r.param.name}
                 </span>
-                <Typography.Text type="danger" style={{ fontSize: 12, flexShrink: 0 }}>
+                <Typography.Text type="danger" style={{ fontSize: "var(--text-small)", flexShrink: 0 }}>
                   {n} invalid
                 </Typography.Text>
               </a>
@@ -491,7 +491,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
         <>
           <Divider style={{ margin: "12px 0" }} />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
               YOUR CHANGES
             </Typography.Text>
             <Popconfirm
@@ -501,14 +501,14 @@ function IdlePanel({ grid }: { grid: Grid }) {
               okButtonProps={{ danger: true }}
               onConfirm={() => discardAll.mutate()}
             >
-              <a style={{ fontSize: 11 }}>Discard all</a>
+              <a style={{ fontSize: "var(--text-caption)" }}>Discard all</a>
             </Popconfirm>
           </div>
           <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
             {draftItems.slice(0, 6).map((it) => (
               <div
                 key={`${it.paramId}|${it.instance}`}
-                style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 12 }}
+                style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: "var(--text-small)" }}
               >
                 <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
                   <a onClick={() => jumpTo(it.paramId)}>
@@ -533,7 +533,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
               </div>
             ))}
             {draftItems.length > 6 && (
-              <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
                 and {draftItems.length - 6} more in the draft
               </Typography.Text>
             )}
@@ -544,7 +544,7 @@ function IdlePanel({ grid }: { grid: Grid }) {
       {invalid === 0 && draftItems.length === 0 && (
         <>
           <Divider style={{ margin: "12px 0" }} />
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             <CheckOutlined style={{ color: "var(--c-ok)", marginInlineEnd: 6 }} />
             Every value is valid and nothing is waiting on you.
           </Typography.Text>
@@ -562,11 +562,11 @@ function CellValue({ cell }: { cell?: Cell }) {
   if (!cell.set) return <Tag color="default" style={{ marginInlineEnd: 0 }}>absent</Tag>;
   return (
     <Space size={4}>
-      <span className="mono" style={{ fontSize: 12, color: cell.valid ? undefined : c.danger }}>
+      <span className="mono" style={{ fontSize: "var(--text-small)", color: cell.valid ? undefined : c.danger }}>
         {fmtValue(cell.value)}
       </span>
       {cell.set && cell.source !== "instance" && (
-        <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>{cell.source}</Tag>
+        <Tag style={{ fontSize: "var(--text-micro)", marginInlineEnd: 0 }}>{cell.source}</Tag>
       )}
     </Space>
   );
@@ -664,14 +664,14 @@ function ScopeValueEditor({ row, grid }: { row: GridRow; grid: Grid }) {
     <div className="cf-scopeval">
       <div className="cf-scopeval-head">
         <Icon />
-        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
           {facet === "global" ? "VALUE (ALL INSTANCES)" : `VALUE PER ${field?.toUpperCase()}`}
         </Typography.Text>
       </div>
       {groups.length === 0 ? (
         // A group scope over an estate that has never filled the field in. Said
         // plainly, because the fix is on the instances rather than here.
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           No instance has a {field} set, so there is no group to give a value to. Set one on the
           Instances tab and this becomes editable.
         </Typography.Text>
@@ -711,7 +711,7 @@ function ScopeValueEditor({ row, grid }: { row: GridRow; grid: Grid }) {
         </div>
       )}
       {orphans.length > 0 && (
-        <Typography.Text type="secondary" style={{ fontSize: 11, display: "block", marginTop: 8 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", display: "block", marginTop: 8 }}>
           {orphans.length === 1 ? "One instance has" : `${orphans.length} instances have`} no {field}
           {" "}({orphans.map((i) => i.name).join(", ")}), so nothing here reaches{" "}
           {orphans.length === 1 ? "it" : "them"}.
@@ -719,7 +719,7 @@ function ScopeValueEditor({ row, grid }: { row: GridRow; grid: Grid }) {
       )}
       {dirtyKeys.length > 0 && canEdit && (
         <div className="cf-savebar">
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
             {dirtyKeys.length === 1
               ? `Applies to ${reachLabel(facet, dirtyKeys[0] || null, groups.find((g) => g.key === dirtyKeys[0])?.instances.length ?? 0)}`
               : `${dirtyKeys.length} groups changed`}
@@ -792,9 +792,9 @@ function OverviewTab({
   return (
     <div>
       <ARow gutter={8} style={{ marginBottom: 12 }}>
-        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: 18 }} /></Col>
-        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: 18, color: invalid ? c.danger : undefined }} /></Col>
+        <Col span={8}><Statistic title="Set" value={set} valueStyle={{ fontSize: "var(--text-title)" }} /></Col>
+        <Col span={8}><Statistic title="Instances" value={grid.instances.length} valueStyle={{ fontSize: "var(--text-title)" }} /></Col>
+        <Col span={8}><Statistic title="Invalid" value={invalid} valueStyle={{ fontSize: "var(--text-title)", color: invalid ? c.danger : undefined }} /></Col>
       </ARow>
       <ScopeValueEditor row={row} grid={grid} />
       {/* The per-instance list stays whatever the scope is. For a shared value
@@ -803,14 +803,14 @@ function OverviewTab({
           trusted about the thing somebody came here to check. */}
       <Typography.Text
         type="secondary"
-        style={{ fontSize: 11, letterSpacing: 0.4, display: "block", marginTop: perInstance ? 0 : 14 }}
+        style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4, display: "block", marginTop: perInstance ? 0 : 14 }}
       >
         {perInstance ? "VALUE PER INSTANCE" : "WHAT EACH INSTANCE READS"}
       </Typography.Text>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
         {values.map(({ inst, cell }) => (
           <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 12 }}>{inst.name}</span>
+            <span style={{ fontSize: "var(--text-small)" }}>{inst.name}</span>
             <CellValue cell={cell} />
           </div>
         ))}
@@ -835,7 +835,7 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
   // into it, and what it is required by flows out below. Reads top-to-bottom and
   // stays centered instead of hugging the left edge.
   const label = (t: string) => (
-    <Typography.Text type="secondary" style={{ fontSize: 10, letterSpacing: 0.5 }}>
+    <Typography.Text type="secondary" style={{ fontSize: "var(--text-micro)", letterSpacing: 0.5 }}>
       {t}
     </Typography.Text>
   );
@@ -844,7 +844,7 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
       {children}
     </div>
   );
-  const arrow = <span style={{ opacity: 0.35, fontSize: 16, lineHeight: 1 }}>↓</span>;
+  const arrow = <span style={{ opacity: 0.35, fontSize: "var(--text-emphasis)", lineHeight: 1 }}>↓</span>;
   return (
     <div
       style={{
@@ -860,7 +860,7 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
       {p.dependsOn?.length ? (
         chipRow(p.dependsOn.map((d) => chip(d, nameOf(d))))
       ) : (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           nothing
         </Typography.Text>
       )}
@@ -868,7 +868,7 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
       <Tag
         color="blue"
         className="mono"
-        style={{ margin: 0, fontSize: 12, padding: "3px 12px", fontWeight: 600 }}
+        style={{ margin: 0, fontSize: "var(--text-small)", padding: "3px 12px", fontWeight: 600 }}
       >
         {p.name}
       </Tag>
@@ -877,7 +877,7 @@ function DependenciesTab({ p, grid, onSelect }: { p: Parameter; grid: Grid; onSe
       {requiredBy.length ? (
         chipRow(requiredBy.map((rp) => chip(rp.id, rp.name)))
       ) : (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           nothing
         </Typography.Text>
       )}
@@ -901,7 +901,7 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
         { key: "intro", label: "Introduced", children: p.versionIntroduced || "-" },
         { key: "dep", label: "Deprecated", children: p.versionDeprecated || "-" },
       ]} />
-      <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4, display: "block", marginTop: 12 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4, display: "block", marginTop: 12 }}>
         APPLICABILITY PER INSTANCE
       </Typography.Text>
       <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 6 }}>
@@ -909,9 +909,9 @@ function VersionsTab({ row, grid }: { row: GridRow; grid: Grid }) {
           const a = applicability[row.cells[i.name]?.state ?? "normal"];
           return (
             <div key={i.name} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 12 }}>{i.name}</span>
+              <span style={{ fontSize: "var(--text-small)" }}>{i.name}</span>
               <Space size={6}>
-                <Typography.Text type="secondary" style={{ fontSize: 11 }}>{i.softwareVersion}</Typography.Text>
+                <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>{i.softwareVersion}</Typography.Text>
                 <Tag color={a.color} style={{ marginInlineEnd: 0 }}>{a.label}</Tag>
               </Space>
             </div>
@@ -985,12 +985,12 @@ function ParamHistoryTab({ paramId, instances }: { paramId: string; instances: I
   // simply untrue.
   if (!supported && changes.length === 0)
     return (
-      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
         History is available for repositories cloned or opened on the server.
       </Typography.Text>
     );
   if (entries.length === 0 && changes.length === 0)
-    return <Typography.Text type="secondary" style={{ fontSize: 12 }}>No recorded changes for this parameter.</Typography.Text>;
+    return <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>No recorded changes for this parameter.</Typography.Text>;
 
   // Proposals that are not on the trunk. Counted here rather than left to be
   // noticed, because "two changes to this value were turned down" is a fact
@@ -1006,7 +1006,7 @@ function ParamHistoryTab({ paramId, instances }: { paramId: string; instances: I
             marginBottom: 10,
             padding: "6px 10px",
             borderRadius: 8,
-            fontSize: 12,
+            fontSize: "var(--text-small)",
             background: "var(--surface-2, rgba(127,137,160,0.08))",
             border: "1px solid rgba(127,137,160,0.2)",
           }}
@@ -1024,11 +1024,11 @@ function ParamHistoryTab({ paramId, instances }: { paramId: string; instances: I
         </div>
       )}
       <div className="pf-head">
-        <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
           HOW THIS VALUE GOT HERE{readFor ? ` · ${readFor}` : " · default"}
         </Typography.Text>
         {(open > 0 || refused > 0) && (
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
             {[open ? `${open} waiting` : "", refused ? `${refused} rejected` : ""].filter(Boolean).join(" · ")}
           </Typography.Text>
         )}
@@ -1099,7 +1099,7 @@ export default function DetailsPanel({ grid }: { grid: Grid }) {
     <div style={{ padding: 12, height: "100%", overflow: "auto" }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 10.5, color: "var(--text-3)", fontWeight: 600, letterSpacing: 0.4 }}>
+          <div style={{ fontSize: "var(--text-micro)", color: "var(--text-3)", fontWeight: 600, letterSpacing: 0.4 }}>
             INSPECTOR · PARAMETER DETAILS
           </div>
           <Typography.Title level={5} style={{ marginBottom: 0, marginTop: 2 }}>{p.name}</Typography.Title>

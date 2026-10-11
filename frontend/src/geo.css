@@ -89,7 +89,7 @@
   align-items: center;
   gap: 8px;
   padding: 5px 10px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text);
   background: var(--surface);
   border: 1px solid var(--border);
@@ -157,14 +157,14 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--text);
   margin-bottom: 4px;
 }
 .cf-geo-place-n {
   margin-inline-start: auto;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 400;
   color: var(--text-3);
 }
@@ -181,7 +181,7 @@
   width: 100%;
   padding: 3px 6px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   background: transparent;
   border: 0;
@@ -205,14 +205,14 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-3);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
   pointer-events: none;
 }
 .cf-geo-zoom {
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--brand);
   background: none;
   border: 0;

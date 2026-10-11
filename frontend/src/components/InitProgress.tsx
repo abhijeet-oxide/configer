@@ -90,11 +90,11 @@ export default function InitProgress({
         </svg>
         <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
           {done ? (
-            <CheckCircleFilled style={{ fontSize: 34, color: token.colorSuccess }} />
+            <CheckCircleFilled style={{ fontSize: "var(--text-hero)", color: token.colorSuccess }} />
           ) : (
             <>
-              <div style={{ fontSize: 26, fontWeight: 700, lineHeight: 1 }}>{Math.round(pct)}%</div>
-              <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>working…</div>
+              <div style={{ fontSize: "var(--text-display)", fontWeight: 700, lineHeight: 1 }}>{Math.round(pct)}%</div>
+              <div style={{ fontSize: "var(--text-caption)", opacity: 0.6, marginTop: 2 }}>working…</div>
             </>
           )}
         </div>
@@ -107,17 +107,17 @@ export default function InitProgress({
             <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, opacity: state === "idle" ? 0.4 : 1 }}>
               <span style={{ width: 18, display: "inline-flex", justifyContent: "center" }}>
                 {state === "done" ? (
-                  <CheckCircleFilled style={{ color: token.colorSuccess, fontSize: 15 }} />
+                  <CheckCircleFilled style={{ color: token.colorSuccess, fontSize: "var(--text-subtitle)" }} />
                 ) : state === "active" ? (
                   <LoadingOutlined style={{ color: token.colorPrimary }} />
                 ) : (
                   <span style={{ width: 8, height: 8, borderRadius: 4, background: token.colorBorderSecondary }} />
                 )}
               </span>
-              <Typography.Text style={{ fontSize: 13, fontWeight: state === "active" ? 600 : 400 }}>
+              <Typography.Text style={{ fontSize: "var(--text-body)", fontWeight: state === "active" ? 600 : 400 }}>
                 {s.label({ instances, params })}
                 {i === 2 && state === "active" && (
-                  <Typography.Text type="secondary" style={{ fontSize: 12, marginInlineStart: 6 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", marginInlineStart: 6 }}>
                     {shownParams} / {params}
                   </Typography.Text>
                 )}

@@ -74,7 +74,7 @@ const RULE_LABELS: Partial<Record<keyof Validation, string>> = {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
         {label}
       </Typography.Text>
       {children}
@@ -284,7 +284,7 @@ function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: ()
           <Typography.Text
             className="mono"
             type={param.default == null ? "secondary" : undefined}
-            style={{ fontSize: 12 }}
+            style={{ fontSize: "var(--text-small)" }}
           >
             {formatDefault(param.default)}
           </Typography.Text>
@@ -314,7 +314,7 @@ function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: ()
         />
       </Field>
       {preset && (
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
           {preset.description}
           {preset.pattern && (
             <>
@@ -421,7 +421,7 @@ function Editor({ param, onEditDefault }: { param: Parameter; onEditDefault?: ()
 
       {dirty && canEdit && (
         <div className="cf-savebar">
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
             {changed.length} unsaved: {changed.join(", ")}
           </Typography.Text>
           <Space size={6}>

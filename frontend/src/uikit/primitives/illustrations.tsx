@@ -24,6 +24,9 @@ const OK2 = "#4ade80";
 const BLUE = "var(--brand)";
 const BLUE2 = "var(--brand-border)";
 const AMBER = "#f59e0b";
+// Failure reads a TOKEN rather than a hex: a preset that retunes the palette
+// must not leave the error scene painted in the previous identity's red.
+const DANGER = "var(--c-danger)";
 
 // The theme-tracking fill for the solid "paper" shapes (trays, shields, cards).
 const PAPER = "var(--ill-surface)";
@@ -260,6 +263,115 @@ export function InSyncArt({ size = 132 }: { size?: number }) {
   );
 }
 
+// RadarIdleArt: a radar with a slow sweep over targets already resolved, and a
+// check badge - every source has been looked at and nothing is running.
+export function RadarIdleArt({ size = 132 }: { size?: number }) {
+  const uid = useId();
+  const sweep = `radar-sweep-${uid}`;
+  const ok = `radar-ok-${uid}`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="No active discovery" className="ill">
+      <defs>
+        <linearGradient id={sweep} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={BLUE} stopOpacity="0" />
+          <stop offset="1" stopColor={BLUE} stopOpacity="0.32" />
+        </linearGradient>
+        <linearGradient id={ok} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={OK2} />
+          <stop offset="1" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle cx="60" cy="62" r="44" fill={BLUE} opacity="0.05" />
+      {[44, 31, 18].map((r) => (
+        <circle key={r} cx="60" cy="62" r={r} fill="none" stroke={BLUE2} strokeWidth="1.25" opacity="0.7" />
+      ))}
+      <path d="M16 62 H104 M60 18 V106" stroke={BLUE2} strokeWidth="1" opacity="0.45" />
+      <g className="ill-radar" style={{ transformOrigin: "60px 62px" }}>
+        <path d="M60 62 L104 62 A44 44 0 0 0 91.1 30.9 Z" fill={`url(#${sweep})`} />
+        <line x1="60" y1="62" x2="104" y2="62" stroke={BLUE} strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+      </g>
+      {[
+        [78, 44, 0.2],
+        [40, 50, 1.1],
+        [72, 86, 2.0],
+      ].map(([cx, cy, delay]) => (
+        <g key={`${cx}-${cy}`}>
+          <circle cx={cx} cy={cy} r="5" fill={BLUE} opacity="0.12" className="ill-blip" style={{ animationDelay: `${delay}s` }} />
+          <circle cx={cx} cy={cy} r="2.2" fill={BLUE} />
+        </g>
+      ))}
+      <circle cx="60" cy="62" r="3" fill={PAPER} stroke={BLUE} strokeWidth="1.5" />
+      <g className="ill-pop" style={{ transformOrigin: "98px 98px" }}>
+        <circle cx="98" cy="98" r="15" fill={PAPER} />
+        <circle cx="98" cy="98" r="12.5" fill={`url(#${ok})`} />
+        <path d="M92.5 98.5 L96.5 102.5 L104 94.5" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="ill-draw" pathLength={1} />
+      </g>
+    </svg>
+  );
+}
+
+// DownloadsDoneArt: a destination volume with a thin arrow settling into it,
+// a full progress line, and a check badge - every started download has ended.
+export function DownloadsDoneArt({ size = 132 }: { size?: number }) {
+  const uid = useId();
+  const fill = `dl-fill-${uid}`;
+  const ok = `dl-ok-${uid}`;
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="No download in progress" className="ill">
+      <defs>
+        <linearGradient id={fill} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor={BLUE} stopOpacity="0.55" />
+          <stop offset="1" stopColor={BLUE} />
+        </linearGradient>
+        <linearGradient id={ok} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor={OK2} />
+          <stop offset="1" stopColor={OK} />
+        </linearGradient>
+      </defs>
+      <circle cx="62" cy="64" r="46" fill={BLUE} opacity="0.05" />
+      <g className="ill-drop">
+        <path d="M62 22 V50" stroke={BLUE} strokeWidth="2" strokeLinecap="round" />
+        <path d="M53 42 L62 51 L71 42" fill="none" stroke={BLUE} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </g>
+      <rect x="28" y="58" width="68" height="40" rx="9" fill={PAPER} stroke={BLUE2} strokeWidth="1.5" />
+      <path d="M28 70 H96" stroke={BLUE2} strokeWidth="1" opacity="0.7" />
+      <circle cx="36" cy="64" r="1.6" fill={BLUE2} />
+      <circle cx="42" cy="64" r="1.6" fill={BLUE2} />
+      <rect x="38" y="80" width="48" height="4" rx="2" fill={BLUE2} opacity="0.35" />
+      <rect x="38" y="80" width="48" height="4" rx="2" fill={`url(#${fill})`} className="ill-fill" />
+      <rect x="38" y="88" width="30" height="3" rx="1.5" fill={BLUE2} opacity="0.35" />
+      <g className="ill-pop" style={{ transformOrigin: "96px 96px" }}>
+        <circle cx="96" cy="96" r="15" fill={PAPER} />
+        <circle cx="96" cy="96" r="12.5" fill={`url(#${ok})`} />
+        <path d="M90.5 96.5 L94.5 100.5 L102 92.5" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" className="ill-draw" pathLength={1} />
+      </g>
+    </svg>
+  );
+}
+
+// EmptyTrendArt: the outline of a chart with no series drawn on it - the
+// period has no measurements, which is not the same as a flat line at zero.
+export function EmptyTrendArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size * 0.5} viewBox="0 0 132 66" role="img" aria-label="No data" className="ill">
+      {[14, 30, 46].map((y) => (
+        <path key={y} d={`M8 ${y} H124`} stroke={BLUE2} strokeWidth="1" strokeDasharray="2 4" opacity="0.6" />
+      ))}
+      <path d="M8 58 H124" stroke={BLUE2} strokeWidth="1.25" />
+      <path
+        d="M10 50 C26 50, 30 34, 44 36 S64 22, 78 28 S102 16, 122 12"
+        fill="none"
+        stroke={BLUE}
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        strokeDasharray="3 5"
+        opacity="0.45"
+        className="ill-dash"
+      />
+    </svg>
+  );
+}
+
 // OfflineArt: a cloud with a gently pulsing dashed link - the service is
 // briefly unreachable, not broken.
 export function OfflineArt({ size = 132 }: { size?: number }) {
@@ -490,21 +602,321 @@ export function AccessDeniedArt({ size = 132 }: { size?: number }) {
 }
 
 // NotFoundArt: a page being searched for and not found. The number lives in the
-// copy, not in the picture.
+// copy, not in the picture. It does not float or ripple: a missing page is not
+// a place for a slow loop.
 export function NotFoundArt({ size = 132 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Page not found" className="ill">
-      <circle cx="66" cy="62" r="46" fill={BLUE} opacity="0.06" className="ill-ripple" />
+      <circle cx="66" cy="62" r="46" fill={BLUE} opacity="0.06" />
       <Plate />
-      <g className="ill-floaty" style={{ transformOrigin: "66px 62px" }}>
+      <g>
         <rect x="36" y="28" width="56" height="66" rx="8" fill={PAPER} stroke={BLUE} strokeWidth="2.5" />
         {[42, 52, 62].map((y, i) => (
           <rect key={y} x="46" y={y} width={i === 1 ? 24 : 36} height="4" rx="2" fill={BLUE} opacity="0.24" />
         ))}
-        <g className="ill-lift" style={{ transformOrigin: "84px 82px" }}>
+        <g>
           <circle cx="80" cy="78" r="16" fill={PAPER} fillOpacity="0.6" stroke={BLUE} strokeWidth="3" />
           <path d="M91 89 l12 12" stroke={BLUE} strokeWidth="4" strokeLinecap="round" />
         </g>
+      </g>
+    </svg>
+  );
+}
+
+// MaintenanceArt: the service's own machines, deliberately at rest, with two
+// meshed gears turning where the other scenes in this family put a badge.
+// Planned work is the one state in the family that is nobody's fault, so it
+// gets the family's calm colour treatment and a badge that MOVES rather than
+// one that warns: an alert triangle here would say "outage" when the whole
+// point is that this was scheduled.
+export function MaintenanceArt({ size = 132 }: { size?: number }) {
+  // Two gears only read as meshed if the small one turns the OTHER way, and
+  // faster in proportion to its radius. Pitch radii of roughly 16 and 10 put
+  // their periods at 12s and 7.5s, which is what `.ill-gear` and
+  // `.ill-gear-counter` are, and their centres 24 apart, which is why the small
+  // one sits where it does.
+  const teeth = [0, 45, 90, 135, 180, 225, 270, 315];
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Under maintenance" className="ill">
+      <circle cx="66" cy="58" r="44" fill={AMBER} opacity="0.07" className="ill-ripple" />
+      <Plate />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 58px" }} opacity="0.92">
+        {[0, 1, 2].map((i) => {
+          const y = 30 + i * 22;
+          return (
+            <g key={i}>
+              <rect x="34" y={y} width="64" height="18" rx="5" fill={PAPER} stroke={BLUE} strokeWidth="2.5" />
+              <rect x="34" y={y} width="64" height="18" rx="5" fill={BLUE} opacity="0.05" />
+              {/* every light quiet: the machines are down on purpose */}
+              <circle cx="44" cy={y + 9} r="3" fill={BLUE} opacity="0.32" />
+              <rect x="54" y={y + 7} width={i === 1 ? 20 : 30} height="4" rx="2" fill={BLUE} opacity="0.2" />
+            </g>
+          );
+        })}
+      </g>
+      {/* the driving gear, in the badge's place */}
+      <g className="ill-gear" style={{ transformOrigin: "97px 90px" }}>
+        <circle cx="97" cy="90" r="11.5" fill={PAPER} stroke={AMBER} strokeWidth="3" />
+        {teeth.map((a) => (
+          <rect key={a} x="94.6" y="74.5" width="4.8" height="7" rx="1.8" fill={AMBER} transform={`rotate(${a} 97 90)`} />
+        ))}
+        <circle cx="97" cy="90" r="4" fill={AMBER} opacity="0.28" />
+      </g>
+      {/* and the one it drives */}
+      <g className="ill-gear-counter" style={{ transformOrigin: "76px 102px" }}>
+        <circle cx="76" cy="102" r="6.5" fill={PAPER} stroke={AMBER} strokeWidth="2.5" />
+        {teeth.map((a) => (
+          <rect key={a} x="74.4" y="92.4" width="3.2" height="4.6" rx="1.4" fill={AMBER} opacity="0.85" transform={`rotate(${a} 76 102)`} />
+        ))}
+      </g>
+    </svg>
+  );
+}
+
+// ErrorArt: the page's own window, split by a fracture that draws itself, under
+// an alert triangle. The triangle rather than the family's circular badge is
+// deliberate: an unexpected failure is the one state here that is not a normal
+// part of operating the system, and it should not look like one.
+// CheckFailedArt: a checklist whose run stopped - rows unticked and a red
+// cross badge. For a check that produced no answer, not one that found faults.
+export function CheckFailedArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Check failed" className="ill">
+      <circle cx="66" cy="66" r="54" fill={DANGER} opacity="0.06" className="ill-ripple" />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 66px" }}>
+        <rect x="36" y="26" width="56" height="76" rx="8" fill={PAPER} stroke={DANGER} strokeOpacity="0.45" strokeWidth="2" />
+        <rect x="52" y="20" width="24" height="12" rx="4" fill={PAPER} stroke={DANGER} strokeOpacity="0.45" strokeWidth="2" />
+        {[46, 60, 74].map((y) => (
+          <g key={y}>
+            <rect x="45" y={y - 4} width="8" height="8" rx="2" fill="none" stroke={DANGER} strokeOpacity="0.35" strokeWidth="1.5" />
+            <rect x="58" y={y - 2} width={y === 60 ? 16 : 24} height="4" rx="2" fill={DANGER} opacity="0.22" />
+          </g>
+        ))}
+        <rect x="45" y="84" width="30" height="4" rx="2" fill={DANGER} opacity="0.14" />
+      </g>
+      <g className="ill-pop" style={{ transformOrigin: "92px 94px" }}>
+        <circle cx="92" cy="94" r="15" fill={DANGER} />
+        <path d="M86 88 L98 100 M98 88 L86 100" stroke="#fff" strokeWidth="3.5" strokeLinecap="round" />
+      </g>
+      <circle cx="30" cy="44" r="2.5" fill={AMBER} className="ill-spark" style={{ animationDelay: "0.4s" }} />
+    </svg>
+  );
+}
+
+export function ErrorArt({ size = 132 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Unexpected error" className="ill">
+      <circle cx="66" cy="58" r="44" fill={DANGER} opacity="0.07" className="ill-ripple" />
+      <Plate />
+      <g className="ill-floaty" style={{ transformOrigin: "66px 58px" }}>
+        <rect x="30" y="26" width="72" height="62" rx="8" fill={PAPER} stroke={BLUE} strokeWidth="2.5" />
+        <path d="M30 40 h72" stroke={BLUE} strokeWidth="2" opacity="0.45" />
+        {[38, 45, 52].map((cx) => (
+          <circle key={cx} cx={cx} cy="33" r="2.2" fill={BLUE} opacity="0.4" />
+        ))}
+        {/* the content it never finished painting */}
+        <rect x="38" y="50" width="26" height="4.5" rx="2.25" fill={BLUE} opacity="0.22" />
+        <rect x="38" y="60" width="18" height="4.5" rx="2.25" fill={BLUE} opacity="0.16" />
+        <rect x="76" y="50" width="18" height="4.5" rx="2.25" fill={BLUE} opacity="0.16" />
+        <rect x="72" y="60" width="22" height="4.5" rx="2.25" fill={BLUE} opacity="0.22" />
+        {/* the fracture, drawn once on arrival */}
+        <path
+          d="M68 40 L61 52 L71 58 L62 72 L69 78 L64 88"
+          fill="none"
+          stroke={DANGER}
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="ill-draw"
+          pathLength={1}
+        />
+      </g>
+      {/* the badge: what happened, and nothing else */}
+      <g className="ill-pop" style={{ transformOrigin: "99px 92px" }}>
+        <path d="M99 79 l14 24 h-28 Z" fill={PAPER} stroke={DANGER} strokeWidth="3" strokeLinejoin="round" />
+        <path d="M99 88 v6" stroke={DANGER} strokeWidth="2.8" strokeLinecap="round" />
+        <circle cx="99" cy="98.4" r="1.8" fill={DANGER} />
+      </g>
+    </svg>
+  );
+}
+
+// LoadingArt: a source on the left, a relay in the middle, two destinations on
+// the right, and short pulses travelling the links between them. Content moving
+// through a gateway, drawn in hairlines so it sits beside the type rather than
+// competing with it.
+//
+// It is the one illustration in the kit that must never look like a RESULT, so
+// it carries no badge, no check and no colour that means anything. Nothing here
+// fills, advances or completes: the pulses loop, so it cannot imply a position
+// the caller does not have. A page that knows its denominator should show a
+// progress bar instead.
+export function LoadingArt({ size = 132 }: { size?: number }) {
+  const uid = useId();
+  const fade = `load-fade-${uid}`;
+  const grid = `load-grid-${uid}`;
+  const mask = `load-mask-${uid}`;
+  const LINE = "var(--border-strong)";
+  const INK = "var(--text-3)";
+  const plate = (cx: number, cy: number, w: number, h: number) =>
+    `M${cx - w} ${cy} L${cx} ${cy - h} L${cx + w} ${cy} L${cx} ${cy + h} Z`;
+  const links = [
+    { d: "M38 60 H60", delay: 0 },
+    { d: "M100 60 C112 60 112 42 124 42", delay: 0.9 },
+    { d: "M100 60 C112 60 112 78 124 78", delay: 1.15 },
+  ];
+  return (
+    <svg
+      width={size}
+      height={Math.round(size * 0.75)}
+      viewBox="0 0 160 120"
+      role="img"
+      aria-label="Loading"
+      className="ill"
+    >
+      <defs>
+        <pattern id={grid} width="8" height="8" patternUnits="userSpaceOnUse">
+          <circle cx="1" cy="1" r="0.7" fill={INK} />
+        </pattern>
+        <radialGradient id={fade} cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor="#fff" stopOpacity="0.55" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </radialGradient>
+        <mask id={mask}>
+          <rect width="160" height="120" fill={`url(#${fade})`} />
+        </mask>
+      </defs>
+
+      <rect width="160" height="120" fill={`url(#${grid})`} mask={`url(#${mask})`} />
+
+      {links.map((l) => (
+        <path key={l.d} d={l.d} fill="none" stroke={LINE} strokeWidth="1.25" strokeDasharray="1.5 3" strokeLinecap="round" />
+      ))}
+      {links.map((l) => (
+        <path
+          key={`${l.d}-pulse`}
+          d={l.d}
+          fill="none"
+          stroke={BLUE}
+          strokeWidth="2"
+          strokeLinecap="round"
+          pathLength={100}
+          className="ill-flow"
+          style={{ animationDelay: `${l.delay}s` }}
+        />
+      ))}
+
+      {/* the source: a stack of layers, as a registry holds an image */}
+      {[68, 61, 54].map((y, i) => (
+        <path
+          key={y}
+          d={plate(24, y, 14, 7.5)}
+          fill={PAPER}
+          stroke={i === 2 ? INK : LINE}
+          strokeWidth="1.25"
+          strokeLinejoin="round"
+        />
+      ))}
+
+      {/* the relay: one solid, three faces */}
+      <g strokeWidth="1.25" strokeLinejoin="round" stroke={BLUE}>
+        <path d="M80 38 L99 49 L80 60 L61 49 Z" fill={PAPER} />
+        <path d="M80 38 L99 49 L80 60 L61 49 Z" fill={BLUE} opacity="0.14" stroke="none" />
+        <path d="M61 49 L80 60 L80 82 L61 71 Z" fill={PAPER} />
+        <path d="M61 49 L80 60 L80 82 L61 71 Z" fill={BLUE} opacity="0.06" stroke="none" />
+        <path d="M99 49 L80 60 L80 82 L99 71 Z" fill={PAPER} />
+        <path d="M99 49 L80 60 L80 82 L99 71 Z" fill={BLUE} opacity="0.24" stroke="none" />
+      </g>
+      <path d="M80 43.5 L89.5 49 L80 54.5 L70.5 49 Z" fill={BLUE} className="ill-pulse" style={{ animationDelay: "0.45s" }} />
+
+      {/* the destinations */}
+      {[42, 78].map((y, i) => (
+        <g key={y}>
+          <path d={plate(136, y + 4, 12, 6.5)} fill={PAPER} stroke={LINE} strokeWidth="1.25" strokeLinejoin="round" />
+          <path d={plate(136, y, 12, 6.5)} fill={PAPER} stroke={INK} strokeWidth="1.25" strokeLinejoin="round" />
+          <path
+            d={plate(136, y, 5, 2.7)}
+            fill={BLUE}
+            className="ill-pulse"
+            style={{ animationDelay: `${1.5 + i * 0.25}s` }}
+          />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+// SearchArt: a product stack under a magnifying glass that finds a warning -
+// the security search empty state. The lens drifts like a hand searching a
+// desk; the red hit lights when the glass passes over it.
+export function SearchArt({ size = 132 }: { size?: number }) {
+  const uid = useId();
+  const glow = `search-glow-${uid}`;
+  const NAVY = "var(--brand)";
+  const DANGER = "var(--c-danger)";
+  return (
+    <svg width={size} height={size} viewBox="0 0 132 132" role="img" aria-label="Searching products" className="ill">
+      <defs>
+        <radialGradient id={glow} cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor={DANGER} stopOpacity="0.45" />
+          <stop offset="1" stopColor={DANGER} stopOpacity="0" />
+        </radialGradient>
+      </defs>
+
+      {/* Soft ground circle */}
+      <circle cx="64" cy="70" r="46" fill={BLUE} opacity="0.07" className="ill-ripple" />
+
+      {/* Receding product cards - the estate being searched */}
+      <g className="ill-stack-shift" style={{ transformOrigin: "58px 68px" }}>
+        <rect x="28" y="48" width="58" height="44" rx="8" fill={BLUE} opacity="0.10" />
+        <rect x="32" y="44" width="58" height="44" rx="8" fill={BLUE} opacity="0.14" />
+        <rect x="36" y="40" width="58" height="44" rx="8" fill={PAPER} stroke={BLUE2} strokeWidth="2" />
+        {/* Top card content: cube + lines + placeholders */}
+        <g transform="translate(42 48)">
+          {/* isometric-ish cube */}
+          <path d="M8 4 L14 7.5 L14 14.5 L8 18 L2 14.5 L2 7.5 Z" fill={NAVY} opacity="0.92" />
+          <path d="M8 4 L14 7.5 L8 11 L2 7.5 Z" fill={PAPER} opacity="0.35" />
+          <path d="M8 11 L14 7.5 L14 14.5 L8 18 Z" fill={NAVY} opacity="0.7" />
+          <rect x="20" y="5" width="22" height="3" rx="1.5" fill={BLUE} opacity="0.28" />
+          <rect x="20" y="11" width="16" height="3" rx="1.5" fill={BLUE} opacity="0.22" />
+          <rect x="4" y="24" width="14" height="10" rx="3" fill={BLUE} opacity="0.14" />
+          <rect x="22" y="24" width="14" height="10" rx="3" fill={BLUE} opacity="0.14" />
+        </g>
+      </g>
+
+      {/* Floating dots around the sphere */}
+      <circle cx="22" cy="52" r="3" fill={NAVY} className="ill-dot-drift" style={{ animationDelay: "0s" }} />
+      <circle cx="108" cy="40" r="2.5" fill={BLUE2} className="ill-dot-drift" style={{ animationDelay: "0.4s" }} />
+      <circle cx="116" cy="78" r="3.5" fill={NAVY} className="ill-dot-drift" style={{ animationDelay: "0.9s" }} />
+      <circle cx="24" cy="96" r="2" fill={BLUE2} className="ill-dot-drift" style={{ animationDelay: "1.3s" }} />
+      <circle cx="98" cy="108" r="2.5" fill={NAVY} opacity="0.5" className="ill-dot-drift" style={{ animationDelay: "0.6s" }} />
+
+      {/* Magnifying glass - hand-search path across the stack */}
+      <g className="ill-search-lens" style={{ transformOrigin: "86px 62px" }}>
+        <circle cx="86" cy="62" r="22" fill={PAPER} stroke={NAVY} strokeWidth="5" />
+        <circle cx="86" cy="62" r="22" fill={BLUE} opacity="0.04" />
+        {/* Soft red glow behind the hit */}
+        <circle cx="86" cy="62" r="16" fill={`url(#${glow})`} className="ill-search-glow" />
+        {/* Warning triangle inside the lens */}
+        <g className="ill-search-hit">
+          <path
+            d="M86 50 L98 72 L74 72 Z"
+            fill={DANGER}
+            stroke={DANGER}
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+          />
+          <rect x="84.5" y="56" width="3" height="8" rx="1.2" fill={PAPER} />
+          <circle cx="86" cy="68" r="1.6" fill={PAPER} />
+        </g>
+        {/* Handle */}
+        <path
+          d="M102 78 L116 96"
+          fill="none"
+          stroke={NAVY}
+          strokeWidth="6"
+          strokeLinecap="round"
+        />
       </g>
     </svg>
   );
@@ -546,7 +958,7 @@ export function StatePanel({
         {title}
       </Typography.Title>
       {subtitle && (
-        <Typography.Text type="secondary" style={{ fontSize: 13.5, maxWidth: 480 }}>
+        <Typography.Text type="secondary" style={{ fontSize: 'var(--text-label)', maxWidth: 480 }}>
           {subtitle}
         </Typography.Text>
       )}

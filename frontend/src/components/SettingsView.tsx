@@ -313,7 +313,7 @@ export default function SettingsView() {
                 icon={<SwaggerOutlined />}
                 onClick={() => window.open("/api/docs", "_blank", "noopener,noreferrer")}
               >
-                API documentation <ExportOutlined style={{ fontSize: 11, opacity: 0.6 }} />
+                API documentation <ExportOutlined style={{ fontSize: "var(--text-caption)", opacity: 0.6 }} />
               </Button>
             }
           />

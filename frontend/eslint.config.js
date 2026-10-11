@@ -6,10 +6,10 @@ import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 
 export default tseslint.config(
-  // check-styles.mjs is a Node build-time check that happens to live inside
+  // The check-*.mjs scripts are Node build-time check that happens to live inside
   // src/ so it travels with the shared kit when the folder is copied. It is not
   // browser code, and linting it as such only reports that Node globals exist.
-  { ignores: ["dist", "node_modules", "src/uikit/check-styles.mjs"] },
+  { ignores: ["dist", "node_modules", "src/uikit/*.mjs"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -22,6 +22,8 @@ export default tseslint.config(
       "react-hooks/set-state-in-effect": "off",
       "react-hooks/purity": "off",
       "react-hooks/immutability": "off",
+      "react-hooks/refs": "off",
+      "react-hooks/preserve-manual-memoization": "off",
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
       // `any` is used deliberately at the API boundary (config values are

@@ -6,7 +6,7 @@ import App from './App.tsx'
 import BootGate from './components/BootGate'
 import AuthGate from './components/AuthGate'
 import { useUI } from './store'
-import { ThemeProvider, watchSystemMode } from './uikit'
+import { ThemeProvider, defaultAppearance, watchSystemMode } from './uikit'
 import { ApiError } from './api'
 import { notifyError, setNotifier } from './notify'
 import './styles.css'
@@ -86,7 +86,7 @@ function ThemeRoot() {
   }, [themePref])
   return (
     <ThemeProvider
-      value={{ theme: themePref, fontScale, density }}
+      value={{ ...defaultAppearance, onboardedAt: "configer", theme: themePref, fontScale, density }}
       onChange={(next) => {
         const ui = useUI.getState()
         if (next.theme !== themePref) ui.setThemePref(next.theme)

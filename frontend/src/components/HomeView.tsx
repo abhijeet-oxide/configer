@@ -95,7 +95,7 @@ export default function HomeView() {
                     className="flex size-8 shrink-0 items-center justify-center rounded-full"
                     style={{ background: "var(--surface)", color: "var(--c-pending)", border: "1px solid var(--c-pending-bd)" }}
                   >
-                    <EditOutlined style={{ fontSize: 14 }} />
+                    <EditOutlined style={{ fontSize: "var(--text-label)" }} />
                   </span>
                   <div className="min-w-0 flex-1">
                     <div className="text-[13px] font-semibold text-ink leading-snug">
@@ -138,7 +138,7 @@ export default function HomeView() {
             {!resume && attentionRest.length === 0 && (
               <StaggerItem className="mb-5">
                 <div className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3">
-                  <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: 16 }} />
+                  <CheckCircleFilled style={{ color: "var(--c-ok)", fontSize: "var(--text-emphasis)" }} />
                   <span className="text-[13px] text-ink-2">All clear. Everything is synced and nothing is waiting for review.</span>
                 </div>
               </StaggerItem>
@@ -155,7 +155,7 @@ export default function HomeView() {
                 onClick={() => openNewApp()}
                 role="button"
               >
-                <PlusOutlined style={{ fontSize: 22, color: "var(--brand)" }} />
+                <PlusOutlined style={{ fontSize: "var(--text-section)", color: "var(--brand)" }} />
                 <div className="mt-1.5 font-medium text-brand">New application</div>
                 <div className="text-xs text-ink-3">Import or create a new application</div>
               </div>

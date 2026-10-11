@@ -46,7 +46,8 @@ export function pointOf(e: { clientX?: number; clientY?: number } | undefined): 
 export function revealThemeChange(apply: () => void, point?: RevealPoint): void {
   const reduce =
     typeof window !== "undefined" &&
-    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    (document.documentElement.dataset.motion === "reduce" ||
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches);
 
   const run = () => flushSync(apply);
 

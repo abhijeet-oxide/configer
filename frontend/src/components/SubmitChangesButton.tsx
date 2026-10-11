@@ -230,7 +230,7 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
             ? null
             : (buttons) => (
                 <div className="cf-submit-foot">
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                     {/* What is about to happen, in the terms it will happen in.
                         "Checked against the data model" is a promise, so it is
                         only made where a model exists to check against. */}
@@ -318,12 +318,12 @@ export default function SubmitChangesButton({ instances }: { instances?: Instanc
               flexShrink: 0,
               padding: "6px 10px",
               borderRadius: 8,
-              fontSize: 12.5,
+              fontSize: "var(--text-small)",
               background: "var(--c-pending-bg)",
               border: "1px solid var(--c-pending-bd)",
             }}
           >
-            <WarningFilled style={{ color: "var(--c-pending)", fontSize: 14, flexShrink: 0 }} />
+            <WarningFilled style={{ color: "var(--c-pending)", fontSize: "var(--text-label)", flexShrink: 0 }} />
             <span>
               <span style={{ fontWeight: 600, color: "var(--text)" }}>Touches production.</span>{" "}
               <span style={{ color: "var(--text-2)" }}>Goes live only after an approver publishes.</span>

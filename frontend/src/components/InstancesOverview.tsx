@@ -119,7 +119,7 @@ export default function InstancesOverview() {
                 <span>
                   {sel.inst.versionName || sel.inst.softwareVersion}
                   {sel.inst.versionName && sel.inst.versionName !== sel.inst.softwareVersion && (
-                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: 11 }}>{sel.inst.softwareVersion}</span>
+                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: "var(--text-caption)" }}>{sel.inst.softwareVersion}</span>
                   )}
                 </span>
               ),
@@ -236,7 +236,7 @@ export default function InstancesOverview() {
                     <span className="inline-flex flex-col leading-tight">
                       <span className="text-xs">{name}</span>
                       {r.inst.versionName && r.inst.versionName !== id && (
-                        <span className="mono text-ink-3" style={{ fontSize: 10 }}>{id}</span>
+                        <span className="mono text-ink-3" style={{ fontSize: "var(--text-micro)" }}>{id}</span>
                       )}
                     </span>
                   );

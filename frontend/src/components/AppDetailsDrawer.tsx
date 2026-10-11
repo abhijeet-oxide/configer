@@ -116,7 +116,7 @@ export default function AppDetailsDrawer({
       onClose={onClose}
       title={
         <Space size={10}>
-          <span style={{ fontSize: 18, opacity: 0.75 }}>{r.local ? <HddOutlined /> : <GithubOutlined />}</span>
+          <span style={{ fontSize: "var(--text-title)", opacity: 0.75 }}>{r.local ? <HddOutlined /> : <GithubOutlined />}</span>
           <span>{r.name}</span>
         </Space>
       }
@@ -155,7 +155,7 @@ export default function AppDetailsDrawer({
         </div>
       }
     >
-      <div className="mono" style={{ fontSize: 12, opacity: 0.6, overflowWrap: "anywhere", marginBottom: 14 }}>
+      <div className="mono" style={{ fontSize: "var(--text-small)", opacity: 0.6, overflowWrap: "anywhere", marginBottom: 14 }}>
         {r.origin}
       </div>
 
@@ -169,14 +169,14 @@ export default function AppDetailsDrawer({
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {appQ.data?.description && (
-            <Typography.Paragraph style={{ margin: 0, fontSize: 13 }}>
+            <Typography.Paragraph style={{ margin: 0, fontSize: "var(--text-body)" }}>
               {appQ.data.description}
             </Typography.Paragraph>
           )}
 
           <Space size={6} wrap>
             {r.branch && (
-              <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: 11 }}>
+              <Tag icon={<BranchesOutlined />} className="mono" style={{ fontSize: "var(--text-caption)" }}>
                 {r.branch}
               </Tag>
             )}
@@ -210,7 +210,7 @@ export default function AppDetailsDrawer({
               the quick view never hides a problem the inside would show. */}
           {health.length > 0 && (
             <div>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 System health
               </Typography.Text>
               <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 4 }}>
@@ -223,7 +223,7 @@ export default function AppDetailsDrawer({
                       display: "flex",
                       alignItems: "center",
                       gap: 8,
-                      fontSize: 12.5,
+                      fontSize: "var(--text-small)",
                       padding: "3px 6px",
                       borderRadius: 6,
                       cursor: h.invalid ? "pointer" : undefined,
@@ -237,10 +237,10 @@ export default function AppDetailsDrawer({
                     <span style={{ flex: 1 }}>{h.inst.name}</span>
                     {h.invalid ? (
                       <span style={{ color: "var(--c-danger)", fontWeight: 600 }}>
-                        {h.invalid} invalid <RightOutlined style={{ fontSize: 10 }} />
+                        {h.invalid} invalid <RightOutlined style={{ fontSize: "var(--text-micro)" }} />
                       </span>
                     ) : (
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                         schema valid
                       </Typography.Text>
                     )}
@@ -252,7 +252,7 @@ export default function AppDetailsDrawer({
 
           {Object.keys(r.environments ?? {}).length > 0 && (
             <div>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 Environments
               </Typography.Text>
               <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
@@ -267,13 +267,13 @@ export default function AppDetailsDrawer({
 
           {metadata.length > 0 && (
             <div>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 Metadata
               </Typography.Text>
               <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
                 {metadata.map(([k, v]) => (
-                  <div key={k} style={{ display: "flex", gap: 10, fontSize: 12.5 }}>
-                    <Typography.Text type="secondary" className="mono" style={{ fontSize: 12, minWidth: 110 }}>
+                  <div key={k} style={{ display: "flex", gap: 10, fontSize: "var(--text-small)" }}>
+                    <Typography.Text type="secondary" className="mono" style={{ fontSize: "var(--text-small)", minWidth: 110 }}>
                       {k}
                     </Typography.Text>
                     <span style={{ overflowWrap: "anywhere" }}>{v}</span>
@@ -284,7 +284,7 @@ export default function AppDetailsDrawer({
           )}
 
           <div>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
               Recent activity
             </Typography.Text>
             {changesQ.isLoading ? (
@@ -307,11 +307,11 @@ export default function AppDetailsDrawer({
                     <Space direction="vertical" size={0} style={{ width: "100%" }}>
                       <Space wrap size={6}>
                         <StateTag state={cr.state} />
-                        <Typography.Text strong style={{ fontSize: 13 }}>
+                        <Typography.Text strong style={{ fontSize: "var(--text-body)" }}>
                           {cr.title}
                         </Typography.Text>
                       </Space>
-                      <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                         {cr.author} · {cr.items?.length ?? 0} change{(cr.items?.length ?? 0) === 1 ? "" : "s"} · {relTime(cr.updatedAt)}
                       </Typography.Text>
                     </Space>
@@ -335,7 +335,7 @@ function StatCard({ title, value, tone }: { title: string; value: number; tone?:
         padding: "10px 14px",
       }}
     >
-      <Statistic title={title} value={value} valueStyle={{ fontSize: 20, color: tone }} />
+      <Statistic title={title} value={value} valueStyle={{ fontSize: "var(--text-heading)", color: tone }} />
     </div>
   );
 }

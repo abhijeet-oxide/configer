@@ -92,7 +92,7 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
           title={`Branch ${st.branch}`}
           style={{ fontSize: "var(--fs-11)" }}
         >
-          <BranchesOutlined style={{ fontSize: 11 }} />
+          <BranchesOutlined style={{ fontSize: "var(--text-caption)" }} />
           {st.branch}
         </span>
       )}
@@ -109,14 +109,14 @@ export default function AppContextChips({ showDraft = true }: { showDraft?: bool
           title="Instances in this application"
           style={{ fontSize: "var(--fs-11)" }}
         >
-          <ClusterOutlined style={{ fontSize: 11 }} />
+          <ClusterOutlined style={{ fontSize: "var(--text-caption)" }} />
           {repo.instances} instance{repo.instances === 1 ? "" : "s"}
         </span>
       )}
       {authEnabled && !loading && !canEdit && (
         <Tooltip title={whyViewOnly}>
           <span style={{ display: "inline-flex" }}>
-            <StatusPill tone="neutral" icon={<EyeOutlined style={{ fontSize: 11 }} />}>
+            <StatusPill tone="neutral" icon={<EyeOutlined style={{ fontSize: "var(--text-caption)" }} />}>
               View only
             </StatusPill>
           </span>

@@ -76,8 +76,10 @@ type StyleName =
   | "headerRecentlyMoved"
   | "headerResizing"
   | "pinIndicator"
+  | "placeholderBar"
   | "preferenceDropdown"
   | "reorderGuide"
+  | "refreshing"
   | "reorderTooltip"
   | "resizeGuide"
   | "resizeHandle"
@@ -169,13 +171,127 @@ export type TableEnhancedProps<RecordType extends AnyRecord = AnyRecord> =
 
 const STORAGE_PREFIX = "antd-table-enhanced";
 const STORAGE_WRITE_DEBOUNCE_MS = 240;
-const REORDER_TOOLTIP_CLASS = "antd-table-enhanced-reorder-tooltip";
+
+/* HOW MANY ROWS A TABLE SHOWS, in one place.
+ *
+ * One ladder for every paginated table in the product, roughly doubling, so
+ * "a screenful", "a working set" and "everything I am likely to have" are all
+ * one click apart. Per-table literals are what produced the inconsistency this
+ * replaces - 8, 10, 12, 20, 25 and 50 across the application, half of them with
+ * no way to change them at all.
+ *
+ * The strings are what antd's Select wants for its options; DEFAULT_PAGE_SIZE
+ * is the number a table gets when neither the reader nor the call site has
+ * said. Twenty-five rather than antd's ten: these are operational listings
+ * read by scanning, and ten rows puts a pager under every one of them. */
+const PAGE_SIZE_OPTIONS = ["10", "25", "50", "100", "200"];
+const DEFAULT_PAGE_SIZE = 25;
+/* The remembered page size lives beside the column layout under its own
+ * suffix rather than inside TableEnhancedState, and that is deliberate: that
+ * state is the COLUMN layout, with its own equality test, its own "is any of
+ * this worth writing" check and a Reset layout action that must not silently
+ * throw the reader's page size away with their column widths. */
+const PAGE_SIZE_SUFFIX = ":pageSize";
 
 /**
- * Keeps AntD Dropdown overlays above Modal, Drawer, Mask, etc.
- * AntD Modal default z-index is usually 1000.
+ * The page size a SERVER-PAGED table should fetch, and the setter its pager
+ * calls.
+ *
+ * # Why a hook rather than only the default above
+ *
+ * A table that pages in the browser can be handed rows and left alone: the
+ * pager slices them, and the tablekit remembers the size. A table that pages on
+ * the SERVER cannot - the page size is part of the request, so the component
+ * has to know it before it fetches, and the pager it renders is controlled.
+ * Those tables consequently all shipped with `showSizeChanger: false`, which is
+ * why "how many rows can I see" had a different answer on Activity and
+ * Downloads than on Policies.
+ *
+ * This is the same remembered value, readable before the first fetch, so both
+ * kinds of table offer the same choices out of the same store. Spell the pager
+ * as:
+ *
+ *     const [pageSize, setPageSize] = useTablePageSize('downloads-ongoing')
+ *     pagination={{ current, pageSize, onShowSizeChange: (_, n) => setPageSize(n), ... }}
+ *
+ * `tableEnhancedKey` is the argument, not a storage key, so the size follows
+ * the same table identity its column layout does.
  */
-const DROPDOWN_OVERLAY_Z_INDEX = 9999;
+export function useTablePageSize(
+  tableEnhancedKey: string,
+  fallback: number = DEFAULT_PAGE_SIZE,
+): [number, (size: number) => void] {
+  const storageKey = `${STORAGE_PREFIX}:${tableEnhancedKey}`;
+  const [size, setSize] = React.useState<number>(
+    () => readPageSize(storageKey) ?? fallback,
+  );
+  const choose = React.useCallback(
+    (next: number) => {
+      setSize(next);
+      writePageSize(storageKey, next, undefined);
+    },
+    [storageKey],
+  );
+  return [size, choose];
+}
+
+/** Every page size a pager offers, for a call site rendering its own. */
+export const TABLE_PAGE_SIZE_OPTIONS = PAGE_SIZE_OPTIONS;
+
+/** The page size this person last chose for this table, if any. */
+function readPageSize(
+  storageKey: string,
+  storage?: Storage,
+  debug?: boolean,
+): number | undefined {
+  const store = storage ?? getDefaultStorage();
+  if (!store) return undefined;
+  try {
+    const raw = store.getItem(storageKey + PAGE_SIZE_SUFFIX);
+    if (!raw) return undefined;
+    const value = Number(raw);
+    // Only a size that is actually on offer. A stored 37 - a hand-edited key,
+    // or an option this build no longer has - would leave the pager showing a
+    // count no menu entry matches, which reads as the selector being broken
+    // again.
+    return PAGE_SIZE_OPTIONS.includes(String(value)) ? value : undefined;
+  } catch (error) {
+    // Private browsing, storage disabled by policy. A preference that cannot
+    // be read must never stop a table rendering.
+    debugWarn(debug, "Could not read page size", error);
+    return undefined;
+  }
+}
+
+/** Remembers a page size for this table, on this device. */
+function writePageSize(
+  storageKey: string,
+  size: number,
+  storage?: Storage,
+  debug?: boolean,
+) {
+  const store = storage ?? getDefaultStorage();
+  if (!store) return;
+  try {
+    store.setItem(storageKey + PAGE_SIZE_SUFFIX, String(size));
+  } catch (error) {
+    // The session keeps the choice; it just will not be remembered.
+    debugWarn(debug, "Could not store page size", error);
+  }
+}
+const REORDER_TOOLTIP_CLASS = "antd-table-enhanced-reorder-tooltip";
+
+// STACKING IS ANT DESIGN'S JOB, and these overlays used to take it away from
+// it with a flat z-index of 9999.
+//
+// A Dropdown inside a Modal or a Drawer reads its container's z-index from
+// ZIndexContext and lands fifty above it, which is what the hard-coded number
+// was reaching for. The number only ever matched by luck, and it broke
+// everything BELOW the dropdown in the same tree: a Tooltip nested inside one
+// inherits 9999 and adds its own offset, which is the
+// `zIndex is over design token zIndexPopupBase too much` warning. Setting no
+// z-index at all is the fix; getPopupContainer below still escapes the
+// stacking context that made this look necessary.
 
 function getDefaultDropdownPopupContainer(
   triggerNode: HTMLElement,
@@ -1552,15 +1668,26 @@ function createHeaderCell(ExistingHeaderCell?: any) {
       enhancedOnContextMenuOpenChange(enhancedColumnKey, true);
     };
 
+    // A focusable separator is a widget, so it has to report its value: the
+    // column's current width, within the same floor the pointer drag clamps to.
+    // Named by the column's visible label rather than its internal key.
+    const resizeWidth =
+      typeof enhancedWidth === "number" ? Math.round(enhancedWidth) : enhancedMinColumnWidth;
     const resizeHandle =
       controlsEnabled && enhancedResizeEnabled && enhancedColumnKey ? (
         <span
           className={cx(s.control, s.resizeHandle)}
           title="Drag to resize. Use Left/Right arrow keys for keyboard resize."
-          aria-label={`Resize column ${enhancedColumnKey}`}
+          aria-label={`Resize column ${
+            enhancedColumnLabel || getColumnDisplayLabel(enhancedColumnKey, enhancedColumnTitle)
+          }`}
           role="separator"
           tabIndex={0}
           aria-orientation="vertical"
+          aria-valuenow={resizeWidth}
+          aria-valuemin={enhancedMinColumnWidth}
+          aria-valuemax={Math.max(resizeWidth, 1200)}
+          aria-valuetext={`${resizeWidth} pixels`}
           onPointerDown={handleResizePointerDown}
           onKeyDown={handleResizeKeyDown}
           onClick={(event) => {
@@ -1648,11 +1775,12 @@ function createHeaderCell(ExistingHeaderCell?: any) {
         getPopupContainer={
           enhancedGetPopupContainer ?? getDefaultDropdownPopupContainer
         }
-        overlayClassName={s.preferenceDropdown}
-        overlayStyle={{
-          width: "max-content",
-          minWidth: 240,
-          zIndex: DROPDOWN_OVERLAY_Z_INDEX,
+        classNames={{ root: s.preferenceDropdown }}
+        styles={{
+          root: {
+            width: "max-content",
+            minWidth: 240,
+          },
         }}
         onOpenChange={(open) => {
           enhancedOnContextMenuOpenChange(enhancedColumnKey, open);
@@ -1683,102 +1811,82 @@ type ContextMenuState = {
   columnTitle?: React.ReactNode;
 } | null;
 
-/**
- * Hand the leftover width to ONE column instead of letting the browser share
- * it out.
- *
- * See the call site for why: with `table-layout: fixed` and `min-width: 100%`,
- * a surplus is distributed over every column in proportion, so narrowing one
- * gives most of the space straight back to it and resizing appears not to
- * work at all.
- *
- * Returns the columns unchanged when there is nothing to do - no measurement
- * yet, no surplus, or any visible column without a numeric width, in which
- * case there is no reliable total to subtract from.
- */
-/** The effective width of one column: what was dragged, else what was declared. */
-function effectiveWidth<RecordType extends AnyRecord>(
-  column: TableEnhancedColumns<RecordType>[number],
-  index: number,
-  widths: Record<string, number | undefined>,
-): number | undefined {
-  const key = getColumnKey(column as TableEnhancedColumn<RecordType>, [index]);
-  const stored = widths[key];
-  if (typeof stored === "number") return stored;
-  const declared = (column as { width?: unknown }).width;
-  return typeof declared === "number" ? declared : undefined;
-}
-
-/**
- * What the columns add up to, or undefined when any of them will not say.
- *
- * This is the table's width. See finalScroll for why it is not `max-content`.
- */
-function totalWidthOf<RecordType extends AnyRecord>(
-  columns: TableEnhancedColumns<RecordType>,
-  widths: Record<string, number | undefined>,
-): number | undefined {
-  if (!columns.length) return undefined;
-  let total = 0;
-  for (let i = 0; i < columns.length; i++) {
-    const width = effectiveWidth(columns[i]!, i, widths);
-    if (width === undefined) return undefined;
-    total += width;
-  }
-  return total;
-}
-
-function spreadSurplus<RecordType extends AnyRecord>(
+function fitColumnWidths<RecordType extends AnyRecord>(
   columns: TableEnhancedColumns<RecordType>,
   available: number,
+  minimumTableWidth: number,
   pinned: Record<string, PinSide | undefined>,
   widths: Record<string, number | undefined>,
-): TableEnhancedColumns<RecordType> {
-  if (!columns.length || available <= 0) return columns;
+  defaultColumnWidth: number,
+) {
+  const leaves: Array<{
+    key: string;
+    width: number;
+    canGrow: boolean;
+    wasResized: boolean;
+  }> = [];
 
-  /* The EFFECTIVE width, which is the persisted one where a person has
-   * dragged this column - not the width the call site declared.
-   * decorateColumns applies the persisted widths after this runs, so totalling
-   * the declared ones computes a surplus for a layout that is about to be
-   * replaced: the first drag then shrank the column, the total silently went
-   * back down, and the browser re-spread the difference over every column.
-   * The column being dragged got most of it back and looked stuck. */
-  const effective = (column: TableEnhancedColumns<RecordType>[number], i: number) =>
-    effectiveWidth(column, i, widths);
+  const visit = (
+    current: TableEnhancedColumns<RecordType>,
+    indexPath: number[] = [],
+    fixedAncestor = false,
+  ) => {
+    current.forEach((column, index) => {
+      const path = [...indexPath, index];
+      const key = getColumnKey(column, path);
+      const fixed = fixedAncestor || Boolean(column.fixed) || Boolean(pinned[key]);
 
-  let total = 0;
-  for (let i = 0; i < columns.length; i++) {
-    const width = effective(columns[i]!, i);
-    if (width === undefined) return columns;
-    total += width;
+      if (column.children?.length) {
+        visit(column.children, path, fixed);
+        return;
+      }
+
+      const stored = widths[key];
+      leaves.push({
+        key,
+        width: stored ?? numericWidth(column.width) ?? defaultColumnWidth,
+        canGrow: !fixed,
+        wasResized: stored !== undefined,
+      });
+    });
+  };
+
+  visit(columns);
+
+  const fitted = Object.fromEntries(leaves.map((leaf) => [leaf.key, leaf.width]));
+  const naturalWidth = leaves.reduce((sum, leaf) => sum + leaf.width, 0);
+  const targetWidth = Math.max(naturalWidth, available, minimumTableWidth);
+  const surplus = targetWidth - naturalWidth;
+
+  if (surplus <= 1 || leaves.length === 0) {
+    return { widths: fitted, total: naturalWidth };
   }
 
-  // A hair of slack, so a rounding difference does not add a pixel forever.
-  const surplus = available - total;
-  if (surplus <= 1) return columns;
-
-  let target = -1;
-  for (let i = columns.length - 1; i >= 0; i--) {
-    const key = getColumnKey(columns[i] as TableEnhancedColumn<RecordType>, [i]);
-    const fixed = (columns[i] as { fixed?: unknown }).fixed;
-    if (!pinned[key] && !fixed) {
-      target = i;
-      break;
-    }
+  let growing = leaves.filter((leaf) => leaf.canGrow && !leaf.wasResized);
+  if (growing.length === 0) {
+    const growable = leaves.filter((leaf) => leaf.canGrow);
+    growing = [growable[growable.length - 1] ?? leaves[leaves.length - 1]!];
   }
-  if (target < 0) return columns;
 
-  return columns.map((column, i) =>
-    i === target
-      ? { ...column, width: (effective(column, i) ?? 0) + surplus }
-      : column,
-  ) as TableEnhancedColumns<RecordType>;
+  const growingWidth = growing.reduce((sum, leaf) => sum + leaf.width, 0);
+  let remaining = surplus;
+
+  growing.forEach((leaf, index) => {
+    const extra = index === growing.length - 1
+      ? remaining
+      : Math.round(surplus * (leaf.width / growingWidth));
+    fitted[leaf.key] = (fitted[leaf.key] ?? leaf.width) + extra;
+    remaining -= extra;
+  });
+
+  return { widths: fitted, total: targetWidth };
 }
 
 function decorateColumns<RecordType extends AnyRecord>(
   columns: TableEnhancedColumns<RecordType>,
   options: {
     widths: Record<string, number>;
+    fittedWidths: Record<string, number>;
     recentlyMovedKeys: string[];
     enableColumnResize: boolean;
     enableColumnReorder: boolean;
@@ -1805,6 +1913,7 @@ function decorateColumns<RecordType extends AnyRecord>(
 ): TableEnhancedColumns<RecordType> {
   const {
     widths,
+    fittedWidths,
     recentlyMovedKeys,
     enableColumnResize,
     enableColumnReorder,
@@ -1854,7 +1963,7 @@ function decorateColumns<RecordType extends AnyRecord>(
 
     const finalWidth = hasChildren
       ? (persistedWidth ?? existingWidth)
-      : (persistedWidth ?? existingWidth ?? defaultColumnWidth);
+      : (fittedWidths[columnKey] ?? persistedWidth ?? existingWidth ?? defaultColumnWidth);
 
     const resizeEnabled =
       enableColumnResize && !hasChildren && isResizeEnabledForColumn(column);
@@ -2174,6 +2283,43 @@ type ToolbarColumnItem = {
   visible: boolean;
 };
 
+const PLACEHOLDER_KEY = "__tablekitPlaceholder";
+const PLACEHOLDER_WIDTHS = [72, 54, 86, 62, 46, 78, 58, 68];
+
+/* A first load draws rows in the real columns, at the real widths, so the table
+ * has its final shape before the data arrives. Ant Design's own answer is a
+ * spinner over its "No data" glyph, which reads for a moment as an empty
+ * estate. Every per-record callback is replaced: a call site's render, sorter
+ * or onCell expects its own record type and would throw on a placeholder. */
+function placeholderColumns<RecordType>(
+  columns: ColumnsType<RecordType> | undefined,
+): ColumnsType<RecordType> | undefined {
+  let leaf = 0;
+  const walk = (cols: ColumnsType<RecordType>): ColumnsType<RecordType> =>
+    cols.map((col) => {
+      if ("children" in col && col.children) {
+        return { ...col, children: walk(col.children) };
+      }
+      const offset = leaf++;
+      return {
+        ...col,
+        sorter: col.sorter ? true : undefined,
+        onFilter: undefined,
+        onCell: undefined,
+        render: (_: unknown, __: unknown, index: number) => (
+          <span
+            className={s.placeholderBar}
+            style={{
+              width: `${PLACEHOLDER_WIDTHS[(offset * 3 + index) % PLACEHOLDER_WIDTHS.length]}%`,
+              animationDelay: `${index * 70}ms`,
+            }}
+          />
+        ),
+      } as ColumnsType<RecordType>[number];
+    });
+  return columns ? walk(columns) : columns;
+}
+
 function InnerTable<RecordType extends AnyRecord = AnyRecord>(
   props: TableEnhancedProps<RecordType>,
   ref: React.Ref<any>,
@@ -2202,6 +2348,7 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     className,
     dataSource,
     pagination,
+    loading,
     toolbarExtra,
     onTableEnhancedColumnResize,
     onTableEnhancedColumnReorder,
@@ -2251,6 +2398,7 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
    * are set together in the effect below finalScroll. */
   const [overflowsX, setOverflowsX] = React.useState(true);
   const [availableX, setAvailableX] = React.useState(0);
+  const [reservedX, setReservedX] = React.useState(0);
 
   React.useEffect(() => {
     persistedRef.current = persisted;
@@ -2984,38 +3132,30 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     [],
   );
 
+  const fittedColumns = React.useMemo(() => fitColumnWidths(
+    visibleOrderedColumns,
+    Math.max(0, availableX - reservedX),
+    typeof scroll?.x === "number" ? Math.max(0, scroll.x - reservedX) : 0,
+    effectivePinned,
+    persisted.widths,
+    defaultColumnWidth,
+  ), [
+    visibleOrderedColumns,
+    availableX,
+    reservedX,
+    scroll?.x,
+    effectivePinned,
+    persisted.widths,
+    defaultColumnWidth,
+  ]);
+
   const finalColumns = React.useMemo(() => {
     if (!columns) return columns;
 
-    // The handlers below close over refs, and the lint rule cannot see that
-    // none of them RUNS during render: they are handed to the header cells and
-    // called from a pointer event, a drag or a menu click. Reading a ref there
-    // is exactly what refs are for.
-    /* THE SURPLUS GOES TO ONE COLUMN, or resizing does nothing.
-     *
-     * Ant Design lays the table out `table-layout: fixed` with
-     * `min-width: 100%`. When the columns' widths add up to LESS than the
-     * table - six columns totalling 1048 in a 1319 box, which is the ordinary
-     * case - the browser shares the surplus across every column in
-     * proportion. Dragging a column narrower then hands it most of that space
-     * straight back: the stored width fell to 180 and the column still
-     * rendered at 313, so every column on the page felt stuck.
-     *
-     * Giving the whole surplus to a single column makes every OTHER column
-     * exactly as wide as it says it is, which is what makes a drag move it.
-     * The last unpinned column takes it, because a pinned one is pinned for
-     * being narrow and fixed, and the rightmost column is the one with least
-     * to say about its own width.
-     *
-     * Only when everything visible has a number: with one width missing the
-     * browser is already doing something reasonable, and there is no surplus
-     * to compute. */
-    const spread = spreadSurplus(
-      visibleOrderedColumns, availableX, effectivePinned, persisted.widths);
-
     // eslint-disable-next-line react-hooks/refs
-    return decorateColumns(spread, {
+    return decorateColumns(visibleOrderedColumns, {
       widths: persisted.widths,
+      fittedWidths: fittedColumns.widths,
       recentlyMovedKeys,
       enableColumnResize,
       enableColumnReorder,
@@ -3036,7 +3176,7 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
   }, [
     columns,
     visibleOrderedColumns,
-    availableX,
+    fittedColumns.widths,
     persisted.widths,
     recentlyMovedKeys,
     enableColumnResize,
@@ -3068,62 +3208,16 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     };
   }, [components]);
 
-  /* The table is as wide as its COLUMNS SAY, whenever they all say.
-   *
-   * `max-content` was the width everywhere, and it is the reason a column
-   * could not be resized. Under `table-layout: fixed` a colgroup width is
-   * supposed to be authoritative and the content is supposed to ellipsise -
-   * but sizing the table itself by `max-content` puts content-based sizing
-   * back: the browser measures each cell's longest unbreakable content and
-   * lets that beat the column width. Dragging the Release column to 180
-   * stored 180, wrote 180 into the colgroup, and rendered 275, because that
-   * is what its name measured.
-   *
-   * Summing the effective widths - the dragged ones where somebody has
-   * dragged - cannot drift the way a hand-maintained number would, which is
-   * the reason every call site reached for `max-content` in the first place.
-   * It also gives an honest scroll: wider than the box means the table really
-   * does need scrolling, and spreadSurplus has already made the two equal
-   * when there was room to spare.
-   *
-   * Falls back to `max-content` when any visible column has no width, because
-   * then there is no total to compute and the browser's own measurement is
-   * the best answer available. */
-  const totalColumnWidth = React.useMemo(
-    () => totalWidthOf(visibleOrderedColumns, persisted.widths),
-    [visibleOrderedColumns, persisted.widths],
-  );
-
   const finalScroll = React.useMemo(() => {
-    const x = totalColumnWidth ?? "max-content";
+    const x = fittedColumns.total + reservedX;
     if (scroll) {
       return {
         ...scroll,
-        // An explicit numeric x from a call site still wins: it is asking for
-        // something specific. `max-content` does not, because that is the
-        // default this replaces.
-        x: typeof scroll.x === "number" ? scroll.x : x,
+        x,
       };
     }
     return { x };
-  }, [scroll, totalColumnWidth]);
-
-  /* A table that FITS must not offer to scroll.
-   *
-   * `scroll.x: max-content` is what makes a resized column able to push the
-   * table wider than its container, so it cannot simply be dropped. But it
-   * also makes Ant Design wrap the table in an `overflow: auto` box
-   * unconditionally, and a box like that is scrollable whenever its content is
-   * one sub-pixel wider than it is - which, with borders and a fractional
-   * column width, it very often is. The result was a scrollbar under tables
-   * with room to spare, and a couple of pixels of travel that felt like a bug
-   * because it was one.
-   *
-   * So the LAYOUT is left alone and only the overflow is clamped: measure the
-   * real scroller, and when the content is within a rounding error of its box,
-   * a class turns overflow-x off. Toggling a paint property rather than the
-   * table layout is what stops this oscillating - removing `x` would relayout
-   * the table, which could stop it overflowing, which would put `x` back. */
+  }, [scroll, fittedColumns.total, reservedX]);
 
   React.useEffect(() => {
     const root = wrapperRef.current;
@@ -3153,8 +3247,13 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     const measure = () => {
       const el = scrollerOf();
       if (!el) return;
+      const table = el.querySelector("table");
+      const reserved = Array.from(table?.querySelectorAll<HTMLElement>(
+        "col.ant-table-expand-icon-col, col.ant-table-selection-col",
+      ) ?? []).reduce((sum, col) => sum + col.getBoundingClientRect().width, 0);
       setOverflowsX(el.scrollWidth - el.clientWidth > SLACK);
       setAvailableX(el.clientWidth);
+      setReservedX(Math.round(reserved));
     };
 
     measure();
@@ -3358,8 +3457,29 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     </div>
   );
 
+  const busy = typeof loading === "object" && loading !== null
+    ? Boolean(loading.spinning ?? true)
+    : Boolean(loading);
+  const refreshDelay = typeof loading === "object" && loading !== null ? loading.delay ?? 0 : 0;
+  const placeholder = busy && (!Array.isArray(dataSource) || dataSource.length === 0);
+  const refreshing = busy && !placeholder;
+
+  const placeholderCount = Math.min(
+    typeof pagination === "object" && pagination?.pageSize ? pagination.pageSize : 6,
+    8,
+  );
+  const placeholderRows = React.useMemo(
+    () => Array.from({ length: placeholderCount }, (_, i) => ({ [PLACEHOLDER_KEY]: i }) as unknown as RecordType),
+    [placeholderCount],
+  );
+  const placeholderCols = React.useMemo(
+    () => (placeholder ? placeholderColumns(finalColumns) : undefined),
+    [placeholder, finalColumns],
+  );
+
   const wrapperClassName = cx(
     s.wrapper,
+    refreshing && s.refreshing,
     tableEnhancedDensity === "compact" && s.densityCompact,
     tableEnhancedDensity === "middle" && s.densityMiddle,
     tableEnhancedDensity === "comfortable" && s.densityComfortable,
@@ -3369,31 +3489,73 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     !overflowsX && s.fitsX,
   );
 
-  /* Pagination appears when there is something to page THROUGH.
-   *
-   * Ant Design shows the pager whenever pagination is configured, so a table
-   * with four rows and a pageSize of twenty rendered a control reading "1" -
-   * a widget offering to take the reader somewhere there is nothing to go.
-   * Call sites had each worked around it separately (`rows.length > 25 ? {...}
-   * : false`, with a different threshold per table) and several had not, so
-   * two tables on the same screen disagreed about whether a single page counts
-   * as pagination.
-   *
-   * The default belongs here, once: hideOnSinglePage unless a call site says
-   * otherwise. `pagination={false}` still means no pager at all, and any table
-   * that genuinely wants to show a lone page can still pass false explicitly.
-   *
-   * size defaults with it. The pager is chrome under a table, not a second
-   * subject, and two tables on one screen wearing different pager heights is
-   * the same inconsistency in a different channel. */
+  /* hideOnSinglePage by default. Ant Design shows a pager of "1" on four
+   * rows. Do not pass pagination.pageSize: that makes the pager controlled,
+   * so the size changer fires, state moves, and the prop overwrites it
+   * (Policies page). Use defaultPageSize unless the table is server-paged
+   * (current + onChange). */
+  const [pageSizeChoice, setPageSizeChoice] = React.useState<number | undefined>(
+    () => readPageSize(storageKey, storage, debug),
+  );
+
   const finalPagination = React.useMemo(() => {
     if (pagination === false || pagination == null) return pagination;
+    // `pagination` is typed as an object or false, but a JavaScript call site
+    // can still pass the bare `true` antd also accepts - and `"current" in
+    // true` throws. Treated as "the defaults, please", which is what it means.
+    if (typeof pagination !== "object") {
+      return {
+        hideOnSinglePage: true,
+        size: "small" as const,
+        showSizeChanger: true,
+        pageSizeOptions: PAGE_SIZE_OPTIONS,
+        defaultPageSize: pageSizeChoice ?? DEFAULT_PAGE_SIZE,
+        onShowSizeChange: (_current: number, size: number) => {
+          setPageSizeChoice(size);
+          writePageSize(storageKey, size, storage, debug);
+        },
+      };
+    }
+
+    /* A call site DRIVING the pager keeps every value it passed.
+     *
+     * `current` or `onChange` means the rows on screen are chosen elsewhere -
+     * a server-paged listing fetching one page at a time - and there the
+     * controlled `pageSize` is the whole mechanism rather than a mistake. Only
+     * the defaults below are added. */
+    const driven = "current" in pagination || typeof pagination.onChange === "function";
+
+    const { pageSize, ...rest } = pagination;
+    const remembered = pageSizeChoice;
+    const chosen = remembered ?? pageSize ?? DEFAULT_PAGE_SIZE;
+
     return {
       hideOnSinglePage: true,
       size: "small" as const,
-      ...pagination,
+      showSizeChanger: true,
+      pageSizeOptions: PAGE_SIZE_OPTIONS,
+      /* REMEMBERED, so the choice survives leaving the page.
+       *
+       * Keyed with the column layout, because it is the same kind of fact: how
+       * this person wants to read this table. A page size that reset on every
+       * navigation is a preference the reader has to re-state every time they
+       * come back, which is how they learn to stop setting it. */
+      onShowSizeChange: (_current: number, size: number) => {
+        setPageSizeChoice(size);
+        writePageSize(storageKey, size, storage, debug);
+      },
+      ...(driven ? { pageSize } : { defaultPageSize: chosen }),
+      ...rest,
+      /* A remembered size wins over the call site's, and only for a table the
+       * call site is not driving: the reader chose it, on this table, and the
+       * literal in the source is the default they were choosing away from.
+       *
+       * After `...rest` so it cannot be undone by the spread, and dropped
+       * entirely when driven - there the call site's `pageSize` above is the
+       * page it actually fetched. */
+      ...(driven || remembered === undefined ? {} : { defaultPageSize: remembered }),
     };
-  }, [pagination]);
+  }, [pagination, pageSizeChoice, storageKey, storage, debug]);
 
   const showToolbar = allow_export || show_column_visibility || Boolean(toolbarExtra);
 
@@ -3401,6 +3563,8 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
     <div
       ref={wrapperRef}
       className={wrapperClassName}
+      aria-busy={busy || undefined}
+      style={refreshing ? ({ "--tk-refresh-delay": `${refreshDelay}ms` } as React.CSSProperties) : undefined}
       data-antd-table-enhanced-wrapper="true"
       data-antd-table-enhanced-key={tableEnhancedKey || storageKey}
       data-antd-table-enhanced-toolbar-placement={toolbarPlacement}
@@ -3413,7 +3577,7 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
 
           <Tag color="geekblue">Columns: {originalColumns.length}</Tag>
 
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: 'var(--text-small)' }}>
             Key: {tableEnhancedKey || storageKey}
           </Typography.Text>
 
@@ -3449,10 +3613,7 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
                 trigger={["click"]}
                 open={exportOpen}
                 onOpenChange={setExportOpen}
-                overlayClassName={s.toolbarDropdown}
-                overlayStyle={{
-                  zIndex: DROPDOWN_OVERLAY_Z_INDEX,
-                }}
+                classNames={{ root: s.toolbarDropdown }}
                 menu={{
                   items: exportMenuItems,
                   onClick: ({ key }) => {
@@ -3492,11 +3653,8 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
                   setColumnVisibilityOpen(open);
                   if (open) setColumnSearch("");
                 }}
-                overlayClassName={s.columnVisibilityOverlay}
-                overlayStyle={{
-                  zIndex: DROPDOWN_OVERLAY_Z_INDEX,
-                }}
-                dropdownRender={() => columnVisibilityDropdown}
+                classNames={{ root: s.columnVisibilityOverlay }}
+                popupRender={() => columnVisibilityDropdown}
               >
                 <Tooltip title="Columns">
                   <Button
@@ -3515,13 +3673,23 @@ function InnerTable<RecordType extends AnyRecord = AnyRecord>(
       <AntTable<RecordType>
         ref={ref}
         {...restProps}
+        {...(placeholder && {
+          onRow: undefined,
+          rowClassName: undefined,
+          summary: undefined,
+          expandable: restProps.expandable && { ...restProps.expandable, rowExpandable: () => false },
+          rowSelection: restProps.rowSelection && {
+            ...restProps.rowSelection,
+            getCheckboxProps: () => ({ disabled: true }),
+          },
+        })}
         className={className}
-        dataSource={dataSource}
-        rowKey={rowKey}
-        columns={finalColumns}
+        dataSource={placeholder ? placeholderRows : dataSource}
+        rowKey={placeholder ? PLACEHOLDER_KEY : rowKey}
+        columns={placeholder ? placeholderCols : finalColumns}
         components={mergedComponents}
         tableLayout={tableLayout ?? "fixed"}
-        pagination={finalPagination}
+        pagination={placeholder ? false : finalPagination}
         scroll={finalScroll}
       />
     </div>

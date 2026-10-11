@@ -191,7 +191,7 @@ export default function InstancesGeography({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           Where this application runs. A pin comes from the instance's region, read from its name
           unless somebody set it. Drag to move, scroll to zoom, click a pin to open the instance.
         </Typography.Text>
@@ -275,7 +275,7 @@ export default function InstancesGeography({
                           x={p.x}
                           y={p.y - r * 1.9}
                           className="cf-geo-label"
-                          style={{ fontSize: 12 / transform.k }}
+                          style={{ fontSize: `calc(var(--text-small) / ${transform.k})` }}
                         >
                           {p.region}
                         </text>

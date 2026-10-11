@@ -582,7 +582,7 @@ export default function FilesView() {
         <span className="text-[11px] font-semibold tracking-wide text-ink-3 uppercase">Explorer</span>
         <span className="ml-auto" />
         <Tooltip title="Hide the explorer">
-          <Button size="small" type="text" icon={<DoubleLeftOutlined style={{ fontSize: 10 }} />} onClick={toggleTree} />
+          <Button size="small" type="text" icon={<DoubleLeftOutlined style={{ fontSize: "var(--text-micro)" }} />} onClick={toggleTree} />
         </Tooltip>
       </div>
       <div className="px-2 pb-1.5">
@@ -630,7 +630,7 @@ export default function FilesView() {
         )}
         <div className="flex min-w-0 items-center gap-2">
           {statusQ.data?.branch && (
-            <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{statusQ.data.branch}</MonoChip>
+            <MonoChip icon={<BranchesOutlined style={{ fontSize: "var(--text-micro)" }} />}>{statusQ.data.branch}</MonoChip>
           )}
           <Select
             size="small"
@@ -649,7 +649,7 @@ export default function FilesView() {
                 label: (
                   <span className="inline-flex items-center gap-1.5">
                     All instances
-                    <Tag style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>{instances.length}</Tag>
+                    <Tag style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>{instances.length}</Tag>
                   </span>
                 ),
               },
@@ -660,10 +660,10 @@ export default function FilesView() {
                   <span className="inline-flex items-center gap-1.5">
                     {i.name}
                     {i.status === "draft" && (
-                      <Tag color="processing" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>new</Tag>
+                      <Tag color="processing" style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>new</Tag>
                     )}
                     {i.status === "retiring" && (
-                      <Tag color="warning" style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>retiring</Tag>
+                      <Tag color="warning" style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>retiring</Tag>
                     )}
                   </span>
                 ),
@@ -854,13 +854,13 @@ export default function FilesView() {
               {problem.snippet && (
                 <>
                   {" "}
-                  <code className="mono" style={{ fontSize: 11 }}>{problem.snippet}</code>
+                  <code className="mono" style={{ fontSize: "var(--text-caption)" }}>{problem.snippet}</code>
                 </>
               )}
             </span>
           }
           description={
-            <span style={{ fontSize: 12 }}>
+            <span style={{ fontSize: "var(--text-small)" }}>
               Nothing was staged, and your typing is untouched. Fix the line and it saves itself.
             </span>
           }
@@ -919,7 +919,7 @@ export default function FilesView() {
                 onClick={toggleTree}
                 title="Show the explorer"
               >
-                <DoubleRightOutlined style={{ fontSize: 10, opacity: 0.7 }} />
+                <DoubleRightOutlined style={{ fontSize: "var(--text-micro)", opacity: 0.7 }} />
                 <span
                   className="text-xs text-ink-3"
                   style={{ writingMode: "vertical-rl", letterSpacing: 0.3 }}

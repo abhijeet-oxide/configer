@@ -21,16 +21,25 @@
   --sp-7: 28px;
   --sp-8: 32px;
 
+  --shell-nav-width: 236px;
+  --shell-nav-collapsed-width: 64px;
+  --shell-nav-item-height: 34px;
+  --shell-topbar-height: 56px;
+  --shell-nav-brand-padding: 18px 20px 18px;
+  --shell-nav-brand-collapsed-padding: 14px 0 10px;
+  --shell-nav-items-padding: 4px 12px;
+  --shell-nav-foot-padding: 8px 12px 12px;
+
   /* Radius. Generous, and the whole ramp moved up together: a 4px corner on a
      card next to an 8px corner on the button inside it is what makes a layout
      read as assembled. Pills are for status only.
 
      The values are the platform's own: 6 on a small control, 8 on a button or
-     an input, 12 on a card, 18 on a sheet or a dialog. */
+     an input, 14 on a card, 20 on a sheet or a dialog. */
   --r-sm: 6px;
   --r-md: 8px;
-  --r-lg: 12px;
-  --r-xl: 18px;
+  --r-lg: 14px;
+  --r-xl: 20px;
   --r-pill: 999px;
 
   /* --- elevation ----------------------------------------------------------
@@ -44,14 +53,14 @@
      and stays one device pixel on a retina display - which is the difference
      between a crisp edge and a grey line drawn around everything. */
   --el-1:
-    0 0 0 0.5px rgba(16, 24, 40, 0.05), 0 1px 1px rgba(16, 24, 40, 0.04),
-    0 3px 8px -2px rgba(16, 24, 40, 0.06);
+    0 0 0 0.5px rgba(16, 35, 50, 0.04), 0 1px 2px rgba(16, 35, 50, 0.04),
+    0 4px 12px -4px rgba(16, 35, 50, 0.06);
   --el-2:
-    0 0 0 0.5px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.05),
-    0 10px 24px -6px rgba(16, 24, 40, 0.12);
+    0 0 0 0.5px rgba(16, 35, 50, 0.05), 0 1px 2px rgba(16, 35, 50, 0.05),
+    0 12px 28px -8px rgba(16, 35, 50, 0.11);
   --el-3:
-    0 0 0 0.5px rgba(16, 24, 40, 0.06), 0 2px 4px rgba(16, 24, 40, 0.05),
-    0 28px 56px -16px rgba(16, 24, 40, 0.18);
+    0 0 0 0.5px rgba(16, 35, 50, 0.06), 0 2px 4px rgba(16, 35, 50, 0.05),
+    0 28px 56px -16px rgba(16, 35, 50, 0.18);
 
   /* The one soft-UI token that survived, and it earns its place: a single
      hairline of light along a surface's TOP edge is what a real bevel looks
@@ -119,13 +128,17 @@
     sans-serif;
   --font-mono: ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo,
     Consolas, "Liberation Mono", monospace;
-  --fs-11: 11px;
-  --fs-12: 12px;
-  --fs-13: 13px;
-  --fs-14: 14px;
-  --fs-16: 16px;
-  --fs-20: 20px;
-  --fs-24: 24px;
+  /* ThemeProvider fills the semantic variables from typography.ts before
+     paint. These aliases keep the kit's existing CSS on that central scale. */
+  --fs-11: var(--text-caption);
+  --fs-12: var(--text-small);
+  --fs-13: var(--text-body);
+  --fs-14: var(--text-label);
+  --fs-15: var(--text-subtitle);
+  --fs-16: var(--text-emphasis);
+  --fs-18: var(--text-title);
+  --fs-20: var(--text-heading);
+  --fs-24: var(--text-display);
 
   /* Tracking, as a scale rather than a number typed at each call site. Type
      tightens as it gets bigger - that is optical, not stylistic: the same
@@ -185,26 +198,19 @@
    hand-rolled surfaces answer to the same two controls as the component
    library rather than staying at one size while everything around them moves. */
 :root[data-density="compact"] {
+  --sp-2: 6px;
   --sp-3: 10px;
   --sp-4: 12px;
   --sp-5: 16px;
   --sp-6: 18px;
-}
-:root[data-fontscale="small"] {
-  --fs-11: 10px;
-  --fs-12: 11px;
-  --fs-13: 12px;
-  --fs-14: 13px;
-  --fs-16: 15px;
-  --fs-20: 19px;
-  --fs-24: 22px;
-}
-:root[data-fontscale="large"] {
-  --fs-11: 12px;
-  --fs-12: 13px;
-  --fs-13: 14px;
-  --fs-14: 15px;
-  --fs-16: 17px;
-  --fs-20: 22px;
-  --fs-24: 27px;
+  --sp-7: 22px;
+  --sp-8: 26px;
+  --shell-nav-width: 200px;
+  --shell-nav-collapsed-width: 56px;
+  --shell-nav-item-height: 30px;
+  --shell-topbar-height: 42px;
+  --shell-nav-brand-padding: 10px 12px 8px;
+  --shell-nav-brand-collapsed-padding: 10px 0 8px;
+  --shell-nav-items-padding: 2px 6px;
+  --shell-nav-foot-padding: 2px 6px 6px;
 }

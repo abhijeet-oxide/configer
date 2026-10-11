@@ -13,13 +13,13 @@ function CardFor({ row, instances }: { row: Row; instances: Grid["instances"] })
   return (
     <Card size="small" style={{ marginBottom: 8 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
-        <Typography.Text strong className="mono" style={{ fontSize: 13 }}>
+        <Typography.Text strong className="mono" style={{ fontSize: "var(--text-body)" }}>
           {p.name}
         </Typography.Text>
-        <Tag style={{ fontSize: 10, marginInlineEnd: 0 }}>{p.type}</Tag>
+        <Tag style={{ fontSize: "var(--text-micro)", marginInlineEnd: 0 }}>{p.type}</Tag>
       </div>
       {(p.displayName || p.description) && (
-        <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 2 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", display: "block", marginTop: 2 }}>
           {p.displayName || p.description}
         </Typography.Text>
       )}
@@ -39,8 +39,8 @@ function CardFor({ row, instances }: { row: Row; instances: Grid["instances"] })
                     ? "cell-na"
                     : "";
           return (
-            <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>{inst.name}</Typography.Text>
+            <div key={inst.name} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: "var(--text-small)" }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>{inst.name}</Typography.Text>
               <span className={`mono ${cls}`}>
                 {!c.set ? "∅ absent" : c.state === "na" ? "n/a" : fmtValue(c.value)}
               </span>
@@ -80,7 +80,7 @@ export default function MobileParamList({ grid }: { grid: Grid }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
           {rows.length} settings · read-only on phones; edit on a tablet or computer
         </Typography.Text>
       </div>

@@ -431,9 +431,9 @@ export default function GroupEditorModal({
       onCancel={() => onClose()}
       title={
         <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-          <span className="mono" style={{ fontSize: 15 }}>{leaf}</span>
+          <span className="mono" style={{ fontSize: "var(--text-subtitle)" }}>{leaf}</span>
           {route.length > 0 && (
-            <Typography.Text type="secondary" className="mono" style={{ fontSize: 11 }}>
+            <Typography.Text type="secondary" className="mono" style={{ fontSize: "var(--text-caption)" }}>
               {route.join(" / ")}
             </Typography.Text>
           )}
@@ -467,7 +467,7 @@ export default function GroupEditorModal({
               scroll. */}
           <div className="cf-group-head">
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <Typography.Text strong style={{ fontSize: 12 }}>Apply to</Typography.Text>
+              <Typography.Text strong style={{ fontSize: "var(--text-small)" }}>Apply to</Typography.Text>
               {hasInstanceTargets ? (
                 <Select
                   mode="multiple"
@@ -499,14 +499,14 @@ export default function GroupEditorModal({
                         <span className="mono">{i.name}</span>
                         {i.environment && <EnvTag env={i.environment} />}
                         {i.region && (
-                          <Typography.Text type="secondary" style={{ fontSize: 11 }}>{i.region}</Typography.Text>
+                          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>{i.region}</Typography.Text>
                         )}
                       </span>
                     ),
                   }))}
                 />
               ) : (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                   Everything in this group is shared, so there is no instance to choose.
                 </Typography.Text>
               )}
@@ -527,7 +527,7 @@ export default function GroupEditorModal({
                   apart. */}
               {sections.length === 1 ? (
                 <div className="cf-group-sec-head" style={{ marginBottom: 0 }}>
-                  <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: 12 }}>{sections[0].reach}</Typography.Text>
+                  <Typography.Text type="secondary" className="cf-group-reach" style={{ fontSize: "var(--text-small)" }}>{sections[0].reach}</Typography.Text>
                   <Tooltip title={SCOPE_META[sections[0].facet].explain}>
                     <Tag color={SCOPE_META[sections[0].facet].color} style={{ marginInlineEnd: 0, flexShrink: 0 }}>
                       {(() => { const Icon = SCOPE_ICON[sections[0].facet]; return <Icon style={{ marginInlineEnd: 4 }} />; })()}
@@ -613,7 +613,7 @@ export default function GroupEditorModal({
               done anything, which they know. */}
           {pending.length > 0 && (
             <div className="cf-group-foot">
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 {pending.length} field{pending.length === 1 ? "" : "s"} changed
                 {invalid.length ? `, ${invalid.length} not valid yet` : ""}.
               </Typography.Text>

@@ -521,7 +521,7 @@ export default function ChangeGraph({
                   className={`cf-lane-name${l.trunk ? " is-trunk" : ""}`}
                   style={{ top: laneY(i), ["--c" as string]: laneColor(i) }}
                 >
-                  <BranchesOutlined style={{ fontSize: 11 }} />
+                  <BranchesOutlined style={{ fontSize: "var(--text-caption)" }} />
                   {l.name}
                 </span>
               </Tooltip>
@@ -859,7 +859,7 @@ function FlowCard({
         <span className="cf-sep">·</span>
         <Tooltip title={new Date(cr.updatedAt ?? cr.createdAt).toLocaleString()}>
           <span className="cf-when">
-            <ClockOutlined style={{ fontSize: 9 }} /> {relTime(cr.updatedAt ?? cr.createdAt)}
+            <ClockOutlined style={{ fontSize: "var(--text-badge)" }} /> {relTime(cr.updatedAt ?? cr.createdAt)}
           </span>
         </Tooltip>
       </div>
@@ -873,7 +873,7 @@ function FlowCard({
           </span>
         </Tooltip>
         <span className="cf-card-files">
-          <FileTextOutlined style={{ fontSize: 11 }} />
+          <FileTextOutlined style={{ fontSize: "var(--text-caption)" }} />
           {files}
         </span>
       </div>

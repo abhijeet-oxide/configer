@@ -256,16 +256,16 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
   };
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-start", gap: 14 }}>
-      <Typography.Text strong style={{ fontSize: 15, textAlign: "center" }}>
+      <Typography.Text strong style={{ fontSize: "var(--text-subtitle)", textAlign: "center" }}>
         Where does the configuration live?
       </Typography.Text>
       <div className="choice-row">
         <div className="card-clickable" style={card} onClick={() => onPick("git")} role="button" tabIndex={0}>
           <GithubOutlined className="choice-card-icon" style={{ opacity: 0.75 }} />
-          <Typography.Text strong style={{ fontSize: 14.5 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-label)" }}>
             Git repository
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             Connect a repository on GitHub (or any git URL). You'll authorize with GitHub and
             pick from your repositories - no URLs or tokens to paste.
           </Typography.Text>
@@ -275,10 +275,10 @@ function SourceStep({ onPick }: { onPick: (s: Source) => void }) {
         </div>
         <div className="card-clickable" style={card} onClick={() => onPick("local")} role="button" tabIndex={0}>
           <HddOutlined className="choice-card-icon" style={{ opacity: 0.75 }} />
-          <Typography.Text strong style={{ fontSize: 14.5 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-label)" }}>
             Local folder
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             Point at a folder on this machine. Configer turns it into a local Git repository
             (history included) and manages the configuration in place.
           </Typography.Text>
@@ -354,10 +354,10 @@ function LocalFolderStep({
           }}
         >
           <FolderOpenOutlined className="choice-card-icon" style={{ opacity: 0.7 }} />
-          <Typography.Text strong style={{ fontSize: 14.5 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-label)" }}>
             Click to select a local directory
           </Typography.Text>
-          <Typography.Text type="secondary" style={{ fontSize: 12.5, maxWidth: 420 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", maxWidth: 420 }}>
             Browse the folders on this machine and choose one to manage. Configer reads the folder
             in place - no files are uploaded.
           </Typography.Text>
@@ -374,19 +374,19 @@ function LocalFolderStep({
             gap: 14,
           }}
         >
-          <FolderOutlined style={{ fontSize: 30, opacity: 0.7 }} />
+          <FolderOutlined style={{ fontSize: "var(--text-hero)", opacity: 0.7 }} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <Space size={8}>
-              <Typography.Text strong style={{ fontSize: 14.5 }}>
+              <Typography.Text strong style={{ fontSize: "var(--text-label)" }}>
                 {picked.name}
               </Typography.Text>
               {!picked.isRepo && (
-                <Tag color="geekblue" style={{ fontSize: 10 }}>
+                <Tag color="geekblue" style={{ fontSize: "var(--text-micro)" }}>
                   new local git repo
                 </Tag>
               )}
             </Space>
-            <div className="mono" style={{ fontSize: 12, opacity: 0.6, overflowWrap: "anywhere" }}>
+            <div className="mono" style={{ fontSize: "var(--text-small)", opacity: 0.6, overflowWrap: "anywhere" }}>
               {picked.path}
             </div>
           </div>
@@ -401,7 +401,7 @@ function LocalFolderStep({
           {failure.text}
         </InlineNotice>
       )}
-      <Typography.Text type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", marginTop: 12 }}>
         <FileSearchOutlined /> The folder is added as itself
         {picked && !picked.isRepo && " - a local Git repository is initialized for it"}. Configer
         then scans it and shows the configuration files it found, so you choose what to manage.
@@ -483,7 +483,7 @@ function FolderPickerModal({
           />
         </Tooltip>
         <FolderOpenOutlined style={{ opacity: 0.6 }} />
-        <Typography.Text className="mono" ellipsis style={{ fontSize: 12.5, flex: 1 }} title={listing?.path}>
+        <Typography.Text className="mono" ellipsis style={{ fontSize: "var(--text-small)", flex: 1 }} title={listing?.path}>
           {listing?.path ?? "…"}
         </Typography.Text>
       </div>
@@ -532,16 +532,16 @@ function FolderPickerModal({
                 actions={[<ArrowRightOutlined key="go" style={{ opacity: 0.4 }} />]}
               >
                 <List.Item.Meta
-                  avatar={<FolderOutlined style={{ fontSize: 18, opacity: 0.7, marginTop: 3 }} />}
+                  avatar={<FolderOutlined style={{ fontSize: "var(--text-title)", opacity: 0.7, marginTop: 3 }} />}
                   title={
                     <Space size={8}>
                       <span>{f.name}</span>
                       {f.hasConfiger ? (
-                        <Tag color="geekblue" style={{ fontSize: 10 }}>
+                        <Tag color="geekblue" style={{ fontSize: "var(--text-micro)" }}>
                           Configer app
                         </Tag>
                       ) : f.isRepo ? (
-                        <Tag style={{ fontSize: 10 }}>git repo</Tag>
+                        <Tag style={{ fontSize: "var(--text-micro)" }}>git repo</Tag>
                       ) : null}
                     </Space>
                   }
@@ -551,7 +551,7 @@ function FolderPickerModal({
           />
         )}
       </div>
-      <Typography.Text type="secondary" style={{ fontSize: 11.5, display: "block", marginTop: 8 }}>
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", display: "block", marginTop: 8 }}>
         Browsing the machine Configer runs on. Click a folder to open it, then “Use this folder”.
       </Typography.Text>
     </Modal>
@@ -739,7 +739,7 @@ function RepoStep({
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
-        <Typography.Text type="secondary" style={{ fontSize: 12, whiteSpace: "nowrap" }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", whiteSpace: "nowrap" }}>
           {status.source === "session" && status.login ? (
             <>
               as <b>{status.login}</b>
@@ -786,7 +786,7 @@ function RepoStep({
                   gap: 6,
                   padding: "6px 10px 4px",
                   background: "var(--surface)",
-                  fontSize: 11,
+                  fontSize: "var(--text-caption)",
                   fontWeight: 600,
                   color: "var(--text-2)",
                 }}
@@ -808,21 +808,21 @@ function RepoStep({
                     actions={[<ArrowRightOutlined key="go" style={{ opacity: 0.45 }} />]}
                   >
                     <List.Item.Meta
-                      avatar={<GithubOutlined style={{ fontSize: 18, opacity: 0.7, marginTop: 4 }} />}
+                      avatar={<GithubOutlined style={{ fontSize: "var(--text-title)", opacity: 0.7, marginTop: 4 }} />}
                       title={
                         <Space size={8}>
-                          <span className="mono" style={{ fontSize: 13 }}>
+                          <span className="mono" style={{ fontSize: "var(--text-body)" }}>
                             {r.name}
                           </span>
                           {r.private && (
-                            <Tag icon={<LockOutlined />} style={{ fontSize: 10 }}>
+                            <Tag icon={<LockOutlined />} style={{ fontSize: "var(--text-micro)" }}>
                               private
                             </Tag>
                           )}
                         </Space>
                       }
                       description={
-                        <span style={{ fontSize: 12 }}>
+                        <span style={{ fontSize: "var(--text-small)" }}>
                           {r.description || "no description"}
                           {r.pushedAt && (
                             <span style={{ opacity: 0.6 }}> · updated {relTime(r.pushedAt)}</span>
@@ -840,7 +840,7 @@ function RepoStep({
       {/* The listing is a window, not an index. Saying so is the difference
           between "search for it" and concluding the repository is not there. */}
       {!searching && reposQ.data?.truncated && (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           Showing your most recently updated repositories. Search to reach the rest.
         </Typography.Text>
       )}
@@ -988,7 +988,7 @@ function FinishStep({
       {failure ? (
         <InlineNotice tone={failure.tone}>{failure.text}</InlineNotice>
       ) : (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           <FileSearchOutlined /> After creating, Configer scans this branch and shows the
           configuration files it found, so you choose what to manage.
         </Typography.Text>

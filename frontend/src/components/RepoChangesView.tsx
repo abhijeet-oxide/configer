@@ -327,14 +327,14 @@ export default function RepoChangesView() {
               renderItem={(c) => (
                 <List.Item style={{ paddingInline: 0 }}>
                   <Space align="start" size={10} style={{ width: "100%" }}>
-                    <Tag className="mono" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+                    <Tag className="mono" style={{ fontSize: "var(--text-caption)", marginInlineEnd: 0 }}>
                       {c.short}
                     </Tag>
                     <Space direction="vertical" size={0} style={{ flex: 1, minWidth: 0 }}>
-                      <Typography.Text style={{ fontSize: 13 }} ellipsis>
+                      <Typography.Text style={{ fontSize: "var(--text-body)" }} ellipsis>
                         {c.message}
                       </Typography.Text>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--text-2)" }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--text-small)", color: "var(--text-2)" }}>
                         <UserAvatar name={c.author} size={16} />
                         {c.author} · {relTime(c.date)}
                       </span>
@@ -373,7 +373,7 @@ export default function RepoChangesView() {
       )}
 
       {data && data.baseSha !== data.headSha && (
-        <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+        <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           Comparing last seen commit <code>{data.baseSha.slice(0, 7)}</code> with the current
           commit <code>{data.headSha.slice(0, 7)}</code>.
         </Typography.Text>
@@ -388,12 +388,12 @@ export default function RepoChangesView() {
 function Provenance({ commit }: { commit: NonNullable<Finding["commit"]> }) {
   return (
     <span
-      style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 12, color: "var(--text-2)" }}
+      style={{ display: "inline-flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: "var(--text-small)", color: "var(--text-2)" }}
     >
       <UserAvatar name={commit.author} size={16} />
       {commit.author} · {relTime(commit.date)} ·
       <Tooltip title={commit.message}>
-        <Tag className="mono" style={{ fontSize: 11, marginInlineEnd: 0 }}>
+        <Tag className="mono" style={{ fontSize: "var(--text-caption)", marginInlineEnd: 0 }}>
           {commit.short}
         </Tag>
       </Tooltip>
@@ -458,12 +458,12 @@ function FindingCard({
               <Provenance commit={f.commit} />
             </div>
           )}
-          <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: 13 }}>
+          <Typography.Paragraph type="secondary" style={{ margin: "6px 0 0", fontSize: "var(--text-body)" }}>
             {f.detail}
           </Typography.Paragraph>
           {f.params && f.params.length > 0 && (
             <Space size={4} wrap style={{ marginTop: 6 }}>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 Affected:
               </Typography.Text>
               {f.params.slice(0, 8).map((p) => (
@@ -474,7 +474,7 @@ function FindingCard({
                 </Tooltip>
               ))}
               {f.params.length > 8 && (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                   and {f.params.length - 8} more
                 </Typography.Text>
               )}

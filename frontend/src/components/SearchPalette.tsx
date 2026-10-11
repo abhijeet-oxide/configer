@@ -182,7 +182,7 @@ export default function SearchPalette() {
       style={{ top: "12vh" }}
       styles={{
         body: { padding: 0 },
-        content: {
+        container: {
           padding: 0,
           overflow: "hidden",
           borderRadius: 14,
@@ -198,7 +198,7 @@ export default function SearchPalette() {
     >
       {/* Input row */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "15px 18px", borderBottom: "1px solid var(--border)" }}>
-        <SearchOutlined style={{ fontSize: 18, color: "var(--text-3)" }} />
+        <SearchOutlined style={{ fontSize: "var(--text-title)", color: "var(--text-3)" }} />
         <input
           ref={inputRef}
           value={q}
@@ -211,7 +211,7 @@ export default function SearchPalette() {
             border: "none",
             outline: "none",
             background: "transparent",
-            fontSize: 16,
+            fontSize: "var(--text-emphasis)",
             color: "var(--text)",
           }}
         />
@@ -232,8 +232,8 @@ export default function SearchPalette() {
       <div ref={listRef} style={{ maxHeight: "56vh", overflow: "auto", padding: 8 }}>
         {results.length === 0 ? (
           <div style={{ padding: "44px 16px", textAlign: "center", color: "var(--text-3)" }}>
-            <SearchOutlined style={{ fontSize: 26, opacity: 0.35 }} />
-            <div style={{ marginTop: 10, fontSize: 13 }}>
+            <SearchOutlined style={{ fontSize: "var(--text-display)", opacity: 0.35 }} />
+            <div style={{ marginTop: 10, fontSize: "var(--text-body)" }}>
               {loading ? "Loading…" : q ? `No matches for "${q.trim()}"` : "Search across your applications, or jump to anything."}
             </div>
           </div>
@@ -272,7 +272,7 @@ export default function SearchPalette() {
                     border: "1px solid var(--border)",
                     background: active ? "var(--surface)" : "var(--surface-2)",
                     color: active ? "var(--text)" : "var(--text-3)",
-                    fontSize: 15,
+                    fontSize: "var(--text-subtitle)",
                   }}
                 >
                   {r.icon}
@@ -283,7 +283,7 @@ export default function SearchPalette() {
                     <span
                       className={r.type === "parameter" ? "mono" : undefined}
                       style={{
-                        fontSize: 13.5,
+                        fontSize: "var(--text-body)",
                         fontWeight: 600,
                         color: "var(--text)",
                         overflow: "hidden",
@@ -294,7 +294,7 @@ export default function SearchPalette() {
                       {r.title}
                     </span>
                     {r.badges?.map((b) => (
-                      <Tag key={b.text} color={b.color} style={{ margin: 0, fontSize: 10, lineHeight: "16px" }}>
+                      <Tag key={b.text} color={b.color} style={{ margin: 0, fontSize: "var(--text-micro)", lineHeight: "16px" }}>
                         {b.text}
                       </Tag>
                     ))}
@@ -302,7 +302,7 @@ export default function SearchPalette() {
                   {r.subtitle && (
                     <div
                       style={{
-                        fontSize: 11.5,
+                        fontSize: "var(--text-caption)",
                         color: "var(--text-3)",
                         marginTop: 1,
                         overflow: "hidden",
@@ -317,14 +317,14 @@ export default function SearchPalette() {
 
                 {/* Trailing: an Enter hint on the active row, the type otherwise. */}
                 {active ? (
-                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, color: "var(--text-3)", fontSize: 11 }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0, color: "var(--text-3)", fontSize: "var(--text-caption)" }}>
                     Open <Kbd>↵</Kbd>
                   </span>
                 ) : (
                   <span
                     style={{
                       flexShrink: 0,
-                      fontSize: 10,
+                      fontSize: "var(--text-micro)",
                       fontWeight: 600,
                       letterSpacing: 0.3,
                       textTransform: "uppercase",
@@ -352,7 +352,7 @@ export default function SearchPalette() {
           gap: 16,
           padding: "9px 16px",
           borderTop: "1px solid var(--border)",
-          fontSize: 11.5,
+          fontSize: "var(--text-caption)",
           color: "var(--text-3)",
           background: "var(--surface-2)",
         }}

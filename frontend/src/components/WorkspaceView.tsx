@@ -145,7 +145,7 @@ export default function WorkspaceView() {
               onClick={() => openNewApp()}
               role="button"
             >
-              <PlusOutlined style={{ fontSize: 26, color: "var(--brand)" }} />
+              <PlusOutlined style={{ fontSize: "var(--text-display)", color: "var(--brand)" }} />
               <div className="mt-2 font-medium text-brand">New application</div>
               <div className="text-xs text-ink-3">From {sourceNoun(caps)}</div>
             </div>

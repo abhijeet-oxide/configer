@@ -672,7 +672,7 @@ function reportText(
   inherited: ValidationFinding[],
 ): string {
   const lines: string[] = [];
-  lines.push(`Configer validation - change ${run?.changeId ?? ""}`.trim());
+  lines.push(`ArtiAuto validation - change ${run?.changeId ?? ""}`.trim());
   if (run?.engine) lines.push(`Checked by: ${run.engine}`);
   lines.push(
     `${errors.length + problems.length} blocking, ${warnings.length} warning${

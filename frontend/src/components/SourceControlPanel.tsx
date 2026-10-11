@@ -171,7 +171,7 @@ export default function SourceControlPanel({ grid }: { grid: Grid }) {
             </>
           ) : (
             <>
-              Make an edit and Configer moves you off <code>{targetBranch ?? "main"}</code> onto a feature
+              Make an edit and ArtiAuto moves you off <code>{targetBranch ?? "main"}</code> onto a feature
               branch automatically, collecting changes for review before they merge back.
             </>
           )}

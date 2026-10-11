@@ -134,7 +134,6 @@ export default function InboxView() {
             tableEnhancedKey="inbox"
             className="cr-table"
             rowKey="key"
-            size="small"
             dataSource={shown}
             pagination={false}
             onRow={(row) => ({ onClick: () => openReview(row), style: { cursor: "pointer" } })}

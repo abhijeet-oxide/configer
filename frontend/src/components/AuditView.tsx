@@ -126,7 +126,6 @@ export default function AuditView() {
             allow_export
             className="cr-table"
             rowKey="id"
-            size="small"
             dataSource={events}
             scroll={{ x: "max-content" }}
             pagination={events.length > 50 ? { pageSize: 50, size: "small" } : false}

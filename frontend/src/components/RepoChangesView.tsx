@@ -226,7 +226,7 @@ export default function RepoChangesView() {
             Repository changes
           </Typography.Title>
           <Typography.Text type="secondary">
-            Changes committed to the repository outside Configer. Acting on an item is optional; the
+            Changes committed to the repository outside ArtiAuto. Acting on an item is optional; the
             repository remains the source of truth.
           </Typography.Text>
         </div>
@@ -298,7 +298,7 @@ export default function RepoChangesView() {
               title="No repository changes detected"
               subtitle={
                 <>
-                  No commits have been made to the repository outside Configer. New commits are
+                  No commits have been made to the repository outside ArtiAuto. New commits are
                   checked automatically
                   {data && (
                     <>

@@ -280,7 +280,7 @@ export default function SettingsView() {
           )}
           {!identity.authEnabled && (
             <div style={{ fontSize: "var(--fs-12)", color: "var(--text-3)", marginTop: 8 }}>
-              Sign-in is not set up here, so this Configer runs as a single user. An administrator
+              Sign-in is not set up here, so this ArtiAuto runs as a single user. An administrator
               can connect GitHub to add teammates with their own roles.
             </div>
           )}
@@ -292,7 +292,7 @@ export default function SettingsView() {
           <h2 className="settings-section-title">This deployment</h2>
           <div className="settings-section-body">
           <Row
-            title={meta ? `${meta.name} ${meta.version}` : "Configer"}
+            title={meta ? `${meta.name} ${meta.version}` : "ArtiAuto"}
             description={
               meta ? (
                 <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>

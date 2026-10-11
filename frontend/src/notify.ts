@@ -43,7 +43,7 @@ export function describeError(err: unknown): { title: string; detail: string; re
     };
   if (err instanceof TimeoutError) return { title: "The request timed out", detail: "The service did not respond in time. Please try again." };
   if (err instanceof OfflineError)
-    return { title: "You appear to be offline", detail: "Configer will keep working from the last snapshot and sync when the connection returns." };
+    return { title: "You appear to be offline", detail: "ArtiAuto will keep working from the last snapshot and sync when the connection returns." };
   if (err instanceof Error) return { title: err.message, detail: "" };
   return { title: "Unexpected error", detail: String(err) };
 }

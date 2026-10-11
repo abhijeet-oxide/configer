@@ -117,7 +117,7 @@ function DeleteApplicationModal({
       onCancel={onClose}
     >
       <Typography.Paragraph>
-        This removes the application from your Configer workspace. By default the Git repository,
+        This removes the application from your ArtiAuto workspace. By default the Git repository,
         including your configuration files and the <span className="mono">.configer</span> metadata,
         stays exactly as it is, and you can reconnect any time.
       </Typography.Paragraph>
@@ -132,7 +132,7 @@ function DeleteApplicationModal({
           message="This un-onboards the repository"
           description={
             <>
-              All Configer metadata (parameters, instances, application details) is deleted in a
+              All ArtiAuto metadata (parameters, instances, application details) is deleted in a
               commit. Your actual configuration files are <b>not</b> touched, but the repository
               will need to be set up again to manage it here. This cannot be undone except through
               Git history.
@@ -233,7 +233,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
       key: "drift",
       severity: "warn",
       title: `${findings.length} repository change${findings.length === 1 ? "" : "s"} detected`,
-      sub: "Review and import changes made outside Configer",
+      sub: "Review and import changes made outside ArtiAuto",
       actionLabel: "Review changes",
       onAction: () => setSection("drift"),
     });
@@ -339,7 +339,7 @@ export default function DashboardView({ grid }: { grid: Grid }) {
           <StatTile
             label="Repository changes"
             value={findings.length}
-            sub={findings.length ? "Made outside Configer" : "None outside Configer"}
+            sub={findings.length ? "Made outside ArtiAuto" : "None outside ArtiAuto"}
             icon={<PullRequestOutlined style={{ color: findings.length ? "var(--c-pending)" : "var(--text-3)" }} />}
             onClick={() => setSection("drift")}
           />

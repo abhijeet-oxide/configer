@@ -2376,18 +2376,8 @@ body.cf-busy * {
    marked with a brand left accent plus a faint tint instead of a heavy
    full-row fill. The table sits flush inside its card (no inner shadow or
    double background), so the card's rounding does the framing. */
-.cr-table .ant-table,
-.cr-table .ant-table-container,
-.cr-table .ant-table-content {
-  background: transparent;
-}
-.cr-table .ant-table-thead > tr > th {
-  background: transparent !important;
-  font-size: var(--text-caption);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-3) !important;
-}
+/* Headers are the shared tablekit's own (Software Gateway's look): no local
+   uppercase caption header any more. */
 .cr-table .ant-table-tbody > tr > td {
   transition: background var(--dur-hover) var(--ease);
 }
@@ -5393,4 +5383,34 @@ mark.vd-ins {
 .cf-scopeval-n {
   font-size: var(--text-micro);
   color: var(--text-3);
+}
+
+/* The top-bar search field, the same rules as Software Gateway's .gw-search. */
+.gw-search {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: min(460px, 42vw);
+  height: 38px;
+  padding: 0 var(--sp-2) 0 var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  color: var(--text-3);
+  font: inherit;
+  font-size: var(--fs-13);
+  cursor: text;
+  text-align: start;
+  transition: border-color var(--dur-hover) var(--ease), background var(--dur-hover) var(--ease);
+}
+.gw-search:hover {
+  border-color: var(--border-strong);
+  background: var(--surface);
+}
+.gw-search-placeholder {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

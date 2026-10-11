@@ -7,7 +7,7 @@ import { create } from "zustand";
 
 export class OfflineError extends Error {
   constructor() {
-    super("The Configer service is unreachable");
+    super("The ArtiAuto service is unreachable");
     this.name = "OfflineError";
   }
 }

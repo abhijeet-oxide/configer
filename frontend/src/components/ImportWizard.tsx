@@ -563,7 +563,7 @@ function ScanStep({
       {
         icon: <FileSearchOutlined />,
         title: "Scanning is read-only",
-        text: "Configer reads the current branch and detects YAML, JSON and XML configuration files. Nothing is written, nothing is sent anywhere.",
+        text: "ArtiAuto reads the current branch and detects YAML, JSON and XML configuration files. Nothing is written, nothing is sent anywhere.",
       },
       {
         icon: <CheckSquareOutlined />,
@@ -586,7 +586,7 @@ function ScanStep({
                 Find configuration in your repository
               </Typography.Title>
               <Typography.Text type="secondary">
-                Configer detects the settings living in your files and offers them for management -
+                ArtiAuto detects the settings living in your files and offers them for management -
                 you stay in control of every single one.
               </Typography.Text>
             </div>
@@ -1002,7 +1002,7 @@ function ReviewStep({
       />
       <InlineNotice className="mb-4">
         One commit is made on the current Git branch{branch ? <> (<code>{branch}</code>)</> : null},
-        adding these parameters to the Configer catalog
+        adding these parameters to the ArtiAuto catalog
         {ignoredFiles.length > 0 && <> and recording {ignoredFiles.length} file(s) as ignored</>}.
         Your existing configuration files keep their values.
       </InlineNotice>

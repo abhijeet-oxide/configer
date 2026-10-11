@@ -411,7 +411,7 @@ export default function FilesView() {
         col: v.col,
         endCol: v.endCol,
         focus: !!focusParam && (v.paramId === focusParam || v.name === focusParam),
-        label: `**${v.name}** · managed by Configer${v.secret ? " · secret" : ""}\n\n\`${v.path}\``,
+        label: `**${v.name}** · managed by ArtiAuto${v.secret ? " · secret" : ""}\n\n\`${v.path}\``,
       })),
     [managedQ.data, focusParam],
   );
@@ -670,7 +670,7 @@ export default function FilesView() {
               })),
             ]}
           />
-          <Tooltip title="Show only files Configer manages, or the whole repository">
+          <Tooltip title="Show only files ArtiAuto manages, or the whole repository">
             <span className="inline-flex items-center gap-1.5 text-[13px]">
               <Switch size="small" checked={onlyManaged} onChange={setOnlyManaged} />
               Managed ({managedCount})
@@ -979,7 +979,7 @@ export default function FilesView() {
             <Tooltip
               title={
                 draftItems > 0
-                  ? `Your ${draftItems} change(s) build on ${statusQ.data?.branch ?? "the base branch"}. Configer commits them to a review branch when you submit.`
+                  ? `Your ${draftItems} change(s) build on ${statusQ.data?.branch ?? "the base branch"}. ArtiAuto commits them to a review branch when you submit.`
                   : "The branch your saved edits build on."
               }
             >

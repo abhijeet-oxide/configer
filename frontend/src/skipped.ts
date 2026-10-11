@@ -20,12 +20,12 @@ export const SKIP_REASONS: Record<SkippedFile["reason"], string> = {
 
 export const SKIP_EXPLANATIONS: Record<SkippedFile["reason"], string> = {
   generated:
-    "Configer leaves generated files alone because editing one makes a second source of truth: " +
+    "ArtiAuto leaves generated files alone because editing one makes a second source of truth: " +
     "the next run of whatever produced it writes over the change.",
   ignored: "An ignore rule in .configer/ignore.yaml matches these files.",
   structural:
     "Kustomizations, Kptfiles, chart plumbing and schemas say how a repository is assembled, not what " +
-    "its settings are, so Configer does not turn them into grid columns on its own.",
+    "its settings are, so ArtiAuto does not turn them into grid columns on its own.",
 };
 
 /** What a recognizer knew about one file, as a sentence. */

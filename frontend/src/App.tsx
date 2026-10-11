@@ -1007,7 +1007,7 @@ function UnavailableApplication({ repo }: { repo: RepoSummary }) {
         subtitle={
           connecting ? (
             <>
-              Configer is reading the repository. This page updates itself as soon as it is ready -
+              ArtiAuto is reading the repository. This page updates itself as soon as it is ready -
               a large repository can take a minute.
             </>
           ) : (

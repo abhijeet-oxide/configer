@@ -4,21 +4,19 @@ import {
   AppstoreOutlined,
   InboxOutlined,
   FileProtectOutlined,
-  UserOutlined,
 } from "../icons";
 import { api } from "../api";
-import { envHex, NavEntry, SideNav, type NavItem, type NavProfile } from "../uikit";
+import { ConnectionPill, SideNav, type NavItem } from "../uikit";
 import brand from "../brand";
 import { useUI } from "../store";
-import { useIdentity } from "../identity";
 import { useDeployment } from "../deployment";
 
 // The navigation rail: the ONLY organization-scope navigator. It holds just
 // what crosses applications: Home, Applications, Inbox (every change and
 // approval that needs someone), Audit. Instances and Repositories are not
 // top-level nouns - they live inside an application, reached through its tab
-// strip. The rail's foot is the person: a profile card (who you are) that opens
-// the Settings page, where every personal preference lives.
+// strip. Like Software Gateway, entries are grouped under section labels, the
+// foot is the deployment pill, and the person lives in the top bar's account menu.
 //
 // The rail itself - its width, its item heights, the hover and active language,
 // the collapse behaviour, the profile card, the badges - is `SideNav` from the
@@ -58,7 +56,6 @@ export default function NavRail({
   onToggleCollapse?: () => void;
 }) {
   const { section, setSection } = useUI();
-  const profile = useRailProfile(railKey(section) === "profile");
   const wsQ = useQuery({ queryKey: ["workspace"], queryFn: api.workspace, staleTime: 30_000 });
 
   const repos = wsQ.data?.repos ?? [];
@@ -70,23 +67,25 @@ export default function NavRail({
   const activeKey = railKey(section);
 
   const items: NavItem[] = [
-    { key: "home", label: "Home", icon: <HomeOutlined />, onClick: () => setSection("home") },
+    { key: "home", label: "Home", icon: <HomeOutlined />, section: "Workspace", onClick: () => setSection("home") },
     {
       key: "applications",
       label: "Applications",
       icon: <AppstoreOutlined />,
+      section: "Workspace",
       onClick: () => setSection("workspace"),
     },
     {
       key: "inbox",
       label: "Inbox",
       icon: <InboxOutlined />,
+      section: "Governance",
       badge: awaiting,
       onClick: () => setSection("inbox"),
     },
     // The trail spans every application, so it stands at the workspace level
     // alongside the others - it never needs one selected.
-    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, onClick: () => setSection("audit") },
+    { key: "audit", label: "Audit", icon: <FileProtectOutlined />, section: "Governance", onClick: () => setSection("audit") },
   ];
 
   return (
@@ -96,77 +95,37 @@ export default function NavRail({
       activeKey={activeKey}
       collapsed={collapsed}
       onToggleCollapse={onToggleCollapse}
-      profile={profile}
-      profileSlot={<SignInEntry collapsed={collapsed} />}
       footer={<DeploymentChip />}
     />
   );
 }
 
-// The person at the rail's foot. On a multi-user deployment that is the
-// signed-in account; in single-user mode it is the local operator. Signed out,
-// the card is replaced by the sign-in entry - the one place identity starts -
-// which is why this returns null and the caller renders that instead.
-function useRailProfile(active: boolean): NavProfile | null {
-  const setSection = useUI((s) => s.setSection);
-  const id = useIdentity();
-  if (id.loading) return null;
-  if (id.authEnabled && !id.signedIn) return null;
-  return {
-    name: id.displayName,
-    // The person, and nothing about permissions: access belongs to an
-    // application, not to a name in a sidebar. It is shown on each
-    // application's card and in its context strip instead.
-    ...(id.authEnabled && id.user?.login ? { sub: id.user.login } : {}),
-    ...(id.user?.avatarUrl ? { avatarUrl: id.user.avatarUrl } : {}),
-    active,
-    onClick: () => setSection("settings"),
-  };
-}
-
-/** The sign-in entry, standing in the profile card's place when nobody is
- *  signed in. Identity is where a session starts, so the rail's foot must not
- *  simply go blank. */
-function SignInEntry({ collapsed }: { collapsed: boolean }) {
-  const id = useIdentity();
-  if (id.loading || !id.authEnabled || id.signedIn) return null;
-  const login = () => {
-    window.location.href = `/api/auth/login?return_to=${encodeURIComponent(
-      window.location.pathname + window.location.search,
-    )}`;
-  };
-  return (
-    <NavEntry
-      item={{ key: "signin", label: "Sign in", icon: <UserOutlined />, onClick: login }}
-      active={false}
-      collapsed={collapsed}
-    />
-  );
-}
-
-// DeploymentChip identifies this installation (version + environment) so
-// support conversations and screenshots are unambiguous. It reads the service's
-// own identity, so it is present on a workspace with no applications too.
+// The rail's foot, the same as Software Gateway's DeploymentNote: one quiet
+// pill naming the environment and build, that opens the kit's connection
+// detail (heartbeat, last check) with this deployment's facts on top. The
+// person moved to the top bar's account menu, where Software Gateway has it.
 function DeploymentChip() {
   const m = useDeployment();
-  if (!m.reachable) return null;
+  const environment = m.environment || "…";
+  const facts = [
+    { label: "Environment", value: environment },
+    { label: "Version", value: m.version || "Loading…" },
+  ];
   return (
-    <div
-      className="ui-nav-note"
-      // The shared kit now fills this slot with its ConnectionPill; a plain
-      // text note keeps its old alignment explicitly.
-      style={{ alignItems: "center", gap: 6, padding: "0 var(--sp-3)", color: "var(--nav-fg)" }}
-    >
-      <span
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: 3,
-          flexShrink: 0,
-          background: envHex(m.environment),
-        }}
+    <div className="ui-nav-note">
+      <ConnectionPill
+        service={brand.appName}
+        placement="bottomLeft"
+        triggerLabel={
+          <>
+            <span className="ui-nav-note-environment" title={`Environment: ${environment}`}>
+              {/^dev(elopment)?$/i.test(environment) ? "Development" : environment}
+            </span>
+            {m.version && <span className="ui-nav-note-version">{m.version}</span>}
+          </>
+        }
+        facts={facts}
       />
-      {m.name} {m.version} · {m.environment}
     </div>
   );
 }

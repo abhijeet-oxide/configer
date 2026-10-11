@@ -27,9 +27,9 @@ export interface Palette {
   // Secondary accent. Defaults to brandStrong so it is inert until you set it;
   // exposed as var(--secondary) for your own accents.
   secondary: string;
-  // Sidebar / navigation rail. `navBg` is a MATERIAL: a translucent fill the
-  // page shows faintly through, so give it an alpha and let `components.css`
-  // put the blur behind it.
+  // Sidebar / navigation rail. `navBg` is a MATERIAL: about 72% of the page
+  // surface, so the blur in components.css has something to show through.
+  // Opaque hex made that blur a no-op. Not the brand colour.
   navBg: string;
   navBgHover: string;
   navBgActive: string;
@@ -67,17 +67,32 @@ export interface Palette {
   // Provenance (base = inherited from a shared layer, inherit = neutral)
   base: string; baseBg: string; baseBd: string;
   inherit: string; inheritBg: string; inheritBd: string;
+  // The three move destinations, as foreground/background/border triples: the
+  // colour of the button that moves a release INTO an environment, and of the
+  // tag that names it. Unlike envColors - an identity MARK, one hue in both
+  // modes - these are themed: a slate sandbox tag is near-white type on dark
+  // and near-black on light, while filled lab cyan reads the same either way.
+  envSandbox: string; envSandboxBg: string; envSandboxBd: string;
+  envLab: string; envLabBg: string; envLabBd: string;
+  envProd: string; envProdBg: string; envProdBd: string;
   // Severity, and the surface each severity dot sits on. A FIVE-step scale
   // rather than the four semantic tones, because "unknown" is a real answer
   // that must not read as "none": a package nobody has scanned is not a clean
   // one. COLOUR IS NEVER THE ONLY SIGNAL - every severity is also a word and a
   // dot whose fill differs - so these survive greyscale and colour blindness.
   sevCritical: string; sevHigh: string; sevMedium: string; sevLow: string; sevUnknown: string;
+  // Known-exploited: worse than critical, and a different hue so it cannot be
+  // mistaken for critical red on a graph or a tag.
+  sevKev: string; sevKevBg: string; sevKevBd: string;
   sevCriticalBg: string; sevHighBg: string; sevMediumBg: string; sevLowBg: string; sevUnknownBg: string;
   // The verdict of a comparison. `inconclusive` is deliberately not a grey that
   // reads as "nothing happened": it is a state with an action in it (go and
   // look at the rest), and looking like an empty result is how it gets ignored.
   vBetter: string; vWorse: string; vUnchanged: string; vInconclusive: string;
+  // Product accents: the small mark beside a product's name, picked from the
+  // name so a product keeps one colour everywhere. Restated for dark so the
+  // marks keep their weight on a dark surface.
+  accent1: string; accent2: string; accent3: string; accent4: string; accent5: string; accent6: string;
 }
 
 /** The palette-and-metrics half of a theme. Identity lives in brand.ts. */
@@ -85,7 +100,7 @@ export interface ThemeTokens {
   /** Shape tokens fed to Ant Design. */
   shape: { borderRadius: number; controlHeight: number };
   /** Type tokens fed to Ant Design. */
-  type: { fontFamily: string; monoFamily: string; fontSizeBase: number };
+  type: { fontFamily: string; monoFamily: string };
   light: Palette;
   dark: Palette;
   /** Environment identity colors (which environment an instance runs in). */
@@ -111,13 +126,19 @@ export const VAR_MAP: Array<[keyof Palette, string]> = [
   ["markBg", "--c-mark-bg"], ["markBd", "--c-mark-bd"],
   ["base", "--c-base"], ["baseBg", "--c-base-bg"], ["baseBd", "--c-base-bd"],
   ["inherit", "--c-inherit"], ["inheritBg", "--c-inherit-bg"], ["inheritBd", "--c-inherit-bd"],
+  ["envSandbox", "--env-sandbox"], ["envSandboxBg", "--env-sandbox-bg"], ["envSandboxBd", "--env-sandbox-bd"],
+  ["envLab", "--env-lab"], ["envLabBg", "--env-lab-bg"], ["envLabBd", "--env-lab-bd"],
+  ["envProd", "--env-prod"], ["envProdBg", "--env-prod-bg"], ["envProdBd", "--env-prod-bd"],
   ["sevCritical", "--sev-critical"], ["sevHigh", "--sev-high"], ["sevMedium", "--sev-medium"],
   ["sevLow", "--sev-low"], ["sevUnknown", "--sev-unknown"],
+  ["sevKev", "--sev-kev"], ["sevKevBg", "--sev-kev-bg"], ["sevKevBd", "--sev-kev-bd"],
   ["sevCriticalBg", "--sev-critical-bg"], ["sevHighBg", "--sev-high-bg"],
   ["sevMediumBg", "--sev-medium-bg"], ["sevLowBg", "--sev-low-bg"],
   ["sevUnknownBg", "--sev-unknown-bg"],
   ["vBetter", "--v-better"], ["vWorse", "--v-worse"], ["vUnchanged", "--v-unchanged"],
   ["vInconclusive", "--v-inconclusive"],
+  ["accent1", "--accent-1"], ["accent2", "--accent-2"], ["accent3", "--accent-3"],
+  ["accent4", "--accent-4"], ["accent5", "--accent-5"], ["accent6", "--accent-6"],
 ];
 
 // -----------------------------------------------------------------------------
@@ -125,19 +146,14 @@ export const VAR_MAP: Array<[keyof Palette, string]> = [
 // below rather than editing these, so the baseline is always there to diff
 // against - and so both products move together when one of them moves.
 //
-// THE PALETTE IS APPLE'S SYSTEM PALETTE, and deliberately so: these two tools
-// are meant to read as one suite built for the platform their operators
-// actually sit in front of. That means the neutrals apple.com uses (#1d1d1f
-// type, #f5f5f7 grounds, #d2d2d7 rules) rather than a generic blue-grey ramp,
-// and the system accents (systemBlue, systemGreen, systemOrange, systemRed,
-// systemIndigo) rather than colours picked one at a time.
+// THE PALETTE is neutral first: cool greys (#102C3C type, #F7F9FA ground,
+// #E3E9ED rules) with AT&T blue #009FDF kept for what can be acted on -
+// the selected navigation entry, primary actions, links, selections. Wells,
+// borders and decoration stay grey, so the blue always means "this does
+// something".
 //
-// The single biggest consequence is the NAVIGATION. It used to be a slab of
-// navy, which is the house style of every enterprise dashboard and belongs to
-// none of them. It is now a MATERIAL: a translucent neutral the page shows
-// faintly through, dark type on it, and one brand-filled pill for where you
-// are - a Finder sidebar, not a chrome band. The blur that makes it a material
-// lives in components.css; the alpha that lets it work lives here.
+// In dark mode the cards are the lighter layer, so a panel still reads as
+// lifted off the page.
 // -----------------------------------------------------------------------------
 export const defaultTokens: ThemeTokens = {
   // 8 and 32: a control the size of a macOS push button, with the continuous
@@ -149,30 +165,36 @@ export const defaultTokens: ThemeTokens = {
     // is the closest widely-installed stand-in and sits ahead of the platform
     // defaults for everyone else.
     fontFamily:
-      `-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", Inter, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
+      `"Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`,
     // ui-monospace resolves to SF Mono on Apple platforms, which is the point.
     monoFamily:
       `ui-monospace, "SF Mono", SFMono-Regular, "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace`,
-    fontSizeBase: 13,
   },
   light: {
-    brand: "#0071e3", brandStrong: "#0058b9", brandSoft: "#e8f1fd", brandBorder: "#a8cbf4",
-    // systemIndigo, for an accent that is genuinely a second voice rather than
-    // the brand at another lightness.
-    secondary: "#5856d6",
-    navBg: "rgba(246, 246, 248, 0.72)", navBgHover: "rgba(0, 0, 0, 0.05)", navBgActive: "#0071e3",
-    navFg: "#4b4b50", navFgStrong: "#1d1d1f", navFgActive: "#ffffff",
-    navBorder: "rgba(0, 0, 0, 0.09)",
-    canvas: "#f0f0f3", surface: "#ffffff", surface2: "#f6f6f8",
-    border: "#e4e4e7", borderStrong: "#d2d2d7", illSurface: "#ffffff",
-    text: "#1d1d1f", text2: "#6e6e73", text3: "#96969b",
-    markBg: "#fff6d6", markBd: "#ffd426",
-    ok: "#1b7f3b", okBg: "#e9f7ed", okBd: "#bde5c9",
-    pending: "#b25000", pendingBg: "#fff3e5", pendingBd: "#ffd9ac",
-    review: "#0071e3", reviewBg: "#e8f1fd", reviewBd: "#a8cbf4",
-    danger: "#d70015", dangerBg: "#ffebe9", dangerBd: "#ffc7c2",
-    base: "#5856d6", baseBg: "#efeffd", baseBd: "#cfcff7",
-    inherit: "#6e6e73", inheritBg: "#f2f2f5", inheritBd: "#e4e4e7",
+    brand: "#009fdf", brandStrong: "#0086bd", brandSoft: "#eef8fc", brandBorder: "#bfe3f3",
+    secondary: "#7657a8",
+    navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgHover: "#f3f5f7", navBgActive: "#eef8fc",
+    navFg: "#5b6774", navFgStrong: "#102332", navFgActive: "#0086bd",
+    navBorder: "#e6eaee",
+    canvas: "#f5f7f9", surface: "#ffffff", surface2: "#f4f7f9",
+    border: "#e4e9ed", borderStrong: "#d2d9df", illSurface: "#ffffff",
+    // text3 is the quietest TEXT, not a fill: it still has to clear 4.5:1 on
+    // every surface it sits on (white, surface2, the ok/danger/pending tints).
+    // #5f6e7a holds 4.67:1 on the lightest tint and stays a clear step below
+    // text2. The old #8a99a5 measured 2.92:1 on white.
+    text: "#102332", text2: "#4b5b68", text3: "#5f6e7a",
+    markBg: "#fdf3d8", markBd: "#eed9a4",
+    ok: "#157f3d", okBg: "#e9f7ee", okBd: "#bfe7cb",
+    pending: "#a15c07", pendingBg: "#fdf3e3", pendingBd: "#f2ddb0",
+    review: "#0086bd", reviewBg: "#eef8fc", reviewBd: "#bfe3f3",
+    danger: "#cf3148", dangerBg: "#fdeef0", dangerBd: "#f6c4cc",
+    base: "#7657a8", baseBg: "#f4f0fa", baseBd: "#dcd0ee",
+    inherit: "#5f7482", inheritBg: "#f3f6f8", inheritBd: "#e3e9ed",
+    // Move destinations use light fills and borders; production's orange is
+    // never danger red.
+    envSandbox: "#172b4d", envSandboxBg: "#f1f3f5", envSandboxBd: "#d8dde3",
+    envLab: "#00749f", envLabBg: "#e9f7fc", envLabBd: "#b8dff0",
+    envProd: "#d94f00", envProdBg: "#fff0e3", envProdBd: "#ffd0ad",
     // The severity ramp is the MARK's colour first - the dot, the bar, the
     // meter - and the word's second. That ordering is what let it become
     // modern: the old values were picked to clear 4.5:1 as text on white, and
@@ -190,59 +212,71 @@ export const defaultTokens: ThemeTokens = {
     // dot differs in FILL as well as colour (critical and high solid, medium
     // and low ringed, unknown dashed) - so nothing about the scale depends on
     // being able to read a colour. Never set one of these as `color` on text.
-    sevCritical: "#f43f43", sevHigh: "#fb8c00", sevMedium: "#eab308",
-    sevLow: "#28b757", sevUnknown: "#8e8e93",
-    sevCriticalBg: "#fdedee", sevHighBg: "#fef3e4", sevMediumBg: "#fdf6e0",
-    sevLowBg: "#e8f8ee", sevUnknownBg: "#f2f2f5",
-    vBetter: "#1b7f3b", vWorse: "#c1262e", vUnchanged: "#6e6e73", vInconclusive: "#5856d6",
+    // Critical vermillion, high orange, medium a clear gold (not orange-adjacent).
+    // KEV is garnet: a deeper, darker red than critical, far enough from it
+    // (and from danger, which shares critical's red) to read as its own mark.
+    sevCritical: "#cf3148", sevHigh: "#f56416", sevMedium: "#e6a700",
+    sevLow: "#1d9d55", sevUnknown: "#8a99a5",
+    sevKev: "#8a1538", sevKevBg: "#f9e9ee", sevKevBd: "#e6b4c4",
+    sevCriticalBg: "#fdeef0", sevHighBg: "#fdeee2", sevMediumBg: "#fdf6d8",
+    sevLowBg: "#e7f7ec", sevUnknownBg: "#f1f3f5",
+    vBetter: "#157f3d", vWorse: "#c22739", vUnchanged: "#6e7680", vInconclusive: "#5856d6",
+    accent1: "#7657a8", accent2: "#00a7a0", accent3: "#ff7200",
+    accent4: "#3a9b45", accent5: "#00b8e6", accent6: "#d93f52",
   },
   dark: {
-    // These five are SEEDS, not the colours you see. Ant Design's dark
-    // algorithm desaturates whatever it is given toward the page background,
-    // so a value written here comes out several shades duller - which is how a
-    // primary button and `var(--brand)` came to be two different blues. They
-    // are chosen by solving BACKWARDS from the intended result (#44b2ff seeds
-    // the #3d9adc that actually paints), and resolvePalette in antd.ts is what
-    // guarantees the stylesheet is told the same answer.
-    //
-    // Worth knowing before reaching for a brighter one: the dark algorithm caps
-    // every channel at 0xdc, so Apple's own #0a84ff / #ff453a / #ff9f0a cannot
-    // be painted at all. These are the nearest reachable shades, and the blue
-    // is deliberately a step lighter than the exact match so it clears 4.5:1
-    // on the canvas.
-    brand: "#44b2ff", brandStrong: "#66c6ff", brandSoft: "rgba(61, 154, 220, 0.18)",
-    brandBorder: "rgba(61, 154, 220, 0.45)", secondary: "#a5a3ff",
-    navBg: "rgba(28, 28, 30, 0.72)", navBgHover: "rgba(255, 255, 255, 0.07)",
-    navBgActive: "#0071e3",
-    navFg: "#a1a1a6", navFgStrong: "#f5f5f7", navFgActive: "#ffffff",
-    navBorder: "rgba(255, 255, 255, 0.09)",
-    canvas: "#1c1c1e", surface: "#242427", surface2: "#2c2c2f",
-    border: "#38383b", borderStrong: "#4a4a4e", illSurface: "#2c2c2f",
-    text: "#f5f5f7", text2: "#a1a1a6", text3: "#6e6e73",
-    markBg: "rgba(255, 212, 38, 0.16)", markBd: "rgba(255, 212, 38, 0.42)",
-    ok: "#35f264", okBg: "rgba(48, 209, 88, 0.16)", okBd: "rgba(48, 209, 88, 0.42)",
-    pending: "#ffb708", pendingBg: "rgba(220, 159, 10, 0.16)", pendingBd: "rgba(220, 159, 10, 0.42)",
-    review: "#44b2ff", reviewBg: "rgba(61, 154, 220, 0.16)", reviewBd: "rgba(61, 154, 220, 0.42)",
-    danger: "#ff4e41", dangerBg: "rgba(220, 69, 58, 0.16)", dangerBd: "rgba(220, 69, 58, 0.42)",
-    base: "#a5a3ff", baseBg: "rgba(120, 118, 235, 0.18)", baseBd: "rgba(120, 118, 235, 0.45)",
-    inherit: "#a1a1a6", inheritBg: "rgba(161, 161, 166, 0.14)", inheritBd: "rgba(161, 161, 166, 0.32)",
+    // SEEDS for Ant's dark algorithm, which dulls whatever it is given;
+    // resolvePalette in antd.ts hands the stylesheet what is really painted.
+    brand: "#1fb4ee", brandStrong: "#4cc4f2", brandSoft: "rgba(0, 159, 223, 0.14)",
+    brandBorder: "rgba(0, 159, 223, 0.4)", secondary: "#9b7fd0",
+    navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgHover: "rgba(230, 237, 243, 0.05)",
+    navBgActive: "rgba(0, 159, 223, 0.14)",
+    navFg: "#aab7c3", navFgStrong: "#e6edf3", navFgActive: "#00b5e2",
+    navBorder: "#22292f",
+    canvas: "#0e1215", surface: "#161b1f", surface2: "#1d2328",
+    border: "#29313a", borderStrong: "#39434d", illSurface: "#1d2328",
+    // 4.6:1 on the ok tint and above 5:1 on surface and surface2; the old
+    // #7c8a94 sat at 4.47:1 on surface2.
+    text: "#e8edf0", text2: "#a9b5bd", text3: "#8b99a3",
+    markBg: "rgba(230, 167, 0, 0.16)", markBd: "rgba(230, 167, 0, 0.42)",
+    ok: "#6cc84d", okBg: "rgba(79, 174, 50, 0.16)", okBd: "rgba(79, 174, 50, 0.42)",
+    pending: "#f0b929", pendingBg: "rgba(230, 167, 0, 0.16)", pendingBd: "rgba(230, 167, 0, 0.42)",
+    review: "#00b5e2", reviewBg: "rgba(0, 159, 219, 0.16)", reviewBd: "rgba(0, 159, 219, 0.42)",
+    danger: "#e8627a", dangerBg: "rgba(209, 59, 86, 0.18)", dangerBd: "rgba(209, 59, 86, 0.45)",
+    base: "#a58bd6", baseBg: "rgba(119, 86, 168, 0.22)", baseBd: "rgba(119, 86, 168, 0.5)",
+    inherit: "#aab7c3", inheritBg: "rgba(170, 183, 195, 0.12)", inheritBd: "rgba(170, 183, 195, 0.3)",
+    // The same three destinations, restated for the dark canvas.
+    envSandbox: "#f5f7fa", envSandboxBg: "#303b4a", envSandboxBd: "#4a5568",
+    envLab: "#5ac7ed", envLabBg: "rgba(0, 159, 219, 0.16)", envLabBd: "rgba(0, 159, 219, 0.42)",
+    envProd: "#ff8a30", envProdBg: "#5a3218", envProdBd: "#8a4a1f",
     // The system palette, exactly: these are not seeds and never go through
     // Ant's algorithm, so the dark scale can be the real values rather than a
     // solve. The old medium was a desaturated #e0b93a - a yellow apologising
     // for being one - where the platform's own is unmissable.
-    sevCritical: "#ff453a", sevHigh: "#ff9f0a", sevMedium: "#ffd60a",
-    sevLow: "#30d158", sevUnknown: "#98989d",
+    sevCritical: "#e8627a", sevHigh: "#ff8a2a", sevMedium: "#f0b929",
+    sevLow: "#4fae32", sevUnknown: "#7b8b98",
+    // Garnet on the dark canvas: a light rose text on a deep garnet tint, so it
+    // stays apart from critical's brighter red.
+    sevKev: "#f49ab5", sevKevBg: "rgba(138, 21, 56, 0.45)", sevKevBd: "rgba(244, 154, 181, 0.45)",
     sevCriticalBg: "rgba(255, 69, 58, 0.18)", sevHighBg: "rgba(255, 159, 10, 0.18)",
     sevMediumBg: "rgba(255, 214, 10, 0.18)", sevLowBg: "rgba(48, 209, 88, 0.18)",
     sevUnknownBg: "rgba(152, 152, 157, 0.18)",
     vBetter: "#30d158", vWorse: "#ff6961", vUnchanged: "#98989d", vInconclusive: "#a5a3ff",
+    accent1: "#a58bd6", accent2: "#2cc7bf", accent3: "#ff8a30",
+    accent4: "#6cc84d", accent5: "#5ac7ed", accent6: "#e8627a",
   },
   // Environment identity, on the system palette too - but these stay the same
   // in both modes on purpose: an environment does not change identity when the
-  // lights go out.
+  // lights go out. These are MARKS - a dot, an icon. The themed surfaces an
+  // environment paints (the move buttons, the stage tags) are the envSandbox /
+  // envLab / envProd triples in the palettes above, which DO flip with the mode.
   envColors: {
-    production: "#5856d6", prod: "#5856d6", staging: "#c25e00", development: "#1b7f3b",
-    lab: "#0f9d8f", sandbox: "#9f4bd0", nonprod: "#007c91",
+    production: "#ff6b2c", prod: "#ff6b2c",     // vibrant tangerine
+    staging: "#d946ef",                          // vibrant fuchsia
+    development: "#10b981", nonprod: "#10b981",  // fresh emerald
+    lab: "#009fdf",                              // bright electric blue
+    sandbox: "#4a5d7e",                          // deep slate blue-grey
+    scanned: "#ef4444",                          // vivid red, the release timeline's scan step
   },
 };
 
@@ -259,10 +293,9 @@ export const defaultTokens: ThemeTokens = {
 //                 lives in tokens.css under :root[data-preset="graphite"].)
 //  - "gateway"    the cyan corporate mark, for a deployment that must wear it.
 //
-// A preset never brings back the opaque navy chrome: the navigation is a
-// material in every one of them, because that is a fact about the design
-// system rather than a colour choice. What a preset changes is the ACCENT and
-// the temperature of the neutrals.
+// A preset never brings back the opaque navy chrome or the filled active pill:
+// the navigation is a light column in every one of them. What a preset changes
+// is the ACCENT and the temperature of the neutrals.
 // -----------------------------------------------------------------------------
 export const presets: Record<string, DeepPartial<ThemeTokens>> = {
   default: {},
@@ -271,7 +304,7 @@ export const presets: Record<string, DeepPartial<ThemeTokens>> = {
     light: {
       brand: "#3a3a3c", brandStrong: "#1d1d1f", brandSoft: "#eeeef0", brandBorder: "#cfcfd4",
       secondary: "#0071e3",
-      navBg: "rgba(242, 242, 245, 0.74)", navBgActive: "#3a3a3c",
+      navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgActive: "#eeeef0", navFgActive: "#1d1d1f",
       canvas: "#ededf0", surface: "#ffffff", surface2: "#f4f4f6",
       border: "#e2e2e5", borderStrong: "#cfcfd4",
       review: "#3a3a3c", reviewBg: "#eeeef0", reviewBd: "#cfcfd4",
@@ -279,7 +312,7 @@ export const presets: Record<string, DeepPartial<ThemeTokens>> = {
     dark: {
       brand: "#d8d8dc", brandStrong: "#ececf0", brandSoft: "rgba(200, 200, 208, 0.16)",
       brandBorder: "rgba(200, 200, 208, 0.4)", secondary: "#44b2ff",
-      navBg: "rgba(24, 24, 26, 0.74)", navBgActive: "#5a5a5f",
+      navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgActive: "rgba(200, 200, 208, 0.14)", navFgActive: "#ececf0",
       canvas: "#161618", surface: "#1f1f22", surface2: "#28282b",
       border: "#333336", borderStrong: "#454549",
       review: "#d8d8dc", reviewBg: "rgba(200, 200, 208, 0.14)",
@@ -290,13 +323,13 @@ export const presets: Record<string, DeepPartial<ThemeTokens>> = {
     light: {
       brand: "#007ba8", brandStrong: "#00607f", brandSoft: "#e3f4fb", brandBorder: "#a9d9ec",
       secondary: "#00607f",
-      navBg: "rgba(240, 246, 249, 0.74)", navBgActive: "#007ba8",
+      navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgActive: "#e3f4fb", navFgActive: "#007ba8",
       review: "#007ba8", reviewBg: "#e3f4fb", reviewBd: "#a9d9ec",
     },
     dark: {
       brand: "#45b8e3", brandStrong: "#6ac9ea", brandSoft: "rgba(0, 159, 219, 0.16)",
       brandBorder: "rgba(0, 159, 219, 0.45)", secondary: "#6ac9ea",
-      navBg: "rgba(20, 28, 34, 0.74)", navBgActive: "#0084b8",
+      navBg: "color-mix(in srgb, var(--surface) 72%, transparent)", navBgActive: "rgba(0, 159, 219, 0.16)", navFgActive: "#6ac9ea",
       review: "#45b8e3", reviewBg: "rgba(0, 159, 219, 0.14)", reviewBd: "rgba(0, 159, 219, 0.4)",
     },
   },

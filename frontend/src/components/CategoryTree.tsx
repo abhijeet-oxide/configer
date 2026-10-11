@@ -134,7 +134,7 @@ function DuplicateEntryModal({
       </Typography.Paragraph>
       {choices.length > 1 && (
         <div style={{ marginBottom: 12 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             Which instance's file
           </Typography.Text>
           <Select
@@ -145,7 +145,7 @@ function DuplicateEntryModal({
           />
         </div>
       )}
-      <Typography.Text type="secondary" style={{ fontSize: 12 }} className="mono">
+      <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }} className="mono">
         {file}
       </Typography.Text>
     </Modal>
@@ -310,7 +310,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
               // each row IS rather than leaving it to arithmetic on a row
               // height nothing guarantees.
               <Tooltip title={p.name} placement="right">
-                <Typography.Text data-tkey={`p:${p.id}`} style={{ fontSize: 12 }} className="mono" ellipsis>
+                <Typography.Text data-tkey={`p:${p.id}`} style={{ fontSize: "var(--text-small)" }} className="mono" ellipsis>
                   {p.leaf}
                 </Typography.Text>
               </Tooltip>
@@ -322,7 +322,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
         const label = (
           <span data-tkey={c.prefix} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
             <span>{c.seg}</span>
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>{c.count}</Typography.Text>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>{c.count}</Typography.Text>
           </span>
         );
         const filtered = categoryKey === c.prefix;
@@ -506,7 +506,7 @@ export default function CategoryTree({ grid }: { grid: Grid }) {
             menu no longer carries its opposite. */}
         <div className="cat-tree-state">
           {filter && (
-            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
               {matchCount} match{matchCount === 1 ? "" : "es"}
             </Typography.Text>
           )}

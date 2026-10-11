@@ -154,7 +154,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                                   <Space size={6}>
                                     {r.name}
                                     {r.project && r.project !== r.name && (
-                                      <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+                                      <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)" }}>
                                         {r.project}
                                       </Typography.Text>
                                     )}
@@ -170,7 +170,7 @@ export default function TopBar({ project }: { project?: string; instances?: Inst
                             },
                           }}
                         >
-                          <a style={{ cursor: "pointer", fontSize: 10, opacity: 0.6 }}>▾</a>
+                          <a style={{ cursor: "pointer", fontSize: "var(--text-micro)", opacity: 0.6 }}>▾</a>
                         </Dropdown>
                       </Space>
                     ),

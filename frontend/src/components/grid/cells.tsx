@@ -54,13 +54,13 @@ export function ListChips({ items }: { items: unknown[] }) {
   return (
     <span>
       {shown.map((it, i) => (
-        <Tag key={i} style={{ marginInlineEnd: 2, fontSize: 11 }} className="mono">
+        <Tag key={i} style={{ marginInlineEnd: 2, fontSize: "var(--text-caption)" }} className="mono">
           {String(it)}
         </Tag>
       ))}
       {items.length > 3 && (
         <Tooltip title={items.map(String).join(", ")}>
-          <Tag style={{ fontSize: 11 }}>+{items.length - 3}</Tag>
+          <Tag style={{ fontSize: "var(--text-caption)" }}>+{items.length - 3}</Tag>
         </Tooltip>
       )}
       {items.length === 0 && <span style={{ opacity: 0.4 }}>[ ]</span>}
@@ -389,7 +389,7 @@ export function StringEditor({
                 type="text"
                 className="cell-expand"
                 aria-label="Open this value in a bigger editor"
-                icon={<FullscreenOutlined style={{ fontSize: 11 }} />}
+                icon={<FullscreenOutlined style={{ fontSize: "var(--text-caption)" }} />}
                 // Mouse-down, not click: blur fires first on click and would
                 // close the inline editor before the expand ever ran.
                 onMouseDown={(e) => {
@@ -467,13 +467,13 @@ function BigStringEditor({
         onChange={(e) => onChange(e.target.value)}
       />
       <div className="big-edit-foot">
-        <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 12 }}>
+        <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: "var(--text-small)" }}>
           {err ?? `${value.length} characters${rules.maxLength ? ` of ${rules.maxLength}` : ""}`}
         </Typography.Text>
       </div>
       {changed && !err && (
         <div className="big-edit-diff">
-          <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
             WHAT YOU CHANGED
           </Typography.Text>
           <ValueDiff before={before} after={value} label={paramName} />
@@ -556,7 +556,7 @@ export function ListEditor({
             tokenSeparators={[","]}
             suffixIcon={null}
           />
-          <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: 11 }}>
+          <Typography.Text type={err ? "danger" : "secondary"} style={{ fontSize: "var(--text-caption)" }}>
             {err ??
               `${items.length} entr${items.length === 1 ? "y" : "ies"}${rules.formatType ? ` · each a ${rules.formatType}` : ", one line/element per entry"}`}
           </Typography.Text>

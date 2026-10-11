@@ -160,7 +160,7 @@ export default function AddParameterModal({
           </Radio.Group>
         </Form.Item>
         {mode === "design" ? (
-          <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: -4 }}>
+          <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-small)", marginTop: -4 }}>
             The configuration file hasn't arrived yet. The parameter behaves normally: set
             values per instance, validate, review; nothing renders until you attach it to a
             real file later.

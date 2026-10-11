@@ -1,0 +1,655 @@
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Button, Popover } from "antd";
+import {
+  connection as defaultMonitor,
+  useConnection,
+  useCountdown,
+  type ConnectionMonitor,
+  type ConnectionSnapshot,
+} from "../connection";
+import {
+  CheckCircleIcon,
+  ChevronDownIcon,
+  ClockIcon,
+  PulseIcon,
+  RefreshIcon,
+  SignalIcon,
+  SignalOffIcon,
+} from "../icons";
+import { formatTimeSeconds } from "../dates";
+
+// Outage UI, copied with this folder. Three surfaces: Pill (bar), Alert
+// (corner card), Notice (empty page).
+//
+// Do not take the page away. No modal, no unmount, no disabled form.
+// Say last-connected time and next-check; fold the 502 behind a disclosure.
+
+/** How a phase reads to somebody who does not know what a service is. */
+export interface ConnectionCopy {
+  /** The pill's word. One word where possible: it sits in a bar. */
+  label: string;
+  /** The card's heading. */
+  title: string;
+  /** One sentence: what is happening, and what is being done about it. */
+  sentence: string;
+  tone: "ok" | "checking" | "warn" | "down";
+}
+
+const DEFAULT_SERVICE = "the service";
+
+/** Capitalises a sentence that begins with a service name of unknown case. */
+function opening(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The whole of what an outage says, in one function.
+ *
+ * Here rather than inside the components because all three surfaces say the
+ * same thing at different lengths, and a tool that reworded one of them would
+ * be a tool where the pill and the card disagree about what is happening.
+ */
+export function describeConnection(
+  snapshot: ConnectionSnapshot,
+  service: string = DEFAULT_SERVICE,
+): ConnectionCopy {
+  const { phase, deviceOffline, restoredAt } = snapshot;
+
+  if (deviceOffline) {
+    return {
+      label: "No network",
+      title: "This device has no network connection",
+      sentence: opening(
+        `${service} cannot be reached until the network returns. The connection is checked automatically.`,
+      ),
+      tone: "warn",
+    };
+  }
+
+  switch (phase) {
+    case "online":
+      return restoredAt
+        ? {
+            label: "Connected",
+            title: "Connection restored",
+            sentence: opening(`${service} is responding again.`),
+            tone: "ok",
+          }
+        : {
+            label: "Connected",
+            title: "Connected",
+            sentence: opening(`${service} is responding.`),
+            tone: "ok",
+          };
+    case "unavailable":
+      return {
+        label: "Unavailable",
+        title: opening(`${service} is temporarily unavailable`),
+        sentence:
+          "Service unavailable (restart or maintenance). Reconnecting…",
+        tone: "warn",
+      };
+    case "offline":
+      return {
+        label: "Reconnecting",
+        title: opening(`${service} stopped responding`),
+        // Short, and it carries the two facts that decide what somebody does
+        // next: this is usually nothing, and nobody has to sit and watch it.
+        // The first draft spent three clauses on the mechanism - when the
+        // connection dropped, that it is checked again, that the page is
+        // restored - and a card in the corner of a screen is read in about a
+        // second and a half.
+        sentence: "This is usually temporary. The connection is checked automatically.",
+        tone: "down",
+      };
+    case "unstable":
+      return {
+        label: "Checking",
+        title: "Checking the connection",
+        sentence: opening(`A request to ${service} did not complete. The connection is being checked.`),
+        tone: "checking",
+      };
+    default:
+      return {
+        label: "Checking",
+        title: "Checking the connection",
+        sentence: opening(`${service} has not answered yet.`),
+        tone: "checking",
+      };
+  }
+}
+
+/** The clock time something happened, which is what gets quoted into a ticket. */
+function clockTime(at: number): string {
+  return formatTimeSeconds(at) ?? "";
+}
+
+/**
+ * The same age, in as few characters as it can be said in.
+ *
+ * For the card's one meta line, which has to hold two facts and a countdown
+ * inside a corner card: "25 seconds ago" and "11 seconds" spelled out wrap
+ * that line onto three, and a footer three lines deep stops being a footer.
+ * The unit is still stated - a bare number is a defect - just not in full.
+ */
+function compactAge(at: number, now: number): string {
+  const seconds = Math.max(1, Math.floor((now - at) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h`;
+}
+
+/**
+ * How long ago, in the largest unit that is still true.
+ *
+ * Rounded down and never below a second, because "0 seconds ago" reads as a
+ * broken clock and "just now" is a conversation.
+ */
+function ageLabel(at: number, now: number): string {
+  const seconds = Math.max(1, Math.floor((now - at) / 1000));
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"} ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+}
+
+/** Re-renders once a second while `active`, so an age on screen stays true. */
+function useSecond(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+  return now;
+}
+
+/**
+ * The ring that fills between one check and the next.
+ *
+ * A CSS animation given the interval as its duration rather than a value
+ * redrawn every frame: the countdown is already stated in words beside it, and
+ * this is the part that makes waiting legible at a glance. Keyed on the
+ * deadline so each new interval starts it over.
+ */
+function CountdownRing({ until, from }: { until: number; from: number }) {
+  const total = Math.max(1, (until - from) / 1000);
+  // A NEGATIVE DELAY, which is the whole trick and was a visible bug without
+  // it: a CSS animation starts at its first frame whenever the element mounts,
+  // so a ring joining an interval that is already half spent drew a full
+  // circle beside the words "checking again in 6s" and then took another
+  // twenty seconds to empty. Offsetting the start by however much of the
+  // interval has already passed puts the drawing and the number on the same
+  // clock, wherever in the interval the surface happened to appear.
+  const elapsed = Math.min(Math.max(0, (Date.now() - from) / 1000), total);
+  return (
+    <svg className="ui-conn-ring" viewBox="0 0 20 20" aria-hidden="true">
+      <circle className="ui-conn-ring-track" cx="10" cy="10" r="8" />
+      <circle
+        key={until}
+        className="ui-conn-ring-arc"
+        cx="10"
+        cy="10"
+        r="8"
+        style={{ animationDuration: `${total}s`, animationDelay: `-${elapsed}s` }}
+      />
+    </svg>
+  );
+}
+
+function ToneGlyph({ tone }: { tone: ConnectionCopy["tone"] }) {
+  if (tone === "ok") return <CheckCircleIcon />;
+  if (tone === "down") return <SignalOffIcon />;
+  return <SignalIcon />;
+}
+
+/**
+ * The standing indicator, for the bar above the page.
+ *
+ * Healthy, it is a dot and nothing else unless its caller supplies a trigger
+ * label. That lets an application make an existing deployment label the click
+ * target instead of placing a tiny independent button beside it. The dot and
+ * label still open the same detail panel.
+ *
+ * Unhealthy, it grows a word. The width transition is the point: movement in
+ * the corner of the eye is what a person notices without being interrupted,
+ * which is exactly the level of attention a two-second blip deserves.
+ */
+export function ConnectionPill({
+  service,
+  monitor = defaultMonitor,
+  placement = "bottomRight",
+  triggerLabel,
+  facts,
+}: {
+  /** what to call the service in words, e.g. the product's own name */
+  service?: string;
+  monitor?: ConnectionMonitor;
+  placement?: "bottom" | "bottomRight" | "bottomLeft";
+  /** Optional application-owned text included inside the clickable pill. */
+  triggerLabel?: ReactNode;
+  /** Application-owned deployment facts shown before the heartbeat facts. */
+  facts?: readonly ConnectionFact[];
+}) {
+  const snapshot = useConnection(monitor);
+  const copy = describeConnection(snapshot, service);
+  const [open, setOpen] = useState(false);
+  const settled = copy.tone === "ok" && !snapshot.restoredAt;
+  const checks = useCheckPulse(snapshot.checking);
+
+  return (
+    <Popover
+      classNames={{ root: "ui-conn-popover" }}
+      open={open}
+      onOpenChange={setOpen}
+      trigger="click"
+      placement={placement}
+      arrow={false}
+      content={
+        <ConnectionDetail
+          snapshot={snapshot}
+          service={service}
+          monitor={monitor}
+          live={open}
+          facts={facts}
+        />
+      }
+    >
+      <button
+        type="button"
+        className={`ui-conn-pill tone-${copy.tone}${settled ? " is-quiet" : ""}`}
+        aria-label={`Connection: ${copy.label}`}
+        aria-expanded={open}
+      >
+        <span className="ui-conn-dot">
+          {/*
+            ONE RING PER CHECK, and the `key` is what makes it one.
+
+            A CSS animation plays when its element mounts, so a fresh element
+            per check is the whole mechanism: `checks` counts them, React
+            replaces the span, and the ring expands and fades exactly once.
+            Re-triggering an animation on a persistent element means removing
+            and re-adding a class across a forced reflow, which is the same
+            effect written in a way that can silently stop working.
+
+            Rendered even when everything is fine, and that does NOT contradict
+            the note on the halo below. The halo is INFINITE and reserved for an
+            unresolved state, because a healthy dot that pulses forever is a
+            smoke alarm chirping. This fires once, on an event that actually
+            happened, and then there is nothing on screen again - which is what
+            makes a permanently green dot legible as live rather than as
+            painted on.
+          */}
+          <span key={checks} className="ui-conn-ripple" aria-hidden="true" />
+        </span>
+        {!settled && <span className="ui-conn-pill-label">{copy.label}</span>}
+        {triggerLabel && <span className="ui-conn-pill-context">{triggerLabel}</span>}
+      </button>
+    </Popover>
+  );
+}
+
+export interface ConnectionFact {
+  label: string;
+  value: ReactNode;
+  icon?: ReactNode;
+}
+
+function ConnectionFactRow({ label, value, icon }: ConnectionFact) {
+  return (
+    <div className="ui-conn-fact">
+      <span className="ui-conn-fact-icon" aria-hidden="true">{icon}</span>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+/**
+ * Counts COMPLETED checks, for something that wants to fire once per check.
+ *
+ * The transition is what matters, not the flag: `checking` is true for as long
+ * as a probe is in flight, and an effect on the flag itself would fire at the
+ * start and again at the end. This increments when it goes false having been
+ * true, so the count is "checks that have finished" and a consumer keyed on it
+ * gets exactly one event each.
+ *
+ * It counts real CHECKS - a heartbeat probe, or somebody pressing Check now -
+ * and deliberately not `lastCheckAt`, which the monitor also moves on every
+ * successful request in the application (see reportReachable). Keyed on that
+ * instead, the dot would flicker on every list a page loads, which is activity
+ * rather than a check and belongs to no indicator.
+ */
+function useCheckPulse(checking: boolean): number {
+  const [checks, setChecks] = useState(0);
+  const was = useRef(false);
+  useEffect(() => {
+    if (checking) {
+      was.current = true;
+      return;
+    }
+    if (!was.current) return;
+    was.current = false;
+    setChecks((n) => n + 1);
+  }, [checking]);
+  return checks;
+}
+
+/**
+ * The panel behind the pill: every fact the monitor holds, and the one control.
+ *
+ * `live` stops the clock when the panel is closed. An age that re-renders once
+ * a second behind a closed popover is a timer running for nobody, on every
+ * screen of the application, for the life of the session.
+ */
+export function ConnectionDetail({
+  snapshot,
+  service,
+  monitor = defaultMonitor,
+  live = true,
+  facts,
+}: {
+  snapshot: ConnectionSnapshot;
+  service?: string;
+  monitor?: ConnectionMonitor;
+  live?: boolean;
+  facts?: readonly ConnectionFact[];
+}) {
+  const copy = describeConnection(snapshot, service);
+  const now = useSecond(live);
+  const left = useCountdown(live ? snapshot.nextCheckAt : undefined);
+
+  return (
+    <div className={`ui-conn-detail tone-${copy.tone}`}>
+      <div className="ui-conn-detail-head">
+        <span className="ui-conn-detail-icon">
+          {copy.tone === "ok" ? <SignalIcon /> : <ToneGlyph tone={copy.tone} />}
+        </span>
+        <span className="ui-conn-detail-title">{copy.title}</span>
+        {/* The one-word state, where it adds something: when all is well the
+            title already says "Connected", and a chip repeating it is noise. */}
+        {copy.tone !== "ok" && <span className="ui-conn-detail-state">{copy.label}</span>}
+      </div>
+      <div className="ui-conn-detail-body">
+        {facts && facts.length > 0 && (
+          <section className="ui-conn-fact-group is-deployment">
+            <div className="ui-conn-fact-group-title">Deployment</div>
+            <dl className="ui-conn-facts">
+              {facts.map((fact) => <ConnectionFactRow key={fact.label} {...fact} />)}
+            </dl>
+          </section>
+        )}
+        <section className="ui-conn-fact-group">
+          <div className="ui-conn-fact-group-title">Connection</div>
+          <dl className="ui-conn-facts">
+            <ConnectionFactRow
+              label="Heartbeat"
+              icon={<PulseIcon />}
+              value={snapshot.lastOkAt
+                ? `${clockTime(snapshot.lastOkAt)} (${ageLabel(snapshot.lastOkAt, now)})`
+                : "None in this session"}
+            />
+            <ConnectionFactRow
+              label="Last check"
+              icon={<ClockIcon />}
+              value={snapshot.lastCheckAt ? clockTime(snapshot.lastCheckAt) : "None"}
+            />
+            <ConnectionFactRow
+              label="Next check"
+              icon={<RefreshIcon />}
+              value={snapshot.checking
+                ? "Running"
+                : left !== undefined
+                  ? `In ${left}s`
+                  : "When this tab is in front"}
+            />
+            {snapshot.failures > 0 && (
+              <ConnectionFactRow
+                label="Failed checks"
+                icon={<SignalOffIcon />}
+                value={snapshot.failures}
+              />
+            )}
+          </dl>
+        </section>
+        {snapshot.detail && <p className="ui-conn-technical">{snapshot.detail}</p>}
+      </div>
+      <div className="ui-conn-detail-action">
+        <Button
+          block
+          icon={<RefreshIcon />}
+          loading={snapshot.checking}
+          onClick={() => void monitor.check()}
+        >
+          Check now
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The confirmed outage, as a card in the corner.
+ *
+ * # Where it sits, and why that is not arbitrary
+ *
+ * Bottom LEFT. Toasts land bottom-right in both tools, and a card that shared
+ * that corner would be buried under the first three notifications of an outage
+ * that produces one per request. A form's own controls sit bottom-right or
+ * under the fields; the bottom-left corner is the one part of a working screen
+ * that is reliably empty, which is the entire requirement for something that
+ * must be seen without being in the way.
+ *
+ * # What it will not do
+ *
+ * It will not appear for an unconfirmed failure - that is the pill's job, and
+ * a card that flashed up for every dropped request would train people to
+ * dismiss it before reading. It will not cover a modal's actions, it takes no
+ * focus, and dismissing it dismisses it for that outage rather than for four
+ * seconds.
+ */
+export function ConnectionAlert({
+  service,
+  monitor = defaultMonitor,
+  /** an extra line the app owns: what is being preserved, and where */
+  workNote,
+}: {
+  service?: string;
+  monitor?: ConnectionMonitor;
+  workNote?: ReactNode;
+}) {
+  const snapshot = useConnection(monitor);
+  const copy = describeConnection(snapshot, service);
+  const [dismissedAt, setDismissedAt] = useState<number | undefined>();
+  const [showDetail, setShowDetail] = useState(false);
+
+  const down = snapshot.phase === "offline" || snapshot.phase === "unavailable";
+  const restored = Boolean(snapshot.restoredAt);
+  // Dismissal is scoped to the outage it dismissed. `since` moves when the
+  // phase changes, so a new outage - or the recovery from this one - is a new
+  // thing to say and says it.
+  const dismissed = dismissedAt !== undefined && dismissedAt === snapshot.since;
+  const visible = (down || restored) && !dismissed;
+
+  const now = useSecond(visible && down);
+  const left = useCountdown(visible && down ? snapshot.nextCheckAt : undefined);
+
+  useEffect(() => {
+    if (!down) setShowDetail(false);
+  }, [down]);
+
+  if (!visible) return null;
+
+  return (
+    <div className={`ui-conn-alert tone-${copy.tone}`} role="status" aria-live="polite">
+      <span className="ui-conn-alert-icon">
+        <ToneGlyph tone={copy.tone} />
+      </span>
+      <div className="ui-conn-alert-title">{copy.title}</div>
+      {/*
+        ONE PARAGRAPH, not a sentence and then a tinted box under it.
+
+        What is happening and what has been preserved are the same thought -
+        "this is usually temporary, and nothing has been lost" - and splitting
+        them across two blocks made the card twice as tall to say it, with the
+        reassuring half in a panel of its own that read as a second, separate
+        problem.
+      */}
+      <p className="ui-conn-alert-text">
+        {copy.sentence}
+        {down && workNote ? <> {workNote}</> : null}
+      </p>
+
+      {/*
+        The diagnosis, as a section rather than as a control in the footer.
+
+        It sits directly under the sentence it elaborates, where a disclosure
+        belongs: the person opening it is following the message downwards, and
+        a Details button beside Check now made two unrelated things - one that
+        explains and one that acts - look like a pair of equal choices.
+      */}
+      {down && snapshot.detail && (
+        <div className="ui-conn-alert-disclosure">
+          <button
+            type="button"
+            className={`ui-conn-more${showDetail ? " is-open" : ""}`}
+            aria-expanded={showDetail}
+            onClick={() => setShowDetail((v) => !v)}
+          >
+            <ChevronDownIcon />
+            Details
+          </button>
+          {showDetail && (
+            <p className="ui-conn-technical">
+              {snapshot.detail}
+              {snapshot.status ? ` (HTTP ${snapshot.status})` : ""}
+              {snapshot.lastOkAt ? ` Last connected at ${clockTime(snapshot.lastOkAt)}.` : ""}
+            </p>
+          )}
+        </div>
+      )}
+
+      {/*
+        THE FOOTER: what is known on the left, the one action on the right.
+
+        Right, because that is where a dialog's confirming button is in every
+        application on the platform and where a right hand already is. It had
+        been on the left, in front of the facts, which put the button somebody
+        does not need to press in front of the line that tells them not to
+        bother pressing it.
+
+        The two facts share a line for the same reason the paragraph is one
+        paragraph: they are one thought - how old this screen is, and how long
+        until it is checked again - and stacking them made a two-line footer
+        out of nine words.
+      */}
+      {down && (
+        <div className="ui-conn-alert-foot">
+          <span className="ui-conn-alert-meta">
+            {snapshot.lastOkAt && (
+              <>
+                Last connected {compactAge(snapshot.lastOkAt, now)} ago
+                <span className="ui-conn-sep">·</span>
+              </>
+            )}
+            {snapshot.checking ? (
+              "Checking now"
+            ) : left !== undefined ? (
+              <>
+                {snapshot.nextCheckAt !== undefined && snapshot.lastCheckAt !== undefined && (
+                  <CountdownRing until={snapshot.nextCheckAt} from={snapshot.lastCheckAt} />
+                )}
+                Checking again in {left}s
+              </>
+            ) : snapshot.deviceOffline ? (
+              "Waiting for the network"
+            ) : (
+              "Checking when this tab is in front"
+            )}
+          </span>
+          <div className="ui-conn-alert-actions">
+            <Button
+              size="small"
+              type="primary"
+              icon={<RefreshIcon />}
+              loading={snapshot.checking}
+              onClick={() => void monitor.check()}
+            >
+              Check now
+            </Button>
+          </div>
+        </div>
+      )}
+
+      <button
+        type="button"
+        className="ui-conn-alert-close"
+        aria-label="Dismiss"
+        onClick={() => setDismissedAt(snapshot.since)}
+      >
+        <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+          <path
+            d="m4.4 4.4 7.2 7.2M11.6 4.4l-7.2 7.2"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+          />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+/**
+ * The same fact, inside a page that has nothing to show.
+ *
+ * A first load that failed because the service was away is NOT an error and
+ * must not be dressed as one: there is nothing wrong with the request, nothing
+ * for the reader to correct, and a red alert with a Try again button asks them
+ * to do by hand the thing that is already happening on a timer. This states
+ * the position, counts down to the next check, and gets out of the way when
+ * the data arrives.
+ */
+export function ConnectionNotice({
+  service,
+  monitor = defaultMonitor,
+}: {
+  service?: string;
+  monitor?: ConnectionMonitor;
+}) {
+  const snapshot = useConnection(monitor);
+  const copy = describeConnection(snapshot, service);
+  const left = useCountdown(snapshot.nextCheckAt);
+
+  return (
+    <div className={`ui-conn-inline tone-${copy.tone}`} role="status" aria-live="polite">
+      <span className="ui-conn-inline-icon">
+        <ToneGlyph tone={copy.tone} />
+      </span>
+      <div className="ui-conn-inline-main">
+        <div className="ui-conn-inline-title">{copy.title}</div>
+        <p className="ui-conn-inline-text">{copy.sentence}</p>
+      </div>
+      <div className="ui-conn-inline-side">
+        <Button
+          size="small"
+          icon={<RefreshIcon />}
+          loading={snapshot.checking}
+          onClick={() => void monitor.check()}
+        >
+          Check now
+        </Button>
+        <span className="ui-conn-inline-next">
+          {snapshot.checking
+            ? "Checking"
+            : left !== undefined
+              ? `Checking again in ${left}s`
+              : "Checking when this tab is in front"}
+        </span>
+      </div>
+    </div>
+  );
+}

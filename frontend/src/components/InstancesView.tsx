@@ -532,7 +532,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
               <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.3 }}>
                 <b>{n}</b>
                 {i.description && (
-                  <span style={{ fontSize: 11, color: "var(--text-3)" }}>{i.description}</span>
+                  <span style={{ fontSize: "var(--text-caption)", color: "var(--text-3)" }}>{i.description}</span>
                 )}
               </span>
             ),
@@ -568,7 +568,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
                 <span style={{ display: "inline-flex", flexDirection: "column", lineHeight: 1.25 }}>
                   <span>{name}</span>
                   {i.versionName && i.versionName !== id && (
-                    <span className="mono" style={{ fontSize: 11, color: "var(--text-3)" }}>{id}</span>
+                    <span className="mono" style={{ fontSize: "var(--text-caption)", color: "var(--text-3)" }}>{id}</span>
                   )}
                 </span>
               );
@@ -585,7 +585,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
             render: (labels: Record<string, string>) => (
               <Space size={4} wrap>
                 {Object.entries(labels ?? {}).map(([k, v]) => (
-                  <Tag key={k} style={{ fontSize: 11 }}>{k}={v}</Tag>
+                  <Tag key={k} style={{ fontSize: "var(--text-caption)" }}>{k}={v}</Tag>
                 ))}
               </Space>
             ),
@@ -738,7 +738,7 @@ export default function InstancesView({ grid }: { grid: Grid }) {
         onOk={() => copyInto?.source && copyValues.mutate({ target: copyInto.target, source: copyInto.source })}
         destroyOnHidden
       >
-        <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+        <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-body)" }}>
           Copy every parameter value that differs from another instance into{" "}
           <span className="mono">{copyInto?.target}</span>. Each becomes a pending change you
           review before publishing; matching values are left alone.

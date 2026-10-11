@@ -117,7 +117,7 @@
   right: 0;
   top: 100%;
   margin-top: 1px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.2;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -128,7 +128,7 @@
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   color: var(--text);
   min-width: 0;
@@ -143,7 +143,7 @@
    label beside it. */
 .cf-group-req {
   color: var(--c-danger);
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1;
   cursor: help;
 }
@@ -154,7 +154,7 @@
   display: inline-flex;
   align-items: center;
   color: var(--text-3);
-  font-size: 12px;
+  font-size: var(--text-small);
   cursor: help;
   flex-shrink: 0;
 }
@@ -167,7 +167,7 @@
 .cf-group-set-head {
   display: flex;
   align-items: flex-end;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: var(--text-2);
   padding-bottom: 4px;
@@ -192,7 +192,7 @@
   margin-top: 3px;
 }
 .cf-group-hint {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   line-height: 1.35;
 }
@@ -224,7 +224,7 @@
   top: 0;
   z-index: 1;
   background: var(--surface);
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 650;
   color: var(--text-2);
   align-items: flex-end;
@@ -262,7 +262,7 @@
    allowed to widen the column. */
 .cf-group-sub {
   display: block;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 400;
   color: var(--text-3);
   white-space: nowrap;

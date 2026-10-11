@@ -80,7 +80,7 @@ function Sha({ label, sha }: { label: string; sha?: string }) {
           padding: "1px 7px",
           borderRadius: "var(--r-sm)",
           border: "1px solid var(--border)",
-          fontSize: 11.5,
+          fontSize: "var(--text-caption)",
         }}
         onClick={() => {
           void navigator.clipboard?.writeText(sha);
@@ -226,9 +226,9 @@ function ImpactBanner({ impact }: { impact?: ChangeImpact }) {
       }}
     >
       {prod ? (
-        <WarningFilled style={{ color: "var(--c-pending)", fontSize: 14, flexShrink: 0 }} />
+        <WarningFilled style={{ color: "var(--c-pending)", fontSize: "var(--text-label)", flexShrink: 0 }} />
       ) : (
-        <ClusterOutlined style={{ color: "var(--text-3)", fontSize: 14, flexShrink: 0 }} />
+        <ClusterOutlined style={{ color: "var(--text-3)", fontSize: "var(--text-label)", flexShrink: 0 }} />
       )}
       <span>
         <span style={{ fontWeight: 600, color: "var(--text)" }}>
@@ -256,7 +256,7 @@ function OverrideBanner({ override }: { override: ChangeOverride }) {
   return (
     <div className="cf-override">
       <div className="cf-override-head">
-        <CloseCircleFilled style={{ color: "var(--c-danger)", fontSize: 15, flexShrink: 0 }} />
+        <CloseCircleFilled style={{ color: "var(--c-danger)", fontSize: "var(--text-subtitle)", flexShrink: 0 }} />
         <div className="min-w-0">
           <div className="cf-override-title">
             Submitted over the data model - {override.summary}
@@ -500,7 +500,7 @@ export default function ApprovalsView() {  const { message } = AntApp.useApp();
                 </span>
                 <div className="ml-auto flex items-center gap-2">
                   {selected.branch && (
-                    <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{selected.branch}</MonoChip>
+                    <MonoChip icon={<BranchesOutlined style={{ fontSize: "var(--text-micro)" }} />}>{selected.branch}</MonoChip>
                   )}
                   {selected.prUrl && (
                     <a href={selected.prUrl} target="_blank" rel="noreferrer" className="text-xs">

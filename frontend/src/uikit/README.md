@@ -45,8 +45,11 @@ things, and both live OUTSIDE this folder:
 | `antd.ts` | the same tokens, expressed as Ant Design's. |
 | `ThemeProvider.tsx` | what an app mounts. Light/dark/system, density, font scale, and the `<html>` attributes plain CSS reads. |
 | `color.ts` | how a component reads a colour: `c.brand`, `withAlpha`, `severity`, `envHex`. Every one of them a `var()`, never a hex. |
-| `prefs.ts` | the appearance preference model, for an app that has none of its own. |
-| `primitives/` | the components: card, page header, stat tile, status pill, severity tag, notice, empty state, stepper, toolbar, keycap, motion. |
+| `prefs.ts` | the preference model shared by every module on the origin: theme, text size, density, contrast, colour vision, motion, links, time zone, date format. |
+| `access.ts` | what contrast and colour vision change in the palette, before Ant Design derives from it. |
+| `dates.ts` | every absolute date and time, in the chosen zone and format. |
+| `primitives/` | the components: card, page header, stat tile, status pill, severity tag, notice, empty state, stepper, toolbar, keycap, motion - and `StatePages.tsx`, the four pages a tool shows instead of itself. |
+| `connection.ts` | whether the service is answering: the schedule, the backoff, and the one place that decides. Paired with `primitives/ConnectionStatus.tsx`, the three surfaces that show it. |
 | `vitePluginBrand.ts` | inlines the colour variables, the favicon and the title into `index.html` at build time. |
 
 ## What the system is built to look like
@@ -55,27 +58,15 @@ It is built to look like it belongs on the platform its operators actually sit
 in front of. That is a decision with consequences, and they are worth stating so
 nobody has to reverse-engineer them from the values:
 
-- **The palette is the system palette.** The neutrals are the ones Apple's own
-  surfaces use (`#1d1d1f` type, `#f5f5f7` grounds, `#d2d2d7` rules) rather than
-  a generic blue-grey ramp, and the accents are systemBlue, systemGreen,
-  systemOrange, systemRed and systemIndigo rather than five colours chosen one at
-  a time. `envColors` follows, because an environment chip sitting beside a
-  status pill in a different family is the kind of small wrongness that reads as
-  two products.
+- **The palette is a cool neutral ramp under one blue.** `#101828` type,
+  `#f6f7f9` grounds, `#eaecf0` rules, and `#1e6ef4` for the one saturated
+  thing. Cards are white on the ground with a visible hairline border. See
+  `docs/design/51-visual-refresh.md` in the gateway repository.
 
-- **The navigation is a MATERIAL, not a slab.** It was a block of navy - the
-  house style of every enterprise dashboard and the identity of none of them. It
-  is now translucent, the page's tint comes through it, everything on it is
-  ordinary type, and the one saturated thing in the frame is the pill under
-  wherever you are. The blur lives in `components.css`; the alpha lives in
-  `tokens.ts`. **A preset may change the accent and the temperature of the
-  neutrals; it may not bring the opaque chrome back.**
-
-  A material is `backdrop-filter: saturate(180%) blur(20px)` and the saturation
-  half is not optional: blur alone turns whatever is behind into grey mush, and
-  pushing the colour back up is what makes it read as light through glass rather
-  than as dirt. Every surface using one also states a background, because a
-  browser without `backdrop-filter` has to get a solid.
+- **The navigation is a plain light column.** Where you are is brand type on a
+  brand tint, not a filled pill. **A preset may change the accent and the
+  temperature of the neutrals; it may not bring back the opaque navy chrome or
+  the filled pill.**
 
 - **Elevation is three ingredients, never one blur.** A hairline (a `0.5px`
   spread, so it stays one device pixel and costs no layout), a tight contact
@@ -84,7 +75,8 @@ nobody has to reverse-engineer them from the values:
   survived is `--el-inset`, a hairline of light along a surface's top edge -
   a real bevel, on inputs and pressed states.
 
-- **Type is San Francisco, and it tightens as it grows.** `--tr-tight` through
+- **Type is Inter, bundled by the app, and it tightens as it grows.** The
+  stack falls back to San Francisco and the platform faces. `--tr-tight` through
   `--tr-wide` are a scale rather than a number typed at each call site: the
   tracking that keeps 11px legible makes a 24px title look like it is falling
   apart. `-webkit-font-smoothing: antialiased` AND `-moz-osx-font-smoothing:
@@ -117,12 +109,111 @@ service did not answer, nobody is signed in. They are the first thing anybody
 sees of a product and the thing they see on its worst day - exactly the wrong
 place for each tool to improvise a layout.
 
+`StatePages` is the same argument again, for the four moments a tool shows
+instead of itself: **planned work**, a **wrong address**, a **failure nobody
+planned for**, and the **wait** before a screen can be drawn. Every tool has all
+four, and they are the four most likely to be improvised one at a time - a
+component library `Result` here, a bare spinner there, a stack trace on the
+third - which is precisely how two products that share a palette stop looking
+like one product.
+
+They are ONE component with four faces (`MaintenancePage`, `NotFoundPage`,
+`ErrorPage`, `LoadingPage`, over the exported `StatePage`). What differs between
+them is the drawing, the label above the title and the sentence; the frame, the
+spacing, the order of the parts and the way the actions sit are identical,
+because a person who meets two of them in one session should not be able to tell
+they were written separately.
+
+Three rules inside them are worth knowing:
+
+- **`full` decides the frame, and it is not cosmetic.** Without it the page
+  fills the content area it was given and the application's chrome stays on
+  screen around it - which is right for a mistyped address or a page whose code
+  did not arrive, where the navigation is still correct and still works. With it
+  the page takes the viewport and states the identity itself, for the moments
+  when there is no chrome left to sit in: before the app has booted, or when the
+  whole of it has fallen over. Taking the navigation away for a typo would be
+  the application treating a wrong address as an outage.
+
+- **The failure is shown, folded rather than dropped.** These pages get quoted
+  into tickets, and the person reading one is usually the person who would have
+  fixed it from the message alone. `ErrorPage` takes `detail` and `requestId`
+  and puts them behind a disclosure; a screen that says only that something went
+  wrong turns one report into three.
+
+- **`LoadingPage` may not look like a result, and may not fake progress.** It
+  carries no badge, no check and no colour that means anything, and nothing on
+  it fills or advances - a page whose code is in flight has no denominator, and
+  a bar that filled would state a position nobody has. It is also the one
+  illustration that may not simply stop under `prefers-reduced-motion`: with
+  every animation removed it becomes a picture of a card, indistinguishable from
+  a page that has finished, so it keeps a slow non-directional breath instead.
+
 One rule inside them is worth knowing because it was a real bug: **a lockup
 aligns to itself, never to whatever it was dropped into.** The name and the
 caption are different widths, so on a card that centres its text the short name
 floated to the middle of the box the caption sized, and read as a mark with a
 hole punched between it and its own name. `.ui-lockup-text` states
 `align-items: flex-start` for that reason.
+
+## Is the service there?
+
+`connection.ts` and `ConnectionStatus.tsx` are the third shared-whole surface,
+for the same reason as the other two: **every tool's service goes away
+sometimes, and a tool that improvises its own answer improvises the same wrong
+one.** The wrong one is a toast per failed request - twelve identical cards
+about one cause, none of which says whether the thing is still down - followed
+eventually by a page that replaces itself with an error and takes the work on
+it away.
+
+The model is one monitor and three faces:
+
+| piece | what it is |
+| --- | --- |
+| `connection` | the monitor. Holds the phase, the schedule and the last answer; owns no HTTP. |
+| `ConnectionPill` | the standing indicator for `TopBar`. A dot when healthy, a word when not. |
+| `ConnectionAlert` | the confirmed outage, as a card in the bottom-LEFT corner. Mount once. |
+| `ConnectionNotice` | the same fact inside a page whose first load met the outage. |
+
+An app wires it in three lines:
+
+```ts
+connection.configure({ probe })           // one request, app's own address
+connection.onRestore(() => refetch())     // what to do when it comes back
+```
+
+```tsx
+<TopBar right={<ConnectionPill service={brand.appName} />} />
+<ConnectionAlert service={brand.appName} workNote={…} />
+```
+
+Five rules are built into it, and each one is a defect somebody shipped first:
+
+- **Ordinary traffic is the health signal.** Every request reports what
+  happened to it (`reportReachable` / `reportUnreachable`), so a screen doing
+  work polls nothing. The probe exists for the screen doing nothing, and for
+  the seconds after the answers stop.
+- **A failure is confirmed before it is announced.** The first failed request
+  buys a check a second later, not a card. Dropped requests happen on healthy
+  systems several times a day, and an interface that cries wolf for each one is
+  an interface people learn to dismiss unread.
+- **Nothing is taken away from anybody.** No modal, no mask, no disabled
+  interface, no unmounted form. A person halfway through something during a
+  thirty-second restart keeps typing and saves when it returns. `useHeldWork`
+  lets a screen declare unsaved work so the card can SAY that, and `useOnRestore`
+  lets it retry the save that failed.
+- **The card states times, not sensations.** "Last connected 15:04:22" answers
+  how old the numbers on screen are; "Checking again in 8s" is what stops
+  somebody pressing a retry button every two seconds.
+- **The technical sentence is kept and folded.** The address, the status and
+  what the browser actually said go behind Details, where the person who can
+  act on them will look. The headline is written for the person who cannot.
+
+**The service is named by the APP, never here.** `service` is a prop, and it
+should be the product's own name - what a person calls the thing they are
+using, not what its processes are called internally. A tool whose outage card
+names its server process is a tool telling a release manager to go and check
+something they have never heard of.
 
 ## What counts as a difference
 
@@ -235,13 +326,22 @@ The kit is written for React 18 and 19 alike, and for the strictest
 `tsconfig` of the two (`noUncheckedIndexedAccess` included), so it typechecks
 in either repository unchanged.
 
+**Whatever `vite.config.ts` reaches names its file extension.** `vitePluginBrand.ts`
+is imported by the config, so the config's loader resolves it and the three files
+it pulls in - not Vite. Vite's `configLoader: 'native'`, the planned default,
+uses the runtime's own TypeScript support, which guesses no extension and reads
+no directory index; an adopting repository that drops the extensions gets a
+config that does not load. Everything else in the folder is imported by the app
+and is resolved by Vite, so it is written the ordinary way, and the `.ts` in
+`vitePluginBrand.ts`, `antd.ts` and `brand.ts` is the marker for which is which.
+
 ## Adopting it
 
 1. Copy the folder to `src/uikit/`.
 2. Write `src/brand.ts` exporting a `BrandIdentity`.
-3. In `vite.config.ts`: `import brandPlugin from "./src/uikit/vitePluginBrand"`
-   and `import brand from "./src/brand"`, then add `brandPlugin(brand)` to
-   `plugins`.
+3. In `vite.config.ts`: `import brandPlugin from "./src/uikit/vitePluginBrand.ts"`
+   and `import brand from "./src/brand.ts"`, then add `brandPlugin(brand)` to
+   `plugins`, and set `allowImportingTsExtensions` in `tsconfig.json`.
 4. In the entry point: `import "./uikit/styles.css"` and wrap the app in
    `<ThemeProvider>`.
 

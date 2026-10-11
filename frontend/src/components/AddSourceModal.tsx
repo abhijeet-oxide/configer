@@ -75,7 +75,7 @@ export default function AddSourceModal({ open, onClose }: { open: boolean; onClo
                       borderRadius: 10,
                       alignItems: "center",
                       justifyContent: "center",
-                      fontSize: 18,
+                      fontSize: "var(--text-title)",
                       color: hex,
                       background: `color-mix(in srgb, ${hex} 14%, transparent)`,
                     }}
@@ -86,7 +86,7 @@ export default function AddSourceModal({ open, onClose }: { open: boolean; onClo
                     <div style={{ fontWeight: 600 }}>
                       {p.name} {p.category && <Tag color={p.color}>{p.category}</Tag>}
                     </div>
-                    <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                    <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                       {p.description}
                     </Typography.Text>
                   </div>
@@ -105,7 +105,7 @@ export default function AddSourceModal({ open, onClose }: { open: boolean; onClo
               <Form.Item key={f.key} label={f.label}>
                 <Input disabled placeholder="Resolved from the server environment" />
                 {f.help && (
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                     {f.help}
                   </Typography.Text>
                 )}

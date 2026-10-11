@@ -88,7 +88,7 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
       <div className="flex flex-wrap items-center gap-2">
         {r.branch && (
           <span className="mono inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-ink-3">
-            <BranchesOutlined style={{ fontSize: 10 }} />
+            <BranchesOutlined style={{ fontSize: "var(--text-micro)" }} />
             {r.branch}
           </span>
         )}
@@ -97,7 +97,7 @@ export function HomeAppCard({ r, onOpen }: { r: RepoSummary; onOpen: () => void 
       </div>
       <div className="flex flex-col gap-1 text-xs">
         <span className="inline-flex items-center gap-1.5 text-review">
-          <ClusterOutlined style={{ fontSize: 11 }} />
+          <ClusterOutlined style={{ fontSize: "var(--text-caption)" }} />
           {r.instances} instance{r.instances === 1 ? "" : "s"}
         </span>
         <span className="inline-flex gap-3">
@@ -153,7 +153,7 @@ export default function AppCard({
           {r.local ? <HddOutlined /> : <GithubOutlined />}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Typography.Text strong style={{ fontSize: 14.5 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-label)" }}>
             {r.name}
           </Typography.Text>
           <div className="mono overflow-hidden text-[11px] text-ellipsis whitespace-nowrap text-ink-3">
@@ -233,14 +233,14 @@ export default function AppCard({
             {active && <StatusPill tone="review">Active</StatusPill>}
             {r.branch && (
               <span className="mono inline-flex items-center gap-1 whitespace-nowrap text-[11px] text-ink-3">
-                <BranchesOutlined style={{ fontSize: 10 }} />
+                <BranchesOutlined style={{ fontSize: "var(--text-micro)" }} />
                 {r.branch}
               </span>
             )}
             <SyncPill r={r} />
             <AccessPill r={r} />
           </Space>
-          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             {r.params} parameter{r.params === 1 ? "" : "s"} · {r.instances} instance{r.instances === 1 ? "" : "s"}
             {r.openChanges > 0 && (
               <>
@@ -279,7 +279,7 @@ export default function AppCard({
               Details
             </Button>
             <Button size="small" type="primary" ghost={!r.needsSetup} onClick={onOpen}>
-              {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: 10 }} />
+              {r.needsSetup ? "Finish setup" : "Open"} <RightOutlined style={{ fontSize: "var(--text-micro)" }} />
             </Button>
           </>
         )}

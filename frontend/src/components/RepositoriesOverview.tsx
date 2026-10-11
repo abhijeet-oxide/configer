@@ -84,7 +84,7 @@ export default function RepositoriesOverview() {
                 </div>
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {r.branch && <MonoChip icon={<BranchesOutlined style={{ fontSize: 10 }} />}>{r.branch}</MonoChip>}
+                  {r.branch && <MonoChip icon={<BranchesOutlined style={{ fontSize: "var(--text-micro)" }} />}>{r.branch}</MonoChip>}
                   {r.local ? (
                     <StatusPill tone="neutral">Local</StatusPill>
                   ) : r.syncError ? (

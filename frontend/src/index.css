@@ -290,7 +290,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3px;
-  font-size: 12.5px;
+  font-size: var(--text-small);
 }
 .cell-tip-row {
   display: flex;
@@ -300,14 +300,14 @@ body {
 .cell-tip-k {
   flex-shrink: 0;
   min-width: 58px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.65;
 }
 .cell-tip-note {
   margin-top: 3px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   opacity: 0.7;
 }
 /* Inside the dark tooltip the marks carry their meaning in text colour alone: a
@@ -398,7 +398,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--text-micro);
   line-height: 1;
   font-weight: 500;
   padding: 1px 5px 1px 4px;
@@ -443,7 +443,7 @@ body {
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-small);
   font-variant-numeric: tabular-nums;
 }
 
@@ -506,7 +506,7 @@ body {
 .settings-avatar-initials {
   background: var(--brand);
   color: #fff;
-  font-size: 20px;
+  font-size: var(--text-heading);
   font-weight: 600;
   letter-spacing: 0.5px;
 }
@@ -597,7 +597,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 26px;
+  font-size: var(--text-display);
   font-weight: 700;
   box-shadow: var(--el-2);
 }
@@ -836,7 +836,7 @@ body {
   white-space: nowrap;
   min-width: 0;
   font-weight: 600;
-  font-size: 13px;
+  font-size: var(--text-body);
   color: var(--text);
   letter-spacing: -0.005em;
 }
@@ -853,7 +853,7 @@ body {
   min-width: 0;
   height: 13px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--text-micro);
   line-height: 13px;
   color: var(--text-3);
   letter-spacing: 0;
@@ -953,7 +953,7 @@ body {
   flex: 1;
   border: none;
   background: transparent;
-  font-size: 11px;
+  font-size: var(--text-caption);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -969,7 +969,7 @@ body {
   font-weight: 600;
 }
 .mobile-tabbar .anticon {
-  font-size: 18px;
+  font-size: var(--text-title);
 }
 
 /* -------------------------------------------------------------- compare */
@@ -1161,7 +1161,7 @@ body {
 /* The hand-built Files explorer: 22px rows, indent guides, quiet hover,
    selected-row accent, hover-revealed actions, right-aligned state badges. */
 .fx {
-  font-size: 13px;
+  font-size: var(--text-body);
   user-select: none;
 }
 .fx-row {
@@ -1254,7 +1254,7 @@ body {
 /* Right-aligned per-file annotation (counts, tags) in wizard trees. */
 .fx-meta {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   display: inline-flex;
   align-items: center;
@@ -1267,7 +1267,7 @@ body {
   background: var(--c-ok);
 }
 .fx-mark {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 700;
   line-height: 1;
 }
@@ -1325,7 +1325,7 @@ body {
 .files-tree.ant-tree,
 .compact-tree.ant-tree {
   background: transparent;
-  font-size: 13px;
+  font-size: var(--text-body);
 }
 .files-tree .ant-tree-treenode,
 .compact-tree .ant-tree-treenode {
@@ -1459,7 +1459,7 @@ body {
   border-bottom: none;
   box-shadow: 0 -2px 10px color-mix(in srgb, var(--c-pending) 40%, transparent);
   color: #fff;
-  font-size: 13px;
+  font-size: var(--text-body);
   animation: pendingBarIn 0.22s ease-out;
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease,
     padding 0.16s ease, box-shadow 0.16s ease;
@@ -1498,7 +1498,7 @@ body {
 }
 .pending-bar-sub {
   color: var(--text-2);
-  font-size: 12px;
+  font-size: var(--text-small);
   white-space: nowrap;
 }
 /* The revealed half. Hidden by width rather than by unmounting, so it opens and
@@ -1630,7 +1630,7 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-style: italic;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-3);
 }
 .cf-open-file > bdi {
@@ -1717,7 +1717,7 @@ body {
   flex-wrap: wrap;
 }
 .cf-items-count {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-2);
   white-space: nowrap;
 }
@@ -1730,7 +1730,7 @@ body {
   min-width: 0;
 }
 .cf-items-progress-label {
-  font-size: 12.5px;
+  font-size: var(--text-small);
   font-weight: 600;
   white-space: nowrap;
 }
@@ -1848,7 +1848,7 @@ body {
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   min-width: 0;
 }
 .cf-problem > code {
@@ -1885,7 +1885,7 @@ body {
   min-width: 0;
 }
 .cf-preview-path {
-  font-size: 12px;
+  font-size: var(--text-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1902,7 +1902,7 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-2);
   cursor: pointer;
 }
@@ -1940,9 +1940,9 @@ body {
   gap: 10px;
   padding: 10px 12px;
 }
-.cf-override-title { font-size: 13px; font-weight: 650; color: var(--text); }
-.cf-override-sub { font-size: 12px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
-.cf-override-reason { font-size: 12px; color: var(--text); margin-top: 4px; font-style: italic; }
+.cf-override-title { font-size: var(--text-body); font-weight: 650; color: var(--text); }
+.cf-override-sub { font-size: var(--text-small); color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+.cf-override-reason { font-size: var(--text-small); color: var(--text); margin-top: 4px; font-style: italic; }
 .cf-override-head > .ant-btn { margin-left: auto; flex-shrink: 0; }
 .cf-override-list {
   list-style: none;
@@ -1952,24 +1952,24 @@ body {
   overflow-y: auto;
 }
 .cf-override-list li { padding: 8px 0; border-top: 1px solid var(--c-danger-bd); }
-.cf-override-msg { font-size: 12.5px; color: var(--text); line-height: 1.4; }
-.cf-override-why { font-size: 12px; color: var(--text-2); line-height: 1.45; margin-top: 2px; }
+.cf-override-msg { font-size: var(--text-small); color: var(--text); line-height: 1.4; }
+.cf-override-why { font-size: var(--text-small); color: var(--text-2); line-height: 1.45; margin-top: 2px; }
 .cf-override-where {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 2px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
 }
-.cf-override-src { margin-top: 2px; font-size: 11px; color: var(--text-3); font-style: italic; }
+.cf-override-src { margin-top: 2px; font-size: var(--text-caption); color: var(--text-3); font-style: italic; }
 .cf-override-tag {
   display: inline-flex;
   align-items: center;
   padding: 0 7px;
   height: 20px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 650;
   letter-spacing: 0.01em;
   color: var(--c-danger);
@@ -2212,19 +2212,19 @@ body.cf-busy * {
   margin-bottom: 8px;
 }
 .cf-instpick-title {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 650;
   color: var(--text);
 }
 .cf-instpick-count {
   flex: 1;
   min-width: 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
 .cf-instpick-reset {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
 }
 /* The sheet notice. While it is on, the ticks below are not deciding anything,
    so it says so and offers the way out in one control. */
@@ -2238,7 +2238,7 @@ body.cf-busy * {
   border: 1px solid var(--c-review-bd, var(--border));
   border-radius: 8px;
   background: var(--c-review-bg, var(--surface-2));
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   text-align: left;
   cursor: pointer;
@@ -2265,7 +2265,7 @@ body.cf-busy * {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--surface-2);
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   white-space: nowrap;
 }
@@ -2288,7 +2288,7 @@ body.cf-busy * {
 }
 .cf-instpick-empty,
 .cf-instpick-foot {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   line-height: 1.45;
 }
@@ -2321,7 +2321,7 @@ body.cf-busy * {
 }
 .cf-col-grip {
   color: var(--text-3);
-  font-size: 13px;
+  font-size: var(--text-body);
   flex-shrink: 0;
 }
 /* The name is a button: it opens that instance as a sheet. */
@@ -2331,7 +2331,7 @@ body.cf-busy * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--text-small);
   text-align: left;
   color: inherit;
   background: none;
@@ -2383,7 +2383,7 @@ body.cf-busy * {
 }
 .cr-table .ant-table-thead > tr > th {
   background: transparent !important;
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-3) !important;
@@ -2553,7 +2553,7 @@ body.cf-busy * {
    band, and the big choice glyphs come down to a size that still reads as an
    icon without pushing the choices below the fold. */
 .choice-card-icon {
-  font-size: 40px;
+  font-size: var(--text-metric);
 }
 
 
@@ -2567,7 +2567,7 @@ body.cf-busy * {
     padding: 8px 10px;
   }
   .choice-card-icon {
-    font-size: 26px;
+    font-size: var(--text-display);
   }
 }
 
@@ -2754,7 +2754,7 @@ body.cf-busy * {
   border: 1px solid var(--border);
   color: var(--text-2);
   font-family: var(--font-mono, monospace);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   overflow-wrap: anywhere;
 }
 
@@ -2980,7 +2980,7 @@ body.cf-busy * {
   gap: 1px;
 }
 .vd-arrow {
-  font-size: 11px;
+  font-size: var(--text-caption);
   opacity: 0.45;
   flex-shrink: 0;
 }
@@ -2988,7 +2988,7 @@ body.cf-busy * {
   display: none;
 }
 .vd-side {
-  font-size: 12px;
+  font-size: var(--text-small);
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -2997,7 +2997,7 @@ body.cf-busy * {
   max-width: 100%;
 }
 .vd-empty {
-  font-size: 12px;
+  font-size: var(--text-small);
   opacity: 0.45;
   font-style: italic;
 }
@@ -3011,7 +3011,7 @@ body.cf-busy * {
 .vd-more {
   padding: 0;
   height: auto;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   flex-shrink: 0;
 }
 
@@ -3070,7 +3070,7 @@ mark.vd-ins {
   position: absolute;
   left: 12px;
   top: 10px;
-  font-size: 10px;
+  font-size: var(--text-micro);
   letter-spacing: 0.4px;
   text-transform: uppercase;
   opacity: 0.6;
@@ -3183,18 +3183,18 @@ mark.vd-ins {
 .gg-caret {
   width: 12px;
   flex-shrink: 0;
-  font-size: 9px;
+  font-size: var(--text-badge);
   opacity: 0.5;
 }
 .gg-kind {
   display: inline-flex;
-  font-size: 13px;
+  font-size: var(--text-body);
   flex-shrink: 0;
 }
 .gg-state {
   flex-shrink: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 600;
   letter-spacing: 0.2px;
   padding: 1px 6px;
@@ -3203,7 +3203,7 @@ mark.vd-ins {
   line-height: 1.4;
 }
 .gg-subject {
-  font-size: 13px;
+  font-size: var(--text-body);
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -3215,7 +3215,7 @@ mark.vd-ins {
   min-width: 8px;
 }
 .gg-tag {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   line-height: 16px;
   margin-inline-end: 0;
   flex-shrink: 0;
@@ -3227,7 +3227,7 @@ mark.vd-ins {
   gap: 3px;
   flex-shrink: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   padding: 1px 6px;
   border-radius: var(--r-sm);
   background: var(--c-review-bg);
@@ -3252,7 +3252,7 @@ mark.vd-ins {
 }
 .gg-count {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 600;
   padding: 1px 5px;
   border-radius: var(--r-sm);
@@ -3264,7 +3264,7 @@ mark.vd-ins {
   color: var(--c-review);
 }
 .gg-author {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-2);
   max-width: 130px;
   overflow: hidden;
@@ -3273,7 +3273,7 @@ mark.vd-ins {
   flex-shrink: 0;
 }
 .gg-when {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   flex-shrink: 0;
   white-space: nowrap;
@@ -3282,7 +3282,7 @@ mark.vd-ins {
 }
 .gg-sha {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   padding: 1px 6px;
   border-radius: var(--r-sm);
@@ -3320,7 +3320,7 @@ mark.vd-ins {
   margin-bottom: 10px;
 }
 .gg-detail-msg {
-  font-size: 13px;
+  font-size: var(--text-body);
   font-weight: 600;
   color: var(--text);
   min-width: 0;
@@ -3332,7 +3332,7 @@ mark.vd-ins {
   flex-wrap: wrap;
 }
 .gg-detail-note {
-  font-size: 12.5px;
+  font-size: var(--text-small);
   color: var(--text-3);
 }
 
@@ -3410,7 +3410,7 @@ mark.vd-ins {
   flex-wrap: wrap;
   padding: 11px 16px;
   border-bottom: 1px solid var(--border);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-2);
 }
 .cf-legend-item {
@@ -3504,7 +3504,7 @@ mark.vd-ins {
   background: color-mix(in srgb, var(--c) 10%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--c) 34%, transparent);
   color: var(--c);
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -3521,7 +3521,7 @@ mark.vd-ins {
   background: color-mix(in srgb, var(--cf-main) 12%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--cf-main) 40%, transparent);
   color: var(--cf-main);
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 700;
   letter-spacing: 0.6px;
   white-space: nowrap;
@@ -3627,7 +3627,7 @@ mark.vd-ins {
    of them. */
 .cf-stamp {
   fill: var(--text-3);
-  font-size: 9.5px;
+  font-size: var(--text-badge);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
   pointer-events: none;
@@ -3740,7 +3740,7 @@ mark.vd-ins {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 9.5px;
+  font-size: var(--text-badge);
   font-weight: 700;
   letter-spacing: 0.55px;
   text-transform: uppercase;
@@ -3752,7 +3752,7 @@ mark.vd-ins {
 .cf-crid {
   margin-inline-start: auto;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 600;
   color: var(--text-3);
   flex-shrink: 0;
@@ -3762,7 +3762,7 @@ mark.vd-ins {
      a long title is clamped rather than allowed to push the rest out. */
   flex: 0 0 auto;
   height: 2.64em;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   font-weight: 600;
   line-height: 1.32;
   color: var(--text);
@@ -3776,7 +3776,7 @@ mark.vd-ins {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--text-2);
   min-width: 0;
 }
@@ -3810,7 +3810,7 @@ mark.vd-ins {
   align-items: center;
   gap: 4px;
   min-width: 0;
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 600;
   color: var(--st);
   white-space: nowrap;
@@ -3819,7 +3819,7 @@ mark.vd-ins {
 }
 .cf-status .anticon {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .cf-card-files {
   display: inline-flex;
@@ -3827,7 +3827,7 @@ mark.vd-ins {
   gap: 4px;
   margin-inline-start: auto;
   flex-shrink: 0;
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -3835,7 +3835,7 @@ mark.vd-ins {
 @media (max-width: 720px) {
   .cf-legend {
     gap: 10px;
-    font-size: 11px;
+    font-size: var(--text-caption);
   }
 }
 
@@ -4009,7 +4009,7 @@ mark.vd-ins {
   margin-bottom: 18px;
 }
 .cf-onb-eyebrow {
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -4017,7 +4017,7 @@ mark.vd-ins {
 }
 .cf-onb-title {
   margin: 2px 0 6px;
-  font-size: 24px;
+  font-size: var(--text-display);
   line-height: 1.2;
   font-weight: 650;
   color: var(--text);
@@ -4026,7 +4026,7 @@ mark.vd-ins {
 .cf-onb-sub {
   margin: 0;
   max-width: 74ch;
-  font-size: 13px;
+  font-size: var(--text-body);
   line-height: 1.6;
   color: var(--text-2);
 }
@@ -4040,7 +4040,7 @@ mark.vd-ins {
   align-items: baseline;
   gap: 6px 14px;
   margin-top: 10px;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-2);
 }
 .cf-onb-stat {
@@ -4050,18 +4050,18 @@ mark.vd-ins {
   white-space: nowrap;
 }
 .cf-onb-stat b {
-  font-size: 14px;
+  font-size: var(--text-label);
   font-weight: 650;
   color: var(--text);
   font-variant-numeric: tabular-nums;
 }
 .cf-onb-stat-hint {
   color: var(--text-3);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 .cf-onb-stat-note {
   color: var(--text-3);
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   padding-inline-start: 4px;
   border-inline-start: 1px solid var(--border);
 }
@@ -4122,12 +4122,12 @@ mark.vd-ins {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: var(--text-label);
   font-weight: 650;
   color: var(--text);
 }
 .cf-onb-card-hint {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
 }
 .cf-onb-count {
@@ -4143,7 +4143,7 @@ mark.vd-ins {
   padding: 9px 12px;
   border-radius: 10px;
   background: var(--surface-2);
-  font-size: 12.5px;
+  font-size: var(--text-small);
   line-height: 1.5;
   color: var(--text-2);
 }
@@ -4164,7 +4164,7 @@ mark.vd-ins {
 .cf-onb-inst-folder {
   display: inline-block;
   max-width: 100%;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4187,7 +4187,7 @@ mark.vd-ins {
   flex: 1;
   min-width: 0;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-3);
 }
 
@@ -4207,7 +4207,7 @@ mark.vd-ins {
     align-self: flex-start;
   }
   .cf-onb-title {
-    font-size: 21px;
+    font-size: var(--text-heading);
   }
   .cf-onb-steps {
     padding: 14px 8px;
@@ -4261,7 +4261,7 @@ mark.vd-ins {
 }
 .cr-expand-count {
   margin-left: auto;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   font-variant-numeric: tabular-nums;
 }
@@ -4283,7 +4283,7 @@ mark.vd-ins {
 }
 .cr-expand .ant-table-thead > tr > th {
   background: transparent !important;
-  font-size: 11px;
+  font-size: var(--text-caption);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-3) !important;
@@ -4311,7 +4311,7 @@ mark.vd-ins {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 16px;
   white-space: nowrap;
   color: var(--text-3);
@@ -4383,7 +4383,7 @@ mark.vd-ins {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.4;
   color: var(--text-2);
 }
@@ -4393,7 +4393,7 @@ mark.vd-ins {
   flex-shrink: 0;
 }
 .cf-schema-note-file {
-  font-size: 11px;
+  font-size: var(--text-caption);
   padding: 1px 6px;
   border-radius: 4px;
   border: 1px solid var(--border);
@@ -4408,7 +4408,7 @@ mark.vd-ins {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
 }
 .cf-schema-note-facts b {
@@ -4423,7 +4423,7 @@ mark.vd-ins {
   gap: 3px;
 }
 .cf-schema-note-list li {
-  font-size: 11px;
+  font-size: var(--text-caption);
   line-height: 1.45;
   color: var(--text-2);
 }
@@ -4473,7 +4473,7 @@ mark.vd-ins {
   justify-content: center;
   width: 22px;
   height: 22px;
-  font-size: 18px;
+  font-size: var(--text-title);
   line-height: 1;
   color: var(--text-3);
   background: var(--surface);
@@ -4503,14 +4503,14 @@ mark.vd-ins {
   padding-top: 1px;
 }
 .cf-stage-label {
-  font-size: 13.5px;
+  font-size: var(--text-body);
   color: var(--text-2);
   line-height: 1.35;
 }
 /* What a stage actually DID. A stage that only reports "passed" cannot be
    told from one that did nothing, which is the whole reason this line exists. */
 .cf-stage-detail {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-3);
   line-height: 1.35;
 }
@@ -4563,9 +4563,9 @@ mark.vd-ins {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: none; }
 }
-.cf-verdict-mark { font-size: 26px; line-height: 1; flex-shrink: 0; }
-.cf-verdict-head { font-size: 14.5px; font-weight: 650; color: var(--text); }
-.cf-verdict-sub { font-size: 12.5px; color: var(--text-2); margin-top: 2px; line-height: 1.4; }
+.cf-verdict-mark { font-size: var(--text-display); line-height: 1; flex-shrink: 0; }
+.cf-verdict-head { font-size: var(--text-label); font-weight: 650; color: var(--text); }
+.cf-verdict-sub { font-size: var(--text-small); color: var(--text-2); margin-top: 2px; line-height: 1.4; }
 
 .cf-verdict.is-ok { border-top-color: var(--c-ok); background: var(--c-ok-bg); border-color: var(--c-ok-bd); border-top-color: var(--c-ok); }
 .cf-verdict.is-ok .cf-verdict-mark { color: var(--c-ok); }
@@ -4620,8 +4620,8 @@ mark.vd-ins {
   color: inherit;
 }
 .cf-findings-copy { flex-shrink: 0; }
-.cf-findings-title { font-size: 13px; font-weight: 600; }
-.cf-findings-sub { font-size: 12px; color: var(--text-3); }
+.cf-findings-title { font-size: var(--text-body); font-weight: 600; }
+.cf-findings-sub { font-size: var(--text-small); color: var(--text-3); }
 .cf-findings-caret { transition: transform 140ms ease; color: var(--text-3); }
 .cf-findings-caret.is-open { transform: rotate(90deg); }
 
@@ -4641,7 +4641,7 @@ mark.vd-ins {
   border-top: 1px solid var(--border);
 }
 .cf-finding-rule {
-  font-size: 11px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 2px 7px;
@@ -4659,14 +4659,14 @@ mark.vd-ins {
 .cf-finding-go { display: inline-flex; align-items: center; white-space: nowrap; }
 
 .cf-finding-body { min-width: 0; }
-.cf-finding-msg { font-size: 13px; color: var(--text); line-height: 1.4; }
+.cf-finding-msg { font-size: var(--text-body); color: var(--text); line-height: 1.4; }
 .cf-finding-where {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   margin-top: 3px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-3);
 }
 .cf-finding-name { font-weight: 600; color: var(--text-2); }
@@ -4678,7 +4678,7 @@ mark.vd-ins {
   border-left: 2px solid var(--c-pending);
   background: var(--c-pending-bg);
   border-radius: 0 4px 4px 0;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   color: var(--text);
   line-height: 1.45;
 }
@@ -4687,18 +4687,18 @@ mark.vd-ins {
    the reader who wants to check it. */
 .cf-finding-why {
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   color: var(--text-2);
   line-height: 1.45;
 }
 .cf-finding-fix {
   margin-top: 4px;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   color: var(--text);
   line-height: 1.45;
 }
 .cf-finding-fix-tag {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -4733,14 +4733,14 @@ mark.vd-ins {
 .cf-finding-detail {
   margin-top: 3px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
   word-break: break-word;
 }
 .cf-finding-detail-label { font-family: var(--font-ui); font-style: italic; }
-.cf-finding-src { margin-top: 2px; font-size: 11px; color: var(--text-3); font-style: italic; }
+.cf-finding-src { margin-top: 2px; font-size: var(--text-caption); color: var(--text-3); font-style: italic; }
 
-.cf-vflow-skipped { font-size: 12px; color: var(--text-3); }
+.cf-vflow-skipped { font-size: var(--text-small); color: var(--text-3); }
 .cf-vflow-skipped summary { cursor: pointer; }
 .cf-vflow-skipped-why { margin: 6px 0 0; }
 .cf-vflow-skipped ul { margin: 6px 0 0; padding-left: 18px; max-height: 140px; overflow-y: auto; }
@@ -4820,7 +4820,7 @@ mark.vd-ins {
 }
 .cf-viewbar-note,
 .cf-viewbar-reason {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   min-width: 0;
   overflow: hidden;
@@ -4861,7 +4861,7 @@ mark.vd-ins {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 12.5px;
+  font-size: var(--text-small);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4875,14 +4875,14 @@ mark.vd-ins {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .cf-viewpick-branch {
-  font-size: 10.5px;
+  font-size: var(--text-micro);
   color: var(--text-3, var(--text-2));
   opacity: 0.8;
   overflow: hidden;
@@ -4972,13 +4972,13 @@ mark.vd-ins {
   min-width: 0;
 }
 .pf-new {
-  font-size: 12.5px;
+  font-size: var(--text-small);
 }
 .pf-new.is-set {
   font-weight: 600;
 }
 .pf-old {
-  font-size: 12px;
+  font-size: var(--text-small);
   color: var(--text-2);
   text-decoration: line-through;
   text-decoration-thickness: 1px;
@@ -4986,7 +4986,7 @@ mark.vd-ins {
 }
 .pf-arrow {
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--text-caption);
 }
 /* The arrow points at the new value, so it wraps WITH it. On its own it ended
    a line, leaving a row that read "was telco-prod-use1 arrow" and then, on the
@@ -5000,7 +5000,7 @@ mark.vd-ins {
 }
 .pf-scope,
 .pf-tag {
-  font-size: 10px;
+  font-size: var(--text-micro);
   padding: 0 5px;
   border-radius: var(--r-pill);
   border: 1px solid var(--border);
@@ -5027,7 +5027,7 @@ mark.vd-ins {
   border: 0;
   padding: 0;
   font: inherit;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   font-weight: 600;
   color: var(--brand);
   cursor: pointer;
@@ -5037,7 +5037,7 @@ mark.vd-ins {
   text-decoration: underline;
 }
 .pf-crtitle {
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   color: var(--text-1);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5048,7 +5048,7 @@ mark.vd-ins {
    monochrome mark with its name on hover, exactly as the big picture does it. */
 .pf-type {
   color: var(--text-2);
-  font-size: 11px;
+  font-size: var(--text-caption);
   display: inline-flex;
   flex-shrink: 0;
 }
@@ -5057,7 +5057,7 @@ mark.vd-ins {
   align-items: center;
   gap: 4px;
   flex-wrap: wrap;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   margin-top: 2px;
 }
@@ -5099,7 +5099,7 @@ mark.vd-ins {
    it is set in the body colour rather than the muted one. */
 .pf-reason {
   margin-top: 4px;
-  font-size: 11.5px;
+  font-size: var(--text-caption);
   font-style: italic;
   color: var(--text-1);
 }
@@ -5109,7 +5109,7 @@ mark.vd-ins {
 }
 .pf-lineage {
   margin-top: 3px;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
 }
 .pf-resume {
@@ -5122,7 +5122,7 @@ mark.vd-ins {
    heartbeat cannot reach the service - the one case where what is on screen
    may quietly be wrong. */
 .cf-viewbar-fresh {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   white-space: nowrap;
   margin-inline-start: auto;
@@ -5170,7 +5170,7 @@ mark.vd-ins {
 /* The row that says what is NOT on screen. Not an item - there is nothing to
    pick - so it reads as a note and does not take the hover. */
 .cf-viewpick-note {
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-2);
   padding: 3px 2px;
   cursor: default;
@@ -5183,7 +5183,7 @@ mark.vd-ins {
   margin-inline-start: 6px;
   padding: 0 5px;
   border-radius: var(--r-pill);
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 600;
   line-height: 15px;
   color: var(--cf-draft);
@@ -5238,7 +5238,7 @@ mark.vd-ins {
   background: transparent;
   color: var(--text-2);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--text-small);
   line-height: 18px;
   text-align: start;
   cursor: pointer;
@@ -5268,7 +5268,7 @@ mark.vd-ins {
 }
 .cat-sticky-n {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: var(--text-caption);
   color: var(--text-3);
 }
 
@@ -5293,7 +5293,7 @@ mark.vd-ins {
   line-height: 1.25;
 }
 .param-grid .cf-scope-col-sub {
-  font-size: 10px;
+  font-size: var(--text-micro);
   font-weight: 400;
   color: var(--text-3);
 }
@@ -5384,13 +5384,13 @@ mark.vd-ins {
   line-height: 1.25;
 }
 .cf-scopeval-key {
-  font-size: 12px;
+  font-size: var(--text-small);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .cf-scopeval-n {
-  font-size: 10px;
+  font-size: var(--text-micro);
   color: var(--text-3);
 }

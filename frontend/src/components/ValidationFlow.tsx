@@ -329,7 +329,7 @@ export default function ValidationFlow({
 
       {showOverride && phase === "failed" && (
         <div className="cf-vflow-override">
-          <Typography.Text type="secondary" style={{ fontSize: 12.5 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             This change does not satisfy the data model. Submitting it anyway is recorded in the
             change itself, so the approver sees it before publishing.
           </Typography.Text>

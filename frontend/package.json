@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit && node src/uikit/check-styles.mjs && node src/uikit/check-typography.mjs && node src/uikit/check-tag-icons.mjs",
     "lint": "eslint src && node src/uikit/check-styles.mjs",
     "preview": "vite preview",
     "test:functional": "node functional/discovery.test.mjs"
@@ -17,13 +18,14 @@
     "@iconify/react": "^6.0.2",
     "@monaco-editor/react": "^4.7.0",
     "@tanstack/react-query": "^5.59.0",
-    "antd": "^5.21.0",
+    "antd": "^6.6.5",
     "d3-geo": "^3.1.1",
     "monaco-editor": "^0.52.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-markdown": "^10.1.0",
     "react-resizable-panels": "^2.1.7",
+    "react-router-dom": "^7.18.4",
     "remark-gfm": "^4.0.1",
     "topojson-client": "^3.1.0",
     "us-atlas": "^3.0.1",

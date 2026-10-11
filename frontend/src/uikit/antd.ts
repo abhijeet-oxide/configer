@@ -13,8 +13,14 @@
 // color.ts instead.
 
 import { theme as antdTheme, type ThemeConfig } from "antd";
-import { tokens, type Palette } from "./tokens";
-import type { Density, FontScale, Mode } from "./prefs";
+import { tokens, type Palette } from "./tokens.ts";
+import type { Density, FontScale, Mode } from "./prefs.ts";
+import { typography } from "./typography.ts";
+import { accessiblePalette, typicalAccess, type Access } from "./access.ts";
+
+function seedPalette(mode: Mode, access: Access): Palette {
+  return accessiblePalette(mode === "dark" ? tokens.dark : tokens.light, mode, access);
+}
 
 /**
  * THE ONE PLACE THE TWO HALVES ARE RECONCILED.
@@ -34,9 +40,9 @@ import type { Density, FontScale, Mode } from "./prefs";
  * then hand that to the stylesheet - which makes disagreement impossible
  * rather than merely unlikely.
  */
-export function resolvePalette(mode: Mode): Palette {
-  const p = mode === "dark" ? tokens.dark : tokens.light;
-  const t = antdTheme.getDesignToken(baseConfig(mode));
+export function resolvePalette(mode: Mode, access: Access = typicalAccess): Palette {
+  const p = seedPalette(mode, access);
+  const t = antdTheme.getDesignToken(baseConfig(mode, access));
   return {
     ...p,
     brand: t.colorPrimary,
@@ -45,19 +51,18 @@ export function resolvePalette(mode: Mode): Palette {
     pending: t.colorWarning,
     review: t.colorInfo,
     danger: t.colorError,
-    // The selected navigation item IS the brand: one accent with one meaning.
-    // It used to be a separate blue, and the same value in both modes, so the
-    // selected item and every primary button on the page disagreed - in dark
-    // mode obviously so.
-    navBgActive: t.colorPrimary,
+    // The selected navigation item is brand TYPE on a brand tint, so its
+    // foreground is the painted primary: the seed and the painted value differ
+    // in dark mode, and a selected item one shade off every link is drift.
+    navFgActive: t.colorPrimary,
   };
 }
 
 /** The seed half of the theme, shared by resolvePalette and buildTheme so the
  *  resolution above cannot be asked about a config the app never builds. */
-function baseConfig(mode: Mode): ThemeConfig {
+function baseConfig(mode: Mode, access: Access): ThemeConfig {
   const dark = mode === "dark";
-  const p = dark ? tokens.dark : tokens.light;
+  const p = seedPalette(mode, access);
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
     token: {
@@ -80,6 +85,7 @@ export function buildTheme(
   mode: Mode,
   scale: FontScale = "normal",
   density: Density = "comfortable",
+  access: Access = typicalAccess,
 ): ThemeConfig {
   const dark = mode === "dark";
   // TWO palettes, and the distinction is the whole point.
@@ -88,14 +94,10 @@ export function buildTheme(
   // has had its way with the seed, and it is what the stylesheet was handed.
   // Feeding `p` back in as the seed would derive a second time and land
   // somewhere else again - which is exactly the bug this pair exists to close.
-  const seed = dark ? tokens.dark : tokens.light;
-  const p = resolvePalette(mode);
-  const base =
-    scale === "large"
-      ? tokens.type.fontSizeBase + 2
-      : scale === "small"
-        ? tokens.type.fontSizeBase - 1
-        : tokens.type.fontSizeBase;
+  const seed = seedPalette(mode, access);
+  const p = resolvePalette(mode, access);
+  const type = typography[scale];
+  const base = type.body;
   const compact = density === "compact";
   return {
     algorithm: dark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
@@ -156,6 +158,11 @@ export function buildTheme(
       colorTextHeading: p.text,
       colorTextSecondary: p.text2,
       colorTextTertiary: p.text3,
+      // Ant derives placeholder grey from colorTextQuaternary (#bfbfbf on
+      // white, 1.83:1), which made a filter showing "Product: All" look
+      // disabled. Placeholders here carry the current filter, so they are text
+      // and take the quietest text colour that still clears 4.5:1.
+      colorTextPlaceholder: p.text3,
 
       // The same three-ingredient elevation the stylesheet uses (see
       // tokens.css): a hairline for the edge, a tight contact shadow, a wide
@@ -170,8 +177,8 @@ export function buildTheme(
     },
     components: {
       Layout: {
-        headerHeight: 48,
-        headerPadding: "0 16px",
+        headerHeight: compact ? 42 : 48,
+        headerPadding: compact ? "0 12px" : "0 16px",
         siderBg: p.navBg,
         headerBg: p.surface,
         bodyBg: p.canvas,
@@ -180,10 +187,11 @@ export function buildTheme(
         darkItemBg: p.navBg,
         darkSubMenuItemBg: p.navBg,
         darkItemSelectedBg: p.navBgActive,
+        darkItemSelectedColor: p.navFgActive,
         darkItemColor: p.navFg,
         darkItemHoverBg: p.navBgHover,
         itemBorderRadius: 8,
-        itemHeight: 34,
+        itemHeight: compact ? 30 : 34,
       },
       Button: {
         fontWeight: 500,
@@ -206,10 +214,11 @@ export function buildTheme(
       },
       Table: {
         headerBg: p.surface2,
-        headerColor: p.text2,
+        headerColor: p.text3,
         headerSplitColor: "transparent",
+        headerBorderRadius: 0,
         borderColor: p.border,
-        cellPaddingBlock: compact ? 6 : 10,
+        cellPaddingBlock: compact ? 8 : 12,
         cellPaddingBlockSM: 4,
         cellPaddingInlineSM: 8,
         // A row lights up on approach without changing colour: the brand tint
@@ -221,7 +230,9 @@ export function buildTheme(
       },
       Tabs: {
         titleFontSize: base,
-        horizontalItemPadding: "10px 4px",
+        horizontalItemPadding: compact ? "8px 2px" : "12px 2px",
+        horizontalItemGutter: 28,
+        inkBarColor: p.brand,
         // A GAP under the tab bar, which is the component library's own default
         // and had been set to zero here. Without it a tab strip sits flush on
         // whatever it introduces - most often a table - and the two read as one
@@ -237,18 +248,18 @@ export function buildTheme(
       Tree: {
         nodeSelectedBg: p.brandSoft,
       },
-      // The platform's segmented control: a capsule track with a raised
-      // capsule riding inside it.
       Segmented: {
         itemSelectedBg: p.surface,
+        itemSelectedColor: p.text,
+        itemColor: p.text2,
         trackBg: p.surface2,
-        borderRadius: 999,
-        borderRadiusSM: 999,
-        borderRadiusLG: 999,
-        trackPadding: 2,
+        borderRadius: 8,
+        borderRadiusSM: 6,
+        borderRadiusLG: 10,
+        trackPadding: 3,
       },
       Statistic: {
-        contentFontSize: scale === "large" ? 24 : 20,
+        contentFontSize: scale === "large" || scale === "xlarge" ? type.display : type.heading,
       },
       Modal: {
         borderRadiusLG: 18,

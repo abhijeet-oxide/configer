@@ -259,7 +259,7 @@ export default function EvolutionTimeline({ grid }: { grid: Grid }) {
           />
         </Tooltip>
       </div>
-      <Text type="secondary" style={{ fontSize: 12.5, display: "block", marginBottom: 16 }}>
+      <Text type="secondary" style={{ fontSize: "var(--text-small)", display: "block", marginBottom: 16 }}>
         How the configuration of {scopeLabel} changed over time, newest first. Open a snapshot to see
         exactly which parameters moved. Anything you bring back is staged in your draft for review -
         nothing changes until you publish it.
@@ -445,7 +445,7 @@ function Refs({ names }: { names?: string[] }) {
       {names.map((n) => (
         <Tooltip key={n} title={`Tagged ${n}`}>
           <span className="gg-ref">
-            <TagOutlined style={{ fontSize: 9 }} /> {n}
+            <TagOutlined style={{ fontSize: "var(--text-badge)" }} /> {n}
           </span>
         </Tooltip>
       ))}
@@ -491,7 +491,7 @@ function Sha({ sha, short }: { sha: string; short: string }) {
           if (e.key === "Enter" || e.key === " ") copy(e);
         }}
       >
-        {copied ? <CheckOutlined style={{ fontSize: 10 }} /> : short}
+        {copied ? <CheckOutlined style={{ fontSize: "var(--text-micro)" }} /> : short}
       </span>
     </Tooltip>
   );
@@ -540,7 +540,7 @@ function InFlightRow({ cr, onOpen }: { cr: ChangeRequest; onOpen: () => void }) 
       </Tooltip>
       {cr.branch ? (
         <Tooltip title={`On branch ${cr.branch}`}>
-          <span className="gg-branch"><BranchesOutlined style={{ fontSize: 9 }} /> {cr.branch.split("/").pop()}</span>
+          <span className="gg-branch"><BranchesOutlined style={{ fontSize: "var(--text-badge)" }} /> {cr.branch.split("/").pop()}</span>
         </Tooltip>
       ) : (
         <Tooltip title="A branch is created when this is submitted for review">
@@ -681,7 +681,7 @@ function SnapshotDetail({
     <div className="gg-detail">
       {header}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <Text type="secondary" style={{ fontSize: 12 }}>
+        <Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
           {changes.length} parameter change(s) at this snapshot
         </Text>
         {canUndo && (
@@ -712,7 +712,7 @@ function SnapshotDetail({
       {groupKeys.map((key) => (
         <div key={key || "__global__"} style={{ marginBottom: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-            <Text strong style={{ fontSize: 12.5 }}>
+            <Text strong style={{ fontSize: "var(--text-small)" }}>
               {key === "" ? (
                 <>
                   <GlobalOutlined /> Shared by every instance
@@ -762,9 +762,9 @@ function SnapshotDetail({
                   }}
                 >
                   <Tooltip title={sm.label}>
-                    <span style={{ color: sm.hex, fontSize: 12, display: "inline-flex" }}>{sm.icon}</span>
+                    <span style={{ color: sm.hex, fontSize: "var(--text-small)", display: "inline-flex" }}>{sm.icon}</span>
                   </Tooltip>
-                  <Text style={{ fontSize: 12.5, minWidth: 160, flex: "0 1 auto" }}>{c.name || c.paramId}</Text>
+                  <Text style={{ fontSize: "var(--text-small)", minWidth: 160, flex: "0 1 auto" }}>{c.name || c.paramId}</Text>
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                     {/* History answers "what did that commit actually do", which
                         needs the changed characters, not two long values to

@@ -83,11 +83,11 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
                 </div>
               ))}
               {problems.length > PROBLEMS_SHOWN && (
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                   and {problems.length - PROBLEMS_SHOWN} more
                 </Typography.Text>
               )}
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 Undo them in the list of changes (or fix the file each one points at); everything
                 else can go for review as it is.
               </Typography.Text>
@@ -133,13 +133,13 @@ export default function ChangePreview({ changeId }: { changeId: number }) {
                       {f.status}
                     </Tag>
                     <code className="cf-preview-path">{f.file}</code>
-                    <span style={{ fontSize: 11, color: "var(--c-ok)" }}>+{f.additions}</span>
-                    <span style={{ fontSize: 11, color: "var(--c-danger)" }}>-{f.deletions}</span>
+                    <span style={{ fontSize: "var(--text-caption)", color: "var(--c-ok)" }}>+{f.additions}</span>
+                    <span style={{ fontSize: "var(--text-caption)", color: "var(--c-danger)" }}>-{f.deletions}</span>
                   </span>
                 ),
               }))}
             />
-            <Typography.Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)", flexShrink: 0 }}>
               {files.length === 1 ? "1 file" : `file ${active + 1} of ${files.length}`}
             </Typography.Text>
           </div>

@@ -78,7 +78,7 @@ export default function EditApplicationModal({
       onOk={() => form.validateFields().then((v) => save.mutate(v))}
       destroyOnHidden
     >
-      <Typography.Paragraph type="secondary" style={{ marginTop: 4, fontSize: 12 }}>
+      <Typography.Paragraph type="secondary" style={{ marginTop: 4, fontSize: "var(--text-small)" }}>
         These details live in the repository itself (<code>.configer/application.yaml</code>) and are
         committed with your name, so the whole team sees the same description everywhere.
       </Typography.Paragraph>

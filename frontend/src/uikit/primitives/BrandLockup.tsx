@@ -23,6 +23,7 @@ export function BrandMark({
   tile?: boolean;
   style?: CSSProperties;
 }) {
+  if (brand.logo.bare) tile = false;
   const box: CSSProperties = {
     width: size,
     height: size,
@@ -35,11 +36,25 @@ export function BrandMark({
     return <img className={cls} src={brand.logo.src} alt={brand.appName} style={box} />;
   }
   if (brand.logo.svg) {
-    return <span className={cls} style={box} dangerouslySetInnerHTML={{ __html: brand.logo.svg }} />;
+    // Scripts in SVG run under innerHTML. They do not run when the SVG is an image.
+    const src = `data:image/svg+xml;utf8,${encodeURIComponent(brand.logo.svg)}`;
+    return <img className={cls} src={src} alt={brand.appName} style={box} />;
   }
   return (
     <span className={cls} style={box}>
       {brand.logo.text ?? brand.appName.charAt(0)}
+    </span>
+  );
+}
+
+/** A name with its first word in the brand colour and the rest in the text
+ *  colour: the one way a product or platform name is written. */
+export function Wordmark({ name, className }: { name: string; className?: string }) {
+  const at = name.indexOf(" ");
+  return (
+    <span className={`ui-wordmark${className ? ` ${className}` : ""}`}>
+      <span className="ui-wordmark-lead">{at < 0 ? name : name.slice(0, at)}</span>
+      {at >= 0 && <> <span className="ui-wordmark-rest">{name.slice(at + 1)}</span></>}
     </span>
   );
 }
@@ -77,7 +92,7 @@ export function BrandLockup({
     <div className={`ui-lockup${onDark ? " on-dark" : ""}`} style={style}>
       <BrandMark brand={brand} size={size} tile={tile} />
       <div className="ui-lockup-text">
-        <span className="ui-lockup-name">{brand.appName}</span>
+        <Wordmark name={brand.appName} className="ui-lockup-name" />
         {caption && (captionText ?? brand.navCaption) && (
           <span className="ui-lockup-caption">{captionText ?? brand.navCaption}</span>
         )}

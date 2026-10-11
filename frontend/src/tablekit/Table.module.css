@@ -32,6 +32,26 @@
   overflow: hidden;
 }
 
+/* THE PAGER, off the edge of the page.
+ *
+ * Ant Design pushes it to the right with no horizontal padding, and every
+ * table in this product sits in a Card whose body padding is zero - so the
+ * page-size selector, the last control on the row, ended flush against the
+ * card's border with nothing between them. The page numbers on the pages that
+ * draw their own had the same problem for the same reason.
+ *
+ * Set here rather than per table, because it is the pager's own spacing and a
+ * table should not have to remember to ask for it. `padding-inline` so it is
+ * still the right side in a right-to-left locale, and 16px because that is the
+ * body padding every Card that DOES have one uses - the pager lines up with
+ * the content above it instead of hanging past it. */
+.wrapper :global(.ant-table-pagination.ant-pagination) {
+  padding-inline: 16px;
+  /* Ant's own vertical margin, restated: setting `padding` shorthand above
+     would zero it, and a pager touching the last row reads as part of it. */
+  margin-block: 16px;
+}
+
 /* Keep a wide table inside the Ant Card that owns it. The table's own content
    wrapper still scrolls horizontally; only the card boundary clips overflow. */
 :global(.ant-card:has(.ant-table-wrapper)) {
@@ -524,21 +544,80 @@
   gap: var(--sp-2);
 }
 
+/* LOADING, one way for every table.
+ *
+ * First load: rows in the real columns (see placeholderColumns in Table.tsx).
+ * The bar breathes rather than sweeps, so a page of them reads as one surface
+ * settling, not as forty shimmering stripes.
+ *
+ * A refetch with rows already on screen keeps them, dimmed, under a thin bar
+ * travelling the table's top edge. The delay is the call site's
+ * `loading.delay`, so a fast answer never flickers. */
+.placeholderBar {
+  display: block;
+  max-width: 100%;
+  height: 10px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--border);
+  animation: tk-placeholder 1.6s ease-in-out infinite;
+}
+@keyframes tk-placeholder {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
+.refreshing :global(.ant-table-tbody) {
+  animation: tk-dim 180ms ease-out var(--tk-refresh-delay, 0ms) both;
+}
+@keyframes tk-dim {
+  to { opacity: 0.5; }
+}
+.refreshing :global(.ant-table-container) {
+  position: relative;
+}
+.refreshing :global(.ant-table-container)::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  width: 30%;
+  height: 2px;
+  border-radius: var(--r-pill, 999px);
+  background: var(--brand);
+  pointer-events: none;
+  opacity: 0;
+  animation:
+    tk-show 1ms linear var(--tk-refresh-delay, 0ms) forwards,
+    tk-travel 1.1s var(--ease, ease) var(--tk-refresh-delay, 0ms) infinite;
+}
+@keyframes tk-show {
+  to { opacity: 1; }
+}
+@keyframes tk-travel {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(340%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .headerRecentlyMoved {
     animation: none;
+  }
+  .placeholderBar {
+    animation-duration: 3.2s;
+  }
+  .refreshing :global(.ant-table-container)::after {
+    width: 100%;
+    animation: tk-show 1ms linear var(--tk-refresh-delay, 0ms) forwards;
+    opacity: 0;
+    background: var(--brand-border);
   }
 }
 
 /* A table whose content fits its box must not offer to scroll.
  *
- * The table LAYOUT is untouched - `scroll.x: max-content` still lets a resized
- * column push the table wider than its container, which is the whole point of
- * resizable columns. Only the overflow is clamped, and only while the measured
- * content is within a rounding error of the box (see the ResizeObserver in
- * Table.tsx). Clamping paint rather than layout is what keeps this from
- * oscillating: removing `max-content` would relayout the table, which could
- * stop it overflowing, which would put `max-content` back.
+ * The table layout is untouched. Only the overflow is clamped while measured
+ * content is within a rounding error of its box (see Table.tsx).
  *
  * scrollbar-width covers Firefox, which reserves a gutter and would otherwise
  * leave a dead grey strip under a table that has nothing to scroll. */
@@ -562,4 +641,14 @@
   gap: var(--sp-2);
   margin-right: auto;
   min-width: 0;
+}
+
+/* Ant copies each column title into a hidden measuring row (aria-hidden) to
+   size the columns. Our titles carry the reorder and resize controls, so the
+   copies were focusable inside an aria-hidden row: a keyboard stop nobody can
+   see. Hidden copies keep their width for measuring and drop out of the tab
+   order. */
+:global(.ant-table-measure-row) button,
+:global(.ant-table-measure-row) [tabindex] {
+  visibility: hidden;
 }

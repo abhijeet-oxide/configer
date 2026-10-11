@@ -26,25 +26,40 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
 import { App as AntApp, ConfigProvider } from "antd";
-import { buildTheme } from "./antd";
+import { buildTheme, resolvePalette } from "./antd";
+import { isTypical } from "./access";
+import { setDatePreferences } from "./dates";
+import { VAR_MAP } from "./tokens";
 import { revealThemeChange, type RevealPoint } from "./themeTransition";
 import {
+  APPEARANCE_KEY,
+  clearAppearance,
   defaultAppearance,
+  deviceTimeZone,
   loadAppearance,
+  readThemeCookie,
   resolveMode,
   saveAppearance,
   watchSystemMode,
+  writeThemeCookie,
   type Appearance,
+  type ColorVision,
+  type Contrast,
+  type DateFormat,
   type Density,
+  type HourCycle,
+  type Motion,
   type FontScale,
   type Mode,
   type ThemePref,
 } from "./prefs";
+import { typographyVariables } from "./typography";
 
 export interface ThemeContextValue extends Appearance {
   /** the mode actually painted (a "system" preference is already resolved) */
@@ -56,6 +71,21 @@ export interface ThemeContextValue extends Appearance {
   setTheme: (pref: ThemePref, from?: RevealPoint) => void;
   setFontScale: (scale: FontScale) => void;
   setDensity: (density: Density) => void;
+  setContrast: (contrast: Contrast) => void;
+  setColorVision: (vision: ColorVision) => void;
+  setMotion: (motion: Motion) => void;
+  setUnderlineLinks: (on: boolean) => void;
+  setTimeZone: (zone: string) => void;
+  setDateFormat: (format: DateFormat) => void;
+  setHourCycle: (cycle: HourCycle) => void;
+  /** several fields at once, for a flow that edits a draft and then saves it */
+  setAppearance: (patch: Partial<Appearance>) => void;
+  /** the zone dates are shown in: the chosen one, or the device's */
+  effectiveTimeZone: string;
+  /** true until first-run setup is finished or skipped on this origin */
+  needsOnboarding: boolean;
+  /** forget every preference and show first-run setup again */
+  resetAppearance: () => void;
   /** flip between light and dark, settling the preference on the result */
   toggleMode: (from?: RevealPoint) => void;
 }
@@ -91,6 +121,7 @@ export function ThemeProvider({
     typeof window === "undefined" ? defaultAppearance : loadAppearance(),
   );
   const appearance = controlled ? value : own;
+  setDatePreferences(appearance);
 
   const update = useCallback(
     (patch: Partial<Appearance>) => {
@@ -134,6 +165,45 @@ export function ThemeProvider({
 
   const mode: Mode = appearance.theme === "system" ? systemMode : appearance.theme;
 
+  // Publish the preference for the sign-in screen, including a controlled
+  // store that never calls saveAppearance. See THEME_COOKIE in prefs.ts.
+  useEffect(() => {
+    writeThemeCookie(appearance.theme);
+  }, [appearance.theme]);
+
+  // And the other direction: a choice made on the sign-in screen, or in
+  // another tab, arrives as the same cookie. Scale and density are left alone.
+  useEffect(() => {
+    const pull = () => {
+      const bridged = readThemeCookie();
+      if (!bridged || bridged === appearance.theme) return;
+      const next = { ...appearance, theme: bridged };
+      if (controlled) onChange?.(next);
+      else {
+        setOwn(next);
+        saveAppearance(next);
+      }
+    };
+    window.addEventListener("focus", pull);
+    document.addEventListener("visibilitychange", pull);
+    const id = window.setInterval(pull, 1500);
+    return () => {
+      window.removeEventListener("focus", pull);
+      document.removeEventListener("visibilitychange", pull);
+      window.clearInterval(id);
+    };
+  }, [appearance, controlled, onChange]);
+
+  // Another tab, or another module on this origin, saved a change.
+  useEffect(() => {
+    if (controlled) return;
+    const pull = (e: StorageEvent) => {
+      if (e.key === APPEARANCE_KEY || e.key === null) setOwn(loadAppearance());
+    };
+    window.addEventListener("storage", pull);
+    return () => window.removeEventListener("storage", pull);
+  }, [controlled]);
+
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = mode;
@@ -143,10 +213,46 @@ export function ThemeProvider({
     root.style.colorScheme = mode;
   }, [mode]);
 
-  useEffect(() => {
+  // The accessible palette reaches plain CSS as inline variables on <html>,
+  // only where it differs from the stylesheet the build inlined.
+  const access = useMemo(
+    () => ({ contrast: appearance.contrast, colorVision: appearance.colorVision }),
+    [appearance.contrast, appearance.colorVision],
+  );
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.contrast = access.contrast;
+    root.dataset.vision = access.colorVision;
+    if (isTypical(access)) return;
+    const base = resolvePalette(mode);
+    const adjusted = resolvePalette(mode, access);
+    const set: string[] = [];
+    for (const [key, name] of VAR_MAP) {
+      if (adjusted[key] !== base[key]) {
+        root.style.setProperty(name, adjusted[key]);
+        set.push(name);
+      }
+    }
+    return () => {
+      for (const name of set) root.style.removeProperty(name);
+    };
+  }, [access, mode]);
+
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.dataset.motion = appearance.motion;
+    root.dataset.links = appearance.underlineLinks ? "underline" : "auto";
+  }, [appearance.motion, appearance.underlineLinks]);
+
+  useLayoutEffect(() => {
     const root = document.documentElement;
     root.dataset.density = appearance.density;
     root.dataset.fontscale = appearance.fontScale;
+    const variables = typographyVariables(appearance.fontScale);
+    for (const [name, value] of variables) root.style.setProperty(name, value);
+    return () => {
+      for (const [name] of variables) root.style.removeProperty(name);
+    };
   }, [appearance.density, appearance.fontScale]);
 
   const ctx = useMemo<ThemeContextValue>(
@@ -156,14 +262,29 @@ export function ThemeProvider({
       setTheme: updateTheme,
       setFontScale: (fontScale) => update({ fontScale }),
       setDensity: (density) => update({ density }),
+      setContrast: (contrast) => update({ contrast }),
+      setColorVision: (colorVision) => update({ colorVision }),
+      setMotion: (motion) => update({ motion }),
+      setUnderlineLinks: (underlineLinks) => update({ underlineLinks }),
+      setTimeZone: (timeZone) => update({ timeZone }),
+      setDateFormat: (dateFormat) => update({ dateFormat }),
+      setHourCycle: (hourCycle) => update({ hourCycle }),
+      setAppearance: (patch) => update(patch),
+      effectiveTimeZone: appearance.timeZone || deviceTimeZone(),
+      needsOnboarding: !appearance.onboardedAt,
+      resetAppearance: () => {
+        clearAppearance();
+        if (controlled) onChange?.(defaultAppearance);
+        else setOwn(defaultAppearance);
+      },
       toggleMode: (from) => updateTheme(mode === "dark" ? "light" : "dark", from),
     }),
-    [appearance, mode, update, updateTheme],
+    [appearance, mode, update, updateTheme, controlled, onChange],
   );
 
   const themed = (
     <ConfigProvider
-      theme={buildTheme(mode, appearance.fontScale, appearance.density)}
+      theme={buildTheme(mode, appearance.fontScale, appearance.density, access)}
       componentSize={appearance.density === "compact" ? "small" : "middle"}
     >
       {withAntApp ? <AntApp>{children}</AntApp> : children}

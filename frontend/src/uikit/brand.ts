@@ -19,6 +19,8 @@ export interface BrandLogo {
   svg?: string;
   /** a path or URL to an image; use last - it cannot follow the theme */
   src?: string;
+  /** the mark carries its own colour, so draw it without the brand plate */
+  bare?: boolean;
 }
 
 export interface BrandIdentity {

@@ -150,7 +150,7 @@ function ObservedCell({ p, inst }: { p: Parameter; inst: Instance }) {
       <span
         className="mono"
         style={{
-          fontSize: 12,
+          fontSize: "var(--text-small)",
           color: inherited ? "var(--text-3)" : "var(--text)",
           fontStyle: inherited ? "italic" : undefined,
           display: "inline-block",
@@ -178,16 +178,16 @@ function LocationsCell({ p }: { p: Parameter }) {
         const dir = pb.file.includes("/") ? pb.file.slice(0, pb.file.lastIndexOf("/") + 1) : "";
         const base = pb.file.slice(dir.length);
         return (
-          <div key={i} style={{ fontSize: 12 }}>
+          <div key={i} style={{ fontSize: "var(--text-small)" }}>
             <div style={{ overflowWrap: "anywhere" }}>
               <span className="mono" style={{ opacity: 0.55 }}>{dir}</span>
               <span className="mono" style={{ fontWeight: 600 }}>{base}</span>
               {b.line ? <span className="mono" style={{ color: "var(--c-review)" }}>:{b.line}</span> : null}
               {pb.perInstance && (
-                <Tag style={{ marginInlineStart: 6, fontSize: 10 }}>per instance</Tag>
+                <Tag style={{ marginInlineStart: 6, fontSize: "var(--text-micro)" }}>per instance</Tag>
               )}
             </div>
-            <div className="mono" style={{ fontSize: 11, opacity: 0.6, overflowWrap: "anywhere" }}>{b.path}</div>
+            <div className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.6, overflowWrap: "anywhere" }}>{b.path}</div>
           </div>
         );
       })}
@@ -201,7 +201,7 @@ function LocationsCell({ p }: { p: Parameter }) {
         {bs.length > 1 ? (
           <Tag color="blue">{bs.length} files</Tag>
         ) : (
-          <span className="mono" style={{ fontSize: 11, opacity: 0.8 }}>
+          <span className="mono" style={{ fontSize: "var(--text-caption)", opacity: 0.8 }}>
             {firstBase}
             {bs[0].line ? <span style={{ color: "var(--c-review)" }}>:{bs[0].line}</span> : null}
           </span>
@@ -238,14 +238,14 @@ function SkippedFiles({
     <div className="rounded-card-lg bg-surface-2 px-4 py-3">
       {managed.length > 0 && (
         <div style={{ marginBottom: skipped.length ? 14 : 0 }}>
-          <Typography.Text strong style={{ fontSize: 13 }}>
+          <Typography.Text strong style={{ fontSize: "var(--text-body)" }}>
             {managed.length} file{managed.length === 1 ? "" : "s"} you chose to manage anyway
           </Typography.Text>
           <ul style={{ margin: "6px 0 0", paddingInlineStart: 18 }}>
             {managed.map((f) => (
-              <li key={f.file} style={{ fontSize: 11, marginBottom: 6 }}>
+              <li key={f.file} style={{ fontSize: "var(--text-caption)", marginBottom: 6 }}>
                 <span className="mono" style={{ color: "var(--text-2)" }}>{f.file}</span>{" "}
-                <Button type="link" size="small" style={{ paddingInline: 4, fontSize: 11 }}
+                <Button type="link" size="small" style={{ paddingInline: 4, fontSize: "var(--text-caption)" }}
                   onClick={() => onStopManaging(f.file)} disabled={busy}>
                   leave it alone
                 </Button>
@@ -264,33 +264,33 @@ function SkippedFiles({
       )}
 
       {skipped.length > 0 && (
-        <Typography.Text strong style={{ fontSize: 13 }}>
+        <Typography.Text strong style={{ fontSize: "var(--text-body)" }}>
           {skipped.length} file{skipped.length === 1 ? "" : "s"} passed over
         </Typography.Text>
       )}
       {groupSkipped(skipped).map((g) => (
         <div key={g.reason} style={{ marginTop: 10 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
             {g.files.length} because {SKIP_REASONS[g.reason]}. {SKIP_EXPLANATIONS[g.reason]}
           </Typography.Text>
           <ul style={{ margin: "8px 0 0", paddingInlineStart: 18 }}>
             {g.files.map((f) => (
               <li key={f.file} style={{ marginBottom: 8 }}>
-                <div className="mono" style={{ fontSize: 11, color: "var(--text-2)" }}>{f.file}</div>
+                <div className="mono" style={{ fontSize: "var(--text-caption)", color: "var(--text-2)" }}>{f.file}</div>
                 {f.origin && (
-                  <div style={{ fontSize: 11, color: "var(--text-3)", marginTop: 2, maxWidth: 620 }}>
+                  <div style={{ fontSize: "var(--text-caption)", color: "var(--text-3)", marginTop: 2, maxWidth: 620 }}>
                     {originSentence(f.origin)}
                     {f.origin.docs && (
                       <>
                         {" "}
-                        <Typography.Link href={f.origin.docs} target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>
+                        <Typography.Link href={f.origin.docs} target="_blank" rel="noreferrer" style={{ fontSize: "var(--text-caption)" }}>
                           Their guidance
                         </Typography.Link>
                       </>
                     )}
                   </div>
                 )}
-                <Button type="link" size="small" style={{ paddingInline: 0, fontSize: 11 }}
+                <Button type="link" size="small" style={{ paddingInline: 0, fontSize: "var(--text-caption)" }}
                   onClick={() => onManage(f)} disabled={busy}>
                   Manage it anyway
                 </Button>
@@ -795,8 +795,8 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                   display: "flex", flexDirection: "column", alignItems: "center", gap: 8, paddingTop: 10,
                 }}
               >
-                <RightOutlined style={{ fontSize: 11, opacity: 0.7 }} />
-                <span style={{ writingMode: "vertical-rl", fontSize: 12, opacity: 0.7 }}>
+                <RightOutlined style={{ fontSize: "var(--text-caption)", opacity: 0.7 }} />
+                <span style={{ writingMode: "vertical-rl", fontSize: "var(--text-small)", opacity: 0.7 }}>
                   Files ({checkedFiles.size}/{allFiles.length})
                 </span>
               </div>
@@ -804,7 +804,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
           ) : (
             <div style={{ width: 320, flexShrink: 0, border: "1px solid rgba(127,137,160,0.28)", borderRadius: 10, display: "flex", flexDirection: "column" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 10px", borderBottom: "1px solid rgba(127,137,160,0.18)" }}>
-                <Typography.Text strong style={{ fontSize: 13 }}>
+                <Typography.Text strong style={{ fontSize: "var(--text-body)" }}>
                   <PartitionOutlined style={{ marginInlineEnd: 6 }} />
                   Files to manage
                 </Typography.Text>
@@ -841,7 +841,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
                   />
                 )}
               </div>
-              <div style={{ padding: "6px 10px", borderTop: "1px solid rgba(127,137,160,0.18)", fontSize: 12, opacity: 0.7 }}>
+              <div style={{ padding: "6px 10px", borderTop: "1px solid rgba(127,137,160,0.18)", fontSize: "var(--text-small)", opacity: 0.7 }}>
                 {checkedFiles.size} of {allFiles.length} files kept
               </div>
             </div>
@@ -872,7 +872,7 @@ export default function OnboardingWizard({ projectName }: { projectName: string 
               >
                 Select none
               </Button>
-              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                 {chosenParams.length} of {fileIncludedParams.length} selected
               </Typography.Text>
             </Space>

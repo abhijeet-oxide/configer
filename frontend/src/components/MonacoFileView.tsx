@@ -11,6 +11,7 @@
 // pane infers.
 //
 // When editable, changes report through onDirty and Ctrl/Cmd-S runs onSave.
+import { typography } from "../uikit";
 import { Editor, DiffEditor } from "@monaco-editor/react";
 import { useEffect, useRef } from "react";
 import "../monaco";
@@ -63,7 +64,7 @@ const baseOptions = {
   // it covered the thing the reader was sent to look at. A configuration file is
   // shallow enough that the context it restates is not worth that.
   stickyScroll: { enabled: false },
-  fontSize: 12.5,
+  fontSize: typography.normal.small,
   lineNumbers: "on" as const,
   // Left at Monaco's (and VS Code's) default: without the empty run past the
   // last line, a value near the end of a file CANNOT be centred - the editor

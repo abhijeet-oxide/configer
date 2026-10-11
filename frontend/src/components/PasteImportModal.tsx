@@ -75,7 +75,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
       }}
       onOk={() => (candidates.length ? doImport.mutate() : analyze.mutate())}
     >
-      <Typography.Paragraph type="secondary" style={{ fontSize: 13 }}>
+      <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-body)" }}>
         Paste a YAML, JSON, or XML config and name the repository file it belongs to (so the values
         can be written back there). Configer proposes the settings it finds; pick the ones to manage.
       </Typography.Paragraph>
@@ -95,7 +95,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
         }}
         rows={8}
         className="mono"
-        style={{ fontSize: 12.5 }}
+        style={{ fontSize: "var(--text-small)" }}
       />
 
       {candidates.length > 0 && (
@@ -117,7 +117,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
               dataIndex: "name",
               render: (n: string, c) => (
                 <span>
-                  <span className="mono" style={{ fontSize: 12.5 }}>{n}</span>
+                  <span className="mono" style={{ fontSize: "var(--text-small)" }}>{n}</span>
                   {c.managed && <Tag style={{ marginLeft: 6 }}>already managed</Tag>}
                 </span>
               ),
@@ -128,7 +128,7 @@ export default function PasteImportModal({ open, onClose }: { open: boolean; onC
               dataIndex: "value",
               width: 200,
               ellipsis: true,
-              render: (v: unknown) => <code style={{ fontSize: 12 }}>{JSON.stringify(v)}</code>,
+              render: (v: unknown) => <code style={{ fontSize: "var(--text-small)" }}>{JSON.stringify(v)}</code>,
             },
           ]}
         />

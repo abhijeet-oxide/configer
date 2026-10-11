@@ -153,11 +153,15 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
 
   // The diff must be visible in the values themselves, not inferred from a
   // status word: the outgoing side tints red, the incoming side green.
+  // The shared palette's -bg tints are pale enough for a chip but vanish across
+  // a whole column, so the diff mixes its own wash from the status colour.
+  const DEL = "color-mix(in srgb, var(--c-danger) 11%, transparent)";
+  const ADD = "color-mix(in srgb, var(--c-ok) 11%, transparent)";
   const tint = (side: "left" | "right", c: DiffChange): React.CSSProperties => {
     if (c.status === "modified")
-      return { background: side === "left" ? "var(--c-danger-bg)" : "var(--c-ok-bg)" };
-    if (c.status === "added" && side === "right") return { background: "var(--c-ok-bg)" };
-    if (c.status === "removed" && side === "left") return { background: "var(--c-danger-bg)" };
+      return { background: side === "left" ? DEL : ADD };
+    if (c.status === "added" && side === "right") return { background: ADD };
+    if (c.status === "removed" && side === "left") return { background: DEL };
     return {};
   };
 
@@ -194,7 +198,7 @@ export default function ComparePanel({ grid }: { grid: Grid }) {
               ) : (
                 <span className="mono">
                   <span style={{ textDecoration: "line-through", opacity: 0.55 }}>{String(c.left ?? "-")}</span>
-                  <ArrowRightOutlined style={{ margin: "0 8px", opacity: 0.45, fontSize: 11 }} />
+                  <ArrowRightOutlined style={{ margin: "0 8px", opacity: 0.45, fontSize: "var(--text-caption)" }} />
                   <span style={{ color: "var(--c-ok)" }}>{String(c.right ?? "-")}</span>
                 </span>
               ),

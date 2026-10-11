@@ -44,21 +44,27 @@ they render at the start of the toolbar row, with the kit's own controls staying
 right. Supplying it turns the toolbar on by itself, so a table with a search and
 no export still gets one line rather than two.
 
-Three defaults are the kit's rather than each call site's, because a table that
+Four defaults are the kit's rather than each call site's, because a table that
 disagrees with the one beside it is the thing people notice first:
 
 - **The pager appears only when there is somewhere to go.** `hideOnSinglePage`
   is on unless a call site overrides it, so a table of four rows with a pageSize
   of twenty renders no control reading "1". `pagination={false}` still means no
   pager at all.
-- **A table that fits does not scroll.** `scroll.x` stays `max-content` so a
-  resized column can still push past the container, but the overflow is clamped
-  while the measured content is within a rounding error of its box. Sub-pixel
-  column widths otherwise leave every table with a scrollbar and two pixels of
-  travel.
+- **A table uses the width it has.** Column widths are preferred widths. On a
+  wide screen, unpinned columns share the spare room in proportion. On a narrow
+  screen, those widths are kept and the table scrolls inside its surface. A
+  numeric `scroll.x` remains a minimum table width; callers do not need to pass
+  `max-content`.
 - **Row density is the kit's**, set by `tableEnhancedDensity`. Do not reach for
   antd's `size` to make one table shorter: that is how two tables on one screen
   end up with different row heights.
+- **Loading looks the same everywhere.** Pass `loading` (a boolean or
+  `{ spinning, delay }`) to the table, not to the `Card` around it. A first
+  load draws placeholder rows in the real columns; a refetch with rows on
+  screen dims them under a thin travelling bar after `delay`. Ant Design's
+  spinner over "No data" never shows, because for a moment it reads as an
+  empty estate.
 
 Preferences persist per table, keyed by `tableEnhancedKey`, in the browser's
 storage - so a person's own layout survives a reload without the server ever

@@ -60,7 +60,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
     gap: 5,
     height: "100%",
     padding: "0 10px",
-    fontSize: 12,
+    fontSize: "var(--text-small)",
     cursor: "pointer",
     userSelect: "none",
   };
@@ -76,7 +76,7 @@ export default function EditorStatusBar({ grid }: { grid: Grid }) {
           flexShrink: 0,
           background: BAR_BG,
           color: "#fff",
-          fontSize: 12,
+          fontSize: "var(--text-small)",
         }}
       >
         <Tooltip

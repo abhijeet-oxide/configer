@@ -246,7 +246,7 @@ export default function FileExplorer({
               <span key={i} className="fx-guide" />
             ))}
             <span className={`fx-chevron${r.isDir && r.open ? " fx-chevron-open" : ""}`}>
-              {r.isDir && <RightOutlined style={{ fontSize: 9 }} />}
+              {r.isDir && <RightOutlined style={{ fontSize: "var(--text-badge)" }} />}
             </span>
             {box}
             {r.isDir ? vsFolderIcon(!!r.open) : vsFileIcon(r.name)}
@@ -264,7 +264,7 @@ export default function FileExplorer({
                   onConfirm={() => onRemove(r.key)}
                 >
                   <Tooltip title="Stop managing (retire its parameters)">
-                    <Button size="small" type="text" icon={<MinusCircleOutlined style={{ fontSize: 11 }} />} />
+                    <Button size="small" type="text" icon={<MinusCircleOutlined style={{ fontSize: "var(--text-caption)" }} />} />
                   </Tooltip>
                 </Popconfirm>
               ) : onAdd ? (
@@ -272,7 +272,7 @@ export default function FileExplorer({
                   <Button
                     size="small"
                     type="text"
-                    icon={<PlusCircleOutlined style={{ fontSize: 11 }} />}
+                    icon={<PlusCircleOutlined style={{ fontSize: "var(--text-caption)" }} />}
                     onClick={() => onAdd(r.key)}
                   />
                 </Tooltip>

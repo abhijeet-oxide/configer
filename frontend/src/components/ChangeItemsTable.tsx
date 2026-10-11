@@ -34,7 +34,7 @@ function Detail({ d }: { d: ChangeDesc }) {
       <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         {d.fields.map((f) => (
           <span key={f.label} style={{ display: "flex", alignItems: "baseline", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontSize: 12, color: "var(--text-2)", minWidth: 108 }}>{f.label}</span>
+            <span style={{ fontSize: "var(--text-small)", color: "var(--text-2)", minWidth: 108 }}>{f.label}</span>
             <ValueDiff before={f.before} after={f.after} label={`${d.subject} · ${f.label}`} />
           </span>
         ))}
@@ -49,13 +49,13 @@ function Detail({ d }: { d: ChangeDesc }) {
   }
   if (d.before !== undefined) {
     return (
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-2)" }}>
+      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: "var(--text-body)", color: "var(--text-2)" }}>
         {d.what}
         <span className="mono" style={{ opacity: 0.55, textDecoration: "line-through" }}>{d.before}</span>
       </span>
     );
   }
-  return <span style={{ fontSize: 13, color: "var(--text-2)" }}>{d.what}</span>;
+  return <span style={{ fontSize: "var(--text-body)", color: "var(--text-2)" }}>{d.what}</span>;
 }
 
 // The subject cell: a parameter id (optionally a link) with its instance, or

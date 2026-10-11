@@ -11,7 +11,7 @@
 export type Mode = "light" | "dark";
 /** What the user ASKED for; "system" follows the OS and updates live. */
 export type ThemePref = Mode | "system";
-export type FontScale = "small" | "normal" | "large";
+export type FontScale = "small" | "normal" | "large" | "xlarge";
 export type Density = "comfortable" | "compact";
 export type HourCycle = "auto" | "h12" | "h23";
 
@@ -86,7 +86,7 @@ function sanitize(s: UserSettings): UserSettings {
     allowed.includes(v) ? v : dflt;
   return {
     theme: pick(s.theme, ["light", "dark", "system"] as const, defaultSettings.theme),
-    fontScale: pick(s.fontScale, ["small", "normal", "large"] as const, defaultSettings.fontScale),
+    fontScale: pick(s.fontScale, ["small", "normal", "large", "xlarge"] as const, defaultSettings.fontScale),
     density: pick(s.density, ["comfortable", "compact"] as const, defaultSettings.density),
     timeZone: typeof s.timeZone === "string" && s.timeZone ? s.timeZone : null,
     hourCycle: pick(s.hourCycle, ["auto", "h12", "h23"] as const, defaultSettings.hourCycle),

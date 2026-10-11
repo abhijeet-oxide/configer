@@ -95,7 +95,7 @@ export default function MembersModal({
                 </Avatar>
                 <span>
                   <b>{u.name || u.login}</b>{" "}
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                     {u.login}
                   </Typography.Text>
                 </span>
@@ -130,7 +130,7 @@ export default function MembersModal({
           },
         ]}
       />
-      <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 10 }}>
+      <Typography.Paragraph type="secondary" style={{ fontSize: "var(--text-small)", marginTop: 10 }}>
         Deployment admins (CONFIGER_ADMINS) always act as approvers everywhere.
       </Typography.Paragraph>
     </Modal>

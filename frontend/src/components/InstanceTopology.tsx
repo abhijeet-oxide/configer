@@ -131,7 +131,7 @@ export function InstanceDossier({
                 <span>
                   {meta.versionName || meta.softwareVersion}
                   {meta.versionName && meta.versionName !== meta.softwareVersion && (
-                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: 11 }}>{meta.softwareVersion}</span>
+                    <span className="mono text-ink-3" style={{ marginLeft: 6, fontSize: "var(--text-caption)" }}>{meta.softwareVersion}</span>
                   )}
                 </span>
               ),
@@ -210,7 +210,7 @@ export function InstanceDossier({
         </Button>
         {actions && actions.length > 0 && (
           <>
-            <Typography.Text type="secondary" style={{ fontSize: 11, letterSpacing: 0.4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: "var(--text-caption)", letterSpacing: 0.4 }}>
               ACTIONS
             </Typography.Text>
             <InstanceActionBar actions={actions} size="middle" block />

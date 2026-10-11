@@ -20,7 +20,7 @@ export default function PageHeader({
     <div className="ui-page-header">
       <div className="ui-page-header-row">
         <div className="ui-page-header-main">
-          <div className="ui-page-header-title">{title}</div>
+          <h1 className="ui-page-header-title">{title}</h1>
           {description && <div className="ui-page-header-desc">{description}</div>}
         </div>
         {actions && <div className="ui-page-header-actions">{actions}</div>}

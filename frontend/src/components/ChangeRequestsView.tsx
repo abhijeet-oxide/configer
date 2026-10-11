@@ -144,16 +144,16 @@ export default function ChangeRequestsView() {
                 <div>
                   {t}
                   {cr.category && (
-                    <Tag color={categoryColor[cr.category] ?? "default"} style={{ marginInlineStart: 8, fontSize: 11 }}>
+                    <Tag color={categoryColor[cr.category] ?? "default"} style={{ marginInlineStart: 8, fontSize: "var(--text-caption)" }}>
                       {cr.category}
                     </Tag>
                   )}
                   {cr.reference && (
-                    <Tag style={{ fontSize: 11 }} className="mono">{cr.reference}</Tag>
+                    <Tag style={{ fontSize: "var(--text-caption)" }} className="mono">{cr.reference}</Tag>
                   )}
                 </div>
                 {cr.description && (
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>{cr.description}</Typography.Text>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>{cr.description}</Typography.Text>
                 )}
               </>
             ),
@@ -179,14 +179,14 @@ export default function ChangeRequestsView() {
                   // in, and a Tag does not truncate on its own - it simply drew
                   // over the Author beside it. The full name is on hover.
                   <Tooltip title={cr.branch}>
-                    <Tag icon={<BranchesOutlined />} className="mono cr-branch-tag" style={{ fontSize: 11 }}>
+                    <Tag icon={<BranchesOutlined />} className="mono cr-branch-tag" style={{ fontSize: "var(--text-caption)" }}>
                       {cr.branch}
                     </Tag>
                   </Tooltip>
                 ) : cr.state === "draft" ? (
                   // Saying nothing here is better than naming a branch that does
                   // not exist: a placeholder read as a decision already taken.
-                  <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  <Typography.Text type="secondary" style={{ fontSize: "var(--text-small)" }}>
                     Branch created when you submit
                   </Typography.Text>
                 ) : null}
@@ -219,7 +219,7 @@ export default function ChangeRequestsView() {
                         setSection("approvals");
                       }}
                     >
-                      Review <RightOutlined style={{ fontSize: 10 }} />
+                      Review <RightOutlined style={{ fontSize: "var(--text-micro)" }} />
                     </Button>
                     <Tooltip title="Sync state from the pull request">
                       <Button size="small" icon={<ReloadOutlined />} onClick={() => refresh.mutate(cr.id)} />

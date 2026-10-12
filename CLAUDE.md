@@ -364,8 +364,11 @@ Configuration data NEVER goes in the DB - only workflow and operational state.
 **Web sign-in:** `web/src/authkit/` is the THIRD shared folder, byte-identical
 to `softwareGateway/web/src/authkit/`: the OIDC code+PKCE session, the gate that
 completes a sign-in, and the sign-in screens. The API client sends its token
-and starts a sign-in on a 401 that a renewal cannot fix. Preferences are the
-platform's one record (`uikit.appearance.v1`); `settings.ts` translates it for
+and starts a sign-in on a 401 that a renewal cannot fix. `web/src/accountkit/` is the FOURTH: the platform's
+Profile page (identity, Accessibility, Appearance), which `SettingsView` fills
+with ArtiAuto's own sections, so the page is the same in every application.
+The platform repository's tests fail when any of the four differs. Preferences
+are the platform's one record (`uikit.appearance.v1`); `settings.ts` translates it for
 the store, and `main.tsx` follows changes made by Software Gateway.
 
 **HTTP:** `api/hub.go` (workspace: /api/repos/{id}/… + auth + dispatch),

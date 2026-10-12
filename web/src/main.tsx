@@ -113,10 +113,13 @@ function ThemeRoot() {
         if (next.theme !== themePref) ui.setThemePref(next.theme)
         if (next.fontScale !== fontScale) ui.setFontScale(next.fontScale)
         if (next.density !== density) ui.setDensity(next.density)
-        const { contrast, colorVision, motion, underlineLinks, dateFormat } = next
-        const merged = { ...loadAppearance(), contrast, colorVision, motion, underlineLinks, dateFormat }
+        const { contrast, colorVision, motion, underlineLinks, dateFormat, timeZone, hourCycle } = next
+        const merged = { ...loadAppearance(), contrast, colorVision, motion, underlineLinks, dateFormat, timeZone, hourCycle }
         saveAppearance(merged)
         setShared(merged)
+        const s = fromAppearance(merged)
+        if (s.timeZone !== ui.timeZone) ui.setTimeZone(s.timeZone)
+        if (s.hourCycle !== ui.hourCycle) ui.setHourCycle(s.hourCycle)
       }}
     >
       <GlobalFeedback />

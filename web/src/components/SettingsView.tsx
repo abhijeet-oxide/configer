@@ -54,7 +54,7 @@ export default function SettingsView() {
           identity.admin && (
             <Space size={[7, 6]} wrap>
               <Tag color="processing" style={{ marginInlineEnd: 0, fontWeight: 600 }}>
-                Administrator
+                Admin
               </Tag>
             </Space>
           )

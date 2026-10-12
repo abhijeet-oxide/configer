@@ -313,7 +313,10 @@ export default function App() {
         setRepo(null);
         qc.clear();
       }
-      setSection("workspace");
+      // Home and an application's own pages need one; Profile, Audit and the
+      // rest stay reachable on an empty workspace.
+      const at = useUI.getState().section;
+      if (at === "home" || APP_SECTIONS.has(at)) setSection("workspace");
       return;
     }
     // Keep an explicitly-selected application that is mid-connection: the user

@@ -31,6 +31,9 @@ export function SessionGate({ children }: { children: ReactNode }) {
         // carries a spent authorization code, and leaving it in the history
         // means Back returns to a sign-in that can no longer be completed.
         window.history.replaceState(null, '', returnTo)
+        // A router that read the address before the exchange (ArtiAuto's
+        // store does, at import) is still on the callback; tell it.
+        window.dispatchEvent(new PopStateEvent('popstate'))
         setSettled(true)
       })
       .catch((err: unknown) => {

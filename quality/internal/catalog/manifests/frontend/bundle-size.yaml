@@ -12,7 +12,7 @@ needs: [frontend-build]
 cost: cheap
 tool:
   command: node
-  args: ["{repo}/scripts/cq/bundle-size.mjs", "{repo}/frontend/dist", "{out}"]
+  args: ["{repo}/scripts/cq/bundle-size.mjs", "{repo}/web/dist", "{out}"]
   probe: ["node", "--version"]
   install: "Install Node.js 20 or newer, and run the frontend build first so there is a bundle to measure."
 output:

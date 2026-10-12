@@ -58,16 +58,16 @@ work that was deliberately not staged.
 
 ```yaml
 scopes:
-  frontend: ["frontend/**"]
-  backend:  ["backend/**"]
-  api:      ["backend/internal/api/**", "frontend/src/api.ts"]
+  frontend: ["web/**"]
+  backend:  ["cmd/**", "internal/**", "go.mod", "go.sum"]
+  api:      ["internal/api/**", "web/src/api.ts"]
   infra:    ["deploy/**", "**/Dockerfile", "**/kustomization.yaml"]
-  ci:       [".github/**", ".azure/**", "scripts/**", "Makefile"]
+  ci:       [".github/**", ".azure/**", "scripts/**", "Taskfile.yml"]
   deps:     ["**/go.mod", "**/go.sum", "**/package*.json"]
   docs:     ["**/*.md", "docs/**"]
 ```
 
-A file may land in several scopes - `backend/internal/api/reads.go` is both
+A file may land in several scopes - `internal/api/reads.go` is both
 `backend` and `api` - and that is the point: an API handler change should run the
 backend checks *and* the contract checks.
 
@@ -79,11 +79,11 @@ selection that actually hurts, so the rule resolves toward over-selection.
 
 | Change | Areas | Runs | Skips |
 |---|---|---|---|
-| `backend/internal/api/reads.go` | backend, api | golangci-lint, go vet, gofmt, go test, coverage, govulncheck, openapi-sync, oasdiff, spectral, smoke, runtime probe, secrets, deps | every frontend check |
-| `frontend/src/components/Grid.tsx` | frontend | eslint, tsc, build, bundle-size, depcruise, knip, playwright, runtime probe, secrets, deps | every backend check |
-| `frontend/src/styles.css` | frontend | the frontend set (path-triggered ones filter to CSS) | all backend |
+| `internal/api/reads.go` | backend, api | golangci-lint, go vet, gofmt, go test, coverage, govulncheck, openapi-sync, oasdiff, spectral, smoke, runtime probe, secrets, deps | every frontend check |
+| `web/src/components/Grid.tsx` | frontend | eslint, tsc, build, bundle-size, depcruise, knip, playwright, runtime probe, secrets, deps | every backend check |
+| `web/src/styles.css` | frontend | the frontend set (path-triggered ones filter to CSS) | all backend |
 | `README.md`, `docs/**` | docs | secrets, house style | **everything else** |
-| `backend/go.sum` | deps, backend | trivy, osv-scanner, govulncheck, sbom, plus the backend set | frontend |
+| `go.sum` | deps, backend | trivy, osv-scanner, govulncheck, sbom, plus the backend set | frontend |
 | `some/unmapped/thing.conf` | other | **everything** | nothing |
 
 ### Per-file invocation
@@ -155,9 +155,9 @@ uncached for that reason.
 - uses: actions/cache@v4
   with:
     path: .cq/cache
-    key: cq-${{ runner.os }}-${{ hashFiles('backend/go.sum','frontend/package-lock.json') }}-${{ github.sha }}
+    key: cq-${{ runner.os }}-${{ hashFiles('go.sum','web/package-lock.json') }}-${{ github.sha }}
     restore-keys: |
-      cq-${{ runner.os }}-${{ hashFiles('backend/go.sum','frontend/package-lock.json') }}-
+      cq-${{ runner.os }}-${{ hashFiles('go.sum','web/package-lock.json') }}-
       cq-${{ runner.os }}-
 ```
 

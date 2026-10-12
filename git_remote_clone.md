@@ -39,10 +39,10 @@ application, and it survives restarts.
 
 | Piece | File | State |
 |---|---|---|
-| GitHub Git-data client | `backend/internal/remoterepo/remoterepo.go` | complete |
-| Backend implementation | `backend/internal/repobackend/remote.go` | complete |
-| Hub wiring | `backend/internal/api/hub.go` (`openRemote`) | complete |
-| API entry point | `backend/internal/api/connect.go` (`mode`) | complete |
+| GitHub Git-data client | `internal/remoterepo/remoterepo.go` | complete |
+| Backend implementation | `internal/repobackend/remote.go` | complete |
+| Hub wiring | `internal/api/hub.go` (`openRemote`) | complete |
+| API entry point | `internal/api/connect.go` (`mode`) | complete |
 | Tests | `remoterepo_test.go`, `remote_test.go` | 3 tests, against a fake GitHub |
 | UI | - | **missing** |
 

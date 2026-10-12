@@ -66,7 +66,7 @@ should never be *forced* into the raw YAML to make a responsible call.
 2. Find the actual review/approval surfaces in code (frontend change-review
    components; backend `change`/`changeset`/`crstore` and `api/platform.go`
    role gating) so you know what an approver is really shown and empowered to do.
-3. Boot the product (`make dev`) where feasible and drive a review with the
+3. Boot the product (`task dev`) where feasible and drive a review with the
    `webapp-testing` skill: reach a submitted change as an approver and try to
    decide *responsibly*. Note every moment you are asked to trust without
    understanding, or to understand only by reading YAML.

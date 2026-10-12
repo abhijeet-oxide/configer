@@ -63,10 +63,10 @@ UI did not convey it.
 
 1. Read the shared evaluation contract in `.claude/agents/_evaluation-contract.md`
    and follow its evidence discipline, report structure, and severity vocabulary.
-2. Orient in code first (`frontend/src/App.tsx`, `store.ts`, `OnboardingWizard`,
+2. Orient in code first (`web/src/App.tsx`, `store.ts`, `OnboardingWizard`,
    `WorkspaceView`, and the empty/initial states) to know what a first-timer will
    actually see - but judge the *experience*, not the implementation.
-3. Where feasible, boot the product (`make dev`) and drive it with the
+3. Where feasible, boot the product (`task dev`) and drive it with the
    `webapp-testing` skill as a true novice: land cold, try to understand, attempt
    one first task (understand what an instance is, or change one value into a
    draft) without reading docs. Narrate your real-time confusion.

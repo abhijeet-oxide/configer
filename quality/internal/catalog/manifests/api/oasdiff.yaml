@@ -13,7 +13,7 @@ scopes: [api]
 cost: cheap
 tool:
   command: sh
-  args: ["-c", "git show \"${CQ_BASE_REF:-origin/main}:backend/internal/api/docs/configer_swagger.json\" > \"$CQ_ARTIFACTS/openapi-base.json\" 2>/dev/null || echo '{}' > \"$CQ_ARTIFACTS/openapi-base.json\"; oasdiff breaking \"$CQ_ARTIFACTS/openapi-base.json\" backend/internal/api/docs/configer_swagger.json --format json > \"$1\" 2>\"$CQ_ARTIFACTS/oasdiff.err\" || true", "sh", "{out}"]
+  args: ["-c", "git show \"${CQ_BASE_REF:-origin/main}:internal/api/docs/configer_swagger.json\" > \"$CQ_ARTIFACTS/openapi-base.json\" 2>/dev/null || echo '{}' > \"$CQ_ARTIFACTS/openapi-base.json\"; oasdiff breaking \"$CQ_ARTIFACTS/openapi-base.json\" internal/api/docs/configer_swagger.json --format json > \"$1\" 2>\"$CQ_ARTIFACTS/oasdiff.err\" || true", "sh", "{out}"]
   probe: ["oasdiff", "--version"]
   optional: true
   install: "Install oasdiff: go install github.com/oasdiff/oasdiff@latest"

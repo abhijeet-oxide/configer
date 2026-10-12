@@ -20,9 +20,9 @@ tool:
   command: node
   args: ["{repo}/scripts/cq/runtime-probe.mjs", "{out}"]
   probe: ["node", "-e", "require.resolve('playwright')"]
-  workdir: frontend
+  workdir: web
   optional: true
-  install: "Run `npm install` in frontend/ (Playwright is already a dev dependency), and make sure a Chromium build is available."
+  install: "Run `npm install` in web/ (Playwright is already a dev dependency), and make sure a Chromium build is available."
   env:
     CQ_PROBE_BASE_URL: "http://127.0.0.1:5173"
 output:

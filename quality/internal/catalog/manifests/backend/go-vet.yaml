@@ -10,13 +10,13 @@ category: backend
 tags: [lint]
 tiers: [local, pre-commit, pr, main]
 scopes: [backend]
-paths: ["backend/**/*.go"]
+paths: ["cmd/**/*.go", "internal/**/*.go"]
 cost: cheap
 tool:
   command: go
   args: ["vet", "./..."]
   versionArgs: ["version"]
-  workdir: backend
+  workdir: .
   install: "Install Go: https://go.dev/dl/"
 output:
   format: exit-code
@@ -26,4 +26,4 @@ defaults:
   effort: small
   recommendation: "Fix what vet reports in the artifact log; it does not report style, only likely mistakes."
 cache:
-  inputs: ["backend/**/*.go", "backend/go.sum"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go", "go.sum"]

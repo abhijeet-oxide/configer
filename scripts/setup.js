@@ -23,7 +23,7 @@ if (!fs.existsSync(envFile)) {
 // Step 2: Install dependencies
 console.log('📦 Installing frontend dependencies...');
 try {
-  execSync('cd frontend && npm install', { stdio: 'inherit', cwd: rootDir });
+  execSync('cd web && npm install', { stdio: 'inherit', cwd: rootDir });
   console.log('✅ Frontend dependencies installed\n');
 } catch (error) {
   console.error('❌ Failed to install frontend dependencies');
@@ -32,7 +32,7 @@ try {
 
 console.log('📦 Installing backend dependencies...');
 try {
-  execSync('cd backend && go mod download', { stdio: 'inherit', cwd: rootDir });
+  execSync('go mod download', { stdio: 'inherit', cwd: rootDir });
   console.log('✅ Backend dependencies installed\n');
 } catch (error) {
   console.error('❌ Failed to install backend dependencies');

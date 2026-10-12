@@ -29,15 +29,15 @@ Findings must be evidence-based, not imagined. Ground each observation in at
 least one of:
 
 - **Code**: cite `file_path:line`. The backend spine is
-  `backend/internal/{pathedit,writeback,change,changeset,crstore,model,
+  `internal/{pathedit,writeback,change,changeset,crstore,model,
   project,resolver,grid,validate,plugin,sources,layout,discovery,gitengine,
-  repobackend,provider,api}`; the frontend is `frontend/src/` (`App.tsx`,
+  repobackend,provider,api}`; the frontend is `web/src/` (`App.tsx`,
   `api.ts`, `store.ts`, `ParameterGrid`, `FilesView`, `MonacoFileView`,
   `OnboardingWizard`, `InstancesView`, `SourceControlPanel`,
   `SubmitChangesButton`, `ComparePanel`, `WorkspaceView`).
-- **The running product**: `make dev` boots backend :8080 over `./sample-repo`
+- **The running product**: `task dev` boots backend :8080 over `./sample-repo`
   and frontend :5173. Drive it with the `webapp-testing` skill (Playwright).
-  `sample-repos/` holds richer fixtures; `make functional-test` exercises them.
+  `sample-repos/` holds richer fixtures; `task functional-test` exercises them.
 - **A concrete reproduction or trace**: the exact screen, state, click,
   terminology string, API payload, or file diff that demonstrates the issue.
 

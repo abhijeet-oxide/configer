@@ -10,7 +10,7 @@ Run every gate; all must pass before a change is done.
 ## 1. Static + unit
 
 ```bash
-cd backend && go vet ./... && go test ./...
+go vet ./... && go test ./...
 cd ../frontend && npx tsc --noEmit && npx eslint src
 ```
 
@@ -35,8 +35,8 @@ signal.
 ## 3. When the UI changed
 
 ```bash
-cd frontend && npm run build     # full production build must succeed
-make dev                         # then exercise the affected flow by hand:
+cd web && npm run build     # full production build must succeed
+task dev                         # then exercise the affected flow by hand:
 ```
 
 - Grid: double-click a cell, commit a value, watch the pending badge and the

@@ -15,7 +15,7 @@ tool:
   args: ["--yes", "dependency-cruiser@16", "--output-type", "json",
          "--no-config", "--output-to", "{out}", "src"]
   probe: ["node", "--version"]
-  workdir: frontend
+  workdir: web
   optional: true
   install: "dependency-cruiser is fetched on demand by npx; this needs network access on the runner."
   okExitCodes: [1]
@@ -27,4 +27,4 @@ defaults:
   safeToAutomate: false
   effort: medium
 cache:
-  inputs: ["frontend/src/**", "frontend/.dependency-cruiser.js"]
+  inputs: ["web/src/**", "web/.dependency-cruiser.js"]

@@ -14,9 +14,9 @@ tool:
   command: npx
   args: ["playwright", "test", "--reporter", "junit"]
   probe: ["npx", "--no-install", "playwright", "--version"]
-  workdir: frontend
+  workdir: web
   optional: true
-  install: "Run `npm install` in frontend/ and add a playwright.config.ts with your tests."
+  install: "Run `npm install` in web/ and add a playwright.config.ts with your tests."
   okExitCodes: [1]
   env:
     PLAYWRIGHT_JUNIT_OUTPUT_NAME: "{out}"

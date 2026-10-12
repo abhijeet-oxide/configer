@@ -128,7 +128,7 @@ func TestAbsoluteZeroBudgetOnFindings(t *testing.T) {
 
 	findings := []model.Finding{
 		{Fingerprint: "a", Category: model.CategorySecurity, Severity: model.SeverityError,
-			Title: "CVE-2025-0001 in golang.org/x/net", Where: []model.Location{{Path: "backend/go.mod"}}},
+			Title: "CVE-2025-0001 in golang.org/x/net", Where: []model.Location{{Path: "go.mod"}}},
 		{Fingerprint: "b", Category: model.CategorySecurity, Severity: model.SeverityNote, Title: "a note"},
 		{Fingerprint: "c", Category: model.CategoryFrontend, Severity: model.SeverityError, Title: "elsewhere"},
 	}

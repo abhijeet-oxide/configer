@@ -29,7 +29,7 @@ repository with no frontend at all.
 plus a runtime that CI images do not reliably pin.
 
 **Put it in `backend/`.** Simpler CI. Rejected: the quality platform must never
-become a dependency of the shipped product binary, and `backend/internal/` is
+become a dependency of the shipped product binary, and `internal/` is
 the product's domain. A separate module makes that structural rather than
 conventional.
 

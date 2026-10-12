@@ -14,7 +14,7 @@ func TestSameToolReportingTwiceCollapses(t *testing.T) {
 	f := model.Finding{
 		Analyzer: "eslint", Rule: "no-unused-vars", Category: model.CategoryFrontend,
 		Severity: model.SeverityWarning, Title: "'x' is defined but never used",
-		Where: at("frontend/src/a.ts", 10), Tools: []string{"eslint"}, Occurrences: 1,
+		Where: at("web/src/a.ts", 10), Tools: []string{"eslint"}, Occurrences: 1,
 	}
 	got := Merge([]model.Finding{f, f})
 	if len(got) != 1 {
@@ -33,14 +33,14 @@ func TestTwoToolsAgreeingBecomeOneFindingWithHigherConfidence(t *testing.T) {
 		Analyzer: "golangci-lint", Rule: "errcheck", Category: model.CategoryBackend,
 		Severity: model.SeverityWarning, Conf: model.ConfidenceMedium,
 		Title: "Error return value is not checked",
-		Where: at("backend/internal/api/files.go", 42), Tools: []string{"golangci-lint"},
+		Where: at("internal/api/files.go", 42), Tools: []string{"golangci-lint"},
 		Fix: model.Fix{SafeToAutomate: true, Recommendation: "check it"},
 	}
 	b := model.Finding{
 		Analyzer: "semgrep", Rule: "go.unchecked-error", Category: model.CategoryBackend,
 		Severity: model.SeverityError, Conf: model.ConfidenceMedium,
 		Title: "unchecked error return value",
-		Where: at("backend/internal/api/files.go", 42), Tools: []string{"semgrep"},
+		Where: at("internal/api/files.go", 42), Tools: []string{"semgrep"},
 		Fix: model.Fix{SafeToAutomate: false, Recommendation: "handle the returned error properly"},
 	}
 
@@ -72,12 +72,12 @@ func TestDifferentProblemsOnOneLineStaySeparate(t *testing.T) {
 	a := model.Finding{
 		Analyzer: "eslint", Rule: "no-unused-vars", Category: model.CategoryFrontend,
 		Severity: model.SeverityWarning, Title: "'config' is defined but never used",
-		Where: at("frontend/src/a.ts", 7), Tools: []string{"eslint"},
+		Where: at("web/src/a.ts", 7), Tools: []string{"eslint"},
 	}
 	b := model.Finding{
 		Analyzer: "eslint", Rule: "react-hooks/exhaustive-deps", Category: model.CategoryFrontend,
 		Severity: model.SeverityWarning, Title: "React Hook useEffect has a missing dependency",
-		Where: at("frontend/src/a.ts", 7), Tools: []string{"eslint"},
+		Where: at("web/src/a.ts", 7), Tools: []string{"eslint"},
 	}
 	if got := Merge([]model.Finding{a, b}); len(got) != 2 {
 		t.Errorf("two unrelated problems on one line must stay separate, got %d", len(got))

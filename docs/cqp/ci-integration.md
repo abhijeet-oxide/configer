@@ -105,16 +105,16 @@ the record of whether the trunk is healthy.
 ## Local, and pre-commit
 
 ```bash
-make cq                 # build quality/bin/cq
-make quality-doctor     # what is installed, what is missing, how to fix it
-make quality-local      # < 30s: formatting, types, vet
-make quality-precommit  # 30-90s, staged files only
-make quality            # the full pull-request stage
-make quality-plan       # what would run, and why, without running it
-make quality-baseline   # record the current state as the baseline
+task cq                 # build quality/bin/cq
+task quality:doctor     # what is installed, what is missing, how to fix it
+task quality:local      # < 30s: formatting, types, vet
+task quality:precommit  # 30-90s, staged files only
+task quality            # the full pull-request stage
+task quality-plan       # what would run, and why, without running it
+task quality-baseline   # record the current state as the baseline
 ```
 
-The pre-commit hook (`scripts/hooks/pre-commit`, installed by `make hooks`)
+The pre-commit hook (`scripts/hooks/pre-commit`, installed by `task hooks`)
 already regenerated the OpenAPI spec; it now also runs the `pre-commit` tier over
 the staged files. Two escape hatches, both documented in the hook itself:
 

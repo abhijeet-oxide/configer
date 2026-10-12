@@ -74,7 +74,7 @@ revert.
    `change`/`changeset`/`crstore`, `api/reconcile`, `api/sync`, `provider`, and
    the review/compare/rollback frontend surfaces. Confirm where controls are
    truly enforced vs merely presented.
-3. Where feasible, run the product (`make dev`) and drive an end-to-end governed
+3. Where feasible, run the product (`task dev`) and drive an end-to-end governed
    change with the `webapp-testing` skill: propose, review, approve, and then
    simulate "this broke prod - reconstruct and recover." Note every point where
    evidence is missing, a control is bypassable, or recovery is opaque.

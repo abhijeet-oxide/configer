@@ -9,32 +9,32 @@ operation (draft → branch → commit → PR → merge).
 ## Commands
 
 ```bash
-make install        # go modules + npm + git hooks (first time)
-make dev            # backend :8080 (serves ./sample-repo) + frontend :5173
-make test           # go test ./... + tsc --noEmit
-make lint           # go vet + golangci-lint + eslint
-make build          # backend binary + frontend dist
+task install        # go modules + npm + git hooks (first time)
+task dev            # backend :8080 (serves ./sample-repo) + frontend :5173
+task test           # go test ./... + tsc --noEmit
+task lint           # go vet + golangci-lint + eslint
+task build          # backend binary + frontend dist
 ./scripts/smoke.sh  # end-to-end: onboard sample-repos/telco-ran, edit, validate, submit, assert branch diff
-make functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
-make quality        # the quality platform, incremental against origin/main
-make quality-local  # the fast loop (< 30s): formatting, types, vet
-make quality-doctor # which analyzers and tools are available here
+task functional-test # scanner functional + scale suite over sample-repos/ (backend + API)
+task quality        # the quality platform, incremental against origin/main
+task quality:local  # the fast loop (< 30s): formatting, types, vet
+task quality:doctor # which analyzers and tools are available here
 ```
 
-`make install` also points `core.hooksPath` at `scripts/hooks`, whose
-pre-commit regenerates the OpenAPI spec whenever `backend/internal/api/*.go`
+`task install` also points `core.hooksPath` at `scripts/hooks`, whose
+pre-commit regenerates the OpenAPI spec whenever `internal/api/*.go`
 changes and stages it in the same commit - the spec is generated AND committed
 (the backend serves it at `/api/docs`), so it must travel with the code. CI
-keeps `make docs-check` as the safety net and uploads the corrected files.
+keeps `task docs:check` as the safety net and uploads the corrected files.
 
 `sample-repos/` is a corpus of realistic GitOps repos (Helm umbrella, kustomize
 base+overlays, kpt packages, raw multi-cluster K8s, telco RAN) with no
-`.configer/`; `make functional-test` onboards each and asserts detection,
+`.configer/`; `task functional-test` onboards each and asserts detection,
 dedup, envelope filtering, schema validation and write-back, plus a synthetic
 large-fleet scale check. The Go side is build-tagged (`go test -tags functional
 ./internal/discovery/...`); the API side drives `POST /api/discover` from Node.
 
-Backend alone: `cd backend && CONFIGER_REPO=../sample-repo go run ./cmd/configer`.
+Backend alone: `CONFIGER_REPO=./sample-repo go run ./cmd/configer`.
 Verification bar for any change: `go vet`, `golangci-lint run`, `go test ./...`,
 `npx tsc --noEmit`, `npx eslint src`, and the smoke script all green.
 
@@ -75,7 +75,7 @@ acceptable number: secrets, critical security findings, console errors, data
 races, goroutine leaks, breaking API changes. Edit `cq.yaml` to change any of it;
 never gate on the score, which exists only for the trend line.
 
-## Architecture (backend, `backend/internal/`)
+## Architecture (backend, `cmd/` and `internal/`)
 
 **The edit spine - every write goes through here:**
 - `pathedit` - THE single engine for reading/surgically editing YAML/JSON/XML
@@ -298,8 +298,18 @@ never gate on the score, which exists only for the trend line.
 
 **External sources (plugin-based):**
 - `plugin` - THE extension registry. `IngestParser` (file -> candidates),
-  `SchemaImporter`, and `SourceProvider` (external system -> key/value pairs)
-  all register here; add an extension point, never a second registry.
+  `SchemaImporter`, `SourceProvider` (external system -> key/value pairs) and
+  `Transformer` (a release candidate -> the files that deploy it) all register
+  here; add an extension point, never a second registry.
+- **Release candidates** (`api/releasecandidates.go`): Software Gateway queues
+  them in `public.release_candidates`; the runner claims one every 15 seconds
+  (Postgres only), finds the application whose origin is the product's
+  `spec.git.url`, asks the first `Transformer` that accepts it for file
+  changes, and stages and submits them through this server's OWN handlers as
+  the author `release-candidates`, so the result is a normal change request.
+  No application or no transformer leaves the row `waiting` with the reason,
+  retried every ten minutes. Transformers register in `internal/transformers`;
+  none ships.
 - `sources` - built-in `SourceProvider` plugins: `git` (read a config file/
   folder in another repo, no clone for github via `remoterepo`, temp clone
   otherwise, parsed through the same `parsers`) and `vault` (HashiCorp Vault
@@ -345,12 +355,31 @@ importing an existing `workspace.json` once), so replicas see the same
 applications. Never add per-pod state that a restart cannot rebuild, and never
 put an application open on the startup path.
 
-**Platform (optional, off without OAuth env):** `store` (SQLite default /
-Postgres via DATABASE_URL: users, sessions, app_members, audit_events,
-workspace_repos, change_requests), `auth` (GitHub OAuth, cookie sessions),
-`api/platform.go` (role enforcement: viewer < editor < approver, merge is
-approver-gated; members endpoints admin-only; audit trail). Configuration data
-NEVER goes in the DB - only workflow and operational state.
+**Platform (off without `CONFIGER_AUTH_ISSUER`):** ArtiAuto is one application
+of the ngUSPe Automation Platform and lives in the platform repository as the
+submodule `apps/artiauto`. It imports the platform's `pkg/authz` through a
+`replace ... => ../..` in `go.mod`, so it builds inside a platform checkout only.
+`auth` verifies the platform's ZITADEL bearer tokens and asks the platform's
+Cerbos about every action; there is no sign-in and no role logic of its own.
+`api/access.go` names each request as an action on `artiauto_application`
+(view, edit, submit, approve, publish, reject, administer) or
+`artiauto_workspace` (create_application, view_audit); the policies live in
+the platform repository's `config/access/policies`. An application's product
+(`metadata.product` in `.configer/application.yaml`) is what lets a product
+role reach it. The viewer/editor/approver words the UI shows are DERIVED from
+those answers. `store` (SQLite default / Postgres via DATABASE_URL, tables in
+the schema `artiauto`: users, audit_events, workspace_repos, change_requests).
+Configuration data NEVER goes in the DB - only workflow and operational state.
+
+**Web sign-in:** `web/src/authkit/` is the THIRD shared folder, byte-identical
+to `softwareGateway/web/src/authkit/`: the OIDC code+PKCE session, the gate that
+completes a sign-in, and the sign-in screens. The API client sends its token
+and starts a sign-in on a 401 that a renewal cannot fix. `web/src/accountkit/` is the FOURTH: the platform's
+Profile page (identity, Accessibility, Appearance), which `SettingsView` fills
+with ArtiAuto's own sections, so the page is the same in every application.
+The platform repository's tests fail when any of the four differs. Preferences
+are the platform's one record (`uikit.appearance.v1`); `settings.ts` translates it for
+the store, and `main.tsx` follows changes made by Software Gateway.
 
 **HTTP:** `api/hub.go` (workspace: /api/repos/{id}/… + auth + dispatch),
 per-repo handlers split by resource (`reads.go`, `values.go`,
@@ -375,7 +404,7 @@ bumps a generation that drops the cache outright. A cached project is SHARED
 and read-only. Anything rooted outside the working tree (a materialized ref, a
 timeline snapshot) parses for itself.
 
-## Architecture (frontend, `frontend/src/`)
+## Architecture (frontend, `web/src/`)
 
 React 18 + TS strict + Vite + Ant Design 5 + react-query (server state) +
 zustand (`store.ts`, UI state with URL deep-links `?app=&view=&param=&inst=`).
@@ -388,7 +417,7 @@ Hand-rolled section router in `App.tsx` (deliberate - no router lib).
 `ComparePanel`, `WorkspaceView`, `EvolutionTimeline` (history: `ChangeGraph`,
 the vertical branch picture, or `GraphRail`'s dense commit list).
 
-**Theming is NOT this repository's to decide.** `frontend/src/uikit/` is a
+**Theming is NOT this repository's to decide.** `web/src/uikit/` is a
 design system shared BYTE-IDENTICALLY with the other tools on the platform
 (today `softwareGateway/web/src/uikit/`), so two products meant to look like
 one product stay that way by being the same FILES rather than two careful
@@ -421,7 +450,7 @@ rules that matter:
   a hole punched beside the mark. That is why `BrandLockup` exists rather than
   three hand-built copies of the same two lines.
 - After changing it, copy the whole folder across and verify with
-  `diff -r frontend/src/uikit ../softwareGateway/web/src/uikit` - empty output
+  `diff -r web/src/uikit ../softwareGateway/web/src/uikit` - empty output
   means the tools are still on one design system. Fix a drift by copying, never
   by patching one side, and never by adding a prop that makes the kit behave
   differently per tool. Two looks that must genuinely differ are a PRESET.
@@ -433,10 +462,10 @@ rules that matter:
   choice. The presets are `default`, `graphite` (the accent taken out of the
   chrome) and `gateway` (the cyan corporate mark).
 
-**`frontend/src/tablekit/` is the SECOND shared folder**, beside `uikit/` and
+**`web/src/tablekit/` is the SECOND shared folder**, beside `uikit/` and
 under the same rules: byte-identical in every tool, `react` and `antd` only,
 every colour a token, verified with
-`diff -r frontend/src/tablekit ../softwareGateway/web/src/tablekit`. It is the
+`diff -r web/src/tablekit ../softwareGateway/web/src/tablekit`. It is the
 `antd-table-enhanced` component vendored rather than installed - a drop-in
 replacement for Ant Design's `Table` that adds resizable, reorderable, pinnable,
 hideable columns, autofit, CSV/Excel/JSON export and a layout each person keeps
@@ -686,13 +715,13 @@ APPLICATION-level views are tabs of `ConfigurationPage` under
   wrap, and the phone tier keeps the same brand mark, profile entry and
   navigation levels as the desktop rail.
 - Tests: golden-style (exact expected file bytes) for anything that edits
-  files; fixtures under `backend/internal/layout/testdata/` cover all three
+  files; fixtures under `internal/layout/testdata/` cover all three
   layouts; `api/platform_test.go` is the role-enforcement matrix.
 - Keep Go files ≤ ~400 lines and single-purpose; split by resource, not by
   layer.
 - **Never use an em-dash (the U+2014 character) anywhere**: not in code,
   comments, UI strings, commit messages, or docs. Use a spaced hyphen
-  (` - `), a colon, or two sentences instead. This is enforced: `make lint`
+  (` - `), a colon, or two sentences instead. This is enforced: `task lint`
   fails if any U+2014 is found in a tracked source file.
 
 ## The `.configer` schema (quick reference)

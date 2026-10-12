@@ -14,19 +14,19 @@ func Default() *Config {
 	return &Config{
 		Version: 1,
 		Scopes: map[string][]string{
-			"frontend": {"frontend/**"},
-			"backend":  {"backend/**"},
+			"frontend": {"web/**"},
+			"backend":  {"cmd/**", "internal/**", "go.mod", "go.sum"},
 			"api": {
-				"backend/internal/api/**",
-				"backend/internal/api/docs/**",
-				"frontend/src/api.ts",
+				"internal/api/**",
+				"internal/api/docs/**",
+				"web/src/api.ts",
 			},
 			"infra": {
 				"deploy/**", "**/Dockerfile", "**/*.dockerfile",
 				"**/kustomization.yaml", "**/Chart.yaml", "**/values.yaml",
 				"sample-repo/**", "sample-repos/**",
 			},
-			"ci":   {".github/**", ".azure/**", "scripts/**", "Makefile", "quality/**"},
+			"ci":   {".github/**", ".azure/**", "scripts/**", "Taskfile.yml", "quality/**"},
 			"deps": {"**/go.mod", "**/go.sum", "**/package.json", "**/package-lock.json"},
 			"docs": {"**/*.md", "docs/**", "**/*.txt"},
 		},

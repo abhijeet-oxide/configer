@@ -46,7 +46,7 @@ rm -rf "$WORK/repo/.git"
 [ -e "$WORK/repo/.configer" ] && fail "the fixture already carries a .configer/ - onboarding is part of this test"
 
 echo "== building backend"
-(cd "$ROOT/backend" && go build -o "$WORK/configer" ./cmd/configer)
+(cd "$ROOT" && go build -o "$WORK/configer" ./cmd/configer)
 
 echo "== starting backend on :$PORT"
 CONFIGER_REPO="$WORK/repo" CONFIGER_DATA="$WORK/data" CONFIGER_ADDR=":$PORT" \

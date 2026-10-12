@@ -36,7 +36,7 @@ analysis well and nothing else in the list: no bundle budget, no load test, no
 runtime probe, no SBOM, no agent-shaped report. They also own the findings, which
 puts the AI contract behind an API and a licence.
 
-**Write a monolithic `make quality` target.** This is what the repository had.
+**Write a monolithic `task quality` target.** This is what the repository had.
 It works until the suite takes long enough that people stop running it locally,
 at which point there is no incremental story, no cache, no baseline, no
 deduplication and no machine-readable output. The Makefile is still there; `cq`

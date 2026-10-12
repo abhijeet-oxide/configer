@@ -9,14 +9,14 @@ category: tests
 tags: [coverage]
 tiers: [pr, main]
 scopes: [backend]
-paths: ["backend/**/*.go"]
+paths: ["cmd/**/*.go", "internal/**/*.go"]
 cost: moderate
 timeoutSeconds: 600
 tool:
   command: go
   args: ["test", "-coverprofile={out}", "-covermode=atomic", "-count=1", "./..."]
   versionArgs: ["version"]
-  workdir: backend
+  workdir: .
   install: "Install Go: https://go.dev/dl/"
   okExitCodes: [1, 2]
 output:
@@ -28,4 +28,4 @@ defaults:
   safeToAutomate: false
   effort: medium
 cache:
-  inputs: ["backend/**/*.go", "backend/go.sum"]
+  inputs: ["cmd/**/*.go", "internal/**/*.go", "go.sum"]

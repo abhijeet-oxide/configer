@@ -63,7 +63,7 @@ faithful, not a dumbed-down approximation.
 - **Layout correctness**: do the `layout` adapters (kpt, kustomize, plainfolders)
   interpret conventions correctly - e.g. kustomize base+overlay patch pairing,
   kpt packages - or do they mis-model instances and bindings? Cross-check against
-  `sample-repos/` and `make functional-test`.
+  `sample-repos/` and `task functional-test`.
 - **Reconciliation traceability**: can you follow configuration state -> Git
   revision -> approval -> deployment, and detect when deployed != approved? Or is
   the "deployed" story aspirational?
@@ -79,8 +79,8 @@ faithful, not a dumbed-down approximation.
    `resolver`, `gitengine`, `repobackend`, `remoterepo`, `provider`, `api/sync`,
    `api/reconcile`, and the golden testdata under `layout/testdata` and
    `discovery`.
-3. Prove behavior, do not assume it. Where feasible, run `make functional-test`,
-   `./scripts/smoke.sh`, and `make dev` against `sample-repos/`; construct
+3. Prove behavior, do not assume it. Where feasible, run `task functional-test`,
+   `./scripts/smoke.sh`, and `task dev` against `sample-repos/`; construct
    adversarial cases (concurrent edits, external commit mid-draft, exotic YAML)
    and observe. Cite exact files, diffs, and test names.
 4. Separate "abstracted but faithful" from "abstracted and lossy." The former is

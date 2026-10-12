@@ -6,7 +6,7 @@ Configer supports flexible configuration through environment variables, making i
 
 ## Appearance / Theme
 
-The whole look is driven by one file, `frontend/src/theme.config.ts`.
+The whole look is driven by one file, `web/src/theme.config.ts`.
 
 - **Colors, logo, app name:** edit `themeOverrides` (deep-merged over the
   defaults). Anything you omit falls back to what Configer ships.
@@ -43,7 +43,7 @@ Never commit `.env` to version control-use `.env.example` as the template.
 **Where it is read from.** The backend looks for `.env` in its working
 directory and then upwards (so the repository-root file is found even though
 the server runs from `backend/`), and the Vite config reads the same root file
-plus an optional `frontend/.env`. Point `CONFIGER_ENV_FILE` at an explicit path
+plus an optional `web/.env`. Point `CONFIGER_ENV_FILE` at an explicit path
 to skip the search.
 
 **Precedence.** The real environment always wins: `.env` only fills in
@@ -56,7 +56,7 @@ sign-in is off when it is:
 
 ```
 configer backend starting ... config.envFile=/path/to/.env
-auth disabled: single-user mode reason="GITHUB_OAUTH_CLIENT_SECRET is not set ..."
+auth disabled: single-user mode reason=""
 ```
 
 An empty `config.envFile=` means no file was found - the values in it are not
@@ -75,21 +75,29 @@ being applied.
 | `CONFIGER_LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `CONFIGER_SYNC_SECONDS` | `30` | Git sync interval (seconds); 0 = disabled |
 | `CONFIGER_ENV_FILE` | *(unset)* | Explicit `.env` path; skips the upward search |
-| `CONFIGER_WEB_DIR` | *(auto)* | Directory of the built UI to serve from this process; `./web` and `../frontend/dist` are tried when unset |
+| `CONFIGER_WEB_DIR` | *(auto)* | Directory of the built UI to serve from this process; `./web` and `../web/dist` are tried when unset |
 | `CONFIGER_LOCAL_FOLDERS` | *(auto)* | Offer the "Local folder" source. Auto-detected: on for a non-production server reached from the same machine, off for anything hosted. Set `true`/`false` to decide explicitly |
 
-### Platform (users, sessions, roles, audit)
+### Platform (sign-in, permissions, database)
+
+ArtiAuto signs people in with the platform's identity provider and asks the
+platform's policy engine about every action. With `CONFIGER_AUTH_ISSUER` unset
+it runs single-user: no sign-in and everything allowed.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | *(unset)* | Postgres connection string for the platform database; unset = embedded SQLite under `CONFIGER_DATA` |
-| `GITHUB_OAUTH_CLIENT_ID` | *(unset)* | GitHub OAuth app client id; unset = single-user mode (no login) |
-| `GITHUB_OAUTH_CLIENT_SECRET` | *(unset)* | GitHub OAuth app client secret |
-| `CONFIGER_OAUTH_CALLBACK` | *(unset)* | Public `/api/auth/callback` URL (needed behind a proxy) |
-| `CONFIGER_APP_URL` | *(unset)* | Where the app is served when it is not this same address; login returns the browser here |
-| `GITHUB_WEB_URL` | `https://github.com` | GitHub web base (GitHub Enterprise) |
-| `CONFIGER_ADMINS` | *(unset)* | Comma-separated GitHub logins allowed to assign roles |
-| `CONFIGER_DEFAULT_ROLE` | `editor` | Role where no explicit assignment exists: viewer / editor / approver |
+| `DATABASE_URL` | *(unset)* | The platform database (Postgres); unset = embedded SQLite under `CONFIGER_DATA`. ArtiAuto's tables go in the schema `artiauto` unless the URL sets `search_path` |
+| `CONFIGER_AUTH_ISSUER` | *(unset)* | The identity provider's issuer URL; setting it turns sign-in on |
+| `CONFIGER_AUTH_TENANT` | *(unset)* | The one tenant this deployment serves; required with an issuer |
+| `CONFIGER_CERBOS_ADDR` | *(unset)* | The policy engine; required with an issuer |
+| `CONFIGER_AUTH_DISCOVERYURL` | *(unset)* | Where to fetch the issuer's discovery document when that is not the issuer's own address (in-cluster) |
+| `CONFIGER_AUTH_HOSTHEADER` | *(unset)* | Host header to send with that discovery request |
+| `CONFIGER_AUTH_AUDIENCE` | *(unset)* | Audience tokens must carry; or use the file below |
+| `CONFIGER_AUTH_AUDIENCESFILE` | *(unset)* | File of accepted audiences, written by the platform's seeder |
+| `CONFIGER_AUTH_JWKSCACHEPATH` | `/tmp/artiauto-jwks.json` | Where the issuer's keys are cached |
+| `CONFIGER_AUTH_WORKLOADJWKSFILE` | *(unset)* | The platform's workload keys, for service-to-service calls |
+| `CONFIGER_ADMIN_ROLE` | `org-admin` | The organization role shown as "Administrator" |
+| `GITHUB_API_URL` | `https://api.github.com` | GitHub API base for server-side calls (GitHub Enterprise) |
 | `CONFIGER_CORS_ORIGIN` | *(unset)* | One extra browser origin allowed to call the API |
 
 ### Git Integration
@@ -120,7 +128,7 @@ Frontend config is baked at build time using Vite's `VITE_*` prefix:
 | `VITE_API_PROXY_TARGET` | `http://localhost:8080` | Where the dev server proxies `/api` |
 
 The product name, logo and palette are **not** environment variables: they live
-in `frontend/src/theme.config.ts`, which drives the CSS custom properties, the
+in `web/src/theme.config.ts`, which drives the CSS custom properties, the
 Ant Design tokens and the favicon from one place.
 
 **`VITE_API_BASE_URL` must end at the `/api` prefix.** Every endpoint is
@@ -159,49 +167,24 @@ CONFIGER_ENV=development
 CONFIGER_LOG_LEVEL=debug
 ```
 
-### Docker Compose (Self-Hosted)
+### In the platform
 
-```yaml
-services:
-  backend:
-    environment:
-      CONFIGER_REPO: /repo
-      CONFIGER_ADDR: :8080
-      CONFIGER_ENV: production
-      DATABASE_URL: postgres://configer:configer@postgres:5432/configer
-    volumes:
-      - /path/to/your/repo:/repo      # must be writable by uid 10001
-      - configer-data:/var/lib/configer
-```
-
-**Two mounts, two different jobs.**
-
-`/repo` is the repository Configer manages. Configer is write-back-native - it
-commits into the repository's own files - so this mount **must be writable by
-the container's user (uid 10001)**. It does *not* need to be owned by that uid:
-Configer marks the repositories it manages as trusted, so git's "dubious
-ownership" refusal never applies and you are not asked to chown your own files.
-A tree that cannot be written is reported as unavailable at startup, with a
-plain-language reason, rather than failing at the first edit.
-
-`/var/lib/configer` is server-side state: the workspace registry, the platform
-database when it is SQLite, and clones of connected repositories. It is
-`CONFIGER_DATA` in the image. Without a volume here, every new container starts
-with an empty workspace.
-
-The backend waits for the database to be *healthy*, not merely started, so a
-cold `docker compose up` cannot race Postgres.
+The platform repository's compose stack and chart run ArtiAuto with the
+platform database, sign-in and policy engine, behind the front door at
+`/artiauto/`. The backend's `/var/lib/configer` (`CONFIGER_DATA`) holds the
+workspace registry when it is SQLite and the clones of connected repositories:
+a working copy is a cache, rebuilt when absent.
 
 ### Production (High-Security)
 
 ```bash
 CONFIGER_ENV=production
 CONFIGER_LOG_LEVEL=warn
-DATABASE_URL=postgres://user:pass@db.example.com/configer
+DATABASE_URL=postgres://user:pass@db.example.com/automation_platform
 GITHUB_TOKEN=ghp_xxxx...  # Keep in secrets manager
-GITHUB_OAUTH_CLIENT_ID=...
-GITHUB_OAUTH_CLIENT_SECRET=...
-CONFIGER_ADMINS=platform-lead
+CONFIGER_AUTH_ISSUER=https://automation.example.com
+CONFIGER_AUTH_TENANT=default
+CONFIGER_CERBOS_ADDR=http://cerbos:3592
 ```
 
 ## Runtime Configuration
@@ -219,8 +202,8 @@ The frontend can be reconfigured to point to a different backend without rebuild
 
 ```bash
 # Install dependencies
-cd frontend && npm install && cd ..
-cd backend && go mod download && cd ..
+cd web && npm install && cd ..
+go mod download && cd ..
 
 # Start everything
 npm start
@@ -231,16 +214,10 @@ npm start
 # - Swagger Docs: http://localhost:8080/api/docs
 ```
 
-### Docker Compose
+### The whole platform
 
-```bash
-# Build and start all services
-npm run docker:up
-
-# Frontend: http://localhost:8088
-# Backend: http://localhost:8080
-# Database: postgres://localhost:5432
-```
+From the platform repository: `docker compose up -d`, then open
+`http://localhost:8000/artiauto/`.
 
 ## Troubleshooting
 
@@ -268,24 +245,15 @@ base URL is missing its `/api` prefix.
    exported (or set in a compose file) is not overridden by `.env`
 3. Point `CONFIGER_ENV_FILE` at the file explicitly to remove all doubt
 
-### GitHub sign-in stays unavailable
+### Sign-in stays off
 
-1. **Both** `GITHUB_OAUTH_CLIENT_ID` and `GITHUB_OAUTH_CLIENT_SECRET` are
-   required; with only the id, sign-in would fail at the token exchange, so it
-   is not offered
-2. The startup log says which one is missing (`auth disabled: ... reason=...`)
-3. The OAuth app's callback URL must be `<public-url>/api/auth/callback`; set
-   `CONFIGER_OAUTH_CALLBACK` when a proxy fronts the deployment
-4. Nobody can manage members or read the audit trail: those are administrator
-   actions. The first user to sign in on a deployment with no `CONFIGER_ADMINS`
-   becomes its administrator; set `CONFIGER_ADMINS` to choose explicitly
-
-### Signing in lands on a "not found" page
-
-The browser is being returned to an address that serves the API but no app.
-Either serve the UI from the same process (`CONFIGER_WEB_DIR`, or the default
-`./web`), or name where the app lives with `CONFIGER_APP_URL`. With the UI and
-the API on one origin (the bundled nginx stack) neither is needed.
+1. `CONFIGER_AUTH_ISSUER` turns it on; the startup log says
+   `sign-in enabled` or `auth disabled: single-user mode`
+2. With an issuer set, `CONFIGER_AUTH_TENANT` and `CONFIGER_CERBOS_ADDR` are
+   required and the process refuses to start without them
+3. A person who can see nothing holds no role that reaches the application:
+   roles are granted in the platform's identity provider, and the policies are
+   in the platform repository's `config/access/policies`
 
 ### Git sync not working
 

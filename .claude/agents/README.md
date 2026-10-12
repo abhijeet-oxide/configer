@@ -26,13 +26,13 @@ forming a verdict), e.g. via the Agent tool with `subagent_type` set to the
 agent name. Point them at a live instance where possible:
 
 ```bash
-make dev   # backend :8080 over ./sample-repo, frontend :5173
+task dev   # backend :8080 over ./sample-repo, frontend :5173
 ```
 
 Richer fixtures live in `sample-repos/` (Helm umbrella, kustomize overlays,
-kpt, multi-cluster, telco RAN); `make functional-test` exercises them. Agents
+kpt, multi-cluster, telco RAN); `task functional-test` exercises them. Agents
 drive the running UI with the `webapp-testing` (Playwright) skill and cite
-`file_path:line` from `backend/internal/` and `frontend/src/`.
+`file_path:line` from `internal/` and `web/src/`.
 
 ## Severity vocabulary
 

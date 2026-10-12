@@ -15,14 +15,17 @@ version: 1
 # ---------------------------------------------------------------------------
 scopes:
   frontend:
-    - "frontend/**"
+    - "web/**"
   backend:
-    - "backend/**"
+    - "cmd/**"
+    - "internal/**"
+    - "go.mod"
+    - "go.sum"
   api:
     # An API handler change is both a backend change and a contract change, and
     # a file may legitimately land in several scopes.
-    - "backend/internal/api/**"
-    - "frontend/src/api.ts"
+    - "internal/api/**"
+    - "web/src/api.ts"
   infra:
     - "deploy/**"
     - "**/Dockerfile"
@@ -33,7 +36,7 @@ scopes:
     - ".github/**"
     - ".azure/**"
     - "scripts/**"
-    - "Makefile"
+    - "Taskfile.yml"
     - "quality/**"
   deps:
     - "**/go.mod"
@@ -57,7 +60,7 @@ ignore:
   # The scanner corpus is deliberately messy: it is FIXTURE data for the
   # discovery tests, and its "mistakes" are the point.
   - "sample-repos/**"
-  - "backend/internal/*/testdata/**"
+  - "internal/*/testdata/**"
 
 # Extra analyzer manifests, layered over the built-in catalog. Drop a YAML file
 # in here and it is a plugin: no Go code, no rebuild.

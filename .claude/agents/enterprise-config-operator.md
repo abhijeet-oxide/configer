@@ -73,7 +73,7 @@ non-standard.
    `api.ts`, and backend `values.go`/`instances.go`/`grid`/`resolver`/`layout`
    to see what bulk and exception capabilities truly exist.
 3. Use `sample-repos/` (Helm umbrella, kustomize overlays, kpt, multi-cluster,
-   telco RAN) and, where feasible, `make dev` + the `webapp-testing` skill to
+   telco RAN) and, where feasible, `task dev` + the `webapp-testing` skill to
    stress the grid at realistic width. Try a fleet-wide roll, a three-instance
    exception, and a "find the outliers" task. Count the clicks.
 4. Judge throughput and safety together: a fast tool that makes wide mistakes

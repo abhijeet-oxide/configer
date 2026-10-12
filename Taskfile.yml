@@ -1,0 +1,175 @@
+# ArtiAuto (codename Configer) task runner. `task --list` shows everything.
+#
+# Same runner as the platform repository (softwareGateway), so one command set
+# works in both. ArtiAuto imports the platform's pkg/authz through a replace in
+# go.mod, so Go builds run inside a platform checkout, where this repository is
+# the submodule apps/artiauto.
+
+version: '3'
+
+vars:
+  QUALITY: quality
+  CONFIGER_REPO: '{{default "./sample-repo" .CONFIGER_REPO}}'
+  CQ: ./quality/bin/cq
+  CQ_BASE: '{{default "origin/main" .CQ_BASE}}'
+  CQ_VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+tasks:
+  install:
+    desc: Go modules, web dependencies and the git hooks
+    cmds:
+      - go mod download
+      - pnpm --dir web install --frozen-lockfile
+      - task: hooks
+
+  hooks:
+    desc: Point git at the versioned hooks (pre-commit keeps the OpenAPI spec in sync)
+    cmds:
+      - git config core.hooksPath scripts/hooks
+      - chmod +x scripts/hooks/*
+
+  dev:
+    desc: Backend on :8080 and the web interface on :5173
+    deps: [backend, web]
+
+  backend:
+    desc: Run only the backend (:8080)
+    env:
+      CONFIGER_REPO: '{{.CONFIGER_REPO}}'
+    cmds:
+      - go run ./cmd/configer
+
+  web:
+    desc: Run only the web interface (:5173)
+    dir: web
+    cmds:
+      - pnpm run dev
+
+  docs:
+    desc: Regenerate the OpenAPI spec from the handler annotations
+    cmds:
+      - go generate ./internal/api
+
+  docs:check:
+    desc: Fail when the committed OpenAPI spec no longer matches the code
+    cmds:
+      - go generate ./internal/api
+      - cmd: |
+          if ! git diff --quiet -- internal/api/docs; then
+            echo "The committed OpenAPI spec no longer matches the handler annotations." >&2
+            echo "  Fix:      task docs && git add internal/api/docs" >&2
+            echo "  Prevent:  task hooks" >&2
+            git --no-pager diff --stat -- internal/api/docs >&2
+            exit 1
+          fi
+
+  build:
+    desc: Backend binary and the web bundle
+    cmds:
+      - go build -o bin/configer ./cmd/configer
+      - pnpm --dir web run build
+
+  test:
+    desc: Backend tests, quality platform tests and the web typecheck
+    cmds:
+      - go test ./...
+      - cd {{.QUALITY}} && go test ./...
+      - pnpm --dir web run typecheck
+
+  lint:
+    desc: go vet, ESLint, typecheck, no em-dashes, no orphaned CSS
+    cmds:
+      - ./scripts/no-emdash.sh
+      - go vet ./...
+      - cd {{.QUALITY}} && go vet ./...
+      - pnpm --dir web run lint
+      - pnpm --dir web run typecheck
+
+  check:
+    desc: What CI runs
+    cmds:
+      - task: lint
+      - task: test
+
+  fmt:
+    desc: Format Go code
+    cmds:
+      - go fmt ./...
+      - cd {{.QUALITY}} && go fmt ./...
+
+  tidy:
+    desc: Tidy Go module dependencies
+    cmds:
+      - go mod tidy
+      - cd {{.QUALITY}} && go mod tidy
+
+  functional-test:
+    desc: Scanner functional and scale tests over sample-repos/
+    cmds:
+      - ./scripts/functional-test.sh
+
+  smoke:
+    desc: End to end - onboard a sample repository, edit, validate, submit
+    cmds:
+      - ./scripts/smoke.sh
+
+  clean:
+    desc: Remove build output
+    cmds:
+      - rm -rf bin web/dist {{.QUALITY}}/bin .cq
+
+  # Continuous Quality Platform. See docs/cqp/.
+  cq:
+    desc: Build the quality platform binary (quality/bin/cq)
+    dir: '{{.QUALITY}}'
+    cmds:
+      - go build -trimpath -ldflags "-s -w -X github.com/abhijeet-oxide/configer/quality/internal/cli.Version={{.CQ_VERSION}}" -o bin/cq ./cmd/cq
+
+  quality:
+    desc: Full pull-request quality run, incremental against CQ_BASE
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} run --tier pr --base {{.CQ_BASE}}'
+
+  quality:local:
+    desc: Fast local loop - formatting, types, vet
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} run --tier local --fail-on warn'
+
+  quality:precommit:
+    desc: What a commit would be checked against (staged files only)
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} run --tier pre-commit --staged'
+
+  quality:main:
+    desc: The full sweep, recorded as the baseline
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} run --tier main --full --baseline'
+
+  quality:plan:
+    desc: Say what would run, and why, without running anything
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} plan --tier pr --base {{.CQ_BASE}}'
+
+  quality:doctor:
+    desc: Which analyzers and tools are available here
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} doctor'
+
+  quality:budgets:
+    desc: List the quality gates in force
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} budgets'
+
+  quality:baseline:
+    desc: Record the current state as the baseline to measure against
+    deps: [cq]
+    cmds:
+      - '{{.CQ}} run --tier main --full --baseline --fail-on never'

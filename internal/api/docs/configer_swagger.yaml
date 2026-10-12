@@ -1,0 +1,4126 @@
+basePath: /
+consumes:
+- application/json
+definitions:
+  api.APIError:
+    properties:
+      code:
+        description: Code is the stable, machine-readable classifier a client branches
+          on.
+        example: not_found
+        type: string
+      error:
+        description: |-
+          Error is a human-readable, plain-language message safe to show a user.
+          It never contains git jargon, stack traces, credentials, or internal
+          hostnames.
+        example: parameter not found
+        type: string
+      fields:
+        description: Fields carries per-field validation failures (422 only).
+        items:
+          $ref: '#/definitions/api.FieldError'
+        type: array
+      requestId:
+        description: |-
+          RequestID correlates this response with the access log and the
+          X-Request-ID header, so an operator can find the exact request.
+        example: 3f9a1c2b7e5d0a84
+        type: string
+      syntax:
+        allOf:
+        - $ref: '#/definitions/api.SyntaxDetail'
+        description: |-
+          Syntax carries the PLACE a document stopped parsing, when that is what
+          went wrong. It is a field rather than a sentence because the place is the
+          actionable part: the editor puts a marker on that line instead of leaving
+          the reader to search a nine-hundred-line file for what the parser meant.
+    type: object
+  api.Capabilities:
+    properties:
+      githubBrowse:
+        description: |-
+          GitHubBrowse: a GitHub credential is available right now (the signed-in
+          user's, or a deployment-wide token), so the repository picker can list.
+        type: boolean
+      githubSignIn:
+        description: |-
+          GitHubSignIn is always false: people sign in with the platform. Kept so
+          an older interface reading the field sees "no GitHub sign-in".
+        type: boolean
+      hosted:
+        description: |-
+          Hosted: this deployment is served to browsers elsewhere (as opposed to
+          running on the user's own machine). Display only.
+        type: boolean
+      localFolders:
+        description: |-
+          LocalFolders: the "Local folder" source is meaningful here, i.e. the
+          browser and the server share a filesystem.
+        type: boolean
+      manualGitUrl:
+        description: |-
+          ManualGitURL: connecting a repository by its Git URL. Always available -
+          it is the fallback that needs no integration at all.
+        type: boolean
+      platformSignIn:
+        description: 'PlatformSignIn: people sign in with the platform''s identity
+          provider.'
+        type: boolean
+    type: object
+  api.ChangeNameCheck:
+    properties:
+      available:
+        description: |-
+          Available says whether the name can be used as it stands. A name taken by
+          a change that is finished (published or rejected) is still available:
+          history is allowed to repeat, only two OPEN changes under one name is a
+          problem, because that is the pair a reviewer cannot tell apart.
+        type: boolean
+      branch:
+        description: |-
+          Branch is the branch this change would get. It is shown, not guessed at,
+          so the name someone picks is never a surprise afterwards.
+        type: string
+      conflict:
+        allOf:
+        - $ref: '#/definitions/changeset.NameConflict'
+        description: Conflict is the change already using the name, when there is
+          one.
+      message:
+        description: |-
+          Message is the plain sentence to put under the field. Empty when the name
+          is free and unremarkable.
+        type: string
+      title:
+        description: Title is the name as it was checked (trimmed).
+        type: string
+    type: object
+  api.CommentRequest:
+    properties:
+      body:
+        example: Looks good, ship after the window.
+        type: string
+    type: object
+  api.ConnectRequest:
+    properties:
+      branch:
+        description: Branch is the working branch (defaults to the remote's default
+          branch).
+        example: main
+        type: string
+      mode:
+        description: |-
+          Mode "remote" manages the repository through the GitHub API with no
+          clone; the default clones the repository.
+        enum:
+        - clone
+        - remote
+        example: clone
+        type: string
+      name:
+        description: Name overrides the display name (defaults to the repo name).
+        example: Platform config
+        type: string
+      token:
+        description: |-
+          Token is an access token for a private repository. Stored server-side
+          only and never returned.
+        type: string
+      url:
+        description: URL is a git URL (https/ssh) or an absolute local path.
+        example: https://github.com/acme/platform-config
+        type: string
+    type: object
+  api.EngineStatus:
+    properties:
+      available:
+        type: boolean
+      name:
+        type: string
+      reason:
+        type: string
+    type: object
+  api.FieldError:
+    properties:
+      field:
+        example: port
+        type: string
+      message:
+        example: must be between 1 and 65535
+        type: string
+    type: object
+  api.FileEditRequest:
+    properties:
+      content:
+        type: string
+      instance:
+        example: prod-us-east
+        type: string
+      path:
+        example: instances/prod-us-east/values.yaml
+        type: string
+    type: object
+  api.MetaResponse:
+    properties:
+      branch:
+        example: main
+        type: string
+      environment:
+        enum:
+        - development
+        - staging
+        - production
+        example: production
+        type: string
+      name:
+        example: Configer
+        type: string
+      project:
+        example: payments-platform
+        type: string
+      version:
+        example: 1.4.0
+        type: string
+    type: object
+  api.OKResponse:
+    properties:
+      ok:
+        example: true
+        type: boolean
+    type: object
+  api.Page-change_ChangeRequest:
+    properties:
+      hasMore:
+        type: boolean
+      items:
+        items:
+          $ref: '#/definitions/change.ChangeRequest'
+        type: array
+      nextCursor:
+        type: string
+    type: object
+  api.RenameRequest:
+    properties:
+      name:
+        example: Payments platform
+        type: string
+    type: object
+  api.RepoStatus:
+    properties:
+      ahead:
+        type: integer
+      autoSyncMs:
+        type: integer
+      behind:
+        type: integer
+      branch:
+        type: string
+      lastSync:
+        type: string
+      provider:
+        type: string
+      remote:
+        type: string
+      syncError:
+        type: string
+      upstreamGone:
+        description: |-
+          UpstreamGone means the branch's remote counterpart was deleted (e.g.
+          someone removed the branch on GitHub). Local work continues safely;
+          the UI explains and suggests choosing a new target branch.
+        type: boolean
+    type: object
+  api.RepoSummary:
+    properties:
+      addedAt:
+        type: string
+      behind:
+        type: integer
+      branch:
+        type: string
+      drafts:
+        type: integer
+      environments:
+        additionalProperties:
+          type: integer
+        type: object
+      error:
+        type: string
+      id:
+        type: string
+      instances:
+        description: |-
+          Instances counts configuration instances; Environments breaks them
+          down by environment for the hierarchical dashboard.
+        type: integer
+      local:
+        type: boolean
+      name:
+        type: string
+      needsSetup:
+        description: |-
+          NeedsSetup is a connected repository that has no Configer application
+          yet (.configer/ absent). It is not an error - the UI routes it into
+          onboarding - so it must never surface as "unavailable".
+        type: boolean
+      noClone:
+        type: boolean
+      openChanges:
+        type: integer
+      origin:
+        type: string
+      params:
+        type: integer
+      project:
+        type: string
+      provider:
+        type: string
+      remote:
+        type: string
+      role:
+        description: |-
+          Role is the CALLER's capability on this application, and RoleSource says
+          where it came from (see access.go). A role belongs to a (person,
+          application) pair - the same person is an approver on one and a viewer on
+          the next - so the portfolio carries it per card rather than the product
+          stamping one label on the person.
+        type: string
+      roleSource:
+        type: string
+      status:
+        description: |-
+          Status is "connecting" while a repository is first being added,
+          "opening" while an already-connected one is being made ready on this
+          process (applications open on first use, so a restart shows this until
+          the warmer or a request reaches them), "error" when either failed, and
+          empty ("" = ready) for an application that is serving. The client polls
+          the portfolio until it leaves "connecting" or "opening".
+        type: string
+      syncError:
+        type: string
+    type: object
+  api.ReviewersRequest:
+    properties:
+      reviewers:
+        example:
+        - alice
+        - bob
+        items:
+          type: string
+        type: array
+    type: object
+  api.StagedResponse:
+    properties:
+      changeId:
+        example: 7
+        type: integer
+      ok:
+        example: true
+        type: boolean
+      pending:
+        example: 3
+        type: integer
+      staged:
+        example: true
+        type: boolean
+    type: object
+  api.StatusResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+      version:
+        example: 1.4.0
+        type: string
+    type: object
+  api.SubmitChangeRequest:
+    properties:
+      category:
+        example: networking
+        type: string
+      description:
+        type: string
+      reference:
+        example: JIRA-1234
+        type: string
+      title:
+        example: Raise admin port in production
+        type: string
+    type: object
+  api.SyntaxDetail:
+    properties:
+      column:
+        example: 7
+        type: integer
+      file:
+        type: string
+      line:
+        example: 42
+        type: integer
+      snippet:
+        example: '  port 8080'
+        type: string
+    type: object
+  api.ValidationRun:
+    properties:
+      available:
+        type: boolean
+      changeId:
+        type: integer
+      documents:
+        type: integer
+      endedAt:
+        type: string
+      engine:
+        description: |-
+          Engine names what validated; Available is false when no full-document
+          validator could run, and Reason says why in words an operator can act on.
+        type: string
+      errors:
+        description: Counts the UI states plainly rather than making the reader total
+          a list.
+        type: integer
+      findings:
+        description: |-
+          Findings are the model's objections; Problems are edits that could not be
+          applied at all. Both block, and they are kept apart because they are
+          fixed in different places.
+        items:
+          $ref: '#/definitions/yangvalidate.Finding'
+        type: array
+      fingerprint:
+        description: |-
+          Fingerprint identifies the draft this run validated. A submit only trusts
+          a run whose fingerprint still matches, so an edit made between validating
+          and submitting cannot ride in on the previous run's verdict.
+        type: string
+      id:
+        type: string
+      preExisting:
+        description: |-
+          PreExisting counts the objections the committed files already carried.
+          They are shown and they do not block: this change did not cause them.
+        type: integer
+      problems:
+        items:
+          $ref: '#/definitions/changeset.ItemProblem'
+        type: array
+      reason:
+        type: string
+      skipped:
+        description: |-
+          Skipped are the checks that were passed over with an explanation - an
+          unparseable file, a condition outside what the built-in evaluator reads.
+          Silence about them would present a partial check as a complete one.
+        items:
+          type: string
+        type: array
+      stages:
+        items:
+          $ref: '#/definitions/api.ValidationStage'
+        type: array
+      startedAt:
+        type: string
+      state:
+        type: string
+      unmatched:
+        type: integer
+      values:
+        type: integer
+      warnings:
+        type: integer
+    type: object
+  api.ValidationStage:
+    properties:
+      detail:
+        description: |-
+          Detail is one line saying what this stage actually did ("checked 128
+          values across 6 files"), which is the difference between a progress bar
+          and knowing something is happening.
+        type: string
+      endedAt:
+        type: string
+      id:
+        type: string
+      label:
+        type: string
+      startedAt:
+        type: string
+      state:
+        type: string
+    type: object
+  api.ValidationStatus:
+    properties:
+      available:
+        type: boolean
+      engine:
+        description: |-
+          Engine is what would run a full-document validation, Available whether it
+          can, and Reason why not in words an operator can act on.
+        type: string
+      engineVersion:
+        description: |-
+          EngineVersion is the external validator's own version string, when there
+          is one.
+        type: string
+      engines:
+        description: |-
+          Engines lists every validator this build knows about and whether each is
+          usable here, so an operator can see what installing something would buy.
+        items:
+          $ref: '#/definitions/api.EngineStatus'
+        type: array
+      modules:
+        description: Modules and Nodes size what was read.
+        type: integer
+      nodes:
+        type: integer
+      reason:
+        type: string
+      schemaDetected:
+        description: 'SchemaDetected: the repository ships YANG models at all.'
+        type: boolean
+      schemaDirs:
+        description: |-
+          SchemaDirs are the repo-relative directories the models came from, and
+          SchemaVersion the release they were selected for.
+        items:
+          type: string
+        type: array
+      schemaVersion:
+        type: string
+    type: object
+  api.ValueEditRequest:
+    properties:
+      action:
+        description: |-
+          Action defaults to "set". "reset" drops the instance override; "exclude"
+          removes the key from the instance's files entirely.
+        enum:
+        - set
+        - reset
+        - exclude
+        example: set
+        type: string
+      instance:
+        example: prod-us-east
+        type: string
+      paramId:
+        example: net-admin-port
+        type: string
+      scope:
+        description: |-
+          Scope "global" edits the shared value for every instance; omit for a
+          per-instance override.
+        enum:
+        - global
+        example: ""
+        type: string
+      value:
+        description: Value is a type-appropriate value, coerced and validated server-side.
+        example: "8443"
+        type: string
+    type: object
+  api.ValueStagedResponse:
+    properties:
+      changeId:
+        example: 7
+        type: integer
+      ok:
+        example: true
+        type: boolean
+      pending:
+        example: 3
+        type: integer
+      value: {}
+    type: object
+  change.Action:
+    enum:
+    - set
+    - reset
+    - exclude
+    - add-instance
+    - remove-instance
+    - update-instance
+    - edit-file
+    - unmanage-parameter
+    - add-parameter
+    - realign-bindings
+    - update-parameter
+    type: string
+    x-enum-varnames:
+    - ActionSet
+    - ActionReset
+    - ActionExclude
+    - ActionAddInstance
+    - ActionRemoveInstance
+    - ActionUpdateInstance
+    - ActionEditFile
+    - ActionUnmanageParameter
+    - ActionAddParameter
+    - ActionRealignBindings
+    - ActionUpdateParameter
+  change.Approval:
+    properties:
+      approver:
+        type: string
+      createdAt:
+        type: string
+    type: object
+  change.ChangeRequest:
+    properties:
+      approvals:
+        description: |-
+          Approvals are the recorded sign-offs, oldest first. Distinct by approver;
+          the review gate (separation of duties, minimum approvals) reads from here.
+        items:
+          $ref: '#/definitions/change.Approval'
+        type: array
+      author:
+        type: string
+      baseSha:
+        description: |-
+          BaseSHA is the trunk commit this change branched FROM; CommitSHA is its
+          own commit; MergeSHA is the trunk commit that brought it back in. The
+          three together are what lets a history draw the change's whole arc.
+        type: string
+      branch:
+        type: string
+      category:
+        description: |-
+          Category classifies the change: hotfix | feature | bugfix |
+          maintenance | security | other.
+        type: string
+      comments:
+        description: Comments is the in-app review discussion, oldest first.
+        items:
+          $ref: '#/definitions/change.Comment'
+        type: array
+      commitSha:
+        type: string
+      createdAt:
+        type: string
+      description:
+        type: string
+      id:
+        description: |-
+          ID is the store's own key: stable, internal, and allocated the moment a
+          draft exists so the draft can be addressed at all.
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/change.Item'
+        type: array
+      mergeSha:
+        type: string
+      number:
+        description: |-
+          Number is the CR number people say out loud - "CR-7" - and it is handed
+          out at SUBMIT, not at creation. A draft is not a change request yet: it
+          is one person's uncommitted work, and half of them are discarded. Numbering
+          them burned a number per abandoned draft, so the numbers a team actually
+          reviewed arrived full of holes and "CR-3" was the first change anybody
+          had ever seen. Zero means "not submitted yet".
+        type: integer
+      override:
+        allOf:
+        - $ref: '#/definitions/change.Override'
+        description: |-
+          Override is set when this change was submitted over the validation gate's
+          objections. It is a FIELD rather than a sentence in the description
+          because an approver must not have to read prose to find out that the data
+          model refused this change and somebody sent it anyway.
+      prNumber:
+        type: integer
+      prUrl:
+        type: string
+      reference:
+        description: Reference links this CR to an external ticket/CR id (e.g. JIRA-123).
+        type: string
+      rejectReason:
+        type: string
+      rejectedAt:
+        type: string
+      rejectedBy:
+        description: |-
+          RejectedBy / RejectedAt / RejectReason record the refusal ITSELF, not
+          only a sentence in the discussion. "Why was this turned down" is the
+          first question the author asks when they come back to fix it, and
+          reading it out of the comment thread meant every reader - and every
+          view that wanted to draw the refusal - had to guess which comment was
+          the decision. A rejected change is the one somebody is most likely to
+          pick up again, so its ending is a field.
+        type: string
+      resumedFrom:
+        description: |-
+          ResumedFrom is the change request whose work this one carries: set when
+          a rejected change is reopened into a fresh draft. It is what keeps a
+          second attempt attached to the first, so a parameter's story reads
+          "proposed, rejected, proposed again, published" rather than as two
+          unrelated edits that happen to touch the same value.
+        type: integer
+      reviewers:
+        description: |-
+          Reviewers are the logins asked to look at this CR. Display and routing
+          only: approval rights stay role-based (approver merges).
+        items:
+          type: string
+        type: array
+      state:
+        $ref: '#/definitions/change.State'
+      targetBranch:
+        type: string
+      title:
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  change.Comment:
+    properties:
+      author:
+        type: string
+      body:
+        type: string
+      createdAt:
+        type: string
+      id:
+        type: integer
+    type: object
+  change.Item:
+    properties:
+      action:
+        allOf:
+        - $ref: '#/definitions/change.Action'
+        description: empty == set
+      file:
+        description: File is the repository path of a direct file edit (ActionEditFile).
+        type: string
+      instance:
+        type: string
+      new: {}
+      old: {}
+      paramId:
+        type: string
+      scope:
+        description: |-
+          Scope marks a scope-level edit ("global" today): the value applies to
+          every instance that does not override it at a more specific level.
+        type: string
+      updatedAt:
+        type: string
+    type: object
+  change.Objection:
+    properties:
+      because:
+        type: string
+      detail:
+        type: string
+      file:
+        type: string
+      instance:
+        type: string
+      message:
+        type: string
+      name:
+        type: string
+      path:
+        type: string
+      rule:
+        type: string
+      schema:
+        type: string
+    type: object
+  change.Override:
+    properties:
+      at:
+        type: string
+      by:
+        type: string
+      engine:
+        type: string
+      errors:
+        type: integer
+      objections:
+        description: |-
+          Objections are the findings themselves, so the review shows what was
+          waved through rather than only how many.
+        items:
+          $ref: '#/definitions/change.Objection'
+        type: array
+      problems:
+        type: integer
+      reason:
+        type: string
+      summary:
+        description: Summary is the refusal in one sentence, in the reader's terms.
+        type: string
+    type: object
+  change.State:
+    enum:
+    - draft
+    - under_review
+    - approved
+    - published
+    - rejected
+    type: string
+    x-enum-varnames:
+    - StateDraft
+    - StateUnderReview
+    - StateApproved
+    - StatePublished
+    - StateRejected
+  changeset.ItemProblem:
+    properties:
+      action:
+        type: string
+      file:
+        type: string
+      instance:
+        type: string
+      message:
+        type: string
+      paramId:
+        type: string
+    type: object
+  changeset.NameConflict:
+    properties:
+      id:
+        type: integer
+      open:
+        description: |-
+          Open says whether it is still in play (draft, under review, approved).
+          A published or rejected change sharing a name is history, not a clash.
+        type: boolean
+      state:
+        $ref: '#/definitions/change.State'
+      title:
+        type: string
+    type: object
+  model.Alternative:
+    properties:
+      bits:
+        items:
+          type: string
+        type: array
+      enum:
+        items:
+          type: string
+        type: array
+      label:
+        description: |-
+          Label is how the schema spelled this alternative ("uint32",
+          "inet:ipv4-address"), used to explain a rejection in the reader's terms.
+        type: string
+      lengths:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      max:
+        type: number
+      maxLength:
+        type: integer
+      min:
+        type: number
+      minLength:
+        type: integer
+      notPatterns:
+        items:
+          type: string
+        type: array
+      pattern:
+        type: string
+      patterns:
+        items:
+          type: string
+        type: array
+      ranges:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      type:
+        $ref: '#/definitions/model.ParamType'
+    type: object
+  model.Application:
+    properties:
+      apiVersion:
+        type: string
+      description:
+        type: string
+      kind:
+        type: string
+      layout:
+        description: |-
+          Layout names the repository convention the layout adapter interprets:
+          "plain-folders", "kustomize", or "kpt".
+        type: string
+      metadata:
+        additionalProperties:
+          type: string
+        description: |-
+          Metadata holds free-form key/value details the user attaches to the
+          application (owner, team, ticket queue…). Stored in Git with the rest
+          of the application identity; never interpreted by Configer.
+        type: object
+      name:
+        type: string
+    type: object
+  model.Binding:
+    properties:
+      file:
+        type: string
+      format:
+        description: yaml | json | xml
+        type: string
+      layer:
+        description: Layer overrides the inferred precedence layer ("base" or "instance").
+        type: string
+      line:
+        description: |-
+          Line is the 1-based source line the value lives on, for display in the
+          onboarding proposal. It is NEVER persisted (line numbers drift), only
+          carried through the discovery JSON - hence yaml:"-".
+        type: integer
+      path:
+        type: string
+    type: object
+  model.Instance:
+    properties:
+      description:
+        description: |-
+          Description is what this instance IS, in the owner's own words: which
+          site it serves, what it is for, what makes it different from its
+          neighbours. It is never derived from the product - every instance of one
+          product would then carry the same sentence, which tells a reader nothing
+          about the one in front of them.
+        type: string
+      environment:
+        type: string
+      folder:
+        description: |-
+          Folder is the instance's directory in the repository, relative to the
+          root (e.g. "instances/prod-us-east" or "overlays/prod"). Template
+          bindings expand "{folder}" to this value.
+        type: string
+      labels:
+        additionalProperties:
+          type: string
+        type: object
+      name:
+        type: string
+      region:
+        type: string
+      site:
+        type: string
+      softwareVersion:
+        description: |-
+          SoftwareVersion is the version IDENTIFIER (e.g. "v24.3.1") - stable, what
+          versionIntroduced/Deprecated compare against. VersionName is an optional
+          human label for the same release (e.g. "Titanium"); when empty it shows
+          as the id, so a version always reads as a name plus an id.
+        type: string
+      status:
+        description: active | draft | archived
+        type: string
+      versionName:
+        type: string
+      zone:
+        type: string
+    type: object
+  model.InstanceRegistry:
+    properties:
+      apiVersion:
+        type: string
+      instances:
+        items:
+          $ref: '#/definitions/model.Instance'
+        type: array
+      kind:
+        type: string
+    type: object
+  model.ParamType:
+    enum:
+    - string
+    - integer
+    - boolean
+    - number
+    - enum
+    - ipv4
+    - ipv6
+    - cidr
+    - hostname
+    - port
+    - email
+    - url
+    - mac
+    - cpu
+    - memory
+    - duration
+    - percentage
+    - list
+    type: string
+    x-enum-varnames:
+    - TypeString
+    - TypeInteger
+    - TypeBoolean
+    - TypeNumber
+    - TypeEnum
+    - TypeIPv4
+    - TypeIPv6
+    - TypeCIDR
+    - TypeHostname
+    - TypePort
+    - TypeEmail
+    - TypeURL
+    - TypeMAC
+    - TypeCPU
+    - TypeMemory
+    - TypeDuration
+    - TypePercentage
+    - TypeList
+  model.Parameter:
+    properties:
+      bindings:
+        description: |-
+          Bindings are the real-file locations this parameter's value lives at.
+          A deduplicated parameter (the same logical setting appearing in several
+          files) carries one binding per location; an edit fans out to all of
+          them. A design-phase parameter has no bindings yet.
+        items:
+          $ref: '#/definitions/model.Binding'
+        type: array
+      category:
+        type: string
+      default:
+        description: |-
+          Default is metadata: the value shown (and written on first set) when no
+          bound file carries the key. It is never rendered anywhere by itself.
+      dependsOn:
+        items:
+          type: string
+        type: array
+      derived:
+        description: |-
+          Derived, when set, is a computed default expressed in terms of another
+          parameter: "{other-id}" copies that parameter's effective value for the
+          same instance, optionally with an integer offset ("{other-id}+1"). It is
+          resolved read-only (never written) and any real file value overrides it,
+          so it stays true to the write-back model: a suggestion, not a stored value.
+        type: string
+      description:
+        type: string
+      displayName:
+        type: string
+      id:
+        type: string
+      itemType:
+        allOf:
+        - $ref: '#/definitions/model.ParamType'
+        description: ItemType is the element type when Type is "list".
+      name:
+        type: string
+      nameSegments:
+        description: |-
+          NameSegments is Name split into the steps it was built from, so the UI can
+          nest the parameter tree on the real structure. The dotted name alone
+          cannot say where the steps are: a key that itself contains a dot
+          ("query.dependencies") makes "value.query.dependencies.max" read as four
+          levels, and the tree then shows two folders the file has never had. It is
+          DERIVED from the binding path at read time and never persisted
+          (yaml:"-"), and it is present only when it differs from splitting Name on
+          "." - so a client may always fall back to the split.
+        items:
+          type: string
+        type: array
+      observed:
+        additionalProperties: {}
+        description: |-
+          Observed carries the value discovery read from each instance's files
+          (instance name -> value), so the onboarding proposal can preview the grid.
+          It is display-only: never persisted to .configer (yaml:"-"), only carried
+          through the discovery JSON.
+        type: object
+      scope:
+        $ref: '#/definitions/model.Scope'
+      secret:
+        type: boolean
+      source:
+        allOf:
+        - $ref: '#/definitions/model.SourceRef'
+        description: |-
+          Source, when set, maps this parameter to a key in an external source
+          (see .configer/sources.yaml). The source's value is never applied
+          silently: it surfaces as an "incoming change" the reviewer accepts into a
+          draft, so the write-back model stays intact (a repo file value is only
+          changed by a reviewed commit). Analogous to Derived, but the value comes
+          from another system (another Git repo, a secret store) instead of another
+          parameter.
+      type:
+        $ref: '#/definitions/model.ParamType'
+      validation:
+        $ref: '#/definitions/model.Validation'
+      versionDeprecated:
+        type: string
+      versionIntroduced:
+        description: VersionIntroduced/Deprecated drive version-aware cell state in
+          the grid.
+        type: string
+    type: object
+  model.Scope:
+    enum:
+    - instance
+    - site
+    - zone
+    - environment
+    - global
+    type: string
+    x-enum-varnames:
+    - ScopeInstance
+    - ScopeSite
+    - ScopeZone
+    - ScopeEnvironment
+    - ScopeGlobal
+  model.SourceRef:
+    properties:
+      instance:
+        type: string
+      key:
+        type: string
+      sourceId:
+        type: string
+    type: object
+  model.Span:
+    properties:
+      max:
+        type: number
+      min:
+        type: number
+    type: object
+  model.Validation:
+    properties:
+      anyOf:
+        description: |-
+          AnyOf are alternative rule sets, of which the value must satisfy at least
+          ONE (a YANG union). Each alternative carries its own type and rules, so a
+          union of "uint32 or the word auto" refuses "atuo" while accepting both
+          legitimate spellings - where naming the alternatives in prose refused
+          nothing at all.
+        items:
+          $ref: '#/definitions/model.Alternative'
+        type: array
+      atLeast:
+        description: |-
+          AtLeast / AtMost name another parameter (by id) whose effective value at
+          the same instance bounds this one: a resource limit must be AtLeast its
+          request, a request AtMost its limit. The comparison is quantity-aware
+          (CPU millicores, memory bytes, otherwise numeric), so "1" >= "500m" and
+          "1Gi" >= "512Mi" compare correctly. Enforced on write when the related
+          parameter can be resolved.
+        type: string
+      atMost:
+        type: string
+      bits:
+        description: |-
+          Bits are the named flags a bits-typed value may be built from: the value
+          is a space-separated subset of these, in any order.
+        items:
+          type: string
+        type: array
+      constraints:
+        description: |-
+          Constraints are conditions stated in words because they cannot be
+          checked against a single value on its own: cross-field requirements,
+          uniqueness, alternatives of a union, disjoint ranges. They are DISPLAYED
+          and never enforced - a condition nobody can see is worse than one the
+          product admits it does not police.
+        items:
+          type: string
+        type: array
+      enum:
+        items:
+          type: string
+        type: array
+      errorMessage:
+        description: |-
+          ErrorMessage is the schema's own wording for a rejected value. When set
+          it replaces the generic "doesn't match the required format", which tells
+          the reader nothing about what the value was supposed to look like.
+        type: string
+      lengths:
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      max:
+        type: number
+      maxDecimals:
+        description: |-
+          MaxDecimals is the number of digits allowed after the decimal point
+          (YANG's fraction-digits). A value with more is not representable in the
+          type the product declared.
+        type: integer
+      maxItems:
+        type: integer
+      maxLength:
+        type: integer
+      min:
+        type: number
+      minItems:
+        type: integer
+      minLength:
+        type: integer
+      notPatterns:
+        description: |-
+          NotPatterns are regular expressions the value must NOT match. A schema
+          can state a restriction the other way round (YANG's "invert-match"), and
+          carrying it only as prose meant the one rule the vendor bothered to
+          invert was the one rule nothing checked.
+        items:
+          type: string
+        type: array
+      pattern:
+        type: string
+      patterns:
+        description: |-
+          Patterns are ADDITIONAL regular expressions that must ALL hold on top of
+          Pattern. One field cannot carry them: a schema may restrict a value
+          through a chain of type definitions, each adding a pattern of its own,
+          and a value has to satisfy every one - collapsing them into the last one
+          read would quietly widen the rule.
+        items:
+          type: string
+        type: array
+      preset:
+        description: id of a predefined rule
+        type: string
+      ranges:
+        description: |-
+          Ranges / Lengths are the DISJOINT spans a restriction really allows
+          ("5..20 | 40..100"). Min/Max carry the outer span so an old client still
+          validates loosely; these carry the truth, and when they are present the
+          value has to land inside one of them. Without this a bandwidth of 30 was
+          accepted by a rule the vendor had written to refuse it.
+        items:
+          $ref: '#/definitions/model.Span'
+        type: array
+      readOnly:
+        description: |-
+          ReadOnly marks a setting the model declares as operational state rather
+          than configuration ("config false"). It is shown, never edited: the
+          device owns the value and writing it back would be overwritten by the
+          next read.
+        type: boolean
+      required:
+        type: boolean
+      schemaRef:
+        description: |-
+          SchemaRef names the schema document the rules were derived from (a JSON
+          Schema, a YANG model), so the UI can say where a rule came from rather
+          than presenting a vendor's constraint as the product's opinion.
+        type: string
+      units:
+        description: |-
+          Units is the unit the value is expressed in ("seconds", "kbit/s") when
+          the schema said so. It is shown beside the editor, never parsed.
+        type: string
+    type: object
+  yangvalidate.Finding:
+    properties:
+      because:
+        description: |-
+          Because states the RULE that was applied, in plain words - what the model
+          requires here and where it says so. Fix says what to do about it. Both
+          are written for somebody who has never heard of YANG, a schema or a
+          leafref, because that is who is holding the change.
+        type: string
+      causedBy:
+        type: string
+      detail:
+        type: string
+      engine:
+        description: |-
+          Engine names what produced the finding, because "yanglint says so" and
+          "our own reading says so" are different weights of evidence.
+        type: string
+      file:
+        description: |-
+          File is repo-relative; Path is the route inside it, in the same spelling
+          the editor uses to open a value.
+        type: string
+      fix:
+        type: string
+      instance:
+        description: |-
+          Instance is the deployment target the file belongs to, empty for a
+          shared file.
+        type: string
+      line:
+        type: integer
+      message:
+        description: |-
+          Message is written for the person who has to fix it, in words, never in
+          XPath. Detail carries the schema's own expression for the reader who
+          wants it.
+        type: string
+      name:
+        description: |-
+          Name is the human name of the setting, for a message a non-engineer can
+          read.
+        type: string
+      origin:
+        description: |-
+          Origin says whether this landed on something the change edited or
+          somewhere else; CausedBy names the edit responsible when it is the latter.
+        type: string
+      paramId:
+        description: |-
+          ParamID is the catalog parameter this lands on, when one can be
+          identified. It is what lets the UI offer "open this setting" rather than
+          "here is a path in a file".
+        type: string
+      path:
+        type: string
+      preExisting:
+        description: |-
+          PreExisting marks a finding the COMMITTED file already had. It is
+          reported and does not block: a repository whose current state already
+          breaks a rule is not this change's fault, and a gate that refuses a
+          correct edit because of somebody else's backlog is a gate people learn to
+          override.
+        type: boolean
+      rule:
+        type: string
+      schema:
+        description: |-
+          Schema names the model file the rule came from, so a vendor's constraint
+          is never presented as the product's opinion.
+        type: string
+      severity:
+        type: string
+      value:
+        description: |-
+          Value is the value that was refused, kept as data so a caller can work out
+          which edit produced it.
+        type: string
+    type: object
+info:
+  contact:
+    name: Configer
+    url: https://github.com/abhijeet-oxide/configer
+  description: |-
+    Write-back-native GitOps configuration management. Configer discovers an existing repository's layout, exposes a parameter x instance grid over the repository's OWN files, and surgically edits them; every change flows to Git as commits, branches, pull requests, and merges. `.configer/` holds metadata only.
+
+    ## Repository scoping
+    Every resource endpoint exists in two shapes: the unscoped `/api/...` form acts on the default (first-connected) repository for single-repo deployments and older clients, and the identical routes are available per repository under `/api/repos/{repoId}/...`. Only the unscoped forms are documented here; to target a specific repository prefix any path with `/api/repos/{repoId}`.
+
+    ## Errors
+    Every 4xx/5xx response uses one envelope: a stable machine-readable `code`, a human-readable `error`, a `requestId` (also returned as the `X-Request-ID` header) that correlates to server logs, and - for validation failures - a `fields` array. Branch on `code`, never on the message text.
+
+    ## Correlation
+    Send `X-Request-ID` to have it echoed and used as the correlation id; otherwise the server generates one. It is returned on every response.
+  license:
+    name: See repository
+    url: https://github.com/abhijeet-oxide/configer
+  termsOfService: https://github.com/abhijeet-oxide/configer
+  title: Configer API
+  version: 1.0.0
+paths:
+  /api/application:
+    get:
+      description: The application's name, description and free-form metadata from
+        `.configer/application.yaml`.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Application'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get application identity
+      tags:
+      - Onboarding
+    put:
+      consumes:
+      - application/json
+      description: Patch the application's name, description and metadata and commit
+        `.configer/application.yaml`. Nil fields are left unchanged; the layout is
+        not editable here (it describes the repository, not the user).
+      parameters:
+      - description: Catalog revision the edit is based on (from a read's ETag)
+        in: header
+        name: If-Match
+        required: true
+        type: string
+      - description: Partial identity patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Application'
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "412":
+          description: Stale revision; reload and reapply
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Empty name
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "428":
+          description: Missing If-Match
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Update application identity
+      tags:
+      - Onboarding
+  /api/audit:
+    get:
+      description: 'Audit events across all applications (or one via `?repo=`), newest
+        first, naming who did what. Cursor-paginated: pass `limit` (default 50, max
+        200) and the previous `nextCursor`. Needs the view_audit permission.'
+      parameters:
+      - description: Filter to one application id
+        in: query
+        name: repo
+        type: string
+      - description: Page size (default 50, max 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque cursor from the previous page
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Not permitted
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Audit trail
+      tags:
+      - Platform
+  /api/audit/verify:
+    get:
+      description: Recompute the audit hash chain and report whether the trail is
+        intact, naming the first broken row if not. Needs the view_audit permission.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Not permitted
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Verify the audit trail
+      tags:
+      - Platform
+  /api/auth/me:
+    get:
+      description: The signed-in person, and whether this deployment signs people
+        in at all. Single-user mode answers enabled=false.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Who am I
+      tags:
+      - Platform
+  /api/capabilities:
+    get:
+      description: Which New Application sources and integrations this deployment
+        supports (local folder browsing, GitHub sign-in, GitHub browsing, manual Git
+        URL). The UI offers only what will work here, instead of presenting options
+        that cannot succeed.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Capabilities'
+      summary: Deployment capabilities
+      tags:
+      - Workspace
+  /api/changes:
+    get:
+      description: 'Change requests in all states (Draft, UnderReview, Approved, Published,
+        Rejected), newest first. Cursor-paginated: pass `limit` (default 50, max 200)
+        and the previous response''s `nextCursor`. Returns `{items, nextCursor, hasMore}`.
+        Narrow with `state` (a comma-separated list, or `open` = draft+under_review+approved,
+        or `closed` = published+rejected) and `q` (matches the CR number, title, author,
+        reference, branch or category). Both apply BEFORE paging, so `hasMore` describes
+        the filtered list.'
+      parameters:
+      - description: 'Narrow by state: a comma-separated list, or `open` / `closed`'
+        in: query
+        name: state
+        type: string
+      - description: Search the CR number, title, author, reference, branch or category
+        in: query
+        name: q
+        type: string
+      - description: Page size (default 50, max 200)
+        in: query
+        name: limit
+        type: integer
+      - description: Opaque cursor from the previous page
+        in: query
+        name: cursor
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.Page-change_ChangeRequest'
+      summary: List change requests
+      tags:
+      - Editing & change requests
+  /api/changes/{id}:
+    get:
+      description: One change request by id. Refreshes the linked pull-request state
+        (merged/closed/checks) from the host before returning.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/approve:
+    post:
+      description: Record approver sign-off on an under-review change request, advancing
+        it to Approved without publishing (Publish/merge is a separate step). Requires
+        the approver role when auth is enabled. 409 if not under review.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Approver role required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not under review
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Approve a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/comments:
+    post:
+      consumes:
+      - application/json
+      description: Append a review note. The session identity is the author (the body's
+        author field is only a single-user-mode fallback).
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: The comment
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.CommentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id, body, or empty comment
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Comment on a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/merge:
+    post:
+      description: 'Approve and merge the change request''s pull request, publishing
+        it. Requires the approver role when auth is enabled. Async: returns 202 with
+        the change resource; poll `state` for Published. 409 if not mergeable; 502/504
+        on a downstream failure.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Approver role required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a mergeable state
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: The merge failed upstream
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "504":
+          description: The merge timed out upstream
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Merge (publish) a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/pr-status:
+    get:
+      description: Live CI check roll-up (passing/failing/pending/none) and host merge-readiness
+        for a change request's pull request, read fresh from the provider. Returns
+        `{supported:false}` when the change has no hosted PR (pure-git deployment
+        or not yet submitted).
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Pull-request status (CI + mergeability)
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/preview:
+    get:
+      description: 'The byte-level plan for a change request: for every file its value
+        and file edits would rewrite, the exact content before and after (so the UI
+        can show a real diff), plus +/- line counts and one-line summaries of any
+        structural instance changes. Builds the edits in a throwaway checkout of the
+        base branch; nothing is committed or pushed.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: A downstream (git) step failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Preview a change request's file edits
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reject:
+    post:
+      consumes:
+      - application/json
+      description: Reject/close the change request (a draft is discarded, a submitted
+        one is closed). An optional reason is recorded as a review comment.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a rejectable state
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: Closing the pull request failed upstream
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Reject a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reopen:
+    post:
+      consumes:
+      - application/json
+      description: Copies a REJECTED change request's edits into the caller's draft
+        so they can be corrected and submitted again. Items the repository has since
+        settled (the value is already what the change asked for) are dropped and reported
+        as `settled`; the rest are re-baselined against the current files. When the
+        caller has no draft yet, the change's title, description, category and reference
+        are carried over too, and the new draft records `resumedFrom`.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No such change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Only a rejected change can be resumed
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Nothing left to resume
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Resume a rejected change
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/revert:
+    post:
+      description: Stage the inverse of a change request's edits into the current
+        draft so publishing it rolls the change back. Value, file and add-instance
+        edits invert; retiring an instance is skipped (its files are gone). Returns
+        the draft id, how many items were staged, and any skipped items.
+      parameters:
+      - description: Change request id to revert
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id or nothing to revert
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Revert a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/reviewers:
+    put:
+      consumes:
+      - application/json
+      description: Replace the (informational) reviewer list on a change request.
+        Reviewers record who was asked to look, not who may merge.
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Reviewer logins
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ReviewersRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid id or body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Set reviewers
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/submit:
+    post:
+      consumes:
+      - application/json
+      description: 'Turn the draft into a feature branch + commit (+ hosted pull request
+        when a provider is configured) and move it to Under Review. Async: returns
+        202 with the change resource whose `state` the client polls. 409 if not in
+        a submittable state; 502/504 if a downstream (GitHub/git) step fails.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Title, description, reference, category
+        in: body
+        name: body
+        schema:
+          $ref: '#/definitions/api.SubmitChangeRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            type: object
+        "400":
+          description: Invalid id or body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Not in a submittable state
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: A downstream (GitHub/git) step failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "504":
+          description: A downstream step timed out
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Submit a change request
+      tags:
+      - Editing & change requests
+  /api/changes/{id}/validation:
+    get:
+      description: 'The latest validation run for a change request: its stages, what
+        each one found, and the verdict. Poll while `state` is "running". Returns
+        404 when the change has never been validated.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: A specific run id; defaults to the latest for this change
+        in: query
+        name: run
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValidationRun'
+        "404":
+          description: No validation has been run
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Validation run state
+      tags:
+      - Editing & change requests
+    post:
+      description: 'Start a pre-submit validation of a change request: every staged
+        value against its rules, then the whole candidate document against the repository''s
+        YANG models. Returns 202 with the run resource; poll `GET /api/changes/{id}/validation`
+        for its stages, findings and verdict. Nothing is written, branched or committed.'
+      parameters:
+      - description: Change request id
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/api.ValidationRun'
+        "400":
+          description: Invalid id
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown change request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Validate a change request
+      tags:
+      - Editing & change requests
+  /api/changes/draft:
+    get:
+      description: The current draft change request (pending, unsubmitted edits),
+        or `{draft:null}` when there is none.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Current draft
+      tags:
+      - Editing & change requests
+  /api/changes/name-check:
+    get:
+      description: Whether a proposed change-request title is free, and the branch
+        it would produce. A name held by a still-open change is refused (`available:false`)
+        because two open changes under one name cannot be told apart in review; a
+        name held by a published or rejected change is allowed, with a note. Intended
+        to be called while the user types, so the name is settled before submit.
+      parameters:
+      - description: Proposed title
+        in: query
+        name: title
+        required: true
+        type: string
+      - description: Change request being named (excluded from the conflict search)
+        in: query
+        name: id
+        type: integer
+      - description: Change type the branch will be filed under (hotfix, feature,
+          bugfix, …)
+        in: query
+        name: category
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ChangeNameCheck'
+        "400":
+          description: Missing title
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Check a change request name
+      tags:
+      - Editing & change requests
+  /api/compare:
+    get:
+      description: Semantic, parameter-level diff between two instances. Without refs
+        it compares the current project (pending edits included); with leftRef/rightRef
+        it materializes each side at that git ref and compares across them.
+      parameters:
+      - description: Left instance name
+        in: query
+        name: left
+        required: true
+        type: string
+      - description: Right instance name
+        in: query
+        name: right
+        required: true
+        type: string
+      - description: Git ref (branch/tag/commit) for the left side
+        in: query
+        name: leftRef
+        type: string
+      - description: Git ref for the right side
+        in: query
+        name: rightRef
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Compare two instances
+      tags:
+      - Grid & parameters
+  /api/deinit:
+    post:
+      description: Remove the `.configer` folder and commit the removal, returning
+        the repository to an unmanaged state. The repository's own configuration files
+        are untouched.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Remove Configer metadata
+      tags:
+      - Onboarding
+  /api/discover:
+    post:
+      consumes:
+      - application/json
+      description: 'Read-only onboarding proposal: detected layout, instances discovered
+        from folders, and deduplicated parameters with JSON-Schema validation attached.
+        Nothing is written; POST /api/init to accept. Send `{"manage":["path"]}` to
+        include files the scan would otherwise pass over (a generated file, a kustomization)
+        - the proposal then treats them like any other.'
+      parameters:
+      - description: 'Optional overrides: manage[] names files to include despite
+          being passed over'
+        in: body
+        name: body
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Discover an application
+      tags:
+      - Onboarding
+  /api/files/draft:
+    put:
+      consumes:
+      - application/json
+      description: 'File-mode save: a direct Monaco edit of one file, staged into
+        the same draft as grid edits. Edits that only change managed values become
+        ordinary validated cell items (fan-out preserved); edits that touch unmanaged
+        content stage as one whole-file item, plus one add-parameter item per setting
+        the edit introduced that nothing managed yet (`newParameters` counts them).
+        Managed values are always validated first.'
+      parameters:
+      - description: The file edit
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.FileEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: kind is values | file
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: path and content are required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: A managed value failed validation, or the file does not parse
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Stage a file edit
+      tags:
+      - Files
+  /api/files/duplicate:
+    post:
+      consumes:
+      - application/json
+      description: 'Copy one entry of a repeated structure in a file - an XML element
+        that occurs several times under the same parent, or a YAML/JSON list entry
+        - and stage the result in the current draft. The copy is appended AFTER the
+        last entry of its kind so no existing entry is renumbered, and the settings
+        it carries are staged as new parameters, exactly as if the block had been
+        typed in by hand. XML is copied byte-for-byte (indentation and comments included).
+        An entry identified by a key (`env[name=LOG_LEVEL]`) is refused: the copy
+        would be a second entry with the same identity.'
+      parameters:
+      - description: '{instance, file, path}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: newPath is the path the copy answers to
+          schema:
+            type: object
+        "400":
+          description: file and path are required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance or file
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: The entry cannot be duplicated, or the file does not parse
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Duplicate a repeated entry
+      tags:
+      - Files
+  /api/files/managed:
+    get:
+      description: Every value in one file that a catalog parameter is bound to, with
+        the 1-based line it sits on in the draft-applied content the Files explorer
+        shows, and the columns the value itself occupies on that line. Lets the editor
+        mark exactly the managed values. A value that cannot be narrowed (a block
+        scalar) reports columns 0 and is marked by line.
+      parameters:
+      - description: Repository-relative file path
+        in: query
+        name: file
+        required: true
+        type: string
+      - description: 'Instance whose draft/expansion to use (default: every instance)'
+        in: query
+        name: instance
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: file is required
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Managed values in a file
+      tags:
+      - Files
+  /api/fs/browse:
+    get:
+      description: List the sub-folders of a directory on the server so the New Application
+        flow can offer a folder picker (localhost mode). With no `?path` it starts
+        at the user's home directory. Listing the server filesystem is an admin action
+        when auth is enabled.
+      parameters:
+      - description: 'Directory to list (default: home)'
+        in: query
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Unreadable or missing path
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "403":
+          description: Permission denied
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Browse server folders
+      tags:
+      - Workspace
+  /api/github/branches:
+    get:
+      description: The branches of a GitHub repository (and its default branch), for
+        the New Application flow.
+      parameters:
+      - description: owner/name
+        in: query
+        name: repo
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing repo
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: List GitHub branches
+      tags:
+      - Workspace
+  /api/github/orgs:
+    get:
+      description: Organizations the signed-in user belongs to, with how many of their
+        repositories this deployment can see. An organization with zero visible repositories
+        has not approved the Configer OAuth app; `grantUrl` is where that is granted.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: List GitHub organizations
+      tags:
+      - Workspace
+  /api/github/repos:
+    get:
+      description: Repositories the resolved credential can reach (own, collaborations,
+        org), newest activity first. Backs the New Application picker.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: List GitHub repositories
+      tags:
+      - Workspace
+  /api/github/repos/search:
+    get:
+      description: Search the signed-in user's own and organization repositories by
+        name. Scoped server-side to the accounts the user belongs to, so it never
+        searches all of GitHub.
+      parameters:
+      - description: Search term (2+ characters)
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing or too-short term
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: GitHub call failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Search GitHub repositories
+      tags:
+      - Workspace
+  /api/github/status:
+    get:
+      description: Whether a GitHub credential is available to the New Application
+        flow, its source, and the signed-in login. Credentials stay server-side.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: GitHub credential status
+      tags:
+      - Workspace
+  /api/health:
+    get:
+      description: Returns 200 while the process is up, with the deployment identity
+        (name, version, environment). `/api/healthz` is an alias. Used as a liveness
+        check by load balancers and orchestrators; it does not check dependencies
+        (see readiness).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Liveness probe
+      tags:
+      - Health
+  /api/healthz:
+    get:
+      description: Returns 200 while the process is up, with the deployment identity
+        (name, version, environment). `/api/healthz` is an alias. Used as a liveness
+        check by load balancers and orchestrators; it does not check dependencies
+        (see readiness).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Liveness probe
+      tags:
+      - Health
+  /api/history:
+    get:
+      description: Recent commits that touched the canonical model under `.configer/`,
+        newest first. `supported` is false on backends (remote no-clone) that cannot
+        serve a log.
+      parameters:
+      - description: Max commits (1-200, default 40)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Application change history
+      tags:
+      - Grid & parameters
+  /api/import:
+    post:
+      consumes:
+      - application/json
+      description: Promote scanned candidate parameters into the catalog in one attributed
+        commit (the import wizard's final step). Already-managed or conflicting entries
+        are skipped and reported, never fatal.
+      parameters:
+      - description: '{parameters: Parameter[], ignoreFiles?: string[]}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Malformed body or nothing selected
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Import scanned parameters
+      tags:
+      - Import & reconcile
+  /api/import/analyze:
+    post:
+      consumes:
+      - application/json
+      description: 'Parse a pasted YAML/JSON/XML blob and propose candidate parameters
+        (name, path, inferred type, sample value), each flagged if it is already managed.
+        `file` names the repository path this content represents (for format detection
+        and as the binding target); it defaults to a .yaml hint. Read-only: nothing
+        is written. Select candidates and POST them to /api/import to commit.'
+      parameters:
+      - description: '{content: string, file?: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Empty content or unrecognized format
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Analyze pasted configuration
+      tags:
+      - Import & reconcile
+  /api/init:
+    post:
+      consumes:
+      - application/json
+      description: 'Write the accepted onboarding proposal into `.configer/` as ONE
+        attributed commit (reviewable history from the first action). Idempotent guard:
+        an already-initialized repository returns 409.'
+      parameters:
+      - description: 'Accepted proposal: name, layout, instances, parameters, ignoreFiles'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URL of the initialized application
+              type: string
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Missing name or instances
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Already initialized
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Initialize an application
+      tags:
+      - Onboarding
+  /api/instances:
+    get:
+      description: 'The instance (deployment target) registry: metadata plus folder
+        bindings for every instance.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.InstanceRegistry'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: List instances
+      tags:
+      - Instances
+    post:
+      consumes:
+      - application/json
+      description: Stage a new deployment target as a pending structural change on
+        the draft (it does NOT touch the main branch). On submit the CR branch carries
+        the scaffolded folder plus the registry entry. `cloneFrom` seeds the new folder
+        from an existing instance; `folder` instead ADOPTS a folder the repository
+        already has (nothing is copied), which is how an instance created on Git elsewhere
+        becomes managed here. The two are mutually exclusive.
+      parameters:
+      - description: Instance metadata (name required; optional cloneFrom)
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "400":
+          description: Malformed body or invalid name
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Clone source not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Name already exists (committed or pending)
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Create an instance
+      tags:
+      - Instances
+  /api/instances/{name}:
+    delete:
+      description: Stage the retirement of an instance (registry entry + folder) into
+        the draft, reviewable before anything happens.
+      parameters:
+      - description: Instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Delete an instance
+      tags:
+      - Instances
+    put:
+      consumes:
+      - application/json
+      description: Stage a metadata/status edit (archive = status "archived") as a
+        pending change - never a direct commit to the main branch. If the instance
+        is itself still a pending add, the edit folds into that add.
+      parameters:
+      - description: Instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Partial instance metadata patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StagedResponse'
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown instance
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Update an instance
+      tags:
+      - Instances
+  /api/instances/{name}/copy-from:
+    post:
+      consumes:
+      - application/json
+      description: Stage, into the draft, every parameter whose effective value on
+        the `source` instance differs from this instance's, seeding one instance from
+        another. Only per-instance parameters are copied; nothing touches Git until
+        the draft is submitted.
+      parameters:
+      - description: Target instance name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: source, author
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Instance not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Copy values from another instance
+      tags:
+      - Editing & change requests
+  /api/locate:
+    get:
+      description: Returns the 1-based line of the value at `path` inside `file` (YAML/JSON;
+        XML returns 0). Lets the Details pane jump to the exact line a parameter is
+        defined on.
+      parameters:
+      - description: Repository-relative file path (instance-expanded)
+        in: query
+        name: file
+        required: true
+        type: string
+      - description: Dotted value path (e.g. $.network.admin.port)
+        in: query
+        name: path
+        required: true
+        type: string
+      - description: yaml | json | xml
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+      summary: Locate a value's line
+      tags:
+      - Reads
+  /api/meta:
+    get:
+      description: Name, version, environment, current project and branch. Backs the
+        UI footer and environment-aware messaging.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.MetaResponse'
+      summary: Deployment identity
+      tags:
+      - Health
+  /api/parameters:
+    post:
+      consumes:
+      - application/json
+      description: Create a new catalog parameter. Bindings may be empty for a design-phase
+        parameter (attached later), but a half-specified binding is rejected. Committed
+        directly with attribution.
+      parameters:
+      - description: '{param: Parameter, author?: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          headers:
+            Location:
+              description: URL of the created parameter
+              type: string
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "400":
+          description: Malformed body, missing name, or half-specified binding
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: A parameter with that id already exists
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Create a parameter
+      tags:
+      - Grid & parameters
+  /api/parameters/{id}:
+    delete:
+      description: 'Retire a parameter everywhere: the catalog entry is removed and
+        the bound key/element is deleted from every real file it lives in. Committed
+        directly with attribution.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Deletion failed
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Delete a parameter
+      tags:
+      - Grid & parameters
+    get:
+      description: 'Full metadata for one catalog parameter: type, scope, category,
+        bindings, validation and version state.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Get a parameter
+      tags:
+      - Grid & parameters
+    put:
+      consumes:
+      - application/json
+      description: Stage a patch to a parameter's type, validation, display name,
+        description, category, scope, secret flag, default, derived expression or
+        file bindings. Nil fields are left unchanged. Staged on the caller's draft
+        change request and written to `.configer/parameters.yaml` when that change
+        is submitted and published - nothing touches Git here. The response carries
+        the parameter as it WILL read once the change lands.
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Partial parameter patch
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Parameter'
+        "400":
+          description: Malformed body or half-specified binding
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Unknown validation preset
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Stage a parameter update
+      tags:
+      - Grid & parameters
+  /api/parameters/{id}/history:
+    get:
+      description: One parameter's whole life. `entries` resolves its effective value
+        at each recent commit that touched the cell's backing files (the parameter's
+        bindings plus `.configer`), each naming the change request it came out of;
+        `lastChange` is the commit that set the value it has now. `changes` is every
+        change request that touched this parameter IN ANY STATE - including drafts
+        and rejected ones, which never reach the trunk and so appear in no commit
+        log - with the commit it forked from, where it landed, and why it was refused.
+        `?instance=` resolves for that instance; otherwise the catalog default is
+        used.
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Resolve the value for this instance
+        in: query
+        name: instance
+        type: string
+      - description: Max commits (1-40, default 12)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Parameter value timeline
+      tags:
+      - Grid & parameters
+  /api/parameters/{id}/source:
+    post:
+      consumes:
+      - application/json
+      description: Point a managed parameter at a key in an external source, or clear
+        the mapping (send null / {"clear":true}).
+      parameters:
+      - description: Parameter id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{sourceId, key, instance?} or {clear:true}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Map a parameter to a source
+      tags:
+      - Sources
+  /api/parameters/{id}/unmanage:
+    post:
+      consumes:
+      - application/json
+      description: 'Stage a pending change that removes a parameter from .configer/parameters.yaml
+        and records its paths in .configer/ignore.yaml, so Configer stops showing
+        it and a later scan does not propose it again. The repository''s own configuration
+        files are NOT touched: every value stays where it is. Staged on the current
+        draft and applied when that change is submitted and published, like every
+        other edit. Compare DELETE /api/parameters/{id}, which retires a parameter
+        and deletes its value from every file.'
+      parameters:
+      - description: Parameter id (slug)
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Staged; pending is the draft's item count
+          schema:
+            type: object
+        "404":
+          description: Unknown parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Stage "stop managing" a parameter
+      tags:
+      - Grid & parameters
+  /api/parameters/retire-file:
+    post:
+      consumes:
+      - application/json
+      description: 'Retire every parameter sourced from one (typically deleted) file:
+        the one-click resolution for a file_deleted finding.'
+      parameters:
+      - description: '{file: string}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: file is required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No parameters are sourced from that file
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Retire parameters from a file
+      tags:
+      - Grid & parameters
+  /api/plugins:
+    get:
+      description: The registered parser/format plugin manifests (yaml, json, xml).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List format plugins
+      tags:
+      - Plugins & validation
+  /api/project:
+    get:
+      description: Project name, instances, category tree and parameter count, with
+        the current draft applied. When the repository has no Configer application
+        yet, returns `{initialized:false}` so the client routes to onboarding (still
+        200, not an error).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Project summary
+      tags:
+      - Grid & parameters
+  /api/readyz:
+    get:
+      description: Returns 200 once at least one repository is serving, 503 otherwise,
+        so a load balancer only routes traffic when the service can actually answer.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/api.StatusResponse'
+      summary: Readiness probe
+      tags:
+      - Health
+  /api/regions:
+    get:
+      description: Every region the detection rules can locate, with its coordinates,
+        so an instance's region can be drawn on a map. Combines the repository's own
+        .configer/regions.yaml with the shipped defaults.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Region places
+      tags:
+      - Instances
+  /api/render/{instance}:
+    get:
+      description: 'The instance''s REAL repository files (write-back-native: nothing
+        is generated). By default the current draft is applied in memory so the preview
+        shows exactly what a publish would write; `?draft=false` serves the committed
+        working tree (the diff baseline); `?ref=` serves the files at a git ref.'
+      parameters:
+      - description: Instance name
+        in: path
+        name: instance
+        required: true
+        type: string
+      - description: false = committed content (diff baseline)
+        enum:
+        - "false"
+        in: query
+        name: draft
+        type: string
+      - description: Serve files at this git ref instead
+        in: query
+        name: ref
+        type: string
+      - description: Apply this change request's edits instead of the caller's draft
+        in: query
+        name: change
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Render an instance's files
+      tags:
+      - Files
+  /api/repo/findings:
+    get:
+      description: 'What changed on Git outside Configer since the last acknowledged
+        commit, classified in the product''s own terms: `new_instance` (a configuration
+        folder nobody manages yet, with the registry entry adopting it would create),
+        `instance_gone`, `version_changed` (an instance''s software version moved,
+        with from/to), `new_parameters` (new settings inside a file already managed),
+        and the file-level fallbacks `new_file`, `file_changed`, `file_deleted`, `file_renamed`,
+        `new_folder`. Each finding carries the commit that caused it: sha, author,
+        date and message.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Repository findings
+      tags:
+      - Import & reconcile
+  /api/repo/findings/ack:
+    post:
+      description: 'Mark all repository findings up to HEAD as seen, so they stop
+        surfacing. Software versions are re-baselined at the same time, so only later
+        moves read as news. A `new_instance` finding survives being acknowledged:
+        a folder nobody manages is a state, not an event, and it clears by managing
+        the instance or by an ignore rule.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Acknowledge findings
+      tags:
+      - Import & reconcile
+  /api/repo/refs:
+    get:
+      description: The branches and tags available to compare or render against, plus
+        the current branch.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: List git refs
+      tags:
+      - Grid & parameters
+  /api/repo/status:
+    get:
+      description: 'The git-liveness snapshot: branch, remote, ahead/behind counts,
+        last sync time, and any sync error.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoStatus'
+      summary: Git status
+      tags:
+      - Import & reconcile
+  /api/repo/sync:
+    post:
+      description: Force a fetch + fast-forward (local) or cache refresh (remote)
+        now, instead of waiting for the poll interval, and return the fresh status.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoStatus'
+      security:
+      - BearerAuth: []
+      summary: Force a sync
+      tags:
+      - Import & reconcile
+  /api/repos:
+    get:
+      description: 'The workspace portfolio: every connected repository with health/shape
+        summary (params, instances, environments, open changes, drafts, sync state).
+        `/api/workspace` is an alias.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List repositories
+      tags:
+      - Workspace
+    post:
+      consumes:
+      - application/json
+      description: Start connecting a repository (clone a git URL, manage no-clone
+        when `mode:"remote"`, or open a local directory). Returns 202 with a `status:"connecting"`
+        summary; poll GET /api/repos until it becomes ready or `status:"error"`. Connecting
+        an already-connected or in-flight origin returns 409 with the existing id
+        (idempotent by origin).
+      parameters:
+      - description: Repository to connect
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ConnectRequest'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Connecting; poll the portfolio
+          schema:
+            $ref: '#/definitions/api.RepoSummary'
+        "400":
+          description: Missing url
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Already connected or connecting
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Connect a repository
+      tags:
+      - Workspace
+  /api/repos/{id}:
+    delete:
+      description: Remove a repository from the workspace. A clone Configer made is
+        deleted from disk; a locally-opened working tree is left untouched.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Unknown repository
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Disconnect a repository
+      tags:
+      - Workspace
+    patch:
+      consumes:
+      - application/json
+      description: Change an application's display name. Only the human label changes;
+        the registry id (and every per-repo route and deep link) stays stable, and
+        the Git repository is untouched.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: New name
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.RenameRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.RepoSummary'
+        "400":
+          description: Malformed body or empty name
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown repository
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Rename an application
+      tags:
+      - Workspace
+  /api/repos/{id}/members:
+    get:
+      description: Everyone who has signed in to this deployment, for the reviewer
+        picker. Access is granted in the platform's identity provider, so there are
+        no assignments to list.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: People
+      tags:
+      - Platform
+  /api/repos/{id}/role:
+    get:
+      description: The caller's access (viewer, editor, approver) to one application,
+        derived from the platform's policies, plus the administrator flag. In single-user
+        mode the caller may do everything.
+      parameters:
+      - description: Repository id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Not signed in
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: My role on an application
+      tags:
+      - Platform
+  /api/restore:
+    post:
+      consumes:
+      - application/json
+      description: Stage the edits that bring a scope back to how it looked at a git
+        ref into the current draft (nothing touches Git until it is published). `scope`
+        is "all", "instance" (needs `instance`) or "parameter" (needs `paramId`, plus
+        `instance` unless `global`). Only value edits are restored; a parameter with
+        no value at the ref has its instance override dropped. Returns the draft id,
+        how many cells were staged, and any skipped notes.
+      parameters:
+      - description: ref, scope, instance?, paramId?, global?
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Missing ref or unknown scope
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown ref, instance or parameter
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Restore configuration to a snapshot
+      tags:
+      - Editing & change requests
+  /api/revision:
+    get:
+      description: 'A tiny answer to "has anything moved?": the repository''s `head`
+        (files, catalog, publishes) and an opaque `changes` token for the change-request
+        store (drafts, submissions, approvals, rejections). Clients poll THIS instead
+        of re-reading the grid, the draft and the change list on their own timers,
+        and refresh those only when one of these two values differs from the last
+        answer. Cheap enough to poll often; carries no data of its own on purpose.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Current revision
+      tags:
+      - Reads
+  /api/scan:
+    post:
+      description: 'Read-only ingest scan: detect config files and extract candidate
+        parameters. Nothing is written; use import to promote candidates.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Scan for candidate settings
+      tags:
+      - Import & reconcile
+  /api/search:
+    get:
+      description: Search application metadata (parameters, instances, change requests)
+        across every connected application. Returns lightweight hits with a navigation
+        target; never values or file contents.
+      parameters:
+      - description: Query text
+        in: query
+        name: q
+        required: true
+        type: string
+      - description: global (default) or app
+        in: query
+        name: scope
+        type: string
+      - description: Restrict to one application id
+        in: query
+        name: repo
+        type: string
+      - description: Max results (default 20, cap 50)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Global search
+      tags:
+      - Workspace
+  /api/source-plugins:
+    get:
+      description: The registered external-source provider manifests (git, vault,
+        ...) with the config fields each needs.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List source plugins
+      tags:
+      - Sources
+  /api/sources:
+    get:
+      description: Every external source defined for this application, with how many
+        parameters are mapped to each.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List configured sources
+      tags:
+      - Sources
+    post:
+      consumes:
+      - application/json
+      description: Define an external source (its kind must match a registered plugin).
+        Non-secret connection details only; credentials are resolved server-side.
+      parameters:
+      - description: '{name, kind, secret?, config}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Add a source
+      tags:
+      - Sources
+  /api/sources/{id}:
+    delete:
+      description: Remove an external source. Parameters mapped to it keep their reference
+        until re-mapped or cleared.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Delete a source
+      tags:
+      - Sources
+    put:
+      consumes:
+      - application/json
+      description: Patch a source's name, secret flag or connection config.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: '{name?, secret?, config?}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Update a source
+      tags:
+      - Sources
+  /api/sources/{id}/browse:
+    get:
+      description: List the immediate children (folders, config files, secret keys)
+        under a path within a source.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      - description: Path within the source (blank for the root)
+        in: query
+        name: path
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Browse a source
+      tags:
+      - Sources
+  /api/sources/{id}/contents:
+    get:
+      description: Fetch the key/value pairs a source exposes right now (secret values
+        masked). Refreshes the cached snapshot.
+      parameters:
+      - description: Source id
+        in: path
+        name: id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "502":
+          description: Bad Gateway
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: View source contents
+      tags:
+      - Sources
+  /api/sources/incoming:
+    get:
+      description: For every parameter mapped to a source, the upstream value that
+        differs from the repository's current value. Reads the cached snapshot (fetching
+        lazily when empty).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Incoming source changes
+      tags:
+      - Sources
+  /api/sources/incoming/accept:
+    post:
+      consumes:
+      - application/json
+      description: Stage selected incoming source values into the draft change request
+        (as normal cell edits). Secret values stage as their reference. Submit the
+        draft to publish.
+      parameters:
+      - description: '{changes:[{paramId,instance}], author?}'
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Accept incoming changes
+      tags:
+      - Sources
+  /api/sources/refresh:
+    post:
+      description: Re-fetch every configured source and update the cached snapshots
+        the incoming-changes view reads.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Refresh sources
+      tags:
+      - Sources
+  /api/timeline:
+    get:
+      description: The application's configuration history as a list of snapshots,
+        newest first. Each entry is classified (`version` upgrade, `structural` instance
+        add/retire, `config` value change) and carries change counts, the instances
+        it touched and any version moves. `?instance=` narrows the timeline to one
+        instance's own story. Each snapshot is compared against the previous snapshot
+        IN THE SAME SCOPE. `supported` is false on backends that cannot serve a log.
+      parameters:
+      - description: Narrow the timeline to one instance
+        in: query
+        name: instance
+        type: string
+      - description: Max snapshots (1-40, default 15)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Configuration timeline
+      tags:
+      - Grid & parameters
+  /api/timeline/snapshot:
+    get:
+      description: Every parameter that changed at one snapshot, with its before and
+        after value, plus any version or instance-identity moves. The comparison baseline
+        is the previous snapshot in the same scope, so `?instance=` must match the
+        timeline the snapshot was read from. Feed `sha` to POST /api/restore to bring
+        any scope back to this point.
+      parameters:
+      - description: Snapshot commit sha
+        in: query
+        name: sha
+        required: true
+        type: string
+      - description: Scope the comparison to one instance
+        in: query
+        name: instance
+        type: string
+      - description: How far back to look for the baseline (1-40, default 15)
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: sha is required
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Unknown snapshot
+          schema:
+            $ref: '#/definitions/api.APIError'
+      summary: Open one timeline snapshot
+      tags:
+      - Grid & parameters
+  /api/v1/whoami:
+    get:
+      description: 'The verified identity in the platform''s shape: subject, tenant,
+        organization roles and product roles.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Platform identity
+      tags:
+      - Platform
+  /api/validation/presets:
+    get:
+      description: The predefined validation-rule library (port, cidr, ipv4, ...)
+        available to attach to parameters.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Validation presets
+      tags:
+      - Plugins & validation
+  /api/validation/status:
+    get:
+      description: 'What this deployment can check before a change is submitted: whether
+        the repository ships YANG models, how many were read, which full-document
+        validator is available (and why one is not), and the release the models were
+        selected for. The UI uses it to say what was actually checked instead of implying
+        a change is fully model-valid when nothing looked.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValidationStatus'
+      summary: Validation capability
+      tags:
+      - Editing & change requests
+  /api/values:
+    delete:
+      description: Drop one pending edit (identified by paramId + instance) from the
+        current draft.
+      parameters:
+      - description: Parameter id
+        in: query
+        name: paramId
+        required: true
+        type: string
+      - description: Instance name (empty for a global edit)
+        in: query
+        name: instance
+        required: true
+        type: string
+      - description: Undo only an item of this action (e.g. update-parameter). Omitted,
+          the first item at that address is undone.
+        in: query
+        name: action
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.OKResponse'
+        "404":
+          description: No draft
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Revert a pending value edit
+      tags:
+      - Editing & change requests
+    put:
+      consumes:
+      - application/json
+      description: Stage a validated cell edit into the draft change request. The
+        value is coerced to the parameter's declared type and validated; nothing touches
+        Git until the draft is submitted. `action` defaults to "set"; "reset" drops
+        the instance override; "exclude" removes the key from the instance's files.
+        `scope:"global"` edits the shared value for every instance.
+      parameters:
+      - description: The edit
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.ValueEditRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.ValueStagedResponse'
+        "400":
+          description: Malformed body or unsupported scope
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Parameter or instance not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "422":
+          description: Value failed coercion or validation
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Stage a value edit
+      tags:
+      - Editing & change requests
+  /api/values/bulk:
+    delete:
+      consumes:
+      - application/json
+      description: Drop many pending edits from the current draft in a single write.
+        Each item is identified by paramId + instance (paramId "file:<path>" for a
+        whole-file edit). Unknown items are ignored; the response says how many were
+        actually removed.
+      parameters:
+      - description: Items to revert
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: No draft
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Revert several pending edits
+      tags:
+      - Editing & change requests
+    put:
+      consumes:
+      - application/json
+      description: 'Stage several value edits at once. `edits` is a list of `{instance,
+        value}`, and each entry may add its own `paramId` (defaulting to the top-level
+        one) and `scope: "global"` (a shared-file edit that applies to every instance,
+        ignoring `instance`). `action` defaults to "set" ("reset"/"exclude" drop the
+        override and ignore value). Each value is coerced and validated independently;
+        invalid targets are reported in `results` while valid ones still stage. Nothing
+        touches Git until the draft is submitted.'
+      parameters:
+      - description: paramId, action, edits[]
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: object
+        "400":
+          description: Malformed body
+          schema:
+            $ref: '#/definitions/api.APIError'
+        "404":
+          description: Parameter not found
+          schema:
+            $ref: '#/definitions/api.APIError'
+      security:
+      - BearerAuth: []
+      summary: Stage value edits across parameters and instances
+      tags:
+      - Editing & change requests
+  /api/workspace:
+    get:
+      description: 'The workspace portfolio: every connected repository with health/shape
+        summary (params, instances, environments, open changes, drafts, sync state).
+        `/api/workspace` is an alias.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: List repositories
+      tags:
+      - Workspace
+produces:
+- application/json
+schemes:
+- https
+- http
+securityDefinitions:
+  BearerAuth:
+    description: '`Bearer <token>`: an access token from the platform''s identity
+      provider, the same token Software Gateway accepts. Only required when the deployment
+      has sign-in configured; single-user deployments need no authentication.'
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

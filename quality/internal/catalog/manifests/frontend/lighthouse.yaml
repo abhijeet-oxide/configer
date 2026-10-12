@@ -16,7 +16,7 @@ timeoutSeconds: 900
 tool:
   command: npx
   args: ["--yes", "@lhci/cli@0.14.x", "collect",
-         "--staticDistDir", "{repo}/frontend/dist",
+         "--staticDistDir", "{repo}/web/dist",
          "--numberOfRuns", "3"]
   probe: ["node", "--version"]
   optional: true

@@ -41,7 +41,7 @@ The scoring table in §9 lays out 13 real-world scenarios. Roughly: 6 Handled,
 
 The lifecycle is a real state machine (`change.State`):
 `draft -> under_review -> approved -> published`, with `rejected` as the terminal
-failure (`backend/internal/change/change.go:15-21`).
+failure (`internal/change/change.go:15-21`).
 
 - **Draft** is per-user and lazily created. Each editor gets their own draft CR
   keyed by author, riding its own `feature/…` branch from the very first edit,

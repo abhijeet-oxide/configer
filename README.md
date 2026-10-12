@@ -77,8 +77,8 @@ See **[FEATURES.md](FEATURES.md)** for the full tour with screenshots.
 ## Quick start
 
 ```bash
-make install   # first time: go modules + npm
-make dev       # backend :8080 + frontend :5173 (Ctrl-C stops both)
+task install   # first time: go modules + npm
+task dev       # backend :8080 + frontend :5173 (Ctrl-C stops both)
 ```
 
 Open http://localhost:5173. The bundled `sample-repo/` (a telco fleet with six
@@ -89,8 +89,8 @@ Point it at other shapes - `sample-repos/` holds realistic Helm, Kustomize, kpt,
 raw multi-cluster Kubernetes, and telco-RAN repositories:
 
 ```bash
-make backend CONFIGER_REPO=./sample-repos/helm-umbrella   # try any of them
-make functional-test                                       # onboard + verify all of them
+task backend CONFIGER_REPO=./sample-repos/helm-umbrella   # try any of them
+task functional-test                                       # onboard + verify all of them
 ```
 
 ## Learn more
@@ -109,11 +109,11 @@ make functional-test                                       # onboard + verify al
 
 | Path | Description |
 |------|-------------|
-| `backend/` | Go API: layout detection, discovery/dedup, the `pathedit` engine (surgical YAML/JSON/XML edits), resolver, grid, change requests, git, optional platform. |
-| `frontend/` | React + TypeScript + Ant Design SPA: grid, file mode, onboarding, instances, compare, approvals. |
+| `cmd/`, `internal/` | Go API: layout detection, discovery/dedup, the `pathedit` engine (surgical YAML/JSON/XML edits), resolver, grid, change requests, git, optional platform. |
+| `web/` | React + TypeScript + Ant Design SPA: grid, file mode, onboarding, instances, compare, approvals. |
 | `sample-repo/` | The demo fixture served out of the box. |
 | `sample-repos/` | Realistic Helm / Kustomize / kpt / K8s / telco repos for scanner testing. |
 | `docs/` | Screenshots, the demo GIF, design notes, and the quality platform's documentation. |
-| `deploy/` | docker-compose stack (backend + frontend + Postgres). |
+| `deploy/` | `build/` (the two images), `web/` (the web image's nginx) and a docker-compose stack. |
 | `quality/` | The Continuous Quality Platform (`cq`): one Go binary that runs the open source analyzers incrementally and writes one normalized report. |
 | `.cq-analyzers/` | This repository's own quality checks. One YAML file each, no code. |

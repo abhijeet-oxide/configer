@@ -69,6 +69,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	hub.StartReleaseCandidates(ctx, 15*time.Second)
 	<-ctx.Done()
 
 	logger.Info("shutting down, draining in-flight requests")

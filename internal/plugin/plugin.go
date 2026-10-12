@@ -8,6 +8,8 @@
 //     key/value pairs a managed parameter can be mapped to
 //   - Recognizer     : file -> what produced it, and what will produce it
 //     again, so Configer can say why it left a file alone
+//   - Transformer    : a release candidate from Software Gateway -> the file
+//     changes that deploy it, proposed as one change request
 //
 // Built-in plugins register themselves at startup.
 package plugin
@@ -15,6 +17,7 @@ package plugin
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"sort"
 	"sync"
 
@@ -29,6 +32,7 @@ const (
 	KindSchemaImporter Kind = "schema-importer"
 	KindSource         Kind = "source"
 	KindRecognizer     Kind = "recognizer"
+	KindTransformer    Kind = "transformer"
 )
 
 // Origin is what produced a file, and what will produce it again.
@@ -172,12 +176,64 @@ type SourceProvider interface {
 	Browse(ctx context.Context, cfg SourceConfig, path string) ([]BrowseEntry, error)
 }
 
+// ReleaseCandidate is a release Software Gateway asked to have deployed: which
+// product, which release, which stage asked, and the configuration repository
+// the product names.
+type ReleaseCandidate struct {
+	ID          string `json:"id"`
+	Product     string `json:"product"`
+	Release     string `json:"release"`
+	Stage       string `json:"stage,omitempty"`
+	GitURL      string `json:"gitUrl"`
+	GitBranch   string `json:"gitBranch,omitempty"`
+	GitPath     string `json:"gitPath,omitempty"`
+	RequestedBy string `json:"requestedBy"`
+}
+
+// FileChange is one file a transformer writes, relative to the repository root.
+type FileChange struct {
+	Path    string
+	Content []byte
+}
+
+// Transformer turns a release candidate into the files that deploy it (Flux
+// HelmReleases, image tags, chart versions). It READS the application's
+// working copy and returns what should change; ArtiAuto stages those changes
+// as a draft and submits it, so the result is reviewed and published like any
+// other change request. Accepts says whether this transformer handles a
+// candidate, so several can be installed side by side.
+type Transformer interface {
+	Manifest() Manifest
+	Accepts(rc ReleaseCandidate) bool
+	Transform(ctx context.Context, rc ReleaseCandidate, repo fs.FS) ([]FileChange, error)
+}
+
 // Registry holds all registered plugins, grouped by kind.
 type Registry struct {
-	mu          sync.RWMutex
-	parsers     []IngestParser
-	sources     []SourceProvider
-	recognizers []Recognizer
+	mu           sync.RWMutex
+	parsers      []IngestParser
+	sources      []SourceProvider
+	recognizers  []Recognizer
+	transformers []Transformer
+}
+
+// RegisterTransformer adds a release-candidate transformer.
+func (r *Registry) RegisterTransformer(t Transformer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.transformers = append(r.transformers, t)
+}
+
+// TransformerFor returns the first transformer that accepts rc.
+func (r *Registry) TransformerFor(rc ReleaseCandidate) (Transformer, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, t := range r.transformers {
+		if t.Accepts(rc) {
+			return t, true
+		}
+	}
+	return nil, false
 }
 
 // NewRegistry returns an empty registry.
@@ -277,6 +333,9 @@ func (r *Registry) Manifests() []Manifest {
 		ms = append(ms, p.Manifest())
 	}
 	for _, p := range r.recognizers {
+		ms = append(ms, p.Manifest())
+	}
+	for _, p := range r.transformers {
 		ms = append(ms, p.Manifest())
 	}
 	sort.Slice(ms, func(i, j int) bool {

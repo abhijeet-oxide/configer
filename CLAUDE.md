@@ -298,8 +298,18 @@ never gate on the score, which exists only for the trend line.
 
 **External sources (plugin-based):**
 - `plugin` - THE extension registry. `IngestParser` (file -> candidates),
-  `SchemaImporter`, and `SourceProvider` (external system -> key/value pairs)
-  all register here; add an extension point, never a second registry.
+  `SchemaImporter`, `SourceProvider` (external system -> key/value pairs) and
+  `Transformer` (a release candidate -> the files that deploy it) all register
+  here; add an extension point, never a second registry.
+- **Release candidates** (`api/releasecandidates.go`): Software Gateway queues
+  them in `public.release_candidates`; the runner claims one every 15 seconds
+  (Postgres only), finds the application whose origin is the product's
+  `spec.git.url`, asks the first `Transformer` that accepts it for file
+  changes, and stages and submits them through this server's OWN handlers as
+  the author `release-candidates`, so the result is a normal change request.
+  No application or no transformer leaves the row `waiting` with the reason,
+  retried every ten minutes. Transformers register in `internal/transformers`;
+  none ships.
 - `sources` - built-in `SourceProvider` plugins: `git` (read a config file/
   folder in another repo, no clone for github via `remoterepo`, temp clone
   otherwise, parsed through the same `parsers`) and `vault` (HashiCorp Vault
